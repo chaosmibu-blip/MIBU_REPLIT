@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { AppState, LocationData, AppView, Language } from '../types';
 import { LOCATION_DATA, MAX_LEVEL, TRANSLATIONS } from '../constants';
-import { MapPin, Zap, Search } from 'lucide-react';
+import { MapPin, Zap, Search, Globe } from 'lucide-react';
 
 interface InputFormProps {
   state: AppState;
@@ -28,20 +28,20 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
         {/* Country Selection */}
         <div className="space-y-3">
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">{t.destination}</label>
-          <div className="grid grid-cols-3 gap-2">
-            {countries.map(c => (
-              <button
-                key={c}
-                onClick={() => onUpdate({ country: c, city: '' })}
-                className={`py-3 rounded-xl text-sm font-bold transition-all duration-200 ${
-                  state.country === c 
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105' 
-                    : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
-                }`}
-              >
-                {LOCATION_DATA[c].names[state.language]}
-              </button>
-            ))}
+          <div className="relative">
+             <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-400" />
+             <select
+               value={state.country}
+               onChange={(e) => onUpdate({ country: e.target.value, city: '' })}
+               className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-indigo-200 appearance-none"
+             >
+               <option value="" disabled>Select Country</option>
+               {countries.map(c => (
+                 <option key={c} value={c}>
+                   {LOCATION_DATA[c].names[state.language]}
+                 </option>
+               ))}
+             </select>
           </div>
         </div>
 
