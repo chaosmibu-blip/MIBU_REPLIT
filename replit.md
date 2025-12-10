@@ -26,8 +26,19 @@ Preferred communication style: Simple, everyday language.
 
 ### Data Storage
 - **Database**: PostgreSQL with Drizzle ORM
-- **Schema Location**: `shared/schema.ts` - contains users, collections, merchants, coupons, and sessions tables
+- **Schema Location**: `shared/schema.ts` - contains users, collections, merchants, coupons, placeCache, and sessions tables
 - **Migrations**: Drizzle Kit with `db:push` command for schema synchronization
+
+### Place Cache System (Added 2025-12-10)
+- **Purpose**: Reduce AI (Gemini) consumption by caching previously generated place data
+- **Cache Key**: (subCategory, district, city, country) - stores one place per sub-category per district
+- **Cached Data**: place_name, description, category, rarity, Google verification data (place_id, verified_name, verified_address, google_rating, location coordinates, is_location_verified)
+- **Cache Hit Logic**: 
+  1. When generating itinerary, check cache for each skeleton item's subCategory
+  2. If cached AND not in user's collectedNames exclusion list → use cached data (skip AI)
+  3. If not cached → call Gemini AI, verify with Google Maps, save to cache
+- **Benefits**: Subsequent requests for same district reuse cached places, reducing AI and Google API calls
+- **Response Meta**: Includes `cache_hits` and `ai_generated` counts for monitoring
 
 ### AI Integration
 - **Provider**: Google Gemini API (gemini-2.5-flash model)

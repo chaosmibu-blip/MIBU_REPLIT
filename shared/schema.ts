@@ -51,6 +51,33 @@ export const merchants = pgTable("merchants", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Place cache for AI-generated content
+export const placeCache = pgTable("place_cache", {
+  id: serial("id").primaryKey(),
+  subCategory: text("sub_category").notNull(),
+  district: text("district").notNull(),
+  city: text("city").notNull(),
+  country: text("country").notNull(),
+  placeName: text("place_name").notNull(),
+  description: text("description").notNull(),
+  category: text("category").notNull(),
+  suggestedTime: text("suggested_time"),
+  duration: text("duration"),
+  searchQuery: text("search_query"),
+  rarity: text("rarity").notNull(),
+  colorHex: text("color_hex"),
+  placeId: text("place_id"),
+  verifiedName: text("verified_name"),
+  verifiedAddress: text("verified_address"),
+  googleRating: text("google_rating"),
+  locationLat: text("location_lat"),
+  locationLng: text("location_lng"),
+  isLocationVerified: boolean("is_location_verified").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_place_cache_lookup").on(table.subCategory, table.district, table.city, table.country),
+]);
+
 // Merchant coupons
 export const coupons = pgTable("coupons", {
   id: serial("id").primaryKey(),
@@ -114,6 +141,11 @@ export const insertCouponSchema = createInsertSchema(coupons).omit({
   createdAt: true,
 });
 
+export const insertPlaceCacheSchema = createInsertSchema(placeCache).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -126,3 +158,6 @@ export type Merchant = typeof merchants.$inferSelect;
 
 export type InsertCoupon = z.infer<typeof insertCouponSchema>;
 export type Coupon = typeof coupons.$inferSelect;
+
+export type InsertPlaceCache = z.infer<typeof insertPlaceCacheSchema>;
+export type PlaceCache = typeof placeCache.$inferSelect;

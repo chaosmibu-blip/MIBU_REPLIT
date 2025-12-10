@@ -527,11 +527,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         '活動': 'Activity', '景點': 'Scenery', '購物': 'Shopping'
       };
 
-      const skeletonInstructions = skeleton.map((item, idx) => 
-        `${idx + 1}. [${item.timeSlot}] ${categoryMap[item.category] || item.category} - ${item.subCategory} (${item.suggestedTime}, energy: ${item.energyLevel})`
-      ).join('\n');
+      // Check cache for existing places
+      const cachedPlaces = await storage.getCachedPlaces(targetDistrict, city, country);
+      const cacheMap = new Map(cachedPlaces.map(p => [p.subCategory, p]));
+      
+      // Separate skeleton items into cached and uncached
+      const cachedItems: any[] = [];
+      const uncachedSkeleton: Array<typeof skeleton[0] & { originalIdx: number }> = [];
+      
+      skeleton.forEach((item, idx) => {
+        const cached = cacheMap.get(item.subCategory);
+        if (cached && !collectedNames.includes(cached.placeName)) {
+          cachedItems.push({
+            skeletonIdx: idx,
+            cached: cached,
+            skeleton: item
+          });
+        } else {
+          uncachedSkeleton.push({ ...item, originalIdx: idx });
+        }
+      });
 
-      const prompt = `You are a professional travel planner AI. Fill in REAL place names for this itinerary skeleton in ${city}, ${country}.
+      console.log(`Cache hit: ${cachedItems.length}/${skeleton.length} items from cache`);
+
+      let aiGeneratedItems: any[] = [];
+
+      // Only call Gemini if there are uncached items
+      if (uncachedSkeleton.length > 0) {
+        const skeletonInstructions = uncachedSkeleton.map((item, idx) => 
+          `${idx + 1}. [${item.timeSlot}] ${categoryMap[item.category] || item.category} - ${item.subCategory} (${item.suggestedTime}, energy: ${item.energyLevel})`
+        ).join('\n');
+
+        const prompt = `You are a professional travel planner AI. Fill in REAL place names for this itinerary skeleton in ${city}, ${country}.
 
 【目標區域 Target District】
 All places MUST be in "${targetDistrict}" district (within 5-10km radius).
@@ -556,88 +583,177 @@ Do NOT include: ${collectedNames.length > 0 ? collectedNames.join(', ') : 'none'
 - R (45%): Nice everyday places
 
 Output language: ${outputLang}
-Output ONLY valid JSON, no markdown, no explanation.
+Output ONLY valid JSON array, no markdown, no explanation.
 
-{
-  "status": "success",
-  "meta": {
-    "date": "${new Date().toISOString().split('T')[0]}",
-    "country": "${country}",
-    "city": "${city}",
-    "locked_district": "${targetDistrict}",
-    "user_level": ${level},
-    "total_items": ${skeleton.length}
-  },
-  "inventory": [
-${skeleton.map((item, idx) => `    {
-      "id": ${idx + 1},
-      "place_name": "REAL place name for ${item.subCategory} in ${targetDistrict}",
-      "description": "2-3 sentence description",
-      "category": "${categoryMap[item.category] || item.category}",
-      "sub_category": "${item.subCategory}",
-      "suggested_time": "${item.suggestedTime}",
-      "duration": "1-2 hours",
-      "time_slot": "${item.timeSlot}",
-      "search_query": "place name ${city}",
-      "rarity": "R|S|SR|SSR|SP",
-      "color_hex": "#6366f1",
-      "city": "${city}",
-      "country": "${country}",
-      "district": "${targetDistrict}",
-      "energy_level": "${item.energyLevel}",
-      "is_coupon": false,
-      "coupon_data": null,
-      "operating_status": "OPEN"
-    }`).join(',\n')}
-  ]
-}`;
+[
+${uncachedSkeleton.map((item, idx) => `  {
+    "place_name": "REAL place name for ${item.subCategory} in ${targetDistrict}",
+    "description": "2-3 sentence description",
+    "category": "${categoryMap[item.category] || item.category}",
+    "sub_category": "${item.subCategory}",
+    "suggested_time": "${item.suggestedTime}",
+    "duration": "1-2 hours",
+    "time_slot": "${item.timeSlot}",
+    "search_query": "place name ${city}",
+    "rarity": "R|S|SR|SSR|SP",
+    "color_hex": "#6366f1",
+    "energy_level": "${item.energyLevel}"
+  }`).join(',\n')}
+]`;
 
-      const responseText = await callGemini(prompt);
+        const responseText = await callGemini(prompt);
+        let jsonText = responseText || '';
+        jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        aiGeneratedItems = JSON.parse(jsonText);
+      }
 
-      let jsonText = responseText || '';
-      jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      
-      const data = JSON.parse(jsonText);
-      
+      // Merge cached and AI-generated items
       const districtCenter = await getDistrictBoundary(targetDistrict, city, country);
-      
-      const verifiedInventory = await Promise.all(
-        data.inventory.map(async (item: any, idx: number) => {
-          const placeResult = await searchPlaceInDistrict(
-            item.place_name,
-            targetDistrict,
-            city,
-            country
-          );
-          
-          let isVerified = false;
-          let placeLocation: { lat: number; lng: number } | null = null;
-          
-          if (placeResult && placeResult.geometry) {
-            placeLocation = placeResult.geometry.location;
-            if (districtCenter) {
-              isVerified = isWithinRadius(districtCenter, placeLocation, 5);
-            } else {
-              isVerified = true;
-            }
-          }
-          
-          return {
-            ...item,
-            id: Date.now() + idx,
-            place_id: placeResult?.place_id || null,
-            verified_name: placeResult?.name || item.place_name,
-            verified_address: placeResult?.formatted_address || null,
-            google_rating: placeResult?.rating || null,
-            location: placeLocation,
-            is_location_verified: isVerified,
-            district_center: districtCenter
-          };
-        })
-      );
+      const finalInventory: any[] = new Array(skeleton.length);
 
-      data.inventory = verifiedInventory;
-      data.meta.verification_enabled = !!GOOGLE_MAPS_API_KEY;
+      // Process cached items (no Google API calls needed - data already in cache)
+      for (const { skeletonIdx, cached, skeleton: skelItem } of cachedItems) {
+        const cachedLocation = cached.locationLat && cached.locationLng 
+          ? { lat: parseFloat(cached.locationLat), lng: parseFloat(cached.locationLng) }
+          : null;
+        
+        finalInventory[skeletonIdx] = {
+          id: Date.now() + skeletonIdx,
+          place_name: cached.placeName,
+          description: cached.description,
+          category: cached.category,
+          sub_category: cached.subCategory,
+          suggested_time: skelItem.suggestedTime,
+          duration: cached.duration || '1-2 hours',
+          time_slot: skelItem.timeSlot,
+          search_query: cached.searchQuery,
+          rarity: cached.rarity,
+          color_hex: cached.colorHex || '#6366f1',
+          city: city,
+          country: country,
+          district: targetDistrict,
+          energy_level: skelItem.energyLevel,
+          is_coupon: false,
+          coupon_data: null,
+          operating_status: 'OPEN',
+          place_id: cached.placeId || null,
+          verified_name: cached.verifiedName || cached.placeName,
+          verified_address: cached.verifiedAddress || null,
+          google_rating: cached.googleRating ? Number(cached.googleRating) : null,
+          location: cachedLocation,
+          is_location_verified: cached.isLocationVerified === true,
+          district_center: districtCenter,
+          from_cache: true
+        };
+      }
+
+      // Process AI-generated items (need Google API verification and cache saving)
+      const newCacheEntries: any[] = [];
+      
+      for (let i = 0; i < uncachedSkeleton.length; i++) {
+        const skelItem = uncachedSkeleton[i];
+        const aiItem = aiGeneratedItems[i];
+        const originalIdx = skelItem.originalIdx;
+
+        const placeResult = await searchPlaceInDistrict(
+          aiItem.place_name,
+          targetDistrict,
+          city,
+          country
+        );
+
+        let isVerified = false;
+        let placeLocation: { lat: number; lng: number } | null = null;
+
+        if (placeResult && placeResult.geometry) {
+          placeLocation = placeResult.geometry.location;
+          if (districtCenter) {
+            isVerified = isWithinRadius(districtCenter, placeLocation, 5);
+          } else {
+            isVerified = true;
+          }
+        }
+
+        const inventoryItem = {
+          id: Date.now() + originalIdx,
+          place_name: aiItem.place_name,
+          description: aiItem.description,
+          category: aiItem.category,
+          sub_category: aiItem.sub_category,
+          suggested_time: skelItem.suggestedTime,
+          duration: aiItem.duration || '1-2 hours',
+          time_slot: skelItem.timeSlot,
+          search_query: aiItem.search_query,
+          rarity: aiItem.rarity,
+          color_hex: aiItem.color_hex || '#6366f1',
+          city: city,
+          country: country,
+          district: targetDistrict,
+          energy_level: skelItem.energyLevel,
+          is_coupon: false,
+          coupon_data: null,
+          operating_status: 'OPEN',
+          place_id: placeResult?.place_id || null,
+          verified_name: placeResult?.name || aiItem.place_name,
+          verified_address: placeResult?.formatted_address || null,
+          google_rating: placeResult?.rating || null,
+          location: placeLocation,
+          is_location_verified: isVerified,
+          district_center: districtCenter,
+          from_cache: false
+        };
+
+        finalInventory[originalIdx] = inventoryItem;
+
+        // Prepare cache entry
+        newCacheEntries.push({
+          subCategory: aiItem.sub_category,
+          district: targetDistrict,
+          city: city,
+          country: country,
+          placeName: aiItem.place_name,
+          description: aiItem.description,
+          category: aiItem.category,
+          suggestedTime: skelItem.suggestedTime,
+          duration: aiItem.duration || '1-2 hours',
+          searchQuery: aiItem.search_query,
+          rarity: aiItem.rarity,
+          colorHex: aiItem.color_hex || '#6366f1',
+          placeId: placeResult?.place_id || null,
+          verifiedName: placeResult?.name || null,
+          verifiedAddress: placeResult?.formatted_address || null,
+          googleRating: placeResult?.rating?.toString() || null,
+          locationLat: placeLocation?.lat?.toString() || null,
+          locationLng: placeLocation?.lng?.toString() || null,
+          isLocationVerified: isVerified
+        });
+      }
+
+      // Save new entries to cache
+      if (newCacheEntries.length > 0) {
+        try {
+          await storage.savePlacesToCache(newCacheEntries);
+          console.log(`Saved ${newCacheEntries.length} new places to cache`);
+        } catch (cacheError) {
+          console.error('Failed to save to cache:', cacheError);
+        }
+      }
+
+      const data = {
+        status: 'success',
+        meta: {
+          date: new Date().toISOString().split('T')[0],
+          country: country,
+          city: city,
+          locked_district: targetDistrict,
+          user_level: level,
+          total_items: skeleton.length,
+          verification_enabled: !!GOOGLE_MAPS_API_KEY,
+          cache_hits: cachedItems.length,
+          ai_generated: uncachedSkeleton.length
+        },
+        inventory: finalInventory
+      };
 
       res.json({ data, sources: [] });
     } catch (error) {

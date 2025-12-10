@@ -1,9 +1,10 @@
 import { 
-  users, collections, merchants, coupons,
+  users, collections, merchants, coupons, placeCache,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
-  type Coupon, type InsertCoupon
+  type Coupon, type InsertCoupon,
+  type PlaceCache, type InsertPlaceCache
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
@@ -27,6 +28,12 @@ export interface IStorage {
   getActiveCoupons(merchantId: number): Promise<Coupon[]>;
   createCoupon(coupon: InsertCoupon): Promise<Coupon>;
   updateCoupon(couponId: number, data: Partial<Coupon>): Promise<Coupon>;
+
+  // Place Cache
+  getCachedPlace(subCategory: string, district: string, city: string, country: string): Promise<PlaceCache | undefined>;
+  getCachedPlaces(district: string, city: string, country: string): Promise<PlaceCache[]>;
+  savePlaceToCache(place: InsertPlaceCache): Promise<PlaceCache>;
+  savePlacesToCache(places: InsertPlaceCache[]): Promise<PlaceCache[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -131,6 +138,52 @@ export class DatabaseStorage implements IStorage {
       .where(eq(coupons.id, couponId))
       .returning();
     return updated;
+  }
+
+  // Place Cache
+  async getCachedPlace(subCategory: string, district: string, city: string, country: string): Promise<PlaceCache | undefined> {
+    const [place] = await db
+      .select()
+      .from(placeCache)
+      .where(
+        and(
+          eq(placeCache.subCategory, subCategory),
+          eq(placeCache.district, district),
+          eq(placeCache.city, city),
+          eq(placeCache.country, country)
+        )
+      )
+      .limit(1);
+    return place || undefined;
+  }
+
+  async getCachedPlaces(district: string, city: string, country: string): Promise<PlaceCache[]> {
+    return await db
+      .select()
+      .from(placeCache)
+      .where(
+        and(
+          eq(placeCache.district, district),
+          eq(placeCache.city, city),
+          eq(placeCache.country, country)
+        )
+      );
+  }
+
+  async savePlaceToCache(place: InsertPlaceCache): Promise<PlaceCache> {
+    const [newPlace] = await db
+      .insert(placeCache)
+      .values(place)
+      .returning();
+    return newPlace;
+  }
+
+  async savePlacesToCache(places: InsertPlaceCache[]): Promise<PlaceCache[]> {
+    if (places.length === 0) return [];
+    return await db
+      .insert(placeCache)
+      .values(places)
+      .returning();
   }
 }
 
