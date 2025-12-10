@@ -222,63 +222,70 @@ const App: React.FC = () => {
         throw new Error('Please select a destination');
       }
       
-      const response = await fetch('/api/gacha/pull', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          countryId: state.countryId, 
-          regionId: state.regionId,
-          language: state.language 
-        })
-      });
+      const allItems: GachaItem[] = [];
+      const pullCount = state.level;
       
-      if (!response.ok) {
-        throw new Error('Failed to perform gacha pull');
+      for (let i = 0; i < pullCount; i++) {
+        const response = await fetch('/api/gacha/pull', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            countryId: state.countryId, 
+            regionId: state.regionId,
+            language: state.language 
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to perform gacha pull');
+        }
+        
+        const pullResult = await response.json();
+        const { pull } = pullResult;
+        
+        const gachaItem: GachaItem = {
+          id: Date.now() + i,
+          place_name: pull.place?.name || `${pull.location.district.name} ${pull.subcategory.name}`,
+          description: pull.place?.address || `${pull.location.region.name}, ${pull.location.country.name}`,
+          category: pull.category.code as any,
+          suggested_time: '',
+          duration: '',
+          search_query: pull.searchQuery,
+          color_hex: pull.category.colorHex || '#6366f1',
+          country: pull.location.country.name,
+          city: pull.location.region.name,
+          district: pull.location.district.name,
+          collectedAt: new Date().toISOString(),
+          is_coupon: false,
+          coupon_data: null,
+          place_id: pull.place?.placeId || null,
+          verified_name: pull.place?.name || null,
+          verified_address: pull.place?.address || null,
+          google_rating: pull.place?.rating || null,
+          location: pull.place?.location || null,
+          is_location_verified: !!pull.place
+        };
+        
+        allItems.push(gachaItem);
       }
       
-      const pullResult = await response.json();
       localStorage.setItem(STORAGE_KEYS.DAILY_LIMIT, JSON.stringify({ date: today, count: currentCount + 1 }));
       
-      const { pull } = pullResult;
-      
-      const gachaItem: GachaItem = {
-        id: Date.now(),
-        place_name: pull.place?.name || `${pull.location.district.name} ${pull.subcategory.name}`,
-        description: pull.place?.address || `${pull.location.region.name}, ${pull.location.country.name}`,
-        category: pull.category.code as any,
-        suggested_time: '',
-        duration: '',
-        search_query: pull.searchQuery,
-        color_hex: pull.category.colorHex || '#6366f1',
-        country: pull.location.country.name,
-        city: pull.location.region.name,
-        district: pull.location.district.name,
-        collectedAt: new Date().toISOString(),
-        is_coupon: false,
-        coupon_data: null,
-        place_id: pull.place?.placeId || null,
-        verified_name: pull.place?.name || null,
-        verified_address: pull.place?.address || null,
-        google_rating: pull.place?.rating || null,
-        location: pull.place?.location || null,
-        is_location_verified: !!pull.place
-      };
-
       const gachaResponse: GachaResponse = {
         status: 'success',
         meta: {
           date: new Date().toISOString().split('T')[0],
-          country: pull.location.country.name,
-          city: pull.location.region.name,
-          locked_district: pull.location.district.name,
+          country: allItems[0]!.country,
+          city: allItems[0]!.city,
+          locked_district: allItems[0]!.district,
           user_level: state.level
         },
-        inventory: [gachaItem]
+        inventory: allItems
       };
 
       setState(prev => {
         const existingKeys = new Set(prev.collection.map(getItemKey));
-        const uniqueNewItems = [gachaItem].filter(i => !existingKeys.has(getItemKey(i)));
+        const uniqueNewItems = allItems.filter(i => !existingKeys.has(getItemKey(i)));
         const updatedCollection = [...prev.collection, ...uniqueNewItems];
         localStorage.setItem(STORAGE_KEYS.COLLECTION, JSON.stringify(updatedCollection));
         

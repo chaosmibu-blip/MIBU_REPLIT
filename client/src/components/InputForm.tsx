@@ -205,12 +205,15 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
         {/* Itinerary Length Slider */}
         {selectedCountryId && (
           <div className="space-y-3">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">
-              {state.language === 'zh-TW' && '行程數量'}
-              {state.language === 'en' && 'Itinerary Length'}
-              {state.language === 'ja' && '行程の長さ'}
-              {state.language === 'ko' && '행정 길이'}
-            </label>
+            <div className="flex items-center justify-between ml-1">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                {state.language === 'zh-TW' && '行程數量'}
+                {state.language === 'en' && 'Itinerary Length'}
+                {state.language === 'ja' && '行程の長さ'}
+                {state.language === 'ko' && '행정 길이'}
+              </label>
+              <span className="text-sm font-bold text-indigo-600" data-testid="text-level">{state.level}</span>
+            </div>
             <div className="space-y-3">
               <input
                 type="range"
