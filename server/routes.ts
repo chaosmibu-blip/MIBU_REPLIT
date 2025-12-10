@@ -9,6 +9,39 @@ const RECUR_API_URL = "https://api.recur.tw/v1";
 const RECUR_PREMIUM_PLAN_ID = "adkwbl9dya0wc6b53parl9yk";
 const UNLIMITED_GENERATION_EMAILS = ["s8869420@gmail.com"];
 
+async function callGemini(prompt: string): Promise<string> {
+  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  
+  if (!baseUrl || !apiKey) {
+    throw new Error("Gemini API not configured");
+  }
+
+  const response = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.9,
+        maxOutputTokens: 8192,
+      }
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Gemini API error:", errorText);
+    throw new Error(`Gemini API failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth
   await setupAuth(app);
@@ -146,6 +179,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ coupon });
     } catch (error) {
       res.status(500).json({ error: "Failed to update coupon" });
+    }
+  });
+
+  // ============ Gemini AI Itinerary Generation ============
+  
+  app.post("/api/generate-itinerary", async (req, res) => {
+    try {
+      const { country, city, level, language, collectedNames } = req.body;
+      
+      const langMap: Record<string, string> = {
+        'zh-TW': '繁體中文',
+        'en': 'English',
+        'ja': '日本語',
+        'ko': '한국어'
+      };
+      const outputLang = langMap[language] || 'English';
+      
+      const itemCount = Math.min(8, Math.max(3, Math.floor(level / 1.5)));
+      
+      const prompt = `You are a travel expert AI for a gacha-style travel app. Generate ${itemCount} unique travel recommendations for ${city}, ${country}.
+
+IMPORTANT RULES:
+1. Output ONLY valid JSON, no markdown, no explanation
+2. Each place must be REAL and actually exist in ${city}
+3. Do NOT include any places from this list: ${collectedNames.join(', ')}
+4. Mix different categories: Food, Stay, Scenery, Shopping, Entertainment, Education, Activity
+5. Assign rarity based on how special/unique the place is:
+   - SP (5%): Legendary, once-in-a-lifetime experiences
+   - SSR (10%): Very rare, hidden gems only locals know
+   - SR (15%): Special places worth going out of your way for
+   - S (20%): Good quality, recommended spots
+   - R (50%): Nice everyday places
+
+Output language: ${outputLang}
+
+Return this exact JSON structure:
+{
+  "status": "success",
+  "meta": {
+    "date": "${new Date().toISOString().split('T')[0]}",
+    "country": "${country}",
+    "city": "${city}",
+    "locked_district": "a specific district/area name in ${city}",
+    "user_level": ${level}
+  },
+  "inventory": [
+    {
+      "id": 1,
+      "place_name": "Real place name",
+      "description": "2-3 sentence description of why this place is special",
+      "category": "Food|Stay|Scenery|Shopping|Entertainment|Education|Activity",
+      "suggested_time": "10:00",
+      "duration": "1.5 hours",
+      "search_query": "place name ${city}",
+      "rarity": "R|S|SR|SSR|SP",
+      "color_hex": "#6366f1",
+      "city": "${city}",
+      "country": "${country}",
+      "is_coupon": false,
+      "coupon_data": null,
+      "operating_status": "OPEN"
+    }
+  ]
+}`;
+
+      const responseText = await callGemini(prompt);
+
+      let jsonText = responseText || '';
+      jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      
+      const data = JSON.parse(jsonText);
+      
+      data.inventory = data.inventory.map((item: any, idx: number) => ({
+        ...item,
+        id: Date.now() + idx
+      }));
+
+      res.json({ data, sources: [] });
+    } catch (error) {
+      console.error("Gemini generation error:", error);
+      res.status(500).json({ error: "Failed to generate itinerary" });
     }
   });
 
