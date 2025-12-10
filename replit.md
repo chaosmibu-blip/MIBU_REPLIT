@@ -34,6 +34,20 @@ Preferred communication style: Simple, everyday language.
 - **Purpose**: Generate travel itineraries with location verification using Google Search grounding
 - **Configuration**: API credentials via environment variables (`AI_INTEGRATIONS_GEMINI_*`)
 
+### Itinerary Generation Logic (Updated 2025-12-10)
+- **Geographic Locking**: Random district selection (1/N probability) within selected city
+- **Quota System**: 
+  - K < 8: No stay allowed
+  - K >= 8: 1 stay (must be last item)
+  - K 5-6: min 2 food items
+  - K 7-8: min 3 food items
+  - K >= 9: min 4 food items
+- **Time-Slot Framework**: breakfast → morning → lunch → afternoon → tea_time → dinner → evening → night → stay
+- **Operating Hours Validation**: Museums 09:00-17:00, nightlife after 18:00, stay at end
+- **Variety Rules**: Sub-categories don't repeat, activity categories max 2 consecutive
+- **Pacing**: High-energy activities followed by low-energy rest buffers
+- **Output Fields**: sub_category, time_slot, energy_level, district
+
 ### Key Design Patterns
 - **Shared Schema**: Types and schemas in `shared/` directory are used by both frontend and backend
 - **Path Aliases**: `@/` for client source, `@shared/` for shared code, `@assets/` for attached assets
