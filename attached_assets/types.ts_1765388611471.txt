@@ -32,12 +32,9 @@ export interface SubscriptionConfig {
 }
 
 export interface User {
-  id?: string;
   name: string;
-  avatar: string | null;
-  email: string | null;
-  provider?: string | null;
-  providerId?: string | null;
+  avatar: string;
+  email: string;
   isMerchant?: boolean;
 }
 
