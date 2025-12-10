@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
 import { Merchant, AppState, PlanTier, Rarity } from '../types';
-import { SUBSCRIPTION_PLANS } from '../constants';
+import { SUBSCRIPTION_PLANS, TRANSLATIONS } from '../constants';
 import { Store, CheckCircle, Upload, Plus, ShieldCheck } from 'lucide-react';
 
 interface MerchantDashboardProps {
   state: AppState;
   onLogin: (name: string, email: string) => void;
   onUpdateMerchant: (merchant: Merchant) => void;
-  onClaim: (item: any) => void; // Using any for simplicity here as we might pass incomplete items
+  onClaim: (item: any) => void; 
 }
 
 export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onLogin }) => {
   const [name, setName] = useState('');
+  const t = TRANSLATIONS[state.language];
   
   if (state.view === 'merchant_login') {
     return (
@@ -20,13 +21,13 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
           <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
             <Store className="w-10 h-10" />
           </div>
-          <h2 className="text-2xl font-black text-slate-800">Merchant Access</h2>
-          <p className="text-slate-500 text-sm">Manage your store presence</p>
+          <h2 className="text-2xl font-black text-slate-800">{t.merchantAccess}</h2>
+          <p className="text-slate-500 text-sm">{t.manageStore}</p>
         </div>
         <div className="space-y-4">
           <input
             type="text"
-            placeholder="Store Name"
+            placeholder={t.storeName}
             className="w-full p-4 bg-slate-50 rounded-xl font-bold"
             value={name}
             onChange={e => setName(e.target.value)}
@@ -35,7 +36,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
             onClick={() => onLogin(name, 'test@example.com')}
             className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700"
           >
-            Enter Dashboard
+            {t.enterDashboard}
           </button>
         </div>
       </div>
@@ -66,22 +67,22 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
           <div className="grid grid-cols-2 gap-3 mt-6">
             <div className="bg-white/10 rounded-xl p-3">
                <div className="text-2xl font-black">0</div>
-               <div className="text-[10px] opacity-60 uppercase">Impressions</div>
+               <div className="text-[10px] opacity-60 uppercase">{t.impressions}</div>
             </div>
             <div className="bg-white/10 rounded-xl p-3">
                <div className="text-2xl font-black">0</div>
-               <div className="text-[10px] opacity-60 uppercase">Redeems</div>
+               <div className="text-[10px] opacity-60 uppercase">{t.redeems}</div>
             </div>
           </div>
         </div>
       </div>
 
       <div className="space-y-4">
-        <h3 className="font-black text-slate-800 text-lg">Your Active Coupons</h3>
+        <h3 className="font-black text-slate-800 text-lg">{t.activeCoupons}</h3>
         
         <button className="w-full py-4 border-2 border-dashed border-slate-300 rounded-2xl text-slate-400 font-bold flex items-center justify-center gap-2 hover:bg-slate-50 hover:border-indigo-300 hover:text-indigo-500 transition-colors">
           <Plus className="w-5 h-5" />
-          Create New Campaign
+          {t.createCampaign}
         </button>
 
         {/* Upgrade Callout */}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GachaItem, Language } from '../types';
-import { RARITY_COLORS } from '../constants';
+import { RARITY_COLORS, TRANSLATIONS } from '../constants';
 import { Sparkles } from 'lucide-react';
 
 interface CouponCelebrationProps {
@@ -16,6 +16,7 @@ const getContent = (content: any, lang: Language): string => {
 };
 
 export const CouponCelebration: React.FC<CouponCelebrationProps> = ({ items, language, onClose }) => {
+  const t = TRANSLATIONS[language];
   // Show highest rarity
   const bestItem = items.sort((a, b) => {
     const rarityOrder = { SP: 5, SSR: 4, SR: 3, S: 2, R: 1 };
@@ -47,8 +48,8 @@ export const CouponCelebration: React.FC<CouponCelebrationProps> = ({ items, lan
            {bestItem.rarity}
         </motion.div>
 
-        <h2 className="text-3xl font-black text-slate-800 mb-2">LUCKY!</h2>
-        <p className="text-slate-500 mb-6 font-medium">You found a hidden coupon!</p>
+        <h2 className="text-3xl font-black text-slate-800 mb-2">{t.lucky}</h2>
+        <p className="text-slate-500 mb-6 font-medium">{t.foundCoupon}</p>
 
         <div className="bg-white rounded-2xl p-4 border-2 border-dashed border-indigo-200 mb-8">
            <h3 className="font-bold text-lg text-indigo-900 mb-1">{getContent(bestItem.coupon_data?.title, language)}</h3>
@@ -59,7 +60,7 @@ export const CouponCelebration: React.FC<CouponCelebrationProps> = ({ items, lan
           onClick={onClose}
           className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold shadow-lg hover:scale-105 transition-transform"
         >
-          Collect Reward
+          {t.collectReward}
         </button>
 
         <div className="absolute top-0 left-0 w-full h-full pointer-events-none">

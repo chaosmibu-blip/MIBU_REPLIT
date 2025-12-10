@@ -1,6 +1,6 @@
 import React from 'react';
 import { GachaItem, Language } from '../types';
-import { RARITY_COLORS } from '../constants';
+import { RARITY_COLORS, TRANSLATIONS } from '../constants';
 import { MapPin } from 'lucide-react';
 
 interface CollectionGridProps {
@@ -14,12 +14,14 @@ const getContent = (content: any, lang: Language): string => {
 };
 
 export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language }) => {
+  const t = TRANSLATIONS[language];
+
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
         <MapPin className="w-16 h-16 mb-4 opacity-20" />
-        <p className="font-medium">No collection yet.</p>
-        <p className="text-sm">Start gacha to collect spots!</p>
+        <p className="font-medium">{t.noCollection}</p>
+        <p className="text-sm">{t.startToCollect}</p>
       </div>
     );
   }

@@ -10,6 +10,7 @@ import { BottomNav } from './components/BottomNav';
 import { CouponCelebration } from './components/CouponCelebration';
 import { MerchantDashboard } from './components/MerchantDashboard';
 import { DEFAULT_LEVEL, TRANSLATIONS, MAX_DAILY_GENERATIONS } from './constants';
+import { Globe } from 'lucide-react';
 
 const STORAGE_KEYS = {
   COLLECTION: 'travel_gacha_collection',
@@ -31,6 +32,7 @@ const App: React.FC = () => {
   });
 
   const [inputName, setInputName] = useState('');
+  const [showLangMenu, setShowLangMenu] = useState(false);
 
   const t = TRANSLATIONS[state.language];
 
@@ -230,6 +232,11 @@ const App: React.FC = () => {
     else { setState(prev => ({ ...prev, view: (newView === 'home' && prev.result) ? 'result' : newView })); }
   };
 
+  const handleLanguageChange = (lang: Language) => {
+    setState(prev => ({ ...prev, language: lang }));
+    setShowLangMenu(false);
+  };
+
   const hasNewCollection = state.collection.some(i => i.collected_at && i.collected_at > state.lastVisitCollection);
   const hasNewItems = state.collection.some(i => i.is_coupon && i.collected_at && i.collected_at > state.lastVisitItemBox);
 
@@ -241,22 +248,40 @@ const App: React.FC = () => {
       
       <nav className="sticky top-0 z-[999] px-6 pt-safe-top pb-4 flex justify-between items-center w-full glass-nav transition-all">
          <span className="font-display font-bold text-xl tracking-tight text-slate-800">MIBU</span>
-         {state.user ? (
-            <div className="flex items-center gap-2" onClick={handleLogout}>
-               <img src={state.user.avatar || `https://ui-avatars.com/api/?name=${state.user.name}`} className="w-8 h-8 rounded-full border border-white shadow-sm" alt="User" />
-               <span className="text-xs font-bold text-slate-600 hidden sm:block">{state.user.name}</span>
+         
+         <div className="flex items-center gap-3">
+            {/* Language Switcher */}
+            <div className="relative">
+               <button onClick={() => setShowLangMenu(!showLangMenu)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors">
+                  <Globe className="w-5 h-5 text-slate-600" />
+               </button>
+               {showLangMenu && (
+                 <div className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden w-32 py-1 flex flex-col z-50">
+                    <button onClick={() => handleLanguageChange('zh-TW')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700">繁體中文</button>
+                    <button onClick={() => handleLanguageChange('en')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700">English</button>
+                    <button onClick={() => handleLanguageChange('ja')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700">日本語</button>
+                    <button onClick={() => handleLanguageChange('ko')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700">한국어</button>
+                 </div>
+               )}
             </div>
-         ) : (
-            <button 
-              className="text-xs font-bold bg-slate-200 px-3 py-1.5 rounded-full"
-              onClick={() => { const n = prompt("Enter Name"); if(n) { setInputName(n); handleUserLogin(); }}}
-            >
-              Login
-            </button>
-         )}
+
+            {state.user ? (
+                <div className="flex items-center gap-2" onClick={handleLogout}>
+                  <img src={state.user.avatar || `https://ui-avatars.com/api/?name=${state.user.name}`} className="w-8 h-8 rounded-full border border-white shadow-sm" alt="User" />
+                  <span className="text-xs font-bold text-slate-600 hidden sm:block">{state.user.name}</span>
+                </div>
+            ) : (
+                <button 
+                  className="text-xs font-bold bg-slate-200 px-3 py-1.5 rounded-full"
+                  onClick={() => { const n = prompt("Enter Name"); if(n) { setInputName(n); handleUserLogin(); }}}
+                >
+                  {t.login}
+                </button>
+            )}
+         </div>
       </nav>
 
-      {state.loading && <GachaScene />}
+      {state.loading && <GachaScene language={state.language} />}
 
       <main className="flex-1 w-full max-w-lg mx-auto relative">
         {state.view === 'home' && !state.result && (
@@ -293,7 +318,7 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <BottomNav currentView={state.view} onChange={handleViewChange} />
+      <BottomNav currentView={state.view} onChange={handleViewChange} language={state.language} />
     </div>
   );
 };

@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { GachaResponse, GachaItem, Language } from '../types';
 import { MapPin, Ticket, Clock, Info } from 'lucide-react';
-import { RARITY_COLORS } from '../constants';
+import { RARITY_COLORS, TRANSLATIONS } from '../constants';
 
 interface ResultListProps {
   data: GachaResponse;
@@ -15,15 +15,16 @@ const getContent = (content: any, lang: Language): string => {
 };
 
 export const ResultList: React.FC<ResultListProps> = ({ data, language }) => {
+  const t = TRANSLATIONS[language];
   return (
     <div className="pb-32 px-4 pt-4 max-w-md mx-auto">
       <div className="mb-6 flex justify-between items-end">
         <div>
           <h2 className="text-3xl font-black text-slate-800">{getContent(data.meta.locked_district, language)}</h2>
-          <p className="text-slate-500 font-medium">Level {data.meta.user_level} Trip</p>
+          <p className="text-slate-500 font-medium">{t.tripLevel.replace('{level}', data.meta.user_level.toString())}</p>
         </div>
         <div className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold">
-          {data.inventory.length} Spots
+          {t.spotsCount.replace('{count}', data.inventory.length.toString())}
         </div>
       </div>
 
@@ -73,12 +74,12 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language }) => {
                    <div className="flex-1 min-w-0">
                      {item.is_coupon ? (
                         <>
-                          <p className="text-xs font-bold text-indigo-900 uppercase">Coupon Unlocked</p>
+                          <p className="text-xs font-bold text-indigo-900 uppercase">{t.couponUnlocked}</p>
                           <p className="text-sm font-medium text-indigo-700 truncate">{getContent(item.coupon_data?.title, language)}</p>
                         </>
                      ) : (
                         <>
-                          <p className="text-xs font-bold text-pink-600 uppercase">Special Promo</p>
+                          <p className="text-xs font-bold text-pink-600 uppercase">{t.specialPromo}</p>
                           <p className="text-sm font-medium text-pink-700 truncate">{getContent(item.store_promo, language)}</p>
                         </>
                      )}

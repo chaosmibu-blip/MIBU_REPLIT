@@ -1,17 +1,20 @@
 import React from 'react';
-import { AppView } from '../types';
+import { AppView, Language } from '../types';
 import { Home, Compass, User, Archive } from 'lucide-react';
+import { TRANSLATIONS } from '../constants';
 
 interface BottomNavProps {
   currentView: AppView;
   onChange: (view: AppView) => void;
+  language: Language;
 }
 
-export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onChange }) => {
+export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onChange, language }) => {
+  const t = TRANSLATIONS[language];
   const navItems: { id: AppView, icon: React.FC<any>, label: string }[] = [
-    { id: 'home', icon: Compass, label: 'Gacha' },
-    { id: 'collection', icon: Archive, label: 'Collection' },
-    { id: 'item_box', icon: User, label: 'My Box' }, // Reusing ItemBox as My Box for simplicity
+    { id: 'home', icon: Compass, label: t.navGacha },
+    { id: 'collection', icon: Archive, label: t.navCollection },
+    { id: 'item_box', icon: User, label: t.navMyBox }, 
   ];
 
   const handleMerchant = () => {
@@ -50,7 +53,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onChange }) =
            }`}
         >
           <StoreIcon className={`w-5 h-5`} />
-          <span className="text-[10px] font-bold mt-1">Store</span>
+          <span className="text-[10px] font-bold mt-1">{t.navStore}</span>
         </button>
       </div>
     </nav>

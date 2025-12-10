@@ -1,7 +1,7 @@
 import React from 'react';
 import { GachaItem, Language } from '../types';
 import { Ticket, Copy } from 'lucide-react';
-import { RARITY_COLORS } from '../constants';
+import { RARITY_COLORS, TRANSLATIONS } from '../constants';
 
 interface ItemBoxProps {
   items: GachaItem[];
@@ -14,13 +14,14 @@ const getContent = (content: any, lang: Language): string => {
 };
 
 export const ItemBox: React.FC<ItemBoxProps> = ({ items, language }) => {
+  const t = TRANSLATIONS[language];
   const coupons = items.filter(i => i.is_coupon && i.coupon_data);
 
   if (coupons.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
         <Ticket className="w-16 h-16 mb-4 opacity-20" />
-        <p className="font-medium">No coupons yet.</p>
+        <p className="font-medium">{t.noCoupons}</p>
       </div>
     );
   }

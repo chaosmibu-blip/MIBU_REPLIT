@@ -1,7 +1,14 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { Language } from '../types';
+import { TRANSLATIONS } from '../constants';
 
-export const GachaScene: React.FC = () => {
+interface GachaSceneProps {
+    language: Language;
+}
+
+export const GachaScene: React.FC<GachaSceneProps> = ({ language }) => {
+  const t = TRANSLATIONS[language];
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-indigo-600/95 backdrop-blur-md">
       <motion.div
@@ -22,9 +29,9 @@ export const GachaScene: React.FC = () => {
         animate={{ opacity: [0.5, 1, 0.5] }}
         transition={{ duration: 1.5, repeat: Infinity }}
       >
-        Generating...
+        {t.generating}
       </motion.h2>
-      <p className="text-indigo-200 mt-2 font-medium">Finding hidden gems</p>
+      <p className="text-indigo-200 mt-2 font-medium">{t.findingGems}</p>
     </div>
   );
 };

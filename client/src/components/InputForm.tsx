@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { AppState, LocationData, AppView, Language } from '../types';
-import { LOCATION_DATA, MAX_LEVEL } from '../constants';
+import { LOCATION_DATA, MAX_LEVEL, TRANSLATIONS } from '../constants';
 import { MapPin, Zap, Search } from 'lucide-react';
 
 interface InputFormProps {
@@ -11,7 +11,8 @@ interface InputFormProps {
 }
 
 export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit }) => {
-  const t = LOCATION_DATA[state.country === 'taiwan' ? 'taiwan' : state.country === 'japan' ? 'japan' : 'hong_kong']?.names[state.language] || 'Location';
+  const t = TRANSLATIONS[state.language];
+  const locationName = LOCATION_DATA[state.country === 'taiwan' ? 'taiwan' : state.country === 'japan' ? 'japan' : 'hong_kong']?.names[state.language] || t.destination;
   
   const countries = Object.keys(LOCATION_DATA);
   const cities = state.country ? Object.keys(LOCATION_DATA[state.country]?.cities || {}) : [];
@@ -19,14 +20,14 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
   return (
     <div className="w-full max-w-md mx-auto p-6 space-y-8 mt-10">
       <div className="text-center space-y-2">
-        <h1 className="text-4xl font-black text-indigo-600 tracking-tight">MIBU TRIP</h1>
-        <p className="text-slate-500 font-medium">AI Travel Gacha</p>
+        <h1 className="text-4xl font-black text-indigo-600 tracking-tight">{t.appTitle}</h1>
+        <p className="text-slate-500 font-medium">{t.appSubtitle}</p>
       </div>
 
       <div className="bg-white rounded-3xl p-6 shadow-xl shadow-indigo-100 border border-indigo-50 space-y-6">
         {/* Country Selection */}
         <div className="space-y-3">
-          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Destination</label>
+          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">{t.destination}</label>
           <div className="grid grid-cols-3 gap-2">
             {countries.map(c => (
               <button
@@ -47,7 +48,7 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
         {/* City Selection */}
         {state.country && (
           <div className="space-y-3">
-             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">City</label>
+             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">{t.city}</label>
              <div className="relative">
                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-400" />
                <select
@@ -55,7 +56,7 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
                  onChange={(e) => onUpdate({ city: e.target.value })}
                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-indigo-200 appearance-none"
                >
-                 <option value="">Select City</option>
+                 <option value="">{t.selectCity}</option>
                  {cities.map(cityKey => (
                    <option key={cityKey} value={cityKey}>
                      {LOCATION_DATA[state.country].cities[cityKey][state.language]}
@@ -69,7 +70,7 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
         {/* Level Slider */}
         <div className="space-y-4 pt-2">
            <div className="flex justify-between items-end px-1">
-             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Intensity Level</label>
+             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.intensity}</label>
              <span className="text-2xl font-black text-indigo-600">Lv.{state.level}</span>
            </div>
            <input
@@ -81,9 +82,9 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
            />
            <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase px-1">
-             <span>Chill</span>
-             <span>Standard</span>
-             <span>Hardcore</span>
+             <span>{t.chill}</span>
+             <span>{t.standard}</span>
+             <span>{t.hardcore}</span>
            </div>
         </div>
 
@@ -99,7 +100,7 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
               : 'bg-indigo-600 text-white shadow-indigo-200 hover:shadow-indigo-300'
           }`}
         >
-          START GACHA
+          {t.startGacha}
         </motion.button>
       </div>
     </div>
