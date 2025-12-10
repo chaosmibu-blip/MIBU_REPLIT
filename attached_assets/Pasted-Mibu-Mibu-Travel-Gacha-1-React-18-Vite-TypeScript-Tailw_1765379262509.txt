@@ -1,0 +1,68 @@
+Mibu 行程扭蛋 (Mibu Travel Gacha) 專案需求規格書
+1. 角色設定
+你是一位世界級的資深前端工程師，專精於 React 18、Vite、TypeScript、Tailwind CSS 以及 Google Gemini API 的整合應用。你需要協助開發一款名為「Mibu 行程扭蛋」的 PWA (Progressive Web App) 旅遊應用程式。
+2. 專案核心概念
+這是一款結合「旅遊規劃」與「扭蛋遊戲化」的應用程式。使用者輸入目的地與旅遊強度，AI 會像扭蛋一樣隨機生成一份經過驗證的在地行程。使用者可以收集這些地點到圖鑑中，並有機會獲得隨機生成的「虛擬優惠券」。
+3. 技術架構與套件
+前端框架: React 18 (Functional Components, Hooks)
+前端框架: React 18 (函式組件, Hooks)
+
+建置工具: Vite 5.x  建置工具：Vite 5.x
+
+語言: TypeScript (Strict Mode)
+語言: TypeScript (嚴格模式)
+
+樣式: Tailwind CSS (Mobile-first, Glassmorphism 風格)
+AI 引擎: Google Gemini API (gemini-2.5-flash model) via @google/genai SDK
+後端功能: Vercel Serverless Functions (處理金流與 API 代理)
+金流整合: Recur (台灣訂閱制金流服務)
+資料儲存: localStorage (用於模擬資料庫，儲存使用者資料、收藏、商家設定)
+4. 功能模組與詳細規格
+4.1. 使用者介面 (UI/UX)  4.1. 使用者介面 （UI/UX）
+風格: 採用清新的日系/現代風格，使用大量的圓角、柔和陰影與毛玻璃效果 (Glassmorphism)。
+貓掌載入動畫: 在等待 AI 生成時，顯示一個由 8 個圓點組成的旋轉貓掌動畫，增添趣味性。
+響應式設計: 必須完美支援手機版 (Mobile PWA) 與桌面版。
+4.2. 核心功能：行程生成 (Gacha Mechanism)
+4.2. 核心功能：行程生成 (Gacha 機制)
+輸入: 使用者選擇「國家」(台灣/日本/香港)、「城市」以及「強度等級 (Level 5-12)」。
+AI 邏輯 (geminiService.ts):
+區域鎖定: AI 必須從預定義的 SUB_DISTRICT_DATA 中隨機挑選一個「行政區」(例如台北的信義區)，行程 80% 的地點必須集中在此區。
+類別平衡: 包含美食 (Food)、住宿 (Stay)、景點 (Scenery)、購物 (Shopping)、娛樂 (Entertainment) 等。
+Google Search 驗證: 使用 Gemini 的 googleSearch 工具，確保地點真實存在且營業中。
+去重複: 避免重複推薦使用者最近 40 次已收藏的地點。
+輸出: 產生 JSON 格式的行程列表，包含地點名稱、描述、建議時間、經緯度搜尋連結等。
+4.3. 遊戲化元素：圖鑑與優惠券
+圖鑑 (Collection): 使用者生成的行程會自動存入圖鑑，依城市分類。
+虛擬優惠券:
+AI 生成時，會隨機為 2-4 個地點附帶優惠券 (is_coupon: true)。
+優惠券有稀有度分級：R (普通) 到 SP (極稀有)。
+稀有度對應不同顏色與優惠強度 (例如 SP 為「終身免費飲品」，R 為「9折」)。
+獲得優惠券時，需顯示全螢幕的慶祝動畫 (CouponCelebration)。
+4.4. 商家後台 (Merchant Dashboard)
+身份切換: 提供一個「商家登入」入口，允許使用者扮演店家。
+地點認領: 商家可以從使用者的圖鑑中「認領 (Claim)」地點，宣示主權。
+優惠管理:
+商家可以編輯該地點的優惠資訊 (Promo Message)。
+商家可以發行自定義的優惠券 (設定代碼、數量、稀有度)。
+提供「預覽模式」，讓商家即時查看優惠券在前端的樣子。
+訂閱制升級 (Recur Payment):
+分為 Free, Partner, Premium 三種等級。
+分為免費、合作、高級三種等級。
+Premium 商家可以解鎖 SSR/SP 稀有度優惠券、無限發行額度。
+串接 Recur 金流 API (/api/create-checkout) 進行付款。
+4.5. 後端 API (Serverless Functions)
+4.5. 後端 API (無伺服器函式)
+api/create-checkout.ts: 接收前端請求，呼叫 Recur API 建立結帳 Session。需驗證 RECUR_SECRET_KEY 環境變數。
+api/verify-session.ts: 驗證付款狀態，確認成功後前端將商家升級為 Premium。
+5. 資料結構 (TypeScript Interfaces)
+GachaItem: 核心物件，包含 id, place_name, category, rarity, coupon_data 等。
+Merchant: 商家物件，包含 id, subscriptionPlan, claimedPlaceNames。
+Merchant: 商家物件，包含 id、subscriptionPlan、claimedPlaceNames。
+
+LocalizedContent: 支援多語系 (zh-TW, en, ja) 的字串結構。
+6. 關鍵檔案與職責
+index.html: (重要) 必須保持乾淨，移除任何 importmap 腳本，避免與 Vite 打包衝突。
+App.tsx: 主程式，管理全域狀態 (User, Collection, View) 與頁面路由。
+services/geminiService.ts: 封裝 Google GenAI SDK，負責 Prompt Engineering 與 JSON 解析修復。
+components/: 包含所有 UI 元件 (InputForm, GachaCard, ResultList, MerchantDashboard 等)。
+constants.ts: 存放靜態設定資料 (翻譯字串、城市列表、訂閱方案定義)。
