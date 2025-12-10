@@ -326,7 +326,10 @@ const App: React.FC = () => {
       {state.celebrationCoupons.length > 0 && <CouponCelebration items={state.celebrationCoupons} language={state.language} onClose={() => setState(p => ({ ...p, celebrationCoupons: [] }))} />}
 
       <nav className="sticky top-0 z-[999] px-6 pt-safe-top pb-4 flex justify-between items-center w-full glass-nav transition-all">
-         <span className="font-display font-bold text-xl tracking-tight text-slate-800">MIBU</span>
+         <div className="flex items-center gap-2">
+           <img src="/app-icon.jpg" alt="Mibu" className="w-8 h-8 rounded-lg object-cover" />
+           <span className="font-display font-bold text-xl tracking-tight text-slate-800">MIBU</span>
+         </div>
          
          <div className="flex items-center gap-3">
             {/* Language Switcher */}
