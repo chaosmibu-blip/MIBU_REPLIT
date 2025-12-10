@@ -26,8 +26,20 @@ Preferred communication style: Simple, everyday language.
 
 ### Data Storage
 - **Database**: PostgreSQL with Drizzle ORM
-- **Schema Location**: `shared/schema.ts` - contains users, collections, merchants, coupons, placeCache, and sessions tables
+- **Schema Location**: `shared/schema.ts` - contains users, collections, merchants, coupons, placeCache, sessions, and location/category hierarchy tables
 - **Migrations**: Drizzle Kit with `db:push` command for schema synchronization
+
+### Location Hierarchy (Added 2025-12-10)
+- **Tables**: countries → regions → districts (three-level hierarchy)
+- **Multilingual**: Each table has nameEn, nameZh, nameJa, nameKo columns for localization
+- **Taiwan Data**: 1 country, 5 regions (北部/中部/南部/東部/離島), 61 districts
+- **Foreign Keys**: regions.countryId → countries.id, districts.regionId → regions.id
+
+### Category System (Added 2025-12-10)
+- **Tables**: categories → subcategories (two-level hierarchy)
+- **8 Categories**: 食/宿/生態文化教育/遊程體驗/娛樂設施/活動/景點/購物
+- **Subcategories**: Each category has multiple subcategories (e.g., 食 has 便當, 小吃, 咖啡廳, etc.)
+- **Multilingual**: Each table has nameEn, nameZh for localization
 
 ### Place Cache System (Added 2025-12-10)
 - **Purpose**: Reduce AI (Gemini) consumption by caching previously generated place data
@@ -52,24 +64,15 @@ Preferred communication style: Simple, everyday language.
 - **Purpose**: Generate travel itineraries with location verification using Google Search grounding
 - **Configuration**: API credentials via environment variables (`AI_INTEGRATIONS_GEMINI_*`)
 
-### Itinerary Generation Logic (Updated 2025-12-10)
-- **Two-Phase Architecture**: 
-  1. **Skeleton Generation (TypeScript)**: Deterministic logic handles quota, category selection, time ordering
-  2. **AI Fill-in (Gemini)**: Fills skeleton with real place names matching category/sub-category
-- **Geographic Locking**: Random district selection (1/N probability) within selected city
-- **Quota System**: 
-  - K < 8: No stay allowed
-  - K >= 8: 1 stay (must be last item)
-  - K 5-6: min 2 food items
-  - K 7-8: min 3 food items
-  - K >= 9: min 4 food items
-- **Category Data**: 8 categories (食/宿/生態文化教育/遊程體驗/娛樂設施/活動/景點/購物) with weighted selection
-- **Sub-category Uniqueness**: Same sub-category cannot repeat within one itinerary
-- **Time-Slot Framework**: breakfast → morning → lunch → afternoon → tea_time → dinner → evening → night → late_night → overnight
-- **Operating Hours Validation**: Museums 09:00-17:00, nightlife after 18:00, stay at end
-- **Variety Rules**: Sub-categories don't repeat, activity categories max 2 consecutive (then insert rest buffer)
-- **Pacing**: High-energy activities followed by low-energy rest buffers (食/購物)
-- **Output Fields**: sub_category, time_slot, energy_level, district
+### Gacha Pull Logic (Updated 2025-12-10)
+- **Probability Distribution**: Uniform random selection at each level
+  1. **District Selection**: 1/N probability (N = total active districts in country, e.g., 61 for Taiwan)
+  2. **Category Selection**: 1/8 probability (8 fixed categories)
+  3. **Subcategory Selection**: 1/Y probability (Y = subcategories in selected category)
+- **Implementation**: PostgreSQL `ORDER BY RANDOM() LIMIT 1` ensures true uniform distribution
+- **Search Query**: Uses `{district.nameZh} {subcategory.nameZh}` for Google Places API
+- **Result Data**: Includes place name, district, region, country, category, and verification status
+- **No Rarity System**: Categories use color coding instead of SP/SSR/SR grades
 
 ### Key Design Patterns
 - **Shared Schema**: Types and schemas in `shared/` directory are used by both frontend and backend
