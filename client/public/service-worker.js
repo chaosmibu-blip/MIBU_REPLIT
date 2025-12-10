@@ -1,7 +1,9 @@
-const CACHE_NAME = 'mibu-cache-v1';
+const CACHE_VERSION = '1';
+const CACHE_NAME = `mibu-cache-v${CACHE_VERSION}`;
 const STATIC_ASSETS = [
   '/app-icon.jpg',
-  '/favicon.png'
+  '/favicon.png',
+  '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
