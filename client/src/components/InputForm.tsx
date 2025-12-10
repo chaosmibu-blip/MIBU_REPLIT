@@ -75,7 +75,7 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
            </div>
            <input
              type="range"
-             min="1"
+             min="5"
              max={MAX_LEVEL}
              value={state.level}
              onChange={(e) => onUpdate({ level: parseInt(e.target.value) })}

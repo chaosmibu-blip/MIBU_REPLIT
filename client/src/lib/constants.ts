@@ -38,7 +38,7 @@ export const SUB_DISTRICTS: Record<string, string[]> = {
 export const INTENSITY_LEVELS = [
   { level: 5, label: "休閒 (Chill)", description: "輕鬆慢活，適合放空" },
   { level: 8, label: "標準 (Standard)", description: "充實但不累，經典行程" },
-  { level: 12, label: "特種兵 (Hardcore)", description: "極限踩點，絕不浪費一秒" },
+  { level: 12, label: "充實 (Fulfilling)", description: "極限踩點，絕不浪費一秒" },
 ];
 
 export const CATEGORIES = {
