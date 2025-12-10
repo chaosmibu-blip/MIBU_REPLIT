@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { GachaResponse, GachaItem, Language } from '../types';
-import { MapPin, Ticket, Clock, Info, RefreshCw, Navigation } from 'lucide-react';
+import { MapPin, Ticket, Clock, Info, RefreshCw, Search } from 'lucide-react';
 import { RARITY_COLORS, TRANSLATIONS } from '../constants';
 
 interface ResultListProps {
@@ -81,22 +81,17 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
                  {getContent(item.description, language)}
                </p>
 
-               {/* Google Maps Navigation Button */}
-               {(item.place_id || item.location || item.verified_address) && (
+               {/* Google Search Button */}
+               {(item.verified_name || item.place_name) && (
                  <a
-                   href={item.place_id 
-                     ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.verified_name || getContent(item.place_name, language))}&destination_place_id=${item.place_id}`
-                     : item.location 
-                       ? `https://www.google.com/maps/dir/?api=1&destination=${item.location.lat},${item.location.lng}`
-                       : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.verified_address || '')}`
-                   }
+                   href={`https://www.google.com/search?q=${encodeURIComponent((item.verified_name || getContent(item.place_name, language)) + ' ' + (item.verified_address || item.city || ''))}`}
                    target="_blank"
                    rel="noopener noreferrer"
                    className="inline-flex items-center gap-1.5 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-colors mb-3"
-                   data-testid={`button-navigate-${item.id}`}
+                   data-testid={`button-search-${item.id}`}
                  >
-                   <Navigation className="w-3.5 h-3.5" />
-                   {language === 'zh-TW' ? '導航' : language === 'ja' ? 'ナビ' : language === 'ko' ? '길찾기' : 'Navigate'}
+                   <Search className="w-3.5 h-3.5" />
+                   {language === 'zh-TW' ? '搜尋' : language === 'ja' ? '検索' : language === 'ko' ? '검색' : 'Search'}
                  </a>
                )}
 
