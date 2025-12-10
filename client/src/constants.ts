@@ -2,7 +2,7 @@ import { Rarity, Category, LocationData, SubscriptionConfig, PlanTier } from './
 
 export const MAX_LEVEL = 12;
 export const DEFAULT_LEVEL = 5; 
-export const MAX_DAILY_GENERATIONS = 3;
+export const MAX_DAILY_GENERATIONS = 999;
 
 export const RECUR_CONFIG = {
   PUBLISHABLE_KEY: 'pk_test_95b6695679feee448947ab70433b9628b2006e056c71d49fc251e1323a81468f', 
