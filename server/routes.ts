@@ -217,19 +217,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/webhooks/recur", async (req, res) => {
     try {
       const event = req.body;
-      console.log("Recur webhook received:", event.type);
+      console.log("=== Recur Webhook Received ===");
+      console.log("Event Type:", event.type);
+      console.log("Event Data:", JSON.stringify(event, null, 2));
 
-      if (event.type === "checkout.completed") {
-        const checkout = event.data;
-        const userId = checkout.metadata?.userId;
-        
-        if (userId) {
-          const merchant = await storage.getMerchantByUserId(userId);
-          if (merchant) {
-            await storage.updateMerchantPlan(merchant.id, "premium");
-            console.log(`Upgraded merchant ${merchant.id} to premium`);
+      switch (event.type) {
+        case "checkout.completed": {
+          // 結帳完成 - 啟用訂閱
+          const checkout = event.data;
+          const userId = checkout.metadata?.userId;
+          
+          if (userId) {
+            const merchant = await storage.getMerchantByUserId(userId);
+            if (merchant) {
+              await storage.updateMerchantPlan(merchant.id, "premium");
+              console.log(`[checkout.completed] Upgraded merchant ${merchant.id} to premium`);
+            }
           }
+          break;
         }
+
+        case "subscription.created": {
+          // 訂閱建立
+          const subscription = event.data;
+          const userId = subscription.metadata?.userId;
+          console.log(`[subscription.created] Subscription ${subscription.id} created for user ${userId}`);
+          
+          if (userId && subscription.status === "active") {
+            const merchant = await storage.getMerchantByUserId(userId);
+            if (merchant) {
+              await storage.updateMerchantPlan(merchant.id, "premium");
+              console.log(`[subscription.created] Activated premium for merchant ${merchant.id}`);
+            }
+          }
+          break;
+        }
+
+        case "subscription.updated": {
+          // 訂閱更新
+          const subscription = event.data;
+          const userId = subscription.metadata?.userId;
+          console.log(`[subscription.updated] Subscription ${subscription.id} updated, status: ${subscription.status}`);
+          
+          if (userId) {
+            const merchant = await storage.getMerchantByUserId(userId);
+            if (merchant) {
+              if (subscription.status === "active") {
+                await storage.updateMerchantPlan(merchant.id, "premium");
+                console.log(`[subscription.updated] Merchant ${merchant.id} plan set to premium`);
+              } else if (subscription.status === "canceled" || subscription.status === "expired") {
+                await storage.updateMerchantPlan(merchant.id, "free");
+                console.log(`[subscription.updated] Merchant ${merchant.id} plan downgraded to free`);
+              }
+            }
+          }
+          break;
+        }
+
+        case "subscription.canceled": {
+          // 訂閱取消
+          const subscription = event.data;
+          const userId = subscription.metadata?.userId;
+          console.log(`[subscription.canceled] Subscription ${subscription.id} canceled for user ${userId}`);
+          
+          if (userId) {
+            const merchant = await storage.getMerchantByUserId(userId);
+            if (merchant) {
+              await storage.updateMerchantPlan(merchant.id, "free");
+              console.log(`[subscription.canceled] Downgraded merchant ${merchant.id} to free`);
+            }
+          }
+          break;
+        }
+
+        case "invoice.paid": {
+          // 發票付款成功 - 續訂成功
+          const invoice = event.data;
+          console.log(`[invoice.paid] Invoice ${invoice.id} paid`);
+          break;
+        }
+
+        case "invoice.payment_failed": {
+          // 發票付款失敗
+          const invoice = event.data;
+          console.log(`[invoice.payment_failed] Invoice ${invoice.id} payment failed`);
+          break;
+        }
+
+        default:
+          console.log(`[webhook] Unhandled event type: ${event.type}`);
       }
 
       res.json({ received: true });
@@ -237,6 +313,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Webhook error:", error);
       res.status(500).json({ error: "Webhook processing failed" });
     }
+  });
+
+  // Endpoint to get the webhook URL (for configuration reference)
+  app.get("/api/webhooks/recur/info", (req, res) => {
+    const domain = process.env.REPLIT_DEV_DOMAIN || `${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+    const webhookUrl = `https://${domain}/api/webhooks/recur`;
+    res.json({ 
+      webhookUrl,
+      supportedEvents: [
+        "checkout.completed",
+        "subscription.created", 
+        "subscription.updated",
+        "subscription.canceled",
+        "invoice.paid",
+        "invoice.payment_failed"
+      ]
+    });
   });
 
   const httpServer = createServer(app);
