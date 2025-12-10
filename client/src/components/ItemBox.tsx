@@ -11,12 +11,28 @@ interface ItemBoxProps {
 const getContent = (content: any, lang: Language): string => {
   if (!content) return '';
   if (typeof content === 'string') return content;
-  return content[lang] || content['en'] || '';
+  return content[lang] || content['en'] || content['zh-TW'] || '';
+};
+
+const getPlaceName = (item: any, lang: Language): string => {
+  const placeName = item.place_name || item.placeName;
+  return getContent(placeName, lang);
+};
+
+const getCouponTitle = (item: any, lang: Language): string => {
+  const couponData = item.coupon_data || item.couponData;
+  if (!couponData) return '';
+  return getContent(couponData.title, lang);
+};
+
+const getCouponCode = (item: any): string => {
+  const couponData = item.coupon_data || item.couponData;
+  return couponData?.code || '';
 };
 
 export const ItemBox: React.FC<ItemBoxProps> = ({ items, language }) => {
   const t = TRANSLATIONS[language];
-  const coupons = items.filter(i => i.is_coupon && i.coupon_data);
+  const coupons = items.filter(i => (i.is_coupon || (i as any).isCoupon) && (i.coupon_data || (i as any).couponData));
 
   if (coupons.length === 0) {
     return (
@@ -38,10 +54,10 @@ export const ItemBox: React.FC<ItemBoxProps> = ({ items, language }) => {
             {item.rarity}
           </div>
           <div className="flex-1 min-w-0">
-            <h4 className="font-bold text-slate-800">{getContent(item.coupon_data?.title, language)}</h4>
-            <p className="text-xs text-slate-500 mb-2 truncate">{getContent(item.place_name, language)}</p>
+            <h4 className="font-bold text-slate-800">{getCouponTitle(item, language)}</h4>
+            <p className="text-xs text-slate-500 mb-2 truncate">{getPlaceName(item, language)}</p>
             <div className="bg-slate-50 rounded-lg px-3 py-1.5 flex justify-between items-center">
-              <code className="text-xs font-mono font-bold text-slate-600">{item.coupon_data?.code}</code>
+              <code className="text-xs font-mono font-bold text-slate-600">{getCouponCode(item)}</code>
               <Copy className="w-3 h-3 text-slate-400" />
             </div>
           </div>

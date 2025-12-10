@@ -12,7 +12,7 @@ interface ResultListProps {
 const getContent = (content: any, lang: Language): string => {
   if (!content) return '';
   if (typeof content === 'string') return content;
-  return content[lang] || content['en'] || '';
+  return content[lang] || content['en'] || content['zh-TW'] || '';
 };
 
 export const ResultList: React.FC<ResultListProps> = ({ data, language }) => {

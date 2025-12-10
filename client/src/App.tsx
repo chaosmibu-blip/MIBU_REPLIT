@@ -60,17 +60,46 @@ const App: React.FC = () => {
           const response = await fetch('/api/collections');
           if (response.ok) {
             const data = await response.json();
-            setState(prev => ({ ...prev, collection: data.collections || [] }));
+            const mappedCollections = (data.collections || []).map((item: any): GachaItem => {
+              const rawCollectedAt = item.collectedAt || item.collected_at;
+              const collectedAtStr = rawCollectedAt instanceof Date 
+                ? rawCollectedAt.toISOString() 
+                : (typeof rawCollectedAt === 'string' ? rawCollectedAt : new Date().toISOString());
+              
+              const rawCouponData = item.couponData || item.coupon_data;
+              const couponData = rawCouponData ? {
+                title: rawCouponData.title || '',
+                code: rawCouponData.code || '',
+                terms: rawCouponData.terms || '',
+              } : null;
+
+              return {
+                id: item.id,
+                place_name: item.placeName || item.place_name || '',
+                description: item.description || '',
+                category: item.category || 'Scenery',
+                suggested_time: item.suggestedTime || '1-2 hours',
+                duration: item.duration || '1-2 hours',
+                search_query: item.searchQuery || '',
+                rarity: item.rarity || 'R',
+                color_hex: item.colorHex || '#334155',
+                city: item.city || '',
+                country: item.country || '',
+                collected_at: collectedAtStr,
+                is_coupon: item.isCoupon || item.is_coupon || false,
+                coupon_data: couponData,
+              };
+            });
+            setState(prev => ({ ...prev, collection: mappedCollections }));
           }
         } catch (error) {
           console.error('Failed to load collections:', error);
-          // Fall back to localStorage
           const savedCollection = localStorage.getItem(STORAGE_KEYS.COLLECTION);
           if (savedCollection) {
             try {
               const parsed = JSON.parse(savedCollection);
               if (Array.isArray(parsed)) {
-                const validItems = parsed.filter(i => i && typeof i === 'object' && i.place_name);
+                const validItems = parsed.filter(i => i && typeof i === 'object' && (i.place_name || i.placeName));
                 setState(prev => ({ ...prev, collection: validItems }));
               }
             } catch (e) {}
@@ -102,7 +131,7 @@ const App: React.FC = () => {
         if (savedCollection) {
           const parsed = JSON.parse(savedCollection);
           if (Array.isArray(parsed)) {
-            const validItems = parsed.filter(i => i && typeof i === 'object' && i.place_name);
+            const validItems = parsed.filter(i => i && typeof i === 'object' && (i.place_name || i.placeName));
             setState(prev => ({ ...prev, collection: validItems }));
           }
         }
@@ -147,10 +176,11 @@ const App: React.FC = () => {
     checkPaymentStatus();
   }, [state.language]);
 
-  const getItemKey = (item: GachaItem): string => {
+  const getItemKey = (item: GachaItem | any): string => {
     try {
       if (!item) return `unknown-${Math.random()}`;
-      let nameStr = typeof item.place_name === 'string' ? item.place_name : (item.place_name as any)['en'] || (item.place_name as any)['zh-TW'] || 'unknown';
+      const placeName = item.place_name || item.placeName;
+      let nameStr = typeof placeName === 'string' ? placeName : (placeName as any)?.['en'] || (placeName as any)?.['zh-TW'] || 'unknown';
       return `${nameStr}-${item.city || 'city'}`;
     } catch (e) { return `error-${Math.random()}`; }
   };
@@ -304,8 +334,15 @@ const App: React.FC = () => {
     setShowLangMenu(false);
   };
 
-  const hasNewCollection = state.collection.some(i => i.collected_at && i.collected_at > state.lastVisitCollection);
-  const hasNewItems = state.collection.some(i => i.is_coupon && i.collected_at && i.collected_at > state.lastVisitItemBox);
+  const hasNewCollection = state.collection.some(i => {
+    const collectedAt = i.collected_at || (i as any).collectedAt;
+    return collectedAt && collectedAt > state.lastVisitCollection;
+  });
+  const hasNewItems = state.collection.some(i => {
+    const isCoupon = i.is_coupon || (i as any).isCoupon;
+    const collectedAt = i.collected_at || (i as any).collectedAt;
+    return isCoupon && collectedAt && collectedAt > state.lastVisitItemBox;
+  });
 
   // Show loading while auth is initializing
   if (authLoading) {
@@ -390,7 +427,7 @@ const App: React.FC = () => {
         )}
 
         {state.view === 'item_box' && (
-          <ItemBox items={state.collection.filter(i => i.is_coupon)} language={state.language} />
+          <ItemBox items={state.collection.filter(i => i.is_coupon || (i as any).isCoupon)} language={state.language} />
         )}
 
         {state.view === 'merchant_login' && (
