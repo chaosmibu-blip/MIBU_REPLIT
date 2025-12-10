@@ -616,7 +616,7 @@ ${skeleton.map((item, idx) => `    {
           if (placeResult && placeResult.geometry) {
             placeLocation = placeResult.geometry.location;
             if (districtCenter) {
-              isVerified = isWithinRadius(districtCenter, placeLocation, 10);
+              isVerified = isWithinRadius(districtCenter, placeLocation, 5);
             } else {
               isVerified = true;
             }
