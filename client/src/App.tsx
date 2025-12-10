@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { generateGachaItinerary } from './services/geminiService';
+import { apiService } from './services/apiService';
 import { AppState, Language, User, GachaItem, AppView, Merchant } from './types';
 import { InputForm } from './components/InputForm';
 import { GachaScene } from './components/GachaScene';
@@ -39,30 +40,49 @@ const App: React.FC = () => {
   const t = TRANSLATIONS[state.language];
 
   useEffect(() => {
-    try {
-      const savedUser = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-      if (savedUser) setState(prev => ({ ...prev, user: JSON.parse(savedUser) }));
-      
-      const savedMerchant = localStorage.getItem(STORAGE_KEYS.MERCHANT_PROFILE);
-      if (savedMerchant) setState(prev => ({ ...prev, currentMerchant: JSON.parse(savedMerchant) }));
-
-      const lastCol = localStorage.getItem(STORAGE_KEYS.LAST_COLLECTION_VISIT);
-      const lastBox = localStorage.getItem(STORAGE_KEYS.LAST_BOX_VISIT);
-      if (lastCol) setState(prev => ({ ...prev, lastVisitCollection: lastCol }));
-      if (lastBox) setState(prev => ({ ...prev, lastVisitItemBox: lastBox }));
-
-      const savedCollection = localStorage.getItem(STORAGE_KEYS.COLLECTION);
-      if (savedCollection) {
-        const parsed = JSON.parse(savedCollection);
-        if (Array.isArray(parsed)) {
-            const validItems = parsed.filter(i => i && typeof i === 'object' && i.place_name);
-            setState(prev => ({ ...prev, collection: validItems }));
+    const loadUserData = async () => {
+      try {
+        const savedUser = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
+        if (savedUser) {
+          const user = JSON.parse(savedUser);
+          setState(prev => ({ ...prev, user }));
+          
+          // Load user collections from backend if user has an ID
+          if (user.id) {
+            try {
+              const collections = await apiService.getCollections(user.id);
+              setState(prev => ({ ...prev, collection: collections }));
+            } catch (error) {
+              console.error('Failed to load collections:', error);
+              // Fall back to localStorage
+              const savedCollection = localStorage.getItem(STORAGE_KEYS.COLLECTION);
+              if (savedCollection) {
+                const parsed = JSON.parse(savedCollection);
+                if (Array.isArray(parsed)) {
+                  const validItems = parsed.filter(i => i && typeof i === 'object' && i.place_name);
+                  setState(prev => ({ ...prev, collection: validItems }));
+                }
+              }
+            }
+          }
         }
-      }
+        
+        const savedMerchant = localStorage.getItem(STORAGE_KEYS.MERCHANT_PROFILE);
+        if (savedMerchant) setState(prev => ({ ...prev, currentMerchant: JSON.parse(savedMerchant) }));
 
-      const savedMerchantDb = localStorage.getItem(STORAGE_KEYS.MERCHANT_DB);
-      if (savedMerchantDb) setState(prev => ({ ...prev, merchantDb: JSON.parse(savedMerchantDb) }));
-    } catch (e) { console.error("Persistence Error", e); }
+        const lastCol = localStorage.getItem(STORAGE_KEYS.LAST_COLLECTION_VISIT);
+        const lastBox = localStorage.getItem(STORAGE_KEYS.LAST_BOX_VISIT);
+        if (lastCol) setState(prev => ({ ...prev, lastVisitCollection: lastCol }));
+        if (lastBox) setState(prev => ({ ...prev, lastVisitItemBox: lastBox }));
+
+        const savedMerchantDb = localStorage.getItem(STORAGE_KEYS.MERCHANT_DB);
+        if (savedMerchantDb) setState(prev => ({ ...prev, merchantDb: JSON.parse(savedMerchantDb) }));
+      } catch (e) { 
+        console.error("Persistence Error", e); 
+      }
+    };
+    
+    loadUserData();
   }, []);
 
   useEffect(() => {
@@ -114,14 +134,26 @@ const App: React.FC = () => {
       return raw['en'] || raw['zh-TW'] || 'unknown';
   };
 
-  const handleUserLogin = (name: string, email: string, avatar: string = '') => {
-    const newUser: User = { 
-      name: name.trim(), 
-      email: email.trim(), 
-      avatar: avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name.trim())}&background=6366f1&color=fff&size=128` 
-    };
-    localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(newUser));
-    setState(prev => ({ ...prev, user: newUser }));
+  const handleUserLogin = async (name: string, email: string, avatar: string = '') => {
+    try {
+      const user = await apiService.login({
+        name: name.trim(),
+        email: email.trim() || undefined,
+        avatar: avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name.trim())}&background=6366f1&color=fff&size=128`,
+        provider: 'guest'
+      });
+      
+      // Also save to localStorage for quick access
+      localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(user));
+      setState(prev => ({ ...prev, user }));
+      
+      // Load user's collections from backend
+      const collections = await apiService.getCollections(user.id);
+      setState(prev => ({ ...prev, collection: collections }));
+    } catch (error) {
+      console.error('Login failed:', error);
+      alert('Login failed. Please try again.');
+    }
   };
 
   const handleLogout = (e: React.MouseEvent) => {
@@ -220,6 +252,36 @@ const App: React.FC = () => {
         const uniqueNewItems = newItems.filter(i => !existingKeys.has(getItemKey(i)));
         const updatedCollection = [...prev.collection, ...uniqueNewItems];
         localStorage.setItem(STORAGE_KEYS.COLLECTION, JSON.stringify(updatedCollection));
+        
+        // Save new items to backend if user is logged in
+        if (state.user?.id) {
+          uniqueNewItems.forEach(async (item) => {
+            try {
+              const placeName = typeof item.place_name === 'string' 
+                ? item.place_name 
+                : (item.place_name as any)['en'] || (item.place_name as any)['zh-TW'] || 'unknown';
+              
+              const description = typeof item.description === 'string'
+                ? item.description
+                : (item.description as any)['en'] || (item.description as any)['zh-TW'] || '';
+              
+              await apiService.addToCollection({
+                userId: state.user!.id!,
+                placeName,
+                country: item.country || state.country,
+                city: item.city || state.city,
+                rarity: item.rarity,
+                category: item.category || null,
+                description,
+                isCoupon: item.is_coupon || false,
+                couponData: item.coupon_data || null,
+              });
+            } catch (error) {
+              console.error('Failed to save item to backend:', error);
+            }
+          });
+        }
+        
         return {
           ...prev, loading: false, result: { ...data, inventory: processedInventory },
           groundingSources: sources, view: 'result', collection: updatedCollection,
