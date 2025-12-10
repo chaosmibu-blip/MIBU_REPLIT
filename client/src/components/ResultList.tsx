@@ -1,12 +1,14 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { GachaResponse, GachaItem, Language } from '../types';
-import { MapPin, Ticket, Clock, Info } from 'lucide-react';
+import { MapPin, Ticket, Clock, Info, RefreshCw } from 'lucide-react';
 import { RARITY_COLORS, TRANSLATIONS } from '../constants';
 
 interface ResultListProps {
   data: GachaResponse;
   language: Language;
+  onResearch?: () => void;
+  isLoading?: boolean;
 }
 
 const getContent = (content: any, lang: Language): string => {
@@ -15,7 +17,7 @@ const getContent = (content: any, lang: Language): string => {
   return content[lang] || content['en'] || '';
 };
 
-export const ResultList: React.FC<ResultListProps> = ({ data, language }) => {
+export const ResultList: React.FC<ResultListProps> = ({ data, language, onResearch, isLoading }) => {
   const t = TRANSLATIONS[language];
   return (
     <div className="pb-32 px-4 pt-4 max-w-md mx-auto">
@@ -24,8 +26,21 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language }) => {
           <h2 className="text-3xl font-black text-slate-800">{getContent(data.meta.locked_district, language)}</h2>
           <p className="text-slate-500 font-medium">{t.tripLevel.replace('{level}', data.meta.user_level.toString())}</p>
         </div>
-        <div className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold">
-          {t.spotsCount.replace('{count}', data.inventory.length.toString())}
+        <div className="flex items-center gap-2">
+          <div className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold">
+            {t.spotsCount.replace('{count}', data.inventory.length.toString())}
+          </div>
+          {onResearch && (
+            <button
+              onClick={onResearch}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 bg-indigo-500 hover:bg-indigo-600 disabled:bg-indigo-300 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-colors"
+              data-testid="button-research"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              {language === 'zh-TW' ? '重新搜索' : language === 'ja' ? '再検索' : language === 'ko' ? '다시 검색' : 'Research'}
+            </button>
+          )}
         </div>
       </div>
 

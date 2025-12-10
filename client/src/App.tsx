@@ -393,7 +393,7 @@ const App: React.FC = () => {
         )}
 
         {state.view === 'result' && state.result && (
-          <ResultList data={state.result} language={state.language} />
+          <ResultList data={state.result} language={state.language} onResearch={handlePull} isLoading={state.loading} />
         )}
 
         {state.view === 'collection' && (
