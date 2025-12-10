@@ -1,0 +1,75 @@
+markdown
+# Role
+你是一位資深的 Python 後端工程師。請幫我撰寫一段 Python 程式碼（Function），用於生成旅遊行程的「骨架結構」。
+
+# Context
+我們正在開發一個旅遊行程生成器。為了節省 Token 並確保邏輯精準，我們決定將「機率計算」、「強制配額」透過 Python 程式碼處理，而非讓 LLM 生成。
+**行程卡的數量 ($K$) 將由使用者直接指定。**
+
+# Input Data Structure (Mock Data)
+請在程式碼中建立 Mock Data 模擬資料庫：
+1.  **結構**：國家 -> 行政區(City) -> 子行政區(District)。
+2.  **類別(Categories)**：共有 8 大類 ['食', '宿', '生態文化教育', '遊程體驗', '娛樂設施', '活動', '景點', '購物']。
+3.  **子分類(Sub-categories)**：每個大類下有 M 個子分類（例如 '食' 包含：火鍋, 小吃, 異國料理...）。
+
+# Function Requirements
+請撰寫一個函數，例如 `generate_itinerary(country, city, card_count)`。
+
+# Business Logic Requirements (必須嚴格遵守)
+
+## 1. 輸入驗證 (Input Validation)
+*   **參數**：`card_count` (使用者選擇的行程卡數量)。
+*   **驗證**：檢查 `card_count` 是否介於 5 到 12 之間。如果不符合，請拋出 ValueError 或自動修正為邊界值。
+
+## 2. 地點選擇邏輯
+*   依據輸入的「國家」與「行政區(City)」。
+*   程式需掃描該行政區下所有的「子行政區(District)」（假設有 N 個）。
+*   **機率**：以 1/N 的機率隨機鎖定其中一個子行政區作為本次行程的主要範圍。
+
+## 3. 強制配額與限制 (Constraints)
+依據使用者指定的 `card_count` ($K$)，必須優先滿足以下條件：
+*   **住宿規則 ('宿')**：
+    *   若 $K < 8$：不生成 '宿'。
+    *   若 $K \ge 8$：強制生成 1 個 '宿'。
+*   **餐飲規則 ('食')**：
+    *   若 $K < 6$ (即 K=5)：最少要有 2 個 '食'。
+    *   若 $K \in [6, 7, 8]$：最少要有 3 個 '食'。
+    *   若 $K \ge 9$：最少要有 3 個 '食' (建議設為 4)。
+
+## 4. 剩餘卡片填充 (Filling)
+*   扣除上述強制配額後，計算還需要幾張卡片才能達到 `card_count`。
+*   剩餘名額依照 8 大類別平均機率 ($1/8$) 隨機抽取。
+*   **權重優化**：為了行程豐富度，剩餘抽取時請**排除**已經滿足配額的 '宿'，並降低 '購物' 的權重，優先填充 '景點' 或 '遊程體驗'。
+
+## 5. 多樣性與細節 (Variety)
+*   決定大類別後，從該類別的子分類中隨機選取一個（機率 1/M）。
+*   **去重邏輯**：同一份行程中，**子分類名稱不可重複**（例如：不能有兩餐都是 '火鍋'）。
+
+## 6. 標籤與時序 (Tagging)
+請為每一張生成的卡片加上 `suggested_time` 標籤：
+*   **'食'**：需依序指派 [早餐, 午餐, 晚餐, 下午茶/宵夜]。例如：若行程有 3 餐，應自動分配為 早/午/晚 或 午/晚/宵夜。
+*   **'宿'**：標記為 'Overnight'，且邏輯上應排在最後。
+*   **其他**：隨機標記為 'Daytime' 或 'Evening' (需符合常理)。
+
+# Output Format
+Function 執行後回傳 JSON 格式的 Dictionary：
+```json
+{
+  "target_district": "信義區",
+  "user_request_count": 8,
+  "generated_count": 8,
+  "itinerary": [
+    {"order": 1, "type": "食", "sub_type": "早餐", "suggested_time": "Morning"},
+    {"order": 2, "type": "景點", "sub_type": "歷史古蹟", "suggested_time": "Daytime"},
+    ...
+  ]
+}
+```
+```
+
+***
+
+### 修正重點：
+1.  **Function 參數變更**：現在是 `generate_itinerary(country, city, card_count)`。
+2.  **邏輯調整**：所有的 `if` 判斷現在都是基於使用者輸入的 `card_count` 來執行，而不是隨機數。
+3.  **輸入驗證**：要求程式碼檢查使用者輸入是否合法 (5-12)。
