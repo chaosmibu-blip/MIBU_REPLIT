@@ -227,19 +227,17 @@ const App: React.FC = () => {
       const processedInventory = data.inventory.map(item => {
           const placeId = getPlaceId(item);
           const merchantItem = updatedMerchantDb[placeId];
-          let finalItem = { ...item, country: state.country, city: state.city }; 
+          let finalItem = { ...item, country: state.country, city: state.city, district: (data.meta.locked_district as any)?.['zh-TW'] || data.meta.locked_district }; 
           if (merchantItem) {
               merchantItem.impressionCount = (merchantItem.impressionCount || 0) + 1;
               dbUpdated = true;
               finalItem.store_promo = merchantItem.store_promo;
               finalItem.is_promo_active = merchantItem.is_promo_active;
-              if (merchantItem.rarity) finalItem.rarity = merchantItem.rarity;
               const activeCoupons = (merchantItem.merchant_coupons || []).filter(c => c.is_active && !c.archived && c.remaining_quantity > 0);
               if (activeCoupons.length > 0) {
                    const winner = activeCoupons[Math.floor(Math.random() * activeCoupons.length)];
                    finalItem.is_coupon = true;
                    finalItem.coupon_data = { title: winner.title, code: winner.code, terms: winner.terms };
-                   finalItem.rarity = winner.rarity;
                    merchantItem.redemptionCount = (merchantItem.redemptionCount || 0) + 1;
                    winner.redeemed_count = (winner.redeemed_count || 0) + 1;
                    winner.remaining_quantity--;
@@ -250,7 +248,7 @@ const App: React.FC = () => {
       });
       if (dbUpdated) localStorage.setItem(STORAGE_KEYS.MERCHANT_DB, JSON.stringify(updatedMerchantDb));
 
-      const newItems = processedInventory.map(item => ({ ...item, collected_at: new Date().toISOString() }));
+      const newItems = processedInventory.map(item => ({ ...item, collectedAt: new Date().toISOString() }));
       const newCoupons = newItems.filter(item => item.is_coupon && item.coupon_data);
 
       setState(prev => {
@@ -278,7 +276,7 @@ const App: React.FC = () => {
                   placeName,
                   country: item.country || state.country,
                   city: item.city || state.city,
-                  rarity: item.rarity,
+                  district: item.district || null,
                   category: item.category || null,
                   description,
                   isCoupon: item.is_coupon || false,
@@ -315,8 +313,8 @@ const App: React.FC = () => {
     setShowLangMenu(false);
   };
 
-  const hasNewCollection = state.collection.some(i => i.collected_at && i.collected_at > state.lastVisitCollection);
-  const hasNewItems = state.collection.some(i => i.is_coupon && i.collected_at && i.collected_at > state.lastVisitItemBox);
+  const hasNewCollection = state.collection.some(i => i.collectedAt && i.collectedAt > state.lastVisitCollection);
+  const hasNewItems = state.collection.some(i => i.is_coupon && i.collectedAt && i.collectedAt > state.lastVisitItemBox);
 
   // Show loading while auth is initializing
   if (authLoading) {

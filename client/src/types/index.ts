@@ -18,7 +18,6 @@ export interface Coupon {
   code: string;
   title: string;
   description: string;
-  rarity: "R" | "SR" | "SSR" | "SP";
   is_claimed: boolean;
 }
 

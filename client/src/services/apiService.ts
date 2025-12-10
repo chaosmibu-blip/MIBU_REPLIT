@@ -23,12 +23,12 @@ export interface Collection {
   placeName: string;
   country: string;
   city: string;
-  rarity: string;
   category: string | null;
   description: string | null;
   isCoupon: boolean;
   couponData: any;
   collectedAt: string;
+  district?: string;
 }
 
 export interface Merchant {

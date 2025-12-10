@@ -2,7 +2,7 @@
 
 ## Overview
 
-Mibu Travel Gacha is a Progressive Web App (PWA) that combines travel planning with gacha-style gamification. Users input a destination and intensity level, and AI generates randomized, verified local itineraries. The app features a collection system where users can gather places and earn virtual coupons with varying rarities. A merchant dashboard allows businesses to claim locations and manage promotional offers with subscription-based tiers.
+Mibu Travel Gacha is a Progressive Web App (PWA) that combines travel planning with gacha-style gamification. Users input a destination and intensity level, and AI generates randomized, verified local itineraries. The app features a collection system where users can gather places organized by district and category with accordion-style menus. A merchant dashboard allows businesses to claim locations and manage promotional offers with subscription-based tiers.
 
 ## User Preferences
 
@@ -32,13 +32,20 @@ Preferred communication style: Simple, everyday language.
 ### Place Cache System (Added 2025-12-10)
 - **Purpose**: Reduce AI (Gemini) consumption by caching previously generated place data
 - **Cache Key**: (subCategory, district, city, country) - stores one place per sub-category per district
-- **Cached Data**: place_name, description, category, rarity, Google verification data (place_id, verified_name, verified_address, google_rating, location coordinates, is_location_verified)
+- **Cached Data**: place_name, description, category, Google verification data (place_id, verified_name, verified_address, google_rating, location coordinates, is_location_verified)
 - **Cache Hit Logic**: 
   1. When generating itinerary, check cache for each skeleton item's subCategory
   2. If cached AND not in user's collectedNames exclusion list → use cached data (skip AI)
   3. If not cached → call Gemini AI, verify with Google Maps, save to cache
 - **Benefits**: Subsequent requests for same district reuse cached places, reducing AI and Google API calls
 - **Response Meta**: Includes `cache_hits` and `ai_generated` counts for monitoring
+
+### Recent Changes (2025-12-10)
+- **Removed Rarity System**: SP/SSR/SR/S/R grades have been completely removed from the system
+- **Category Labels**: Cards now display category type labels (Food, Stay, Scenery, Shopping, Entertainment, Activity, Education) instead of rarity badges
+- **District-Based Organization**: Collection items are grouped by district with accordion-style collapsible menus
+- **Dual View Modes**: Collection view supports toggling between district grouping and category grouping
+- **Field Naming**: Frontend consistently uses `collectedAt` (camelCase) to match Drizzle API responses
 
 ### AI Integration
 - **Provider**: Google Gemini API (gemini-2.5-flash model)

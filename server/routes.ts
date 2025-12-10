@@ -575,13 +575,6 @@ For each skeleton slot above, find a REAL, existing place in ${targetDistrict} t
 【排除清單 Exclusions】
 Do NOT include: ${collectedNames.length > 0 ? collectedNames.join(', ') : 'none'}
 
-【稀有度分配 Rarity】
-- SP (5%): Legendary experiences
-- SSR (10%): Hidden gems only locals know
-- SR (15%): Special places worth visiting
-- S (25%): Good quality spots
-- R (45%): Nice everyday places
-
 Output language: ${outputLang}
 Output ONLY valid JSON array, no markdown, no explanation.
 
@@ -595,7 +588,6 @@ ${uncachedSkeleton.map((item, idx) => `  {
     "duration": "1-2 hours",
     "time_slot": "${item.timeSlot}",
     "search_query": "place name ${city}",
-    "rarity": "R|S|SR|SSR|SP",
     "color_hex": "#6366f1",
     "energy_level": "${item.energyLevel}"
   }`).join(',\n')}
@@ -627,7 +619,6 @@ ${uncachedSkeleton.map((item, idx) => `  {
           duration: cached.duration || '1-2 hours',
           time_slot: skelItem.timeSlot,
           search_query: cached.searchQuery,
-          rarity: cached.rarity,
           color_hex: cached.colorHex || '#6366f1',
           city: city,
           country: country,
@@ -684,7 +675,6 @@ ${uncachedSkeleton.map((item, idx) => `  {
           duration: aiItem.duration || '1-2 hours',
           time_slot: skelItem.timeSlot,
           search_query: aiItem.search_query,
-          rarity: aiItem.rarity,
           color_hex: aiItem.color_hex || '#6366f1',
           city: city,
           country: country,
@@ -717,7 +707,6 @@ ${uncachedSkeleton.map((item, idx) => `  {
           suggestedTime: skelItem.suggestedTime,
           duration: aiItem.duration || '1-2 hours',
           searchQuery: aiItem.search_query,
-          rarity: aiItem.rarity,
           colorHex: aiItem.color_hex || '#6366f1',
           placeId: placeResult?.place_id || null,
           verifiedName: placeResult?.name || null,

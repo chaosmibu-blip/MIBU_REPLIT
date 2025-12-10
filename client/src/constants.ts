@@ -1,4 +1,4 @@
-import { Rarity, Category, LocationData, SubscriptionConfig, PlanTier } from './types';
+import { Category, LocationData, SubscriptionConfig, PlanTier } from './types';
 
 export const MAX_LEVEL = 12;
 export const DEFAULT_LEVEL = 5; 
@@ -14,35 +14,24 @@ export const SUBSCRIPTION_PLANS: Record<PlanTier, SubscriptionConfig> = {
     id: 'free',
     name: 'Free Starter',
     priceDisplay: '$0 / Month',
-    allowedRarities: [Rarity.R],
     maxSlots: 1,
-    features: ['發行 R 級優惠券', '同時上架 1 張', '基礎曝光']
+    features: ['發行優惠券', '同時上架 1 張', '基礎曝光']
   },
   partner: {
     id: 'partner',
     name: 'Partner',
     priceDisplay: '$499 / Month',
-    allowedRarities: [Rarity.R, Rarity.S, Rarity.SR],
     maxSlots: 3,
-    features: ['解鎖 S/SR 級優惠券', '同時上架 3 張', '每日 1 則跑馬燈']
+    features: ['發行優惠券', '同時上架 3 張', '每日 1 則跑馬燈']
   },
   premium: {
     id: 'premium',
     name: 'Premium',
     priceDisplay: '$1,499 / Month',
-    allowedRarities: [Rarity.R, Rarity.S, Rarity.SR, Rarity.SSR, Rarity.SP],
     maxSlots: 999,
     recurPlanId: RECUR_CONFIG.PREMIUM_PLAN_ID,
-    features: ['解鎖 SSR/SP 大獎', '無限發行額度', '無限跑馬燈', '地圖金框特效']
+    features: ['無限發行額度', '無限跑馬燈', '地圖金框特效']
   }
-};
-
-export const RARITY_COLORS: Record<Rarity, string> = {
-  [Rarity.SP]: '#be185d',
-  [Rarity.SSR]: '#b45309',
-  [Rarity.SR]: '#7e22ce',
-  [Rarity.S]: '#1d4ed8',
-  [Rarity.R]: '#334155',
 };
 
 export const CATEGORY_COLORS: Record<Category, string> = {

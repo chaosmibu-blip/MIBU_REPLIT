@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { GachaItem, Language } from '../types';
-import { RARITY_COLORS, TRANSLATIONS } from '../constants';
-import { MapPin, BookOpen, Filter, Sparkles } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { GachaItem, Language, Category } from '../types';
+import { CATEGORY_COLORS, TRANSLATIONS } from '../constants';
+import { MapPin, BookOpen, ChevronDown, ChevronRight, Sparkles, Tag, FolderOpen } from 'lucide-react';
 
 interface CollectionGridProps {
   items: GachaItem[];
@@ -14,32 +14,97 @@ const getContent = (content: any, lang: Language): string => {
   return content[lang] || content['en'] || '';
 };
 
-const RARITY_ORDER = ['SP', 'SSR', 'SR', 'S', 'R'] as const;
+interface AccordionSectionProps {
+  title: string;
+  count: number;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  icon?: React.ReactNode;
+  color?: string;
+}
+
+const AccordionSection: React.FC<AccordionSectionProps> = ({ 
+  title, count, isOpen, onToggle, children, icon, color 
+}) => (
+  <div className="mb-2">
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center justify-between p-3 bg-white rounded-xl shadow-sm border border-slate-100 hover:bg-slate-50 transition-colors"
+      data-testid={`accordion-${title}`}
+    >
+      <div className="flex items-center gap-2">
+        {isOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+        {icon}
+        <span className="font-bold text-slate-700">{title}</span>
+      </div>
+      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+        {count}
+      </span>
+    </button>
+    {isOpen && (
+      <div className="mt-2 pl-2">
+        {children}
+      </div>
+    )}
+  </div>
+);
 
 export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language }) => {
   const t = TRANSLATIONS[language] as any;
-  const [selectedRarity, setSelectedRarity] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [openDistricts, setOpenDistricts] = useState<Set<string>>(new Set());
+  const [openCategories, setOpenCategories] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'district' | 'category'>('district');
 
-  const rarityStats = RARITY_ORDER.reduce((acc, rarity) => {
-    acc[rarity] = items.filter(i => i.rarity === rarity).length;
-    return acc;
-  }, {} as Record<string, number>);
-  
-  const uniqueCategories = Array.from(new Set(items.map(i => i.category).filter(Boolean))) as string[];
+  const toggleDistrict = (district: string) => {
+    setOpenDistricts(prev => {
+      const newSet = new Set(Array.from(prev));
+      if (newSet.has(district)) {
+        newSet.delete(district);
+      } else {
+        newSet.add(district);
+      }
+      return newSet;
+    });
+  };
 
-  const filteredItems = items.filter(item => {
-    if (selectedRarity && item.rarity !== selectedRarity) return false;
-    if (selectedCategory && item.category !== selectedCategory) return false;
-    return true;
-  });
+  const toggleCategory = (category: string) => {
+    setOpenCategories(prev => {
+      const newSet = new Set(Array.from(prev));
+      if (newSet.has(category)) {
+        newSet.delete(category);
+      } else {
+        newSet.add(category);
+      }
+      return newSet;
+    });
+  };
 
-  const sortedItems = [...filteredItems].sort((a, b) => {
-    const rarityA = RARITY_ORDER.indexOf(a.rarity as any);
-    const rarityB = RARITY_ORDER.indexOf(b.rarity as any);
-    if (rarityA !== rarityB) return rarityA - rarityB;
-    return new Date(b.collected_at || 0).getTime() - new Date(a.collected_at || 0).getTime();
-  });
+  const groupedByDistrict = useMemo(() => {
+    const groups: Record<string, GachaItem[]> = {};
+    items.forEach(item => {
+      const district = item.district || item.city || t.unknown || 'Unknown';
+      if (!groups[district]) groups[district] = [];
+      groups[district].push(item);
+    });
+    return groups;
+  }, [items, t.unknown]);
+
+  const groupedByCategory = useMemo(() => {
+    const groups: Record<string, GachaItem[]> = {};
+    items.forEach(item => {
+      const category = item.category || 'Other';
+      if (!groups[category]) groups[category] = [];
+      groups[category].push(item);
+    });
+    return groups;
+  }, [items]);
+
+  const sortedItems = (itemsToSort: GachaItem[]) => {
+    return [...itemsToSort].sort((a, b) => 
+      new Date(b.collectedAt || 0).getTime() - new Date(a.collectedAt || 0).getTime()
+    );
+  };
 
   if (items.length === 0) {
     return (
@@ -50,6 +115,54 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
       </div>
     );
   }
+
+  const renderItemCard = (item: GachaItem, idx: number) => {
+    const categoryColor = item.category ? CATEGORY_COLORS[item.category] || '#6366f1' : '#6366f1';
+    
+    return (
+      <div 
+        key={`${item.id}-${idx}`}
+        className="bg-white rounded-xl p-3 shadow-sm border border-slate-100 relative overflow-hidden hover:shadow-md transition-shadow"
+        data-testid={`card-collection-${item.id}`}
+      >
+        <div 
+          className="absolute left-0 top-0 bottom-0 w-1" 
+          style={{ backgroundColor: categoryColor }}
+        />
+        <div className="pl-2">
+          <div className="flex items-center justify-between mb-1">
+            {item.category && (
+              <span 
+                className="inline-flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded text-white"
+                style={{ backgroundColor: categoryColor }}
+                data-testid={`tag-category-collection-${item.id}`}
+              >
+                <Tag className="w-2 h-2" />
+                {t[`cat${item.category}`] || item.category}
+              </span>
+            )}
+            {item.is_coupon && (
+              <Sparkles className="w-3 h-3 text-amber-500" />
+            )}
+          </div>
+          <h4 className="font-bold text-sm text-slate-800 line-clamp-2 leading-tight mb-1">
+            {getContent(item.place_name, language)}
+          </h4>
+          <div className="flex items-center justify-between mt-1">
+            <div className="text-[10px] text-slate-400 font-medium">
+              {new Date(item.collectedAt || Date.now()).toLocaleDateString()}
+            </div>
+            {item.district && (
+              <div className="flex items-center gap-0.5 text-[10px] text-slate-400">
+                <MapPin className="w-2.5 h-2.5" />
+                {item.district}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="pb-32 max-w-md mx-auto pt-16">
@@ -64,134 +177,87 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
           </div>
         </div>
         
-        <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-hide">
-          {RARITY_ORDER.map(rarity => (
-            <button
-              key={rarity}
-              onClick={() => setSelectedRarity(selectedRarity === rarity ? null : rarity)}
-              className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-                selectedRarity === rarity 
-                  ? 'bg-white text-indigo-600 shadow-lg scale-105' 
-                  : 'bg-white/20 hover:bg-white/30'
-              }`}
-              data-testid={`button-filter-rarity-${rarity}`}
-            >
-              <span 
-                className="w-2 h-2 rounded-full" 
-                style={{ backgroundColor: RARITY_COLORS[rarity] }}
-              />
-              {rarity}
-              <span className="opacity-70">({rarityStats[rarity]})</span>
-            </button>
-          ))}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setViewMode('district')}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+              viewMode === 'district' 
+                ? 'bg-white text-indigo-600' 
+                : 'bg-white/20 hover:bg-white/30'
+            }`}
+            data-testid="button-view-district"
+          >
+            <MapPin className="w-3.5 h-3.5" />
+            {language === 'zh-TW' ? '依行政區' : language === 'ja' ? '地区別' : language === 'ko' ? '지역별' : 'By District'}
+          </button>
+          <button
+            onClick={() => setViewMode('category')}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+              viewMode === 'category' 
+                ? 'bg-white text-indigo-600' 
+                : 'bg-white/20 hover:bg-white/30'
+            }`}
+            data-testid="button-view-category"
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+            {language === 'zh-TW' ? '依種類' : language === 'ja' ? 'カテゴリ別' : language === 'ko' ? '카테고리별' : 'By Category'}
+          </button>
         </div>
       </div>
 
-      <div className="px-4 py-2 flex gap-2 overflow-x-auto scrollbar-hide bg-slate-50 border-b border-slate-100">
-        <button
-          onClick={() => setSelectedCategory(null)}
-          className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-            !selectedCategory ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border border-slate-200'
-          }`}
-          data-testid="button-filter-all"
-        >
-          {language === 'zh-TW' ? '全部' : language === 'ja' ? 'すべて' : language === 'ko' ? '전체' : 'All'}
-        </button>
-        {uniqueCategories.map(cat => {
-          const count = items.filter(i => i.category === cat).length;
-          return (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-                selectedCategory === cat 
-                  ? 'bg-slate-800 text-white' 
-                  : 'bg-white text-slate-600 border border-slate-200'
-              }`}
-              data-testid={`button-filter-category-${cat}`}
-            >
-              {t[`cat${cat}`] || cat} ({count})
-            </button>
-          );
-        })}
-      </div>
+      <div className="p-4">
+        {viewMode === 'district' && (
+          <div>
+            {Object.entries(groupedByDistrict)
+              .sort((a, b) => b[1].length - a[1].length)
+              .map(([district, districtItems]) => (
+                <AccordionSection
+                  key={district}
+                  title={district}
+                  count={districtItems.length}
+                  isOpen={openDistricts.has(district)}
+                  onToggle={() => toggleDistrict(district)}
+                  icon={<MapPin className="w-4 h-4 text-indigo-500" />}
+                >
+                  <div className="grid grid-cols-2 gap-2">
+                    {sortedItems(districtItems).map((item, idx) => renderItemCard(item, idx))}
+                  </div>
+                </AccordionSection>
+              ))}
+          </div>
+        )}
 
-      {sortedItems.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-          <Filter className="w-12 h-12 mb-3 opacity-30" />
-          <p className="text-sm">{language === 'zh-TW' ? '沒有符合條件的卡片' : 'No matching cards'}</p>
-        </div>
-      ) : (
-        <div className="p-4 grid grid-cols-2 gap-3">
-          {sortedItems.map((item, idx) => (
-            <div 
-              key={`${item.id}-${idx}`}
-              className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-100 flex flex-col relative group hover:shadow-md transition-shadow"
-              data-testid={`card-collection-${item.id}`}
-            >
-              <div 
-                className="h-2 w-full relative overflow-hidden" 
-                style={{ backgroundColor: RARITY_COLORS[item.rarity] }}
-              >
-                {(item.rarity === 'SP' || item.rarity === 'SSR') && (
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-shimmer" />
-                )}
-              </div>
-              <div className="p-3 flex-1 flex flex-col justify-between min-h-[120px]">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span 
-                      className="inline-block text-[10px] font-black uppercase px-1.5 py-0.5 rounded text-white"
-                      style={{ backgroundColor: RARITY_COLORS[item.rarity] }}
-                    >
-                      {item.rarity}
-                    </span>
-                    {item.is_coupon && (
-                      <Sparkles className="w-3 h-3 text-amber-500" />
-                    )}
-                  </div>
-                  <h4 className="font-bold text-sm text-slate-800 line-clamp-2 leading-tight">
-                    {getContent(item.place_name, language)}
-                  </h4>
-                  {item.category && (
-                    <span className="text-[10px] text-slate-400 font-medium mt-1 block">
-                      {t[`cat${item.category}`] || item.category}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center justify-between mt-2">
-                  <div className="text-[10px] text-slate-400 font-medium">
-                    {new Date(item.collected_at || Date.now()).toLocaleDateString()}
-                  </div>
-                  {item.city && (
-                    <div className="flex items-center gap-0.5 text-[10px] text-slate-400">
-                      <MapPin className="w-2.5 h-2.5" />
-                      {item.city}
+        {viewMode === 'category' && (
+          <div>
+            {Object.entries(groupedByCategory)
+              .sort((a, b) => b[1].length - a[1].length)
+              .map(([category, categoryItems]) => {
+                const categoryColor = CATEGORY_COLORS[category as Category] || '#6366f1';
+                return (
+                  <AccordionSection
+                    key={category}
+                    title={t[`cat${category}`] || category}
+                    count={categoryItems.length}
+                    isOpen={openCategories.has(category)}
+                    onToggle={() => toggleCategory(category)}
+                    icon={
+                      <div 
+                        className="w-4 h-4 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: categoryColor }}
+                      >
+                        <Tag className="w-2.5 h-2.5 text-white" />
+                      </div>
+                    }
+                  >
+                    <div className="grid grid-cols-2 gap-2">
+                      {sortedItems(categoryItems).map((item, idx) => renderItemCard(item, idx))}
                     </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <style>{`
-        @keyframes shimmer {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-        .animate-shimmer {
-          animation: shimmer 2s infinite;
-        }
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-        .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-      `}</style>
+                  </AccordionSection>
+                );
+              })}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

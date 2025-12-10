@@ -1,10 +1,3 @@
-export enum Rarity {
-  SP = 'SP',
-  SSR = 'SSR',
-  SR = 'SR',
-  S = 'S',
-  R = 'R'
-}
 
 export enum Category {
   Food = 'Food',
@@ -25,7 +18,6 @@ export interface SubscriptionConfig {
   id: PlanTier;
   name: string;
   priceDisplay: string;
-  allowedRarities: Rarity[];
   maxSlots: number;
   features: string[];
   recurPlanId?: string;
@@ -60,7 +52,6 @@ export interface CouponConfig {
   title: LocalizedContent;
   code: string;
   terms: LocalizedContent;
-  rarity: Rarity;
   total_quantity: number;
   remaining_quantity: number;
   redeemed_count: number;
@@ -76,11 +67,11 @@ export interface GachaItem {
   suggested_time: string;
   duration: string;
   search_query: string;
-  rarity: Rarity;
   color_hex: string;
   city?: string;
   country?: string;
-  collected_at?: string;
+  district?: string;
+  collectedAt?: string;
   operating_status?: string;
   is_coupon: boolean;
   coupon_data: CouponData | null;
