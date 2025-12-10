@@ -151,7 +151,14 @@ export const TRANSLATIONS = {
     merchantLogin: '商家登入',
     merchantName: '商家名稱',
     merchantEmail: '商家電子郵件',
-    backToHome: '返回首頁'
+    backToHome: '返回首頁',
+    catFood: '美食',
+    catStay: '住宿',
+    catScenery: '景點',
+    catShopping: '購物',
+    catEntertainment: '娛樂',
+    catEducation: '文化',
+    catActivity: '活動'
   },
   'en': {
     dailyLimitReached: 'Daily Limit Reached',
@@ -209,7 +216,14 @@ export const TRANSLATIONS = {
     merchantLogin: 'Merchant Login',
     merchantName: 'Merchant Name',
     merchantEmail: 'Merchant Email',
-    backToHome: 'Back to Home'
+    backToHome: 'Back to Home',
+    catFood: 'Food',
+    catStay: 'Stay',
+    catScenery: 'Scenery',
+    catShopping: 'Shopping',
+    catEntertainment: 'Entertainment',
+    catEducation: 'Culture',
+    catActivity: 'Activity'
   },
   'ja': {
     dailyLimitReached: '本日の上限に達しました',
@@ -267,7 +281,14 @@ export const TRANSLATIONS = {
     merchantLogin: '店舗ログイン',
     merchantName: '店舗名',
     merchantEmail: 'メールアドレス',
-    backToHome: 'ホームに戻る'
+    backToHome: 'ホームに戻る',
+    catFood: 'グルメ',
+    catStay: '宿泊',
+    catScenery: '観光',
+    catShopping: 'ショッピング',
+    catEntertainment: 'エンタメ',
+    catEducation: '文化',
+    catActivity: 'アクティビティ'
   },
   'ko': {
     dailyLimitReached: '일일 한도 도달',
@@ -325,7 +346,14 @@ export const TRANSLATIONS = {
     merchantLogin: '판매자 로그인',
     merchantName: '상점 이름',
     merchantEmail: '이메일 주소',
-    backToHome: '홈으로 돌아가기'
+    backToHome: '홈으로 돌아가기',
+    catFood: '맛집',
+    catStay: '숙박',
+    catScenery: '관광',
+    catShopping: '쇼핑',
+    catEntertainment: '엔터테인먼트',
+    catEducation: '문화',
+    catActivity: '액티비티'
   }
 };
 
