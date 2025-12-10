@@ -217,6 +217,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ Gemini AI Itinerary Generation ============
   
+  function calculateQuota(K: number) {
+    const stayCount = K >= 8 ? 1 : 0;
+    let foodMin = 2;
+    if (K >= 7 && K <= 8) foodMin = 3;
+    if (K >= 9) foodMin = 4;
+    return { stayCount, foodMin };
+  }
+
   app.post("/api/generate-itinerary", async (req, res) => {
     try {
       const { country, city, level, language, collectedNames } = req.body;
@@ -229,32 +237,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       const outputLang = langMap[language] || 'English';
       
-      const itemCount = Math.min(8, Math.max(3, Math.floor(level / 1.5)));
+      const itemCount = Math.min(12, Math.max(5, Math.floor(level * 1.2)));
+      const { stayCount, foodMin } = calculateQuota(itemCount);
       
       const lockedDistrict = getRandomDistrict(country, city);
-      const districtInfo = lockedDistrict 
-        ? `IMPORTANT: Focus ALL recommendations on the "${lockedDistrict}" district/area. All places MUST be located in or very near "${lockedDistrict}".`
-        : '';
       
-      const prompt = `You are a travel expert AI for a gacha-style travel app. Generate ${itemCount} unique travel recommendations for ${city}, ${country}.
+      const prompt = `You are a professional travel planner AI. Generate a realistic ${itemCount}-item day trip itinerary for ${city}, ${country}.
 
-${districtInfo}
+【地理範圍鎖定】
+All recommendations MUST be in "${lockedDistrict || city}" district/area (within 5-10km radius). Avoid large transportation gaps.
 
-IMPORTANT RULES:
-1. Output ONLY valid JSON, no markdown, no explanation
-2. Each place must be REAL and actually exist in ${city}${lockedDistrict ? `, specifically in ${lockedDistrict}` : ''}
-3. Do NOT include any places from this list: ${collectedNames.join(', ')}
-4. Mix different categories: Food, Stay, Scenery, Shopping, Entertainment, Education, Activity
-5. Assign rarity based on how special/unique the place is:
-   - SP (5%): Legendary, once-in-a-lifetime experiences
-   - SSR (10%): Very rare, hidden gems only locals know
-   - SR (15%): Special places worth going out of your way for
-   - S (20%): Good quality, recommended spots
-   - R (50%): Nice everyday places
+【配額系統 Quota Rules】
+Total items: ${itemCount}
+- 住宿 (Stay): ${stayCount} item(s) ${stayCount === 0 ? '(NOT allowed for this trip length)' : '(place at END of itinerary)'}
+- 餐飲 (Food): minimum ${foodMin} items (breakfast/lunch/dinner/snacks as appropriate)
+- Remaining slots: Fill with Scenery, Shopping, Entertainment, Education, Activity
+
+【時間插槽模式 Time-Slot Framework】
+Arrange items in this logical order:
+1. 早餐 (06:00-10:00) - Food (breakfast)
+2. 上午活動 (10:00-12:00) - Scenery/Education/Activity
+3. 午餐 (12:00-14:00) - Food (lunch)
+4. 下午活動 (14:00-17:00) - Scenery/Shopping/Activity
+5. 下午茶 (15:00-17:00) - Food (optional snack/cafe)
+6. 晚餐 (18:00-20:00) - Food (dinner)
+7. 晚間活動 (20:00-23:00) - Entertainment/Shopping (night markets, bars)
+8. 住宿 (if applicable) - Stay (MUST be last item)
+
+【營業時間檢核 Operating Hours】
+- Education (museums, galleries): Schedule between 09:00-17:00 ONLY
+- Entertainment (bars, nightlife): Schedule after 18:00
+- Stay: Must be the LAST item in the itinerary
+
+【多樣性規則 Variety Rules】
+- Food sub-categories must NOT repeat (e.g., if "火鍋" is picked, next food cannot be "火鍋", pick "拉麵" or "咖啡廳")
+- Activity categories (Scenery, Education, Activity) should NOT appear consecutively more than 2 times
+- Insert Food or Shopping between consecutive activity items as "rest buffer"
+
+【動靜穿插 Pacing】
+After high-energy activities (hiking, amusement parks), recommend low-energy options (cafe, scenic viewing, shopping)
+
+【稀有度分配 Rarity】
+- SP (5%): Legendary experiences
+- SSR (10%): Hidden gems only locals know
+- SR (15%): Special places worth visiting
+- S (25%): Good quality spots
+- R (45%): Nice everyday places
+
+【排除清單】
+Do NOT include: ${collectedNames.length > 0 ? collectedNames.join(', ') : 'none'}
 
 Output language: ${outputLang}
+Output ONLY valid JSON, no markdown, no explanation.
 
-Return this exact JSON structure:
 {
   "status": "success",
   "meta": {
@@ -262,22 +297,26 @@ Return this exact JSON structure:
     "country": "${country}",
     "city": "${city}",
     "locked_district": "${lockedDistrict || city}",
-    "user_level": ${level}
+    "user_level": ${level},
+    "total_items": ${itemCount}
   },
   "inventory": [
     {
       "id": 1,
-      "place_name": "Real place name",
-      "description": "2-3 sentence description of why this place is special",
+      "place_name": "Real place name in ${outputLang}",
+      "description": "2-3 sentence description",
       "category": "Food|Stay|Scenery|Shopping|Entertainment|Education|Activity",
-      "suggested_time": "10:00",
-      "duration": "1.5 hours",
+      "sub_category": "specific type (e.g., 拉麵, 咖啡廳, 博物館, 夜市)",
+      "suggested_time": "HH:MM",
+      "duration": "X.X hours",
+      "time_slot": "breakfast|morning|lunch|afternoon|tea_time|dinner|evening|night",
       "search_query": "place name ${city}",
       "rarity": "R|S|SR|SSR|SP",
       "color_hex": "#6366f1",
       "city": "${city}",
       "country": "${country}",
       "district": "${lockedDistrict || ''}",
+      "energy_level": "high|medium|low",
       "is_coupon": false,
       "coupon_data": null,
       "operating_status": "OPEN"
