@@ -1,0 +1,514 @@
+# Hosted Checkout (/docs/guides/checkout/hosted-checkout)
+
+
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+
+# Hosted Checkout
+
+Hosted Checkout 是最簡單的整合方式。您只需在後端建立 Checkout Session，然後將用戶導向 Recur 託管的結帳頁面。
+
+<Callout type="info">
+  **適合場景**：
+
+  * 快速上線，無需開發前端 UI
+  * 想使用 Recur 最佳化的結帳體驗
+  * 不需要完全客製化結帳頁面
+</Callout>
+
+## 運作流程
+
+```
+1. 用戶點擊「訂閱」按鈕
+   ↓
+2. 您的後端呼叫 POST /checkout/sessions
+   ↓
+3. Recur 返回 Checkout Session URL
+   ↓
+4. 前端導向該 URL
+   ↓
+5. 用戶在 Recur 結帳頁面完成付款
+   ↓
+6. 重新導向回 successUrl 或 cancelUrl
+```
+
+## 建立 Checkout Session
+
+### API 端點
+
+```
+POST https://api.recur.tw/v1/checkout/sessions
+```
+
+### 請求參數
+
+| 參數              | 必填 | 說明                                               |
+| --------------- | -- | ------------------------------------------------ |
+| `productId`     | ✅  | 商品 ID                                            |
+| `mode`          | ❌  | `PAYMENT`（一次性）、`SUBSCRIPTION`（訂閱）、`SETUP`（僅儲存卡片） |
+| `successUrl`    | ✅  | 成功後的重新導向 URL                                     |
+| `cancelUrl`     | ✅  | 取消時的重新導向 URL                                     |
+| `customerEmail` | ❌  | 預填客戶 Email                                       |
+| `metadata`      | ❌  | 自訂 metadata（僅 Secret Key 可用）                     |
+
+### 程式碼範例
+
+<Tabs items={['Next.js', 'Express', 'Python']}>
+  <Tab value="Next.js">
+    ```typescript
+    // app/api/create-checkout/route.ts
+    import { NextResponse } from 'next/server';
+
+    export async function POST(request: Request) {
+      const body = await request.json();
+
+      const response = await fetch('https://api.recur.tw/v1/checkout/sessions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.RECUR_SECRET_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          productId: body.productId,
+          mode: 'SUBSCRIPTION',
+          successUrl: `${process.env.NEXT_PUBLIC_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${process.env.NEXT_PUBLIC_URL}/pricing`,
+          customerEmail: body.email,
+          metadata: {
+            userId: body.userId,
+          },
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return NextResponse.json({ error: data.error }, { status: response.status });
+      }
+
+      return NextResponse.json({ url: data.url });
+    }
+    ```
+  </Tab>
+
+  <Tab value="Express">
+    ```javascript
+    // routes/checkout.js
+    const express = require('express');
+    const router = express.Router();
+
+    router.post('/create-checkout', async (req, res) => {
+      try {
+        const response = await fetch('https://api.recur.tw/v1/checkout/sessions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.RECUR_SECRET_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            productId: req.body.productId,
+            mode: 'SUBSCRIPTION',
+            successUrl: `${process.env.APP_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancelUrl: `${process.env.APP_URL}/pricing`,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          return res.status(response.status).json({ error: data.error });
+        }
+
+        res.json({ url: data.url });
+      } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    module.exports = router;
+    ```
+  </Tab>
+
+  <Tab value="Python">
+    ```python
+    # routes/checkout.py
+    from flask import Blueprint, request, jsonify
+    import requests
+    import os
+
+    checkout = Blueprint('checkout', __name__)
+
+    @checkout.route('/create-checkout', methods=['POST'])
+    def create_checkout():
+        data = request.get_json()
+
+        response = requests.post(
+            'https://api.recur.tw/v1/checkout/sessions',
+            headers={
+                'Authorization': f'Bearer {os.environ["RECUR_SECRET_KEY"]}',
+                'Content-Type': 'application/json',
+            },
+            json={
+                'productId': data['productId'],
+                'mode': 'SUBSCRIPTION',
+                'successUrl': f'{os.environ["APP_URL"]}/success?session_id={{CHECKOUT_SESSION_ID}}',
+                'cancelUrl': f'{os.environ["APP_URL"]}/pricing',
+            }
+        )
+
+        result = response.json()
+
+        if not response.ok:
+            return jsonify({'error': result.get('error')}), response.status_code
+
+        return jsonify({'url': result['url']})
+    ```
+  </Tab>
+</Tabs>
+
+## 前端導向
+
+在前端呼叫您的後端 API，然後導向返回的 URL：
+
+```typescript
+// components/SubscribeButton.tsx
+'use client';
+
+export function SubscribeButton({ productId }: { productId: string }) {
+  const [loading, setLoading] = useState(false);
+
+  const handleClick = async () => {
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/create-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId }),
+      });
+
+      const { url, error } = await response.json();
+
+      if (error) {
+        alert('發生錯誤：' + error.message);
+        return;
+      }
+
+      // 導向 Recur 結帳頁面
+      window.location.href = url;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button onClick={handleClick} disabled={loading}>
+      {loading ? '處理中...' : '立即訂閱'}
+    </button>
+  );
+}
+```
+
+## Success URL 處理
+
+用戶完成付款後，會被導向您設定的 `successUrl`。URL 中會包含 `{CHECKOUT_SESSION_ID}` 佔位符的實際值：
+
+```
+https://your-site.com/success?session_id=cs_abc123xyz
+```
+
+您可以使用這個 Session ID 來：
+
+1. **驗證付款狀態** - 呼叫 `GET /checkout/sessions/{id}`
+2. **取得訂閱資訊** - 從 Session 中取得 `subscriptionId`
+3. **更新使用者狀態** - 在您的資料庫中標記用戶已訂閱
+
+```typescript
+// app/success/page.tsx
+import { notFound } from 'next/navigation';
+
+export default async function SuccessPage({
+  searchParams,
+}: {
+  searchParams: { session_id?: string };
+}) {
+  const sessionId = searchParams.session_id;
+
+  if (!sessionId) {
+    notFound();
+  }
+
+  // 驗證 Session 狀態
+  const response = await fetch(
+    `https://api.recur.tw/v1/checkout/sessions/${sessionId}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${process.env.RECUR_SECRET_KEY}`,
+      },
+    }
+  );
+
+  const session = await response.json();
+
+  if (session.status !== 'COMPLETE') {
+    return <div>付款尚未完成</div>;
+  }
+
+  return (
+    <div>
+      <h1>感謝您的訂閱！</h1>
+      <p>訂單編號：{session.orderId}</p>
+      <p>訂閱編號：{session.subscriptionId}</p>
+    </div>
+  );
+}
+```
+
+## 設定 Webhook
+
+<Callout type="warning">
+  **重要**：不要只依賴 `successUrl` 來確認付款。用戶可能在付款完成前關閉瀏覽器。請務必設定 [Webhook](/docs/guides/webhooks) 來接收付款通知。
+</Callout>
+
+### 正確的付款對帳方式
+
+<Callout type="error">
+  **嚴重警告**：絕對不要只用 `customer_email` 或 `customer_id` 來對帳！同一個用戶可能同時有多筆待處理的交易，這會導致錯誤的歸因。
+</Callout>
+
+**常見錯誤情境**：
+
+```
+T1: 用戶點「儲值 100 點」→ 建立 checkout A → 付款成功
+T2: webhook A 還在傳送中...
+T3: 用戶點「儲值 1000 點」→ 建立 checkout B（未付款）
+T4: webhook A 抵達，但系統錯誤地將它歸因到 checkout B（因為只看 email）
+結果：用戶只付了 100 元，卻獲得 1000 點！
+```
+
+**正確做法**：使用 `checkout.id` 或 `metadata` 中的交易 ID 進行精確對帳。
+
+#### 方法一：儲存 Checkout ID
+
+```typescript
+// 1. 建立 checkout 時儲存 session ID
+const response = await fetch('https://api.recur.tw/v1/checkout/sessions', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.RECUR_SECRET_KEY}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    productId: 'prod_100_points',
+    successUrl: 'https://yoursite.com/success',
+    cancelUrl: 'https://yoursite.com/cancel',
+    customerEmail: user.email,
+  }),
+});
+
+const { id: checkoutId, url } = await response.json();
+
+// ✅ 儲存 checkoutId 到待處理交易
+await db.pendingTopups.create({
+  data: {
+    userId: user.id,
+    checkoutId: checkoutId,  // ← 重要！
+    points: 100,
+    status: 'PENDING',
+  }
+});
+```
+
+```typescript
+// 2. Webhook 處理 - 用 checkout.id 對帳
+app.post('/webhooks/recur', async (req, res) => {
+  const event = req.body;
+
+  if (event.type === 'checkout.completed') {
+    const checkout = event.data;
+
+    // ✅ 用 checkout ID 找到對應的待處理交易
+    const pendingTopup = await db.pendingTopups.findUnique({
+      where: { checkoutId: checkout.id }
+    });
+
+    if (pendingTopup) {
+      await db.users.update({
+        where: { id: pendingTopup.userId },
+        data: { points: { increment: pendingTopup.points } }
+      });
+    }
+  }
+
+  res.json({ received: true });
+});
+```
+
+#### 方法二：使用 Metadata（推薦）
+
+```typescript
+// 1. 先建立內部交易記錄，再建立 checkout
+const transaction = await db.transactions.create({
+  data: {
+    id: generateId(),  // 例如 "txn_abc123"
+    userId: user.id,
+    type: 'TOPUP',
+    points: 100,
+    status: 'PENDING',
+  }
+});
+
+const response = await fetch('https://api.recur.tw/v1/checkout/sessions', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.RECUR_SECRET_KEY}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    productId: 'prod_100_points',
+    successUrl: 'https://yoursite.com/success',
+    cancelUrl: 'https://yoursite.com/cancel',
+    customerEmail: user.email,
+    metadata: {
+      transaction_id: transaction.id,  // ← 你的內部交易 ID
+      user_id: user.id,
+      points: 100,
+    }
+  }),
+});
+```
+
+```typescript
+// 2. Webhook 處理 - 用 metadata.transaction_id 對帳
+app.post('/webhooks/recur', async (req, res) => {
+  const event = req.body;
+
+  if (event.type === 'checkout.completed') {
+    const checkout = event.data;
+    const { transaction_id } = checkout.metadata || {};
+
+    if (transaction_id) {
+      const transaction = await db.transactions.findUnique({
+        where: { id: transaction_id }
+      });
+
+      if (transaction && transaction.status === 'PENDING') {
+        // ✅ 精確對帳，不會搞混
+        await db.$transaction([
+          db.users.update({
+            where: { id: transaction.userId },
+            data: { points: { increment: transaction.points } }
+          }),
+          db.transactions.update({
+            where: { id: transaction.id },
+            data: { status: 'COMPLETED' }
+          })
+        ]);
+      }
+    }
+  }
+
+  res.json({ received: true });
+});
+```
+
+#### 對帳欄位參考
+
+| 欄位                        | 可用於對帳？ | 說明                     |
+| ------------------------- | ------ | ---------------------- |
+| `checkout.id`             | ✅ 是    | 每個 checkout session 唯一 |
+| `metadata.transaction_id` | ✅ 是    | 你的內部交易 ID              |
+| `metadata.order_id`       | ✅ 是    | 你的內部訂單 ID              |
+| `customer_email`          | ❌ 否    | 同一用戶可能有多筆交易            |
+| `customer_id`             | ❌ 否    | 同一客戶可能有多筆交易            |
+| `product_id`              | ❌ 否    | 同一商品可能被購買多次            |
+
+## 結帳模式
+
+### SUBSCRIPTION（訂閱）
+
+```json
+{
+  "productId": "prod_monthly",
+  "mode": "SUBSCRIPTION",
+  "successUrl": "https://example.com/welcome",
+  "cancelUrl": "https://example.com/pricing"
+}
+```
+
+* 建立週期性訂閱
+* 自動綁定付款方式
+* 後續會自動扣款
+
+### PAYMENT（一次性付款）
+
+```json
+{
+  "productId": "prod_ebook",
+  "mode": "PAYMENT",
+  "successUrl": "https://example.com/download",
+  "cancelUrl": "https://example.com/shop"
+}
+```
+
+* 單次付款
+* 不建立訂閱關係
+* 適合數位商品、實體商品
+
+### SETUP（僅儲存卡片）
+
+```json
+{
+  "productId": "prod_xxx",
+  "mode": "SETUP",
+  "successUrl": "https://example.com/card-saved",
+  "cancelUrl": "https://example.com/settings"
+}
+```
+
+* 不扣款，僅儲存付款方式
+* 用於升級流程、試用結束後收費
+* 返回 `setupIntentId` 而非 `paymentIntentId`
+
+## 客製化選項
+
+### 預填客戶資訊
+
+```json
+{
+  "customerEmail": "user@example.com"
+}
+```
+
+### 使用 Metadata
+
+```json
+{
+  "metadata": {
+    "userId": "user_123",
+    "plan": "pro",
+    "referrer": "homepage"
+  }
+}
+```
+
+<Callout type="info">
+  `metadata` 僅在使用 Secret Key 時可用。Publishable Key 無法設定 metadata。
+</Callout>
+
+## 錯誤處理
+
+常見錯誤和處理方式：
+
+| 錯誤代碼                 | 原因         | 解決方式                            |
+| -------------------- | ---------- | ------------------------------- |
+| `resource_not_found` | 商品不存在      | 確認 productId 正確                 |
+| `invalid_request`    | URL 格式錯誤   | 確認 successUrl/cancelUrl 為 HTTPS |
+| `unauthorized`       | API Key 無效 | 檢查 Secret Key                   |
+
+## 下一步
+
+* [Webhook 整合](/docs/guides/webhooks) - 接收付款通知
+* [Embedded Checkout](/docs/guides/checkout/embedded-checkout) - 嵌入式結帳
+* [API Reference](/docs/api/checkout-sessions) - 完整 API 文件
