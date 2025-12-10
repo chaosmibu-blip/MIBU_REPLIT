@@ -244,9 +244,6 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
                   {state.language === 'ko' && '알찬'}
                 </span>
               </div>
-              <div className="text-center">
-                <span className="text-sm font-bold text-indigo-600">{state.level} {state.language === 'zh-TW' ? '項行程' : state.language === 'en' ? 'items' : state.language === 'ja' ? '項目' : '항목'}</span>
-              </div>
             </div>
           </div>
         )}
