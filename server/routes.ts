@@ -5,6 +5,9 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema } from "@shared/schema";
 import { z } from "zod";
 
+const RECUR_API_URL = "https://api.recur.tw/v1";
+const RECUR_PREMIUM_PLAN_ID = "adkwbl9dya0wc6b53parl9yk";
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth
   await setupAuth(app);
@@ -130,6 +133,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ coupon });
     } catch (error) {
       res.status(500).json({ error: "Failed to update coupon" });
+    }
+  });
+
+  // ============ Recur Payment Routes ============
+  
+  app.post("/api/checkout/create-session", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { customerEmail } = req.body;
+      
+      const secretKey = process.env.RECUR_SECRET_KEY;
+      if (!secretKey) {
+        return res.status(500).json({ error: "Payment system not configured" });
+      }
+
+      const appUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+
+      const response = await fetch(`${RECUR_API_URL}/checkout/sessions`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${secretKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          productId: RECUR_PREMIUM_PLAN_ID,
+          mode: "SUBSCRIPTION",
+          successUrl: `${appUrl}?payment_success=true&session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${appUrl}?payment_cancelled=true`,
+          customerEmail: customerEmail || undefined,
+          metadata: {
+            userId: userId,
+            plan: "premium"
+          }
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error("Recur API error:", data);
+        return res.status(response.status).json({ error: data.error || "Checkout failed" });
+      }
+
+      res.json({ url: data.url, sessionId: data.id });
+    } catch (error) {
+      console.error("Create checkout session error:", error);
+      res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  });
+
+  app.get("/api/checkout/session/:sessionId", isAuthenticated, async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const secretKey = process.env.RECUR_SECRET_KEY;
+      
+      if (!secretKey) {
+        return res.status(500).json({ error: "Payment system not configured" });
+      }
+
+      const response = await fetch(`${RECUR_API_URL}/checkout/sessions/${sessionId}`, {
+        headers: {
+          "Authorization": `Bearer ${secretKey}`,
+        },
+      });
+
+      const session = await response.json();
+
+      if (!response.ok) {
+        return res.status(response.status).json({ error: session.error });
+      }
+
+      res.json({ session });
+    } catch (error) {
+      console.error("Fetch checkout session error:", error);
+      res.status(500).json({ error: "Failed to fetch session" });
+    }
+  });
+
+  // Webhook for Recur payment events
+  app.post("/api/webhooks/recur", async (req, res) => {
+    try {
+      const event = req.body;
+      console.log("Recur webhook received:", event.type);
+
+      if (event.type === "checkout.completed") {
+        const checkout = event.data;
+        const userId = checkout.metadata?.userId;
+        
+        if (userId) {
+          const merchant = await storage.getMerchantByUserId(userId);
+          if (merchant) {
+            await storage.updateMerchantPlan(merchant.id, "premium");
+            console.log(`Upgraded merchant ${merchant.id} to premium`);
+          }
+        }
+      }
+
+      res.json({ received: true });
+    } catch (error) {
+      console.error("Webhook error:", error);
+      res.status(500).json({ error: "Webhook processing failed" });
     }
   });
 

@@ -1,13 +1,8 @@
 import React, { useState } from 'react';
 import { Merchant, AppState, PlanTier, Rarity } from '../types';
-import { SUBSCRIPTION_PLANS, TRANSLATIONS, RECUR_CONFIG } from '../constants';
+import { SUBSCRIPTION_PLANS, TRANSLATIONS } from '../constants';
 import { Store, CheckCircle, Plus, ShieldCheck, Crown, Sparkles } from 'lucide-react';
 
-declare global {
-  interface Window {
-    Recur: any;
-  }
-}
 
 interface MerchantDashboardProps {
   state: AppState;
@@ -22,26 +17,25 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
   const t = TRANSLATIONS[state.language] as any;
 
   const handleUpgradeToPremium = async () => {
-    if (!window.Recur) {
-      alert('Payment system is loading, please try again.');
-      return;
-    }
-
     setIsCheckingOut(true);
     
     try {
-      const recur = window.Recur.init({
-        publishableKey: RECUR_CONFIG.PUBLISHABLE_KEY
+      const response = await fetch('/api/checkout/create-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          customerEmail: state.currentMerchant?.email
+        }),
       });
 
-      const currentUrl = window.location.origin;
-      
-      await recur.redirectToCheckout({
-        productId: RECUR_CONFIG.PREMIUM_PLAN_ID,
-        successUrl: `${currentUrl}?payment_success=true&session_id={CHECKOUT_SESSION_ID}`,
-        cancelUrl: `${currentUrl}?payment_cancelled=true`,
-        customerEmail: state.currentMerchant?.email || undefined
-      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Checkout failed');
+      }
+
+      window.location.href = data.url;
     } catch (error: any) {
       console.error('Checkout error:', error);
       alert('Payment error: ' + (error.message || 'Please try again'));
