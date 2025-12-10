@@ -29,10 +29,11 @@ Preferred communication style: Simple, everyday language.
 - **Schema Location**: `shared/schema.ts` - contains users, collections, merchants, coupons, placeCache, sessions, and location/category hierarchy tables
 - **Migrations**: Drizzle Kit with `db:push` command for schema synchronization
 
-### Location Hierarchy (Added 2025-12-10)
-- **Tables**: countries → regions → districts (three-level hierarchy)
+### Location Hierarchy (Updated 2025-12-10)
+- **Tables**: countries → regions (縣市) → districts (鄉鎮區) (three-level hierarchy)
 - **Multilingual**: Each table has nameEn, nameZh, nameJa, nameKo columns for localization
-- **Taiwan Data**: 1 country, 5 regions (北部/中部/南部/東部/離島), 61 districts
+- **Taiwan Data**: 1 country, 22 cities/counties (直轄市/縣市), 139 districts (鄉鎮區)
+- **Cities/Counties**: 6 special municipalities (台北市, 新北市, 桃園市, 台中市, 台南市, 高雄市), 3 provincial cities (基隆市, 新竹市, 嘉義市), 13 counties
 - **Foreign Keys**: regions.countryId → countries.id, districts.regionId → regions.id
 
 ### Category System (Added 2025-12-10)

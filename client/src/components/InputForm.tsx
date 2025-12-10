@@ -162,14 +162,14 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
           </div>
         </div>
 
-        {/* Region Selection */}
+        {/* City/County Selection */}
         {selectedCountryId && regions.length > 0 && (
           <div className="space-y-3">
             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">
-              {state.language === 'zh-TW' && '選擇地區（選填）'}
-              {state.language === 'en' && 'Select Region (Optional)'}
-              {state.language === 'ja' && '地域を選択（任意）'}
-              {state.language === 'ko' && '지역 선택 (선택사항)'}
+              {state.language === 'zh-TW' && '選擇縣市（選填）'}
+              {state.language === 'en' && 'Select City/County (Optional)'}
+              {state.language === 'ja' && '市区町村を選択（任意）'}
+              {state.language === 'ko' && '시/군 선택 (선택사항)'}
             </label>
             <div className="relative">
               <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-purple-400" />
@@ -186,10 +186,10 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
                   data-testid="select-region"
                 >
                   <option value="">
-                    {state.language === 'zh-TW' && '全部地區（隨機）'}
-                    {state.language === 'en' && 'All Regions (Random)'}
-                    {state.language === 'ja' && 'すべての地域（ランダム）'}
-                    {state.language === 'ko' && '모든 지역 (랜덤)'}
+                    {state.language === 'zh-TW' && '全部縣市（隨機）'}
+                    {state.language === 'en' && 'All Cities/Counties (Random)'}
+                    {state.language === 'ja' && 'すべての市区町村（ランダム）'}
+                    {state.language === 'ko' && '모든 시/군 (랜덤)'}
                   </option>
                   {regions.map(region => (
                     <option key={region.id} value={region.id}>
