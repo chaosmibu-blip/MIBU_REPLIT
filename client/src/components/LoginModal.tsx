@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Language } from '../types';
 import { TRANSLATIONS } from '../constants';
 import { GoogleLoginButton } from './GoogleLoginButton';
+import { ReplitLoginButton } from './ReplitLoginButton';
 import { X, User } from 'lucide-react';
 
 interface LoginModalProps {
@@ -14,19 +15,33 @@ interface LoginModalProps {
 
 export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, language }) => {
   const t = TRANSLATIONS[language];
-  const [loading, setLoading] = useState(false);
+  const [loadingGoogle, setLoadingGoogle] = useState(false);
+  const [loadingReplit, setLoadingReplit] = useState(false);
   const [showGuestInput, setShowGuestInput] = useState(false);
   const [guestName, setGuestName] = useState('');
 
   const handleGoogleLogin = () => {
-    setLoading(true);
-    // Simulate API delay
+    setLoadingGoogle(true);
     setTimeout(() => {
-      setLoading(false);
+      setLoadingGoogle(false);
       const mockUser = {
         name: 'Google User',
         email: 'user@gmail.com',
-        avatar: 'https://lh3.googleusercontent.com/a/default-user=s96-c' // Placeholder or generic Google avatar
+        avatar: 'https://lh3.googleusercontent.com/a/default-user=s96-c'
+      };
+      onLogin(mockUser.name, mockUser.email, mockUser.avatar);
+      onClose();
+    }, 1500);
+  };
+
+  const handleReplitLogin = () => {
+    setLoadingReplit(true);
+    setTimeout(() => {
+      setLoadingReplit(false);
+      const mockUser = {
+        name: 'Replit Hacker',
+        email: 'hacker@replit.com',
+        avatar: 'https://storage.googleapis.com/replit/images/1669917395724_44b0365851d87652701140049e685652.png'
       };
       onLogin(mockUser.name, mockUser.email, mockUser.avatar);
       onClose();
@@ -61,11 +76,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin
               <p className="text-slate-500 text-sm">{t.appTitle}</p>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3">
+              <ReplitLoginButton 
+                text={t.signInReplit} 
+                onClick={handleReplitLogin} 
+                isLoading={loadingReplit}
+              />
+              
               <GoogleLoginButton 
                 text={t.signInGoogle} 
                 onClick={handleGoogleLogin} 
-                isLoading={loading}
+                isLoading={loadingGoogle}
               />
 
               <div className="relative flex py-2 items-center">

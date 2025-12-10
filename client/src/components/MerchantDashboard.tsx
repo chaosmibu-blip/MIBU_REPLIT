@@ -3,6 +3,7 @@ import { Merchant, AppState, PlanTier, Rarity } from '../types';
 import { SUBSCRIPTION_PLANS, TRANSLATIONS } from '../constants';
 import { Store, CheckCircle, Upload, Plus, ShieldCheck } from 'lucide-react';
 import { GoogleLoginButton } from './GoogleLoginButton';
+import { ReplitLoginButton } from './ReplitLoginButton';
 
 interface MerchantDashboardProps {
   state: AppState;
@@ -13,15 +14,23 @@ interface MerchantDashboardProps {
 
 export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onLogin }) => {
   const [name, setName] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loadingGoogle, setLoadingGoogle] = useState(false);
+  const [loadingReplit, setLoadingReplit] = useState(false);
   const t = TRANSLATIONS[state.language];
 
   const handleGoogleLogin = () => {
-     setLoading(true);
+     setLoadingGoogle(true);
      setTimeout(() => {
-        setLoading(false);
-        // Mock Merchant
-        onLogin('Mibu Travel Store', 'merchant@mibu.com');
+        setLoadingGoogle(false);
+        onLogin('Mibu Travel Store (Google)', 'merchant@google.com');
+     }, 1500);
+  };
+
+  const handleReplitLogin = () => {
+     setLoadingReplit(true);
+     setTimeout(() => {
+        setLoadingReplit(false);
+        onLogin('Mibu Travel Store (Replit)', 'merchant@replit.com');
      }, 1500);
   };
   
@@ -36,11 +45,17 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
           <p className="text-slate-500 text-sm">{t.manageStore}</p>
         </div>
         
-        <div className="space-y-4">
+        <div className="space-y-3">
+          <ReplitLoginButton 
+             text={t.signInReplit} 
+             onClick={handleReplitLogin} 
+             isLoading={loadingReplit}
+          />
+          
           <GoogleLoginButton 
              text={t.signInGoogle} 
              onClick={handleGoogleLogin} 
-             isLoading={loading}
+             isLoading={loadingGoogle}
           />
           
           <div className="relative flex py-2 items-center">

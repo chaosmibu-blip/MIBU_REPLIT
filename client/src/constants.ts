@@ -143,6 +143,7 @@ export const TRANSLATIONS = {
     benefitSlots: '更多上架欄位',
     viewPlans: '查看方案',
     signInGoogle: '使用 Google 登入',
+    signInReplit: '使用 Replit 登入',
     or: '或',
     guestLogin: '訪客登入',
     welcomeBack: '歡迎回來'
@@ -195,6 +196,7 @@ export const TRANSLATIONS = {
     benefitSlots: 'More Slots',
     viewPlans: 'View Plans',
     signInGoogle: 'Sign in with Google',
+    signInReplit: 'Sign in with Replit',
     or: 'or',
     guestLogin: 'Guest Login',
     welcomeBack: 'Welcome Back'
@@ -247,6 +249,7 @@ export const TRANSLATIONS = {
     benefitSlots: '枠数追加',
     viewPlans: 'プランを見る',
     signInGoogle: 'Googleでログイン',
+    signInReplit: 'Replitでログイン',
     or: 'または',
     guestLogin: 'ゲストログイン',
     welcomeBack: 'おかえりなさい'
@@ -299,6 +302,7 @@ export const TRANSLATIONS = {
     benefitSlots: '더 많은 슬롯',
     viewPlans: '요금제 보기',
     signInGoogle: 'Google로 로그인',
+    signInReplit: 'Replit으로 로그인',
     or: '또는',
     guestLogin: '게스트 로그인',
     welcomeBack: '환영합니다'
