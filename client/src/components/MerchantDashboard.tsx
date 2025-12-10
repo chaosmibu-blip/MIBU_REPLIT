@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
 import { Merchant, AppState, PlanTier, Rarity } from '../types';
-import { SUBSCRIPTION_PLANS, TRANSLATIONS } from '../constants';
-import { Store, CheckCircle, Upload, Plus, ShieldCheck } from 'lucide-react';
-import { GoogleLoginButton } from './GoogleLoginButton';
-import { ReplitLoginButton } from './ReplitLoginButton';
+import { SUBSCRIPTION_PLANS, TRANSLATIONS, RECUR_CONFIG } from '../constants';
+import { Store, CheckCircle, Plus, ShieldCheck, Crown, Sparkles } from 'lucide-react';
+
+declare global {
+  interface Window {
+    Recur: any;
+  }
+}
 
 interface MerchantDashboardProps {
   state: AppState;
@@ -12,26 +16,37 @@ interface MerchantDashboardProps {
   onClaim: (item: any) => void; 
 }
 
-export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onLogin }) => {
+export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onLogin, onUpdateMerchant }) => {
   const [name, setName] = useState('');
-  const [loadingGoogle, setLoadingGoogle] = useState(false);
-  const [loadingReplit, setLoadingReplit] = useState(false);
-  const t = TRANSLATIONS[state.language];
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const t = TRANSLATIONS[state.language] as any;
 
-  const handleGoogleLogin = () => {
-     setLoadingGoogle(true);
-     setTimeout(() => {
-        setLoadingGoogle(false);
-        onLogin('Mibu Travel Store (Google)', 'merchant@google.com');
-     }, 1500);
-  };
+  const handleUpgradeToPremium = async () => {
+    if (!window.Recur) {
+      alert('Payment system is loading, please try again.');
+      return;
+    }
 
-  const handleReplitLogin = () => {
-     setLoadingReplit(true);
-     setTimeout(() => {
-        setLoadingReplit(false);
-        onLogin('Mibu Travel Store (Replit)', 'merchant@replit.com');
-     }, 1500);
+    setIsCheckingOut(true);
+    
+    try {
+      const recur = window.Recur.init({
+        publishableKey: RECUR_CONFIG.PUBLISHABLE_KEY
+      });
+
+      const currentUrl = window.location.origin;
+      
+      await recur.redirectToCheckout({
+        productId: RECUR_CONFIG.PREMIUM_PLAN_ID,
+        successUrl: `${currentUrl}?payment_success=true&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${currentUrl}?payment_cancelled=true`,
+        customerEmail: state.currentMerchant?.email || undefined
+      });
+    } catch (error: any) {
+      console.error('Checkout error:', error);
+      alert('Payment error: ' + (error.message || 'Please try again'));
+      setIsCheckingOut(false);
+    }
   };
   
   if (state.view === 'merchant_login') {
@@ -46,17 +61,14 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
         </div>
         
         <div className="space-y-3">
-          <ReplitLoginButton 
-             text={t.signInReplit} 
-             onClick={handleReplitLogin} 
-             isLoading={loadingReplit}
-          />
-          
-          <GoogleLoginButton 
-             text={t.signInGoogle} 
-             onClick={handleGoogleLogin} 
-             isLoading={loadingGoogle}
-          />
+          <a 
+            href="/api/login"
+            className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors"
+            data-testid="button-merchant-auth"
+          >
+            <Store className="w-5 h-5" />
+            {t.signInReplit}
+          </a>
           
           <div className="relative flex py-2 items-center">
              <div className="flex-grow border-t border-slate-200"></div>
@@ -70,10 +82,12 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
             className="w-full p-4 bg-slate-50 rounded-xl font-bold"
             value={name}
             onChange={e => setName(e.target.value)}
+            data-testid="input-merchant-store-name"
           />
           <button
             onClick={() => onLogin(name, 'test@example.com')}
             className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800"
+            data-testid="button-merchant-guest"
           >
             {t.enterDashboard}
           </button>
@@ -85,18 +99,24 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
   // Dashboard View
   const merchant = state.currentMerchant;
   const plan = merchant ? SUBSCRIPTION_PLANS[merchant.subscriptionPlan] : SUBSCRIPTION_PLANS.free;
+  const isPremium = merchant?.subscriptionPlan === 'premium';
 
   return (
     <div className="pb-32 max-w-md mx-auto pt-20 px-4">
-      <div className="bg-slate-900 text-white rounded-3xl p-6 mb-6 relative overflow-hidden">
+      <div className={`${isPremium ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-slate-900'} text-white rounded-3xl p-6 mb-6 relative overflow-hidden`}>
+        {isPremium && (
+          <div className="absolute top-0 right-0 w-32 h-32 opacity-20">
+            <Crown className="w-full h-full" />
+          </div>
+        )}
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center">
-              <Store className="w-6 h-6" />
+              {isPremium ? <Crown className="w-6 h-6" /> : <Store className="w-6 h-6" />}
             </div>
             <div>
               <h2 className="font-bold text-lg">{merchant?.name}</h2>
-              <div className="inline-flex items-center gap-1 bg-indigo-500 px-2 py-0.5 rounded text-xs font-bold">
+              <div className={`inline-flex items-center gap-1 ${isPremium ? 'bg-white/20' : 'bg-indigo-500'} px-2 py-0.5 rounded text-xs font-bold`}>
                  <ShieldCheck className="w-3 h-3" />
                  {plan.name}
               </div>
@@ -119,27 +139,67 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
       <div className="space-y-4">
         <h3 className="font-black text-slate-800 text-lg">{t.activeCoupons}</h3>
         
-        <button className="w-full py-4 border-2 border-dashed border-slate-300 rounded-2xl text-slate-400 font-bold flex items-center justify-center gap-2 hover:bg-slate-50 hover:border-indigo-300 hover:text-indigo-500 transition-colors">
+        <button 
+          className="w-full py-4 border-2 border-dashed border-slate-300 rounded-2xl text-slate-400 font-bold flex items-center justify-center gap-2 hover:bg-slate-50 hover:border-indigo-300 hover:text-indigo-500 transition-colors"
+          data-testid="button-create-campaign"
+        >
           <Plus className="w-5 h-5" />
           {t.createCampaign}
         </button>
 
-        {/* Upgrade Callout */}
+        {/* Upgrade Callout - only show for free users */}
         {merchant?.subscriptionPlan === 'free' && (
-           <div className="bg-gradient-to-r from-amber-200 to-orange-200 p-6 rounded-3xl mt-8">
-             <h3 className="font-black text-amber-900 text-xl mb-2">{t.upgradeTitle}</h3>
-             <ul className="space-y-2 mb-4">
+           <div className="bg-gradient-to-r from-amber-100 to-orange-100 p-6 rounded-3xl mt-8 border border-amber-200">
+             <div className="flex items-center gap-2 mb-3">
+               <Sparkles className="w-6 h-6 text-amber-600" />
+               <h3 className="font-black text-amber-900 text-xl">{t.upgradeTitle}</h3>
+             </div>
+             <ul className="space-y-2 mb-5">
                <li className="flex items-center gap-2 text-amber-800 text-sm font-bold">
-                 <CheckCircle className="w-4 h-4" /> {t.benefitRarity}
+                 <CheckCircle className="w-4 h-4 text-amber-600" /> {t.benefitRarity}
                </li>
                <li className="flex items-center gap-2 text-amber-800 text-sm font-bold">
-                 <CheckCircle className="w-4 h-4" /> {t.benefitSlots}
+                 <CheckCircle className="w-4 h-4 text-amber-600" /> {t.benefitSlots}
+               </li>
+               <li className="flex items-center gap-2 text-amber-800 text-sm font-bold">
+                 <CheckCircle className="w-4 h-4 text-amber-600" /> SSR/SP 大獎優惠券
+               </li>
+               <li className="flex items-center gap-2 text-amber-800 text-sm font-bold">
+                 <CheckCircle className="w-4 h-4 text-amber-600" /> 無限發行額度
                </li>
              </ul>
-             <button className="w-full py-3 bg-white/50 text-amber-900 font-black rounded-xl hover:bg-white/80">
-               {t.viewPlans}
+             <button 
+               onClick={handleUpgradeToPremium}
+               disabled={isCheckingOut}
+               className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-black rounded-xl hover:from-amber-600 hover:to-orange-600 transition-all shadow-lg shadow-amber-200 disabled:opacity-50 flex items-center justify-center gap-2"
+               data-testid="button-upgrade-premium"
+             >
+               {isCheckingOut ? (
+                 <>
+                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                   處理中...
+                 </>
+               ) : (
+                 <>
+                   <Crown className="w-5 h-5" />
+                   升級 Premium - NT$1,499/月
+                 </>
+               )}
              </button>
            </div>
+        )}
+
+        {/* Premium Badge */}
+        {isPremium && (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-2xl border border-amber-200 flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center">
+              <Crown className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <div className="font-bold text-amber-900">Premium 會員</div>
+              <div className="text-xs text-amber-700">享有所有進階功能</div>
+            </div>
+          </div>
         )}
       </div>
     </div>

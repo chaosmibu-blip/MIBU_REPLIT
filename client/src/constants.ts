@@ -5,7 +5,7 @@ export const DEFAULT_LEVEL = 5;
 export const MAX_DAILY_GENERATIONS = 3;
 
 export const RECUR_CONFIG = {
-  PUBLISHABLE_KEY: 'pk_live_395cc2a1db55e03a0073d6cf31f4c30bb230124c1b44f2bb5f2b5ee0dd09d46e', 
+  PUBLISHABLE_KEY: 'pk_test_95b6695679feee448947ab70433b9628b2006e056c71d49fc251e1323a81468f', 
   PREMIUM_PLAN_ID: 'adkwbl9dya0wc6b53parl9yk' 
 };
 
