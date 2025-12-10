@@ -202,6 +202,55 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
           </div>
         )}
 
+        {/* Itinerary Length Slider */}
+        {selectedCountryId && (
+          <div className="space-y-3">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">
+              {state.language === 'zh-TW' && '行程數量'}
+              {state.language === 'en' && 'Itinerary Length'}
+              {state.language === 'ja' && '行程の長さ'}
+              {state.language === 'ko' && '행정 길이'}
+            </label>
+            <div className="space-y-3">
+              <input
+                type="range"
+                min="5"
+                max="12"
+                value={state.level}
+                onChange={(e) => onUpdate({ level: parseInt(e.target.value) })}
+                className="w-full h-2 bg-gradient-to-r from-blue-200 to-indigo-300 rounded-lg appearance-none cursor-pointer"
+                style={{
+                  background: `linear-gradient(to right, rgb(191, 219, 254) 0%, rgb(191, 219, 254) ${((state.level - 5) / 7) * 100}%, rgb(199, 210, 254) ${((state.level - 5) / 7) * 100}%, rgb(199, 210, 254) 100%)`
+                }}
+                data-testid="slider-level"
+              />
+              <div className="flex justify-between px-1">
+                <span className="text-xs font-bold text-slate-500">
+                  {state.language === 'zh-TW' && '悠閒'}
+                  {state.language === 'en' && 'Relaxed'}
+                  {state.language === 'ja' && 'リラックス'}
+                  {state.language === 'ko' && '여유로운'}
+                </span>
+                <span className="text-xs font-bold text-slate-500">
+                  {state.language === 'zh-TW' && '標準'}
+                  {state.language === 'en' && 'Standard'}
+                  {state.language === 'ja' && '標準'}
+                  {state.language === 'ko' && '표준'}
+                </span>
+                <span className="text-xs font-bold text-slate-500">
+                  {state.language === 'zh-TW' && '充實'}
+                  {state.language === 'en' && 'Packed'}
+                  {state.language === 'ja' && '充実'}
+                  {state.language === 'ko' && '알찬'}
+                </span>
+              </div>
+              <div className="text-center">
+                <span className="text-sm font-bold text-indigo-600">{state.level} {state.language === 'zh-TW' ? '項行程' : state.language === 'en' ? 'items' : state.language === 'ja' ? '項目' : '항목'}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Submit Button */}
         <motion.button
           whileHover={{ scale: 1.02 }}
