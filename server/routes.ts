@@ -7,6 +7,7 @@ import { z } from "zod";
 
 const RECUR_API_URL = "https://api.recur.tw/v1";
 const RECUR_PREMIUM_PLAN_ID = "adkwbl9dya0wc6b53parl9yk";
+const UNLIMITED_GENERATION_EMAILS = ["s8869420@gmail.com"];
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth
@@ -23,6 +24,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Check if user has unlimited generation privilege
+  app.get('/api/auth/privileges', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const hasUnlimitedGeneration = user?.email && UNLIMITED_GENERATION_EMAILS.includes(user.email);
+      res.json({ hasUnlimitedGeneration });
+    } catch (error) {
+      res.json({ hasUnlimitedGeneration: false });
     }
   });
 

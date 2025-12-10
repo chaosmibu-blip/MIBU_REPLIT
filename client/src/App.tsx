@@ -199,11 +199,22 @@ const App: React.FC = () => {
   };
 
   const handlePull = async () => {
+    let isUnlimitedUser = false;
+    if (isAuthenticated) {
+      try {
+        const res = await fetch('/api/auth/privileges');
+        if (res.ok) {
+          const data = await res.json();
+          isUnlimitedUser = data.hasUnlimitedGeneration || false;
+        }
+      } catch (e) {}
+    }
+    
     const today = new Date().toISOString().split('T')[0];
     const rawLimit = localStorage.getItem(STORAGE_KEYS.DAILY_LIMIT);
     let currentCount = 0;
     if (rawLimit) { try { const parsed = JSON.parse(rawLimit); if (parsed.date === today) currentCount = parsed.count; } catch (e) {} }
-    if (currentCount >= MAX_DAILY_GENERATIONS) { alert(`${t.dailyLimitReached}\n${t.dailyLimitReachedDesc}`); return; }
+    if (!isUnlimitedUser && currentCount >= MAX_DAILY_GENERATIONS) { alert(`${t.dailyLimitReached}\n${t.dailyLimitReachedDesc}`); return; }
 
     setState(prev => ({ ...prev, loading: true, error: null, celebrationCoupons: [] }));
     try {
