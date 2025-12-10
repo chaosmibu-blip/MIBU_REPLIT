@@ -88,17 +88,17 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
         {/* Upgrade Callout */}
         {merchant?.subscriptionPlan === 'free' && (
            <div className="bg-gradient-to-r from-amber-200 to-orange-200 p-6 rounded-3xl mt-8">
-             <h3 className="font-black text-amber-900 text-xl mb-2">Upgrade to Partner</h3>
+             <h3 className="font-black text-amber-900 text-xl mb-2">{t.upgradeTitle}</h3>
              <ul className="space-y-2 mb-4">
                <li className="flex items-center gap-2 text-amber-800 text-sm font-bold">
-                 <CheckCircle className="w-4 h-4" /> Higher Rarity (SR)
+                 <CheckCircle className="w-4 h-4" /> {t.benefitRarity}
                </li>
                <li className="flex items-center gap-2 text-amber-800 text-sm font-bold">
-                 <CheckCircle className="w-4 h-4" /> More Slots
+                 <CheckCircle className="w-4 h-4" /> {t.benefitSlots}
                </li>
              </ul>
              <button className="w-full py-3 bg-white/50 text-amber-900 font-black rounded-xl hover:bg-white/80">
-               View Plans
+               {t.viewPlans}
              </button>
            </div>
         )}

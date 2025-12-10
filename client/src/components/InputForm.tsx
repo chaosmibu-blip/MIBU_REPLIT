@@ -35,7 +35,7 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
                onChange={(e) => onUpdate({ country: e.target.value, city: '' })}
                className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-indigo-200 appearance-none"
              >
-               <option value="" disabled>Select Country</option>
+               <option value="" disabled>{t.selectDestination}</option>
                {countries.map(c => (
                  <option key={c} value={c}>
                    {LOCATION_DATA[c].names[state.language]}

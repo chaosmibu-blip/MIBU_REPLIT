@@ -103,6 +103,7 @@ export const TRANSLATIONS = {
     appTitle: 'MIBU 行程',
     appSubtitle: 'AI 旅遊扭蛋',
     destination: '目的地',
+    selectDestination: '選擇目的地',
     city: '城市',
     selectCity: '選擇城市',
     intensity: '行程強度',
@@ -137,6 +138,10 @@ export const TRANSLATIONS = {
     impressions: '曝光次數',
     redeems: '兌換次數',
     login: '登入',
+    upgradeTitle: '升級為合作夥伴',
+    benefitRarity: '發行更高稀有度 (SR)',
+    benefitSlots: '更多上架欄位',
+    viewPlans: '查看方案'
   },
   'en': {
     dailyLimitReached: 'Daily Limit Reached',
@@ -146,6 +151,7 @@ export const TRANSLATIONS = {
     appTitle: 'MIBU TRIP',
     appSubtitle: 'AI Travel Gacha',
     destination: 'Destination',
+    selectDestination: 'Select Destination',
     city: 'City',
     selectCity: 'Select City',
     intensity: 'Intensity Level',
@@ -180,6 +186,10 @@ export const TRANSLATIONS = {
     impressions: 'Impressions',
     redeems: 'Redeems',
     login: 'Login',
+    upgradeTitle: 'Upgrade to Partner',
+    benefitRarity: 'Higher Rarity (SR)',
+    benefitSlots: 'More Slots',
+    viewPlans: 'View Plans'
   },
   'ja': {
     dailyLimitReached: '本日の上限に達しました',
@@ -189,6 +199,7 @@ export const TRANSLATIONS = {
     appTitle: 'MIBU 旅ガチャ',
     appSubtitle: 'AI トラベルガチャ',
     destination: '目的地',
+    selectDestination: '目的地を選択',
     city: '都市',
     selectCity: '都市を選択',
     intensity: '旅行スタイル',
@@ -223,6 +234,10 @@ export const TRANSLATIONS = {
     impressions: '表示回数',
     redeems: '利用回数',
     login: 'ログイン',
+    upgradeTitle: 'パートナーにアップグレード',
+    benefitRarity: '高レアリティ (SR) 解放',
+    benefitSlots: '枠数追加',
+    viewPlans: 'プランを見る'
   },
   'ko': {
     dailyLimitReached: '일일 한도 도달',
@@ -232,6 +247,7 @@ export const TRANSLATIONS = {
     appTitle: 'MIBU 트립',
     appSubtitle: 'AI 여행 가챠',
     destination: '목적지',
+    selectDestination: '목적지 선택',
     city: '도시',
     selectCity: '도시 선택',
     intensity: '여행 강도',
@@ -266,6 +282,10 @@ export const TRANSLATIONS = {
     impressions: '노출 수',
     redeems: '사용 수',
     login: '로그인',
+    upgradeTitle: '파트너로 업그레이드',
+    benefitRarity: '더 높은 희귀도 (SR)',
+    benefitSlots: '더 많은 슬롯',
+    viewPlans: '요금제 보기'
   }
 };
 
