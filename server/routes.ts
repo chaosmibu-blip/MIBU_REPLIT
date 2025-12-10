@@ -215,15 +215,202 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return districts[randomIndex];
   }
 
-  // ============ Gemini AI Itinerary Generation ============
-  
-  function calculateQuota(K: number) {
+  // ============ Category & Sub-category Data ============
+  const CATEGORY_DATA: Record<string, { subCategories: string[]; weight: number; timeSlots: string[] }> = {
+    '食': {
+      subCategories: ['火鍋', '小吃', '異國料理', '日式料理', '中式料理', '西式料理', '咖啡廳', '甜點', '夜市美食', '素食', '海鮮', '燒烤', '拉麵', '鐵板燒', '牛排', '早午餐', '台式便當', '港式飲茶'],
+      weight: 3,
+      timeSlots: ['breakfast', 'lunch', 'tea_time', 'dinner', 'late_night']
+    },
+    '宿': {
+      subCategories: ['五星飯店', '商務旅館', '民宿', '青年旅社', '溫泉旅館', '設計旅店', '膠囊旅館', '度假村'],
+      weight: 0,
+      timeSlots: ['overnight']
+    },
+    '生態文化教育': {
+      subCategories: ['博物館', '美術館', '科學館', '歷史古蹟', '文化中心', '圖書館', '紀念館', '展覽館'],
+      weight: 2,
+      timeSlots: ['morning', 'afternoon']
+    },
+    '遊程體驗': {
+      subCategories: ['導覽行程', '手作體驗', '烹飪課程', '文化體驗', '農場體驗', '茶道體驗', '攝影之旅', '單車遊'],
+      weight: 2,
+      timeSlots: ['morning', 'afternoon']
+    },
+    '娛樂設施': {
+      subCategories: ['遊樂園', '電影院', 'KTV', '酒吧', '夜店', '桌遊店', '密室逃脫', '電玩中心'],
+      weight: 1,
+      timeSlots: ['afternoon', 'evening', 'night']
+    },
+    '活動': {
+      subCategories: ['登山健行', '水上活動', '極限運動', '瑜珈課程', '運動賽事', '音樂會', '市集活動', 'SPA按摩'],
+      weight: 2,
+      timeSlots: ['morning', 'afternoon', 'evening']
+    },
+    '景點': {
+      subCategories: ['自然風景', '地標建築', '公園綠地', '觀景台', '寺廟宗教', '老街', '海灘', '溫泉'],
+      weight: 3,
+      timeSlots: ['morning', 'afternoon', 'evening']
+    },
+    '購物': {
+      subCategories: ['百貨公司', '購物中心', '傳統市場', '商店街', '特色小店', '伴手禮店', '二手店', '藥妝店'],
+      weight: 1,
+      timeSlots: ['afternoon', 'evening']
+    }
+  };
+
+  const TIME_SLOT_ORDER = ['breakfast', 'morning', 'lunch', 'afternoon', 'tea_time', 'dinner', 'evening', 'night', 'late_night', 'overnight'];
+
+  interface SkeletonItem {
+    order: number;
+    category: string;
+    subCategory: string;
+    timeSlot: string;
+    suggestedTime: string;
+    energyLevel: 'high' | 'medium' | 'low';
+  }
+
+  function generateItinerarySkeleton(country: string, city: string, cardCount: number): {
+    targetDistrict: string;
+    userRequestCount: number;
+    generatedCount: number;
+    skeleton: SkeletonItem[];
+  } {
+    const K = Math.min(12, Math.max(5, cardCount));
+    
+    const lockedDistrict = getRandomDistrict(country, city) || city;
+    
     const stayCount = K >= 8 ? 1 : 0;
     let foodMin = 2;
     if (K >= 7 && K <= 8) foodMin = 3;
     if (K >= 9) foodMin = 4;
-    return { stayCount, foodMin };
+    
+    const skeleton: SkeletonItem[] = [];
+    const usedSubCategories = new Set<string>();
+    
+    function pickSubCategory(category: string): string {
+      const subs = CATEGORY_DATA[category].subCategories;
+      const available = subs.filter(s => !usedSubCategories.has(`${category}:${s}`));
+      if (available.length === 0) {
+        return subs[Math.floor(Math.random() * subs.length)];
+      }
+      const picked = available[Math.floor(Math.random() * available.length)];
+      usedSubCategories.add(`${category}:${picked}`);
+      return picked;
+    }
+
+    const foodTimeSlots = ['breakfast', 'lunch', 'dinner', 'tea_time', 'late_night'];
+    let foodSlotIndex = 0;
+    for (let i = 0; i < foodMin; i++) {
+      skeleton.push({
+        order: 0,
+        category: '食',
+        subCategory: pickSubCategory('食'),
+        timeSlot: foodTimeSlots[foodSlotIndex % foodTimeSlots.length],
+        suggestedTime: '',
+        energyLevel: 'low'
+      });
+      foodSlotIndex++;
+    }
+
+    if (stayCount > 0) {
+      skeleton.push({
+        order: 0,
+        category: '宿',
+        subCategory: pickSubCategory('宿'),
+        timeSlot: 'overnight',
+        suggestedTime: '22:00',
+        energyLevel: 'low'
+      });
+    }
+
+    const remainingSlots = K - skeleton.length;
+    const fillableCategories = ['生態文化教育', '遊程體驗', '娛樂設施', '活動', '景點', '購物'];
+    const weights = fillableCategories.map(c => CATEGORY_DATA[c].weight);
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+
+    let lastActivityCount = 0;
+    const activityCategories = ['生態文化教育', '遊程體驗', '活動', '景點'];
+
+    for (let i = 0; i < remainingSlots; i++) {
+      let selectedCategory: string;
+      
+      if (lastActivityCount >= 2) {
+        const restCategories = ['食', '購物'];
+        selectedCategory = restCategories[Math.floor(Math.random() * restCategories.length)];
+        lastActivityCount = 0;
+      } else {
+        const rand = Math.random() * totalWeight;
+        let cumulative = 0;
+        selectedCategory = fillableCategories[0];
+        for (let j = 0; j < fillableCategories.length; j++) {
+          cumulative += weights[j];
+          if (rand < cumulative) {
+            selectedCategory = fillableCategories[j];
+            break;
+          }
+        }
+      }
+
+      if (activityCategories.includes(selectedCategory)) {
+        lastActivityCount++;
+      } else {
+        lastActivityCount = 0;
+      }
+
+      const validSlots = CATEGORY_DATA[selectedCategory].timeSlots;
+      const timeSlot = validSlots[Math.floor(Math.random() * validSlots.length)];
+
+      let energyLevel: 'high' | 'medium' | 'low' = 'medium';
+      if (['活動', '遊程體驗'].includes(selectedCategory)) {
+        energyLevel = 'high';
+      } else if (['食', '購物', '宿'].includes(selectedCategory)) {
+        energyLevel = 'low';
+      }
+
+      skeleton.push({
+        order: 0,
+        category: selectedCategory,
+        subCategory: pickSubCategory(selectedCategory),
+        timeSlot: timeSlot,
+        suggestedTime: '',
+        energyLevel: energyLevel
+      });
+    }
+
+    skeleton.sort((a, b) => {
+      const aIdx = TIME_SLOT_ORDER.indexOf(a.timeSlot);
+      const bIdx = TIME_SLOT_ORDER.indexOf(b.timeSlot);
+      return aIdx - bIdx;
+    });
+
+    const timeMap: Record<string, string> = {
+      'breakfast': '08:00',
+      'morning': '10:00',
+      'lunch': '12:30',
+      'afternoon': '14:30',
+      'tea_time': '16:00',
+      'dinner': '18:30',
+      'evening': '20:00',
+      'night': '21:30',
+      'late_night': '22:30',
+      'overnight': '23:00'
+    };
+
+    skeleton.forEach((item, idx) => {
+      item.order = idx + 1;
+      item.suggestedTime = timeMap[item.timeSlot] || '12:00';
+    });
+
+    return {
+      targetDistrict: lockedDistrict,
+      userRequestCount: cardCount,
+      generatedCount: skeleton.length,
+      skeleton: skeleton
+    };
   }
+
+  // ============ Gemini AI Itinerary Generation ============
 
   app.post("/api/generate-itinerary", async (req, res) => {
     try {
@@ -238,44 +425,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const outputLang = langMap[language] || 'English';
       
       const itemCount = Math.min(12, Math.max(5, Math.floor(level * 1.2)));
-      const { stayCount, foodMin } = calculateQuota(itemCount);
       
-      const lockedDistrict = getRandomDistrict(country, city);
-      
-      const prompt = `You are a professional travel planner AI. Generate a realistic ${itemCount}-item day trip itinerary for ${city}, ${country}.
+      const skeletonResult = generateItinerarySkeleton(country, city, itemCount);
+      const { targetDistrict, skeleton } = skeletonResult;
 
-【地理範圍鎖定】
-All recommendations MUST be in "${lockedDistrict || city}" district/area (within 5-10km radius). Avoid large transportation gaps.
+      const categoryMap: Record<string, string> = {
+        '食': 'Food', '宿': 'Stay', '生態文化教育': 'Education',
+        '遊程體驗': 'Activity', '娛樂設施': 'Entertainment',
+        '活動': 'Activity', '景點': 'Scenery', '購物': 'Shopping'
+      };
 
-【配額系統 Quota Rules】
-Total items: ${itemCount}
-- 住宿 (Stay): ${stayCount} item(s) ${stayCount === 0 ? '(NOT allowed for this trip length)' : '(place at END of itinerary)'}
-- 餐飲 (Food): minimum ${foodMin} items (breakfast/lunch/dinner/snacks as appropriate)
-- Remaining slots: Fill with Scenery, Shopping, Entertainment, Education, Activity
+      const skeletonInstructions = skeleton.map((item, idx) => 
+        `${idx + 1}. [${item.timeSlot}] ${categoryMap[item.category] || item.category} - ${item.subCategory} (${item.suggestedTime}, energy: ${item.energyLevel})`
+      ).join('\n');
 
-【時間插槽模式 Time-Slot Framework】
-Arrange items in this logical order:
-1. 早餐 (06:00-10:00) - Food (breakfast)
-2. 上午活動 (10:00-12:00) - Scenery/Education/Activity
-3. 午餐 (12:00-14:00) - Food (lunch)
-4. 下午活動 (14:00-17:00) - Scenery/Shopping/Activity
-5. 下午茶 (15:00-17:00) - Food (optional snack/cafe)
-6. 晚餐 (18:00-20:00) - Food (dinner)
-7. 晚間活動 (20:00-23:00) - Entertainment/Shopping (night markets, bars)
-8. 住宿 (if applicable) - Stay (MUST be last item)
+      const prompt = `You are a professional travel planner AI. Fill in REAL place names for this itinerary skeleton in ${city}, ${country}.
 
-【營業時間檢核 Operating Hours】
-- Education (museums, galleries): Schedule between 09:00-17:00 ONLY
-- Entertainment (bars, nightlife): Schedule after 18:00
-- Stay: Must be the LAST item in the itinerary
+【目標區域 Target District】
+All places MUST be in "${targetDistrict}" district (within 5-10km radius).
 
-【多樣性規則 Variety Rules】
-- Food sub-categories must NOT repeat (e.g., if "火鍋" is picked, next food cannot be "火鍋", pick "拉麵" or "咖啡廳")
-- Activity categories (Scenery, Education, Activity) should NOT appear consecutively more than 2 times
-- Insert Food or Shopping between consecutive activity items as "rest buffer"
+【行程骨架 Itinerary Skeleton - FOLLOW THIS EXACTLY】
+${skeletonInstructions}
 
-【動靜穿插 Pacing】
-After high-energy activities (hiking, amusement parks), recommend low-energy options (cafe, scenic viewing, shopping)
+【任務說明 Your Task】
+For each skeleton slot above, find a REAL, existing place in ${targetDistrict} that matches:
+- The category and sub-category specified
+- The time slot and energy level
+- Must be an actual business/location that exists
+
+【排除清單 Exclusions】
+Do NOT include: ${collectedNames.length > 0 ? collectedNames.join(', ') : 'none'}
 
 【稀有度分配 Rarity】
 - SP (5%): Legendary experiences
@@ -283,9 +462,6 @@ After high-energy activities (hiking, amusement parks), recommend low-energy opt
 - SR (15%): Special places worth visiting
 - S (25%): Good quality spots
 - R (45%): Nice everyday places
-
-【排除清單】
-Do NOT include: ${collectedNames.length > 0 ? collectedNames.join(', ') : 'none'}
 
 Output language: ${outputLang}
 Output ONLY valid JSON, no markdown, no explanation.
@@ -296,31 +472,31 @@ Output ONLY valid JSON, no markdown, no explanation.
     "date": "${new Date().toISOString().split('T')[0]}",
     "country": "${country}",
     "city": "${city}",
-    "locked_district": "${lockedDistrict || city}",
+    "locked_district": "${targetDistrict}",
     "user_level": ${level},
-    "total_items": ${itemCount}
+    "total_items": ${skeleton.length}
   },
   "inventory": [
-    {
-      "id": 1,
-      "place_name": "Real place name in ${outputLang}",
+${skeleton.map((item, idx) => `    {
+      "id": ${idx + 1},
+      "place_name": "REAL place name for ${item.subCategory} in ${targetDistrict}",
       "description": "2-3 sentence description",
-      "category": "Food|Stay|Scenery|Shopping|Entertainment|Education|Activity",
-      "sub_category": "specific type (e.g., 拉麵, 咖啡廳, 博物館, 夜市)",
-      "suggested_time": "HH:MM",
-      "duration": "X.X hours",
-      "time_slot": "breakfast|morning|lunch|afternoon|tea_time|dinner|evening|night",
+      "category": "${categoryMap[item.category] || item.category}",
+      "sub_category": "${item.subCategory}",
+      "suggested_time": "${item.suggestedTime}",
+      "duration": "1-2 hours",
+      "time_slot": "${item.timeSlot}",
       "search_query": "place name ${city}",
       "rarity": "R|S|SR|SSR|SP",
       "color_hex": "#6366f1",
       "city": "${city}",
       "country": "${country}",
-      "district": "${lockedDistrict || ''}",
-      "energy_level": "high|medium|low",
+      "district": "${targetDistrict}",
+      "energy_level": "${item.energyLevel}",
       "is_coupon": false,
       "coupon_data": null,
       "operating_status": "OPEN"
-    }
+    }`).join(',\n')}
   ]
 }`;
 
