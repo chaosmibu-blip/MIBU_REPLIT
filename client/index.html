@@ -12,6 +12,7 @@
     
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/app-icon.jpg" />
+    <link rel="manifest" href="/manifest.json" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,600&display=swap" rel="stylesheet">
     
     <!-- Recur SDK for subscription payments -->
@@ -21,10 +22,22 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Simple service worker registration placeholder
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          // navigator.serviceWorker.register('/service-worker.js').catch(console.error);
+          navigator.serviceWorker.register('/service-worker.js')
+            .then((registration) => {
+              registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                if (newWorker) {
+                  newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'activated') {
+                      window.location.reload();
+                    }
+                  });
+                }
+              });
+            })
+            .catch(console.error);
         });
       }
     </script>
