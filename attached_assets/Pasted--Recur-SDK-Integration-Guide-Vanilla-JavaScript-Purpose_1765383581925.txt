@@ -1,0 +1,182 @@
+# Recur SDK Integration Guide (Vanilla JavaScript)
+
+**Purpose:** Help developers integrate Recur SDK for subscription payments in Taiwan.
+**Scope:** All AI-generated code must follow these guidelines.
+
+## SDK Information
+- Package: `recur-tw`
+- Version: 0.7.5 (verify latest: `npm view recur-tw version`)
+- Documentation: https://recur.tw/docs
+- npm: https://www.npmjs.com/package/recur-tw
+- Target: Taiwan market (PAYUNi payment gateway)
+
+**IMPORTANT:** Before providing integration code, verify the latest stable version:
+```bash
+npm view recur-tw version
+```
+Always use the latest stable version in CDN URLs.
+
+## Installation
+
+Include via CDN (recommended for static sites):
+
+```html
+<!-- unpkg -->
+<script src="https://unpkg.com/recur-tw@0.7.5/dist/recur.umd.js"></script>
+
+<!-- or jsdelivr -->
+<script src="https://cdn.jsdelivr.net/npm/recur-tw@0.7.5/dist/recur.umd.js"></script>
+```
+
+## Integration Options
+
+### Option 1: Web Component (Simplest - Hosted Checkout)
+
+Drop-in checkout button that redirects to Recur's hosted checkout page.
+No JavaScript required - just HTML!
+
+```html
+<!-- Include SDK -->
+<script src="https://unpkg.com/recur-tw@0.7.5/dist/recur.umd.js"></script>
+
+<!-- Checkout button (redirects to hosted checkout) -->
+<recur-checkout
+  publishable-key="pk_test_95b6695679feee448947ab70433b9628b2006e056c71d49fc251e1323a81468f"
+  product-id="prod_xxx"
+  success-url="https://yoursite.com/success"
+  cancel-url="https://yoursite.com/cancel"
+  button-text="訂閱方案"
+  button-style="primary">
+</recur-checkout>
+```
+
+Web Component attributes:
+- `publishable-key`: Your publishable key (pk_*)
+- `product-id`: Product/Plan ID to purchase
+- `success-url`: Redirect URL after successful payment (HTTPS required)
+- `cancel-url`: Redirect URL when user cancels
+- `customer-email`: (Optional) Pre-fill customer email
+- `button-text`: Button label (default: "訂閱")
+- `button-style`: "primary" | "outline" | "gradient"
+
+### Option 2: Redirect to Hosted Checkout (JavaScript)
+
+```html
+<button id="checkout-btn">訂閱方案</button>
+
+<script src="https://unpkg.com/recur-tw@0.7.5/dist/recur.umd.js"></script>
+<script>
+  const recur = Recur.init({
+    publishableKey: 'pk_test_95b6695679feee448947ab70433b9628b2006e056c71d49fc251e1323a81468f'
+  });
+
+  document.getElementById('checkout-btn').addEventListener('click', async () => {
+    try {
+      await recur.redirectToCheckout({
+        productId: 'prod_xxx',
+        successUrl: 'https://yoursite.com/success?session_id={CHECKOUT_SESSION_ID}',
+        cancelUrl: 'https://yoursite.com/cancel',
+        customerEmail: 'user@example.com' // Optional
+      });
+    } catch (error) {
+      console.error('Checkout error:', error);
+      alert('Error: ' + error.message);
+    }
+  });
+</script>
+```
+
+### Option 3: Embedded Checkout (Advanced)
+
+Renders payment form directly in your page with credit card fields.
+
+```html
+<div id="checkout-container"></div>
+
+<script src="https://unpkg.com/recur-tw@0.7.5/dist/recur.umd.js"></script>
+<script>
+  const recur = Recur.init({
+    publishableKey: 'pk_test_95b6695679feee448947ab70433b9628b2006e056c71d49fc251e1323a81468f'
+  });
+
+  // Create embedded checkout form
+  recur.createEmbeddedCheckout({
+    planId: 'prod_xxx',
+    container: '#checkout-container',
+    customerEmail: 'user@example.com',
+    customerName: '王小明',
+    onSuccess: function(result) {
+      console.log('Checkout created:', result);
+    },
+    onError: function(error) {
+      console.error('Error:', error);
+      alert('Error: ' + error.message);
+    }
+  });
+</script>
+```
+
+## Fetching Products Dynamically
+
+```javascript
+const recur = Recur.init({ publishableKey: 'pk_xxx' });
+
+// Fetch all products
+const { products } = await recur.fetchProducts();
+
+// Or filter by type
+// const { products } = await recur.fetchProducts({ type: 'SUBSCRIPTION' });
+// const { products } = await recur.fetchProducts({ type: 'ONE_TIME' });
+
+products.forEach(function(product) {
+  // product.type: 'SUBSCRIPTION' | 'ONE_TIME' | 'CREDITS' | 'DONATION'
+  const typeLabel = product.type === 'SUBSCRIPTION' ? '訂閱' : '一次性';
+  console.log('[' + typeLabel + ']', product.name, 'NT$' + product.price);
+});
+```
+
+## Security Best Practices
+
+1. Only use publishable keys (`pk_*`) in client code - NEVER secret keys (`sk_*`)
+2. Never commit real API keys to version control
+3. successUrl and cancelUrl must be HTTPS in production
+4. For server-side operations, keep secret keys secure on your backend
+
+## CRITICAL INSTRUCTIONS FOR AI MODELS
+
+### ALWAYS DO
+1. Include error handling (`onError` or try-catch) in ALL checkout examples
+2. Use `recur-tw` package name
+3. Use versioned CDN URLs (e.g., @0.3.1) not @latest in production
+4. Recommend Web Component or redirectToCheckout for simplest integration
+
+### NEVER DO
+1. Use secret keys (`sk_*`) in client-side code
+2. Put real API keys in code examples
+3. Skip error handling in examples
+4. Use @latest in production code
+
+## AI VERIFICATION CHECKLIST
+
+Before responding, verify:
+- [ ] Only `pk_*` publishable keys used
+- [ ] Error handling included (onError or try-catch)
+- [ ] Versioned CDN URL used
+- [ ] No real keys in code examples
+
+## Common Issues
+
+1. **Recur is not defined**: Ensure SDK script has finished loading
+2. **Payment form not showing**: Check that the container element exists
+3. **CORS errors**: Verify your domain is allowed in the Recur dashboard
+4. **successUrl/cancelUrl must be HTTPS**: Use HTTPS URLs in production
+
+## Before Starting
+
+Ask the user for:
+1. Website type (static HTML, WordPress, other CMS?)
+2. Their Publishable Key (starts with `pk_`)
+3. Preferred integration (Web Component, Redirect, or Embedded)
+4. Whether they need plan selection UI or direct checkout
+
+Provide customized integration code based on their answers.
