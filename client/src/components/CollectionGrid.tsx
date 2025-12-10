@@ -9,14 +9,8 @@ interface CollectionGridProps {
 }
 
 const getContent = (content: any, lang: Language): string => {
-  if (!content) return '';
   if (typeof content === 'string') return content;
-  return content[lang] || content['en'] || content['zh-TW'] || '';
-};
-
-const getPlaceName = (item: any, lang: Language): string => {
-  const placeName = item.place_name || item.placeName;
-  return getContent(placeName, lang);
+  return content[lang] || content['en'] || '';
 };
 
 export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language }) => {
@@ -52,14 +46,14 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
                 {item.rarity}
               </span>
               <h4 className="font-bold text-sm text-slate-800 line-clamp-2">
-                {getPlaceName(item, language)}
+                {getContent(item.place_name, language)}
               </h4>
             </div>
             <div className="text-[10px] text-slate-400 font-medium">
-               {new Date(item.collected_at || (item as any).collectedAt || Date.now()).toLocaleDateString()}
+               {new Date(item.collected_at || Date.now()).toLocaleDateString()}
             </div>
           </div>
-          {(item.is_coupon || (item as any).isCoupon) && (
+          {item.is_coupon && (
             <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
           )}
         </div>

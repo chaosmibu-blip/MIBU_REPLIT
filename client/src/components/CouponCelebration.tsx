@@ -11,20 +11,8 @@ interface CouponCelebrationProps {
 }
 
 const getContent = (content: any, lang: Language): string => {
-  if (!content) return '';
   if (typeof content === 'string') return content;
-  return content[lang] || content['en'] || content['zh-TW'] || '';
-};
-
-const getPlaceName = (item: any, lang: Language): string => {
-  const placeName = item.place_name || item.placeName;
-  return getContent(placeName, lang);
-};
-
-const getCouponTitle = (item: any, lang: Language): string => {
-  const couponData = item.coupon_data || item.couponData;
-  if (!couponData) return '';
-  return getContent(couponData.title, lang);
+  return content[lang] || content['en'] || '';
 };
 
 export const CouponCelebration: React.FC<CouponCelebrationProps> = ({ items, language, onClose }) => {
@@ -64,8 +52,8 @@ export const CouponCelebration: React.FC<CouponCelebrationProps> = ({ items, lan
         <p className="text-slate-500 mb-6 font-medium">{t.foundCoupon}</p>
 
         <div className="bg-white rounded-2xl p-4 border-2 border-dashed border-indigo-200 mb-8">
-           <h3 className="font-bold text-lg text-indigo-900 mb-1">{getCouponTitle(bestItem, language)}</h3>
-           <p className="text-sm text-slate-400">{getPlaceName(bestItem, language)}</p>
+           <h3 className="font-bold text-lg text-indigo-900 mb-1">{getContent(bestItem.coupon_data?.title, language)}</h3>
+           <p className="text-sm text-slate-400">{getContent(bestItem.place_name, language)}</p>
         </div>
 
         <button 

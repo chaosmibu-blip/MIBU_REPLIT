@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { generateGachaItinerary } from './services/geminiService';
-import { AppState, Language, User, GachaItem, AppView, Merchant } from './types';
+import { useAuth } from './hooks/useAuth';
+import { AppState, Language, GachaItem, AppView, Merchant } from './types';
 import { InputForm } from './components/InputForm';
 import { GachaScene } from './components/GachaScene';
 import { ResultList } from './components/ResultList';
@@ -10,18 +11,20 @@ import { BottomNav } from './components/BottomNav';
 import { CouponCelebration } from './components/CouponCelebration';
 import { MerchantDashboard } from './components/MerchantDashboard';
 import { DEFAULT_LEVEL, TRANSLATIONS, MAX_DAILY_GENERATIONS } from './constants';
+import { Globe, LogIn, LogOut } from 'lucide-react';
 
 const STORAGE_KEYS = {
   COLLECTION: 'travel_gacha_collection',
   LAST_COLLECTION_VISIT: 'mibu_last_visit_collection',
   LAST_BOX_VISIT: 'mibu_last_visit_itembox',
   MERCHANT_DB: 'mibu_merchant_db',
-  USER_PROFILE: 'mibu_user_profile',
   MERCHANT_PROFILE: 'mibu_merchant_profile_v3', 
   DAILY_LIMIT: 'mibu_daily_limit'
 };
 
 const App: React.FC = () => {
+  const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+  
   const [state, setState] = useState<AppState>({
     language: 'zh-TW', user: null, country: '', city: '', level: DEFAULT_LEVEL,
     loading: false, result: null, error: null, groundingSources: [], view: 'home',
@@ -30,15 +33,58 @@ const App: React.FC = () => {
     merchantDb: {}, currentMerchant: null
   });
 
-  const [inputName, setInputName] = useState('');
+  const [showLangMenu, setShowLangMenu] = useState(false);
 
   const t = TRANSLATIONS[state.language] as any;
 
+  // Sync Replit Auth user to state
+  useEffect(() => {
+    if (user) {
+      setState(prev => ({
+        ...prev,
+        user: {
+          id: user.id,
+          name: user.firstName || user.email || 'User',
+          email: user.email,
+          avatar: user.profileImageUrl,
+        }
+      }));
+    }
+  }, [user]);
+
+  // Load user collections when authenticated
+  useEffect(() => {
+    const loadCollections = async () => {
+      if (isAuthenticated && user?.id) {
+        try {
+          const response = await fetch('/api/collections');
+          if (response.ok) {
+            const data = await response.json();
+            setState(prev => ({ ...prev, collection: data.collections || [] }));
+          }
+        } catch (error) {
+          console.error('Failed to load collections:', error);
+          // Fall back to localStorage
+          const savedCollection = localStorage.getItem(STORAGE_KEYS.COLLECTION);
+          if (savedCollection) {
+            try {
+              const parsed = JSON.parse(savedCollection);
+              if (Array.isArray(parsed)) {
+                const validItems = parsed.filter(i => i && typeof i === 'object' && i.place_name);
+                setState(prev => ({ ...prev, collection: validItems }));
+              }
+            } catch (e) {}
+          }
+        }
+      }
+    };
+    
+    loadCollections();
+  }, [isAuthenticated, user?.id]);
+
+  // Load other persisted data
   useEffect(() => {
     try {
-      const savedUser = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-      if (savedUser) setState(prev => ({ ...prev, user: JSON.parse(savedUser) }));
-      
       const savedMerchant = localStorage.getItem(STORAGE_KEYS.MERCHANT_PROFILE);
       if (savedMerchant) setState(prev => ({ ...prev, currentMerchant: JSON.parse(savedMerchant) }));
 
@@ -47,19 +93,24 @@ const App: React.FC = () => {
       if (lastCol) setState(prev => ({ ...prev, lastVisitCollection: lastCol }));
       if (lastBox) setState(prev => ({ ...prev, lastVisitItemBox: lastBox }));
 
-      const savedCollection = localStorage.getItem(STORAGE_KEYS.COLLECTION);
-      if (savedCollection) {
-        const parsed = JSON.parse(savedCollection);
-        if (Array.isArray(parsed)) {
-            const validItems = parsed.filter(i => i && typeof i === 'object' && (i.place_name || i.placeName));
-            setState(prev => ({ ...prev, collection: validItems }));
-        }
-      }
-
       const savedMerchantDb = localStorage.getItem(STORAGE_KEYS.MERCHANT_DB);
       if (savedMerchantDb) setState(prev => ({ ...prev, merchantDb: JSON.parse(savedMerchantDb) }));
-    } catch (e) { console.error("Persistence Error", e); }
-  }, []);
+      
+      // Load local collection for non-authenticated users
+      if (!isAuthenticated) {
+        const savedCollection = localStorage.getItem(STORAGE_KEYS.COLLECTION);
+        if (savedCollection) {
+          const parsed = JSON.parse(savedCollection);
+          if (Array.isArray(parsed)) {
+            const validItems = parsed.filter(i => i && typeof i === 'object' && i.place_name);
+            setState(prev => ({ ...prev, collection: validItems }));
+          }
+        }
+      }
+    } catch (e) { 
+      console.error("Persistence Error", e); 
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const checkPaymentStatus = async () => {
@@ -96,11 +147,10 @@ const App: React.FC = () => {
     checkPaymentStatus();
   }, [state.language]);
 
-  const getItemKey = (item: GachaItem | any): string => {
+  const getItemKey = (item: GachaItem): string => {
     try {
       if (!item) return `unknown-${Math.random()}`;
-      const placeName = item.place_name || item.placeName;
-      let nameStr = typeof placeName === 'string' ? placeName : (placeName as any)?.['en'] || (placeName as any)?.['zh-TW'] || 'unknown';
+      let nameStr = typeof item.place_name === 'string' ? item.place_name : (item.place_name as any)['en'] || (item.place_name as any)['zh-TW'] || 'unknown';
       return `${nameStr}-${item.city || 'city'}`;
     } catch (e) { return `error-${Math.random()}`; }
   };
@@ -109,21 +159,6 @@ const App: React.FC = () => {
       const raw = item.place_name as any;
       if (typeof raw === 'string') return raw;
       return raw['en'] || raw['zh-TW'] || 'unknown';
-  };
-
-  const handleUserLogin = () => {
-    if (!inputName.trim()) return;
-    const newUser: User = { name: inputName.trim(), email: '', avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(inputName)}&background=6366f1&color=fff&size=128` };
-    localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(newUser));
-    setState(prev => ({ ...prev, user: newUser }));
-  };
-
-  const handleLogout = (e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
-    localStorage.removeItem(STORAGE_KEYS.MERCHANT_PROFILE);
-    localStorage.removeItem(STORAGE_KEYS.DAILY_LIMIT);
-    window.location.reload();
   };
 
   const handleMerchantLoginStart = () => setState(prev => ({ ...prev, view: 'merchant_login' }));
@@ -213,6 +248,38 @@ const App: React.FC = () => {
         const updatedCollection = [...prev.collection, ...uniqueNewItems];
         localStorage.setItem(STORAGE_KEYS.COLLECTION, JSON.stringify(updatedCollection));
         
+        // Save new items to backend if user is authenticated
+        if (isAuthenticated) {
+          uniqueNewItems.forEach(async (item) => {
+            try {
+              const placeName = typeof item.place_name === 'string' 
+                ? item.place_name 
+                : (item.place_name as any)['en'] || (item.place_name as any)['zh-TW'] || 'unknown';
+              
+              const description = typeof item.description === 'string'
+                ? item.description
+                : (item.description as any)['en'] || (item.description as any)['zh-TW'] || '';
+              
+              await fetch('/api/collections', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  placeName,
+                  country: item.country || state.country,
+                  city: item.city || state.city,
+                  rarity: item.rarity,
+                  category: item.category || null,
+                  description,
+                  isCoupon: item.is_coupon || false,
+                  couponData: item.coupon_data || null,
+                }),
+              });
+            } catch (error) {
+              console.error('Failed to save item to backend:', error);
+            }
+          });
+        }
+        
         return {
           ...prev, loading: false, result: { ...data, inventory: processedInventory },
           groundingSources: sources, view: 'result', collection: updatedCollection,
@@ -232,15 +299,25 @@ const App: React.FC = () => {
     else { setState(prev => ({ ...prev, view: (newView === 'home' && prev.result) ? 'result' : newView })); }
   };
 
-  const hasNewCollection = state.collection.some(i => {
-    const collectedAt = i.collected_at || (i as any).collectedAt;
-    return collectedAt && collectedAt > state.lastVisitCollection;
-  });
-  const hasNewItems = state.collection.some(i => {
-    const isCoupon = i.is_coupon || (i as any).isCoupon;
-    const collectedAt = i.collected_at || (i as any).collectedAt;
-    return isCoupon && collectedAt && collectedAt > state.lastVisitItemBox;
-  });
+  const handleLanguageChange = (lang: Language) => {
+    setState(prev => ({ ...prev, language: lang }));
+    setShowLangMenu(false);
+  };
+
+  const hasNewCollection = state.collection.some(i => i.collected_at && i.collected_at > state.lastVisitCollection);
+  const hasNewItems = state.collection.some(i => i.is_coupon && i.collected_at && i.collected_at > state.lastVisitItemBox);
+
+  // Show loading while auth is initializing
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600">{t.loading || 'Loading...'}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col font-sans relative bg-slate-50 text-slate-900 transition-colors duration-500 pb-20 select-none">
@@ -249,60 +326,54 @@ const App: React.FC = () => {
       {state.celebrationCoupons.length > 0 && <CouponCelebration items={state.celebrationCoupons} language={state.language} onClose={() => setState(p => ({ ...p, celebrationCoupons: [] }))} />}
 
       <nav className="sticky top-0 z-[999] px-6 pt-safe-top pb-4 flex justify-between items-center w-full glass-nav transition-all">
-        <div className="flex items-center gap-3 group cursor-pointer" onClick={() => handleViewChange('home')}>
-           <img src="https://i.ibb.co/S4JthF7R/mibu.jpg" alt="Mibu Logo" className="w-10 h-10 rounded-2xl shadow-lg shadow-indigo-200 transition-transform group-hover:rotate-12 bg-white p-1 object-cover" />
-           <span className="font-bold text-slate-800 tracking-tight text-lg">MIBU</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative group">
-            <select value={state.language} onChange={(e) => setState(prev => ({ ...prev, language: e.target.value as Language }))} className="appearance-none bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-sm rounded-full px-4 py-2 pr-8 outline-none focus:ring-2 focus:ring-indigo-100 transition-all cursor-pointer" data-testid="select-language">
-              <option value="zh-TW">繁體中文</option><option value="en">English</option><option value="ja">日本語</option>
-            </select>
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg></div>
-          </div>
-          {state.user && (
-            <>
-               <div className="flex items-center gap-2">
-                  {state.user.isMerchant ? <div className="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold">M</div> : <img src={state.user.avatar || ''} alt="User" className="w-9 h-9 rounded-full border border-slate-200" />}
-               </div>
-               <button onClick={handleLogout} className="relative z-50 w-10 h-10 rounded-full bg-slate-200 hover:bg-red-100 hover:text-red-600 text-slate-500 flex items-center justify-center transition-all cursor-pointer pointer-events-auto active:scale-95 hover:shadow-md" title="Logout" data-testid="button-logout">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+         <div className="flex items-center gap-2">
+           <img src="/app-icon.jpg" alt="Mibu" className="w-8 h-8 rounded-lg object-cover" />
+           <span className="font-display font-bold text-xl tracking-tight text-slate-800">MIBU</span>
+         </div>
+         
+         <div className="flex items-center gap-3">
+            {/* Language Switcher */}
+            <div className="relative">
+               <button onClick={() => setShowLangMenu(!showLangMenu)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors" data-testid="button-language">
+                  <Globe className="w-5 h-5 text-slate-600" />
                </button>
-            </>
-          )}
-        </div>
+               {showLangMenu && (
+                 <div className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden w-32 py-1 flex flex-col z-50">
+                    <button onClick={() => handleLanguageChange('zh-TW')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700" data-testid="button-lang-zh">繁體中文</button>
+                    <button onClick={() => handleLanguageChange('en')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700" data-testid="button-lang-en">English</button>
+                    <button onClick={() => handleLanguageChange('ja')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700" data-testid="button-lang-ja">日本語</button>
+                    <button onClick={() => handleLanguageChange('ko')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700" data-testid="button-lang-ko">한국어</button>
+                 </div>
+               )}
+            </div>
+
+            {isAuthenticated && user ? (
+                <a href="/api/logout" className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" data-testid="button-logout">
+                  <img 
+                    src={user.profileImageUrl || `https://ui-avatars.com/api/?name=${user.firstName || 'U'}`} 
+                    className="w-8 h-8 rounded-full border border-white shadow-sm object-cover" 
+                    alt="User" 
+                  />
+                  <span className="text-xs font-bold text-slate-600 hidden sm:block">{user.firstName || user.email}</span>
+                  <LogOut className="w-4 h-4 text-slate-400" />
+                </a>
+            ) : (
+                <a 
+                  href="/api/login"
+                  className="flex items-center gap-2 text-xs font-bold bg-indigo-500 text-white px-4 py-2 rounded-full hover:bg-indigo-600 transition-colors"
+                  data-testid="button-login"
+                >
+                  <LogIn className="w-4 h-4" />
+                  {t.login}
+                </a>
+            )}
+         </div>
       </nav>
 
       {state.loading && <GachaScene language={state.language} />}
 
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-4">
-        {state.view === 'home' && !state.result && !state.user && (
-          <div className="flex flex-col items-center justify-center min-h-[60vh] p-6">
-            <div className="w-full max-w-sm bg-white/80 backdrop-blur-lg rounded-3xl p-8 shadow-xl border border-white/50">
-              <div className="text-center mb-6">
-                <h1 className="text-3xl font-black text-slate-800 mb-2">{t.discoverTitle}</h1>
-                <p className="text-slate-500">{t.loginDesc}</p>
-              </div>
-              <input
-                type="text"
-                value={inputName}
-                onChange={(e) => setInputName(e.target.value)}
-                placeholder={t.enterNamePlaceholder}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 mb-4 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                data-testid="input-user-name"
-              />
-              <button
-                onClick={handleUserLogin}
-                className="w-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-bold py-3 rounded-xl hover:from-indigo-600 hover:to-purple-600 transition-all shadow-lg"
-                data-testid="button-start-journey"
-              >
-                {t.startJourney}
-              </button>
-            </div>
-          </div>
-        )}
-        
-        {state.view === 'home' && !state.result && state.user && (
+        {state.view === 'home' && !state.result && (
           <InputForm 
             state={state}
             onUpdate={(updates) => setState(p => ({ ...p, ...updates }))}
@@ -319,7 +390,7 @@ const App: React.FC = () => {
         )}
 
         {state.view === 'item_box' && (
-          <ItemBox items={state.collection.filter(i => i.is_coupon || (i as any).isCoupon)} language={state.language} />
+          <ItemBox items={state.collection.filter(i => i.is_coupon)} language={state.language} />
         )}
 
         {state.view === 'merchant_login' && (
@@ -342,6 +413,7 @@ const App: React.FC = () => {
             onLogin={handleMerchantLogin}
             onUpdateMerchant={handleMerchantUpdate}
             onClaim={handleMerchantClaim}
+            isAuthenticated={isAuthenticated}
           />
         )}
       </main>

@@ -16,7 +16,7 @@ export enum Category {
   Activity = 'Activity'
 }
 
-export type Language = 'zh-TW' | 'en' | 'ja';
+export type Language = 'zh-TW' | 'en' | 'ja' | 'ko';
 export type LocalizedContent = string | { [key in Language]?: string };
 
 export type PlanTier = 'free' | 'partner' | 'premium';

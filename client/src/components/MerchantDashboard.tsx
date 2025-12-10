@@ -9,14 +9,21 @@ interface MerchantDashboardProps {
   onLogin: (name: string, email: string) => void;
   onUpdateMerchant: (merchant: Merchant) => void;
   onClaim: (item: any) => void;
+  isAuthenticated?: boolean;
 }
 
-export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onLogin, onUpdateMerchant }) => {
+export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onLogin, onUpdateMerchant, isAuthenticated }) => {
   const [name, setName] = useState('');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const t = TRANSLATIONS[state.language] as any;
 
   const handleUpgradeToPremium = async () => {
+    if (!isAuthenticated) {
+      setShowLoginPrompt(true);
+      return;
+    }
+    
     setIsCheckingOut(true);
     
     try {
@@ -43,42 +50,79 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
     }
   };
 
-  if (!state.currentMerchant) {
+  if (showLoginPrompt) {
     return (
       <div className="p-8 max-w-md mx-auto mt-20 bg-white rounded-3xl shadow-xl">
         <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Store className="w-8 h-8" />
+          <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Crown className="w-8 h-8" />
           </div>
-          <h2 className="text-xl font-black text-slate-800">{t.merchantLogin}</h2>
+          <h2 className="text-xl font-black text-slate-800">需要登入</h2>
+          <p className="text-slate-500 text-sm mt-2">升級 Premium 需要先登入您的帳戶</p>
         </div>
         
-        <form onSubmit={(e) => { e.preventDefault(); onLogin(name, ''); }} className="space-y-4">
-          <input 
-            type="text" 
-            placeholder={t.merchantName || t.storeName} 
-            value={name} 
-            onChange={(e) => setName(e.target.value)} 
-            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none" 
-            data-testid="input-merchant-name" 
-          />
-          <button 
-            type="submit"
-            className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:from-indigo-600 hover:to-purple-600 transition-colors shadow-lg"
-            data-testid="button-merchant-submit"
-          >
-            <Store className="w-5 h-5" />
-            {t.login}
-          </button>
-        </form>
+        <a 
+          href="/api/login"
+          className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:from-amber-600 hover:to-orange-600 transition-colors shadow-lg"
+          data-testid="button-login-to-upgrade"
+        >
+          <Store className="w-5 h-5" />
+          登入以繼續升級
+        </a>
         
         <button 
-          onClick={() => window.location.href = '/'}
+          onClick={() => setShowLoginPrompt(false)}
           className="w-full mt-3 py-3 text-slate-500 text-sm hover:bg-slate-50 rounded-xl"
-          data-testid="button-back-home"
         >
-          {t.back || t.backToHome}
+          返回
         </button>
+      </div>
+    );
+  }
+  
+  if (state.view === 'merchant_login') {
+    return (
+      <div className="p-8 max-w-md mx-auto mt-20 bg-white rounded-3xl shadow-xl">
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Store className="w-10 h-10" />
+          </div>
+          <h2 className="text-2xl font-black text-slate-800">{t.merchantAccess}</h2>
+          <p className="text-slate-500 text-sm">{t.manageStore}</p>
+        </div>
+        
+        <div className="space-y-3">
+          <a 
+            href="/api/login"
+            className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors"
+            data-testid="button-merchant-auth"
+          >
+            <Store className="w-5 h-5" />
+            {t.signInReplit}
+          </a>
+          
+          <div className="relative flex py-2 items-center">
+             <div className="flex-grow border-t border-slate-200"></div>
+             <span className="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase">{t.or}</span>
+             <div className="flex-grow border-t border-slate-200"></div>
+          </div>
+
+          <input
+            type="text"
+            placeholder={t.storeName}
+            className="w-full p-4 bg-slate-50 rounded-xl font-bold"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            data-testid="input-merchant-store-name"
+          />
+          <button
+            onClick={() => onLogin(name, 'test@example.com')}
+            className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800"
+            data-testid="button-merchant-guest"
+          >
+            {t.enterDashboard}
+          </button>
+        </div>
       </div>
     );
   }
@@ -149,10 +193,10 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
                  <CheckCircle className="w-4 h-4 text-amber-600" /> {t.benefitSlots}
                </li>
                <li className="flex items-center gap-2 text-amber-800 text-sm font-bold">
-                 <CheckCircle className="w-4 h-4 text-amber-600" /> {t.benefitSSR}
+                 <CheckCircle className="w-4 h-4 text-amber-600" /> SSR/SP 大獎優惠券
                </li>
                <li className="flex items-center gap-2 text-amber-800 text-sm font-bold">
-                 <CheckCircle className="w-4 h-4 text-amber-600" /> {t.benefitUnlimited}
+                 <CheckCircle className="w-4 h-4 text-amber-600" /> 無限發行額度
                </li>
              </ul>
              <button 
@@ -164,12 +208,12 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
                {isCheckingOut ? (
                  <>
                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                   {t.processing}
+                   處理中...
                  </>
                ) : (
                  <>
                    <Crown className="w-5 h-5" />
-                   {t.upgradePremium}
+                   升級 Premium - NT$1,499/月
                  </>
                )}
              </button>
@@ -183,13 +227,45 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
               <Crown className="w-5 h-5 text-white" />
             </div>
             <div>
-              <div className="font-bold text-amber-900">{t.premiumMember}</div>
-              <div className="text-xs text-amber-700">{t.premiumDesc}</div>
+              <div className="font-bold text-amber-900">Premium 會員</div>
+              <div className="text-xs text-amber-700">享有所有進階功能</div>
             </div>
           </div>
         )}
       </div>
 
+      {/* Login Required Modal */}
+      {showLoginPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <ShieldCheck className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-black text-slate-800 mb-2">需要登入</h3>
+              <p className="text-slate-500 text-sm">升級至 Premium 需要先登入您的帳號</p>
+            </div>
+            
+            <div className="space-y-3">
+              <a 
+                href="/api/login"
+                className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:from-amber-600 hover:to-orange-600 transition-all"
+                data-testid="button-login-for-upgrade"
+              >
+                <Store className="w-5 h-5" />
+                登入以繼續
+              </a>
+              <button
+                onClick={() => setShowLoginPrompt(false)}
+                className="w-full py-3 text-slate-500 font-bold hover:text-slate-700 transition-colors"
+                data-testid="button-cancel-login"
+              >
+                稍後再說
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
