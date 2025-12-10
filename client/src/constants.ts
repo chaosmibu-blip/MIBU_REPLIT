@@ -141,7 +141,11 @@ export const TRANSLATIONS = {
     upgradeTitle: '升級為合作夥伴',
     benefitRarity: '發行更高稀有度 (SR)',
     benefitSlots: '更多上架欄位',
-    viewPlans: '查看方案'
+    viewPlans: '查看方案',
+    signInGoogle: '使用 Google 登入',
+    or: '或',
+    guestLogin: '訪客登入',
+    welcomeBack: '歡迎回來'
   },
   'en': {
     dailyLimitReached: 'Daily Limit Reached',
@@ -189,7 +193,11 @@ export const TRANSLATIONS = {
     upgradeTitle: 'Upgrade to Partner',
     benefitRarity: 'Higher Rarity (SR)',
     benefitSlots: 'More Slots',
-    viewPlans: 'View Plans'
+    viewPlans: 'View Plans',
+    signInGoogle: 'Sign in with Google',
+    or: 'or',
+    guestLogin: 'Guest Login',
+    welcomeBack: 'Welcome Back'
   },
   'ja': {
     dailyLimitReached: '本日の上限に達しました',
@@ -237,7 +245,11 @@ export const TRANSLATIONS = {
     upgradeTitle: 'パートナーにアップグレード',
     benefitRarity: '高レアリティ (SR) 解放',
     benefitSlots: '枠数追加',
-    viewPlans: 'プランを見る'
+    viewPlans: 'プランを見る',
+    signInGoogle: 'Googleでログイン',
+    or: 'または',
+    guestLogin: 'ゲストログイン',
+    welcomeBack: 'おかえりなさい'
   },
   'ko': {
     dailyLimitReached: '일일 한도 도달',
@@ -285,7 +297,11 @@ export const TRANSLATIONS = {
     upgradeTitle: '파트너로 업그레이드',
     benefitRarity: '더 높은 희귀도 (SR)',
     benefitSlots: '더 많은 슬롯',
-    viewPlans: '요금제 보기'
+    viewPlans: '요금제 보기',
+    signInGoogle: 'Google로 로그인',
+    or: '또는',
+    guestLogin: '게스트 로그인',
+    welcomeBack: '환영합니다'
   }
 };
 

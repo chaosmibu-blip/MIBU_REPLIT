@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Merchant, AppState, PlanTier, Rarity } from '../types';
 import { SUBSCRIPTION_PLANS, TRANSLATIONS } from '../constants';
 import { Store, CheckCircle, Upload, Plus, ShieldCheck } from 'lucide-react';
+import { GoogleLoginButton } from './GoogleLoginButton';
 
 interface MerchantDashboardProps {
   state: AppState;
@@ -12,7 +13,17 @@ interface MerchantDashboardProps {
 
 export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onLogin }) => {
   const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
   const t = TRANSLATIONS[state.language];
+
+  const handleGoogleLogin = () => {
+     setLoading(true);
+     setTimeout(() => {
+        setLoading(false);
+        // Mock Merchant
+        onLogin('Mibu Travel Store', 'merchant@mibu.com');
+     }, 1500);
+  };
   
   if (state.view === 'merchant_login') {
     return (
@@ -24,7 +35,20 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
           <h2 className="text-2xl font-black text-slate-800">{t.merchantAccess}</h2>
           <p className="text-slate-500 text-sm">{t.manageStore}</p>
         </div>
+        
         <div className="space-y-4">
+          <GoogleLoginButton 
+             text={t.signInGoogle} 
+             onClick={handleGoogleLogin} 
+             isLoading={loading}
+          />
+          
+          <div className="relative flex py-2 items-center">
+             <div className="flex-grow border-t border-slate-200"></div>
+             <span className="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase">{t.or}</span>
+             <div className="flex-grow border-t border-slate-200"></div>
+          </div>
+
           <input
             type="text"
             placeholder={t.storeName}
@@ -34,7 +58,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
           />
           <button
             onClick={() => onLogin(name, 'test@example.com')}
-            className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700"
+            className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800"
           >
             {t.enterDashboard}
           </button>

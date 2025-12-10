@@ -9,6 +9,7 @@ import { ItemBox } from './components/ItemBox';
 import { BottomNav } from './components/BottomNav';
 import { CouponCelebration } from './components/CouponCelebration';
 import { MerchantDashboard } from './components/MerchantDashboard';
+import { LoginModal } from './components/LoginModal';
 import { DEFAULT_LEVEL, TRANSLATIONS, MAX_DAILY_GENERATIONS } from './constants';
 import { Globe } from 'lucide-react';
 
@@ -33,6 +34,7 @@ const App: React.FC = () => {
 
   const [inputName, setInputName] = useState('');
   const [showLangMenu, setShowLangMenu] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   const t = TRANSLATIONS[state.language];
 
@@ -112,19 +114,24 @@ const App: React.FC = () => {
       return raw['en'] || raw['zh-TW'] || 'unknown';
   };
 
-  const handleUserLogin = () => {
-    if (!inputName.trim()) return;
-    const newUser: User = { name: inputName.trim(), email: '', avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(inputName)}&background=6366f1&color=fff&size=128` };
+  const handleUserLogin = (name: string, email: string, avatar: string = '') => {
+    const newUser: User = { 
+      name: name.trim(), 
+      email: email.trim(), 
+      avatar: avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name.trim())}&background=6366f1&color=fff&size=128` 
+    };
     localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(newUser));
     setState(prev => ({ ...prev, user: newUser }));
   };
 
   const handleLogout = (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
-    localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
-    localStorage.removeItem(STORAGE_KEYS.MERCHANT_PROFILE);
-    localStorage.removeItem(STORAGE_KEYS.DAILY_LIMIT);
-    window.location.reload();
+    if (confirm("Are you sure you want to logout?")) {
+      localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
+      localStorage.removeItem(STORAGE_KEYS.MERCHANT_PROFILE);
+      localStorage.removeItem(STORAGE_KEYS.DAILY_LIMIT);
+      window.location.reload();
+    }
   };
 
   const handleMerchantLoginStart = () => setState(prev => ({ ...prev, view: 'merchant_login' }));
@@ -246,6 +253,13 @@ const App: React.FC = () => {
       
       {state.celebrationCoupons.length > 0 && <CouponCelebration items={state.celebrationCoupons} language={state.language} onClose={() => setState(p => ({ ...p, celebrationCoupons: [] }))} />}
       
+      <LoginModal 
+         isOpen={showLoginModal}
+         onClose={() => setShowLoginModal(false)}
+         onLogin={handleUserLogin}
+         language={state.language}
+      />
+
       <nav className="sticky top-0 z-[999] px-6 pt-safe-top pb-4 flex justify-between items-center w-full glass-nav transition-all">
          <span className="font-display font-bold text-xl tracking-tight text-slate-800">MIBU</span>
          
@@ -266,14 +280,14 @@ const App: React.FC = () => {
             </div>
 
             {state.user ? (
-                <div className="flex items-center gap-2" onClick={handleLogout}>
+                <div className="flex items-center gap-2 cursor-pointer" onClick={handleLogout}>
                   <img src={state.user.avatar || `https://ui-avatars.com/api/?name=${state.user.name}`} className="w-8 h-8 rounded-full border border-white shadow-sm" alt="User" />
                   <span className="text-xs font-bold text-slate-600 hidden sm:block">{state.user.name}</span>
                 </div>
             ) : (
                 <button 
-                  className="text-xs font-bold bg-slate-200 px-3 py-1.5 rounded-full"
-                  onClick={() => { const n = prompt("Enter Name"); if(n) { setInputName(n); handleUserLogin(); }}}
+                  className="text-xs font-bold bg-slate-200 px-3 py-1.5 rounded-full hover:bg-slate-300 transition-colors"
+                  onClick={() => setShowLoginModal(true)}
                 >
                   {t.login}
                 </button>
