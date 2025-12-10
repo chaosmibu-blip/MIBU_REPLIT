@@ -35,6 +35,9 @@ Preferred communication style: Simple, everyday language.
 - **Configuration**: API credentials via environment variables (`AI_INTEGRATIONS_GEMINI_*`)
 
 ### Itinerary Generation Logic (Updated 2025-12-10)
+- **Two-Phase Architecture**: 
+  1. **Skeleton Generation (TypeScript)**: Deterministic logic handles quota, category selection, time ordering
+  2. **AI Fill-in (Gemini)**: Fills skeleton with real place names matching category/sub-category
 - **Geographic Locking**: Random district selection (1/N probability) within selected city
 - **Quota System**: 
   - K < 8: No stay allowed
@@ -42,10 +45,12 @@ Preferred communication style: Simple, everyday language.
   - K 5-6: min 2 food items
   - K 7-8: min 3 food items
   - K >= 9: min 4 food items
-- **Time-Slot Framework**: breakfast → morning → lunch → afternoon → tea_time → dinner → evening → night → stay
+- **Category Data**: 8 categories (食/宿/生態文化教育/遊程體驗/娛樂設施/活動/景點/購物) with weighted selection
+- **Sub-category Uniqueness**: Same sub-category cannot repeat within one itinerary
+- **Time-Slot Framework**: breakfast → morning → lunch → afternoon → tea_time → dinner → evening → night → late_night → overnight
 - **Operating Hours Validation**: Museums 09:00-17:00, nightlife after 18:00, stay at end
-- **Variety Rules**: Sub-categories don't repeat, activity categories max 2 consecutive
-- **Pacing**: High-energy activities followed by low-energy rest buffers
+- **Variety Rules**: Sub-categories don't repeat, activity categories max 2 consecutive (then insert rest buffer)
+- **Pacing**: High-energy activities followed by low-energy rest buffers (食/購物)
 - **Output Fields**: sub_category, time_slot, energy_level, district
 
 ### Key Design Patterns
