@@ -57,8 +57,8 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
           <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
             <Crown className="w-8 h-8" />
           </div>
-          <h2 className="text-xl font-black text-slate-800">需要登入</h2>
-          <p className="text-slate-500 text-sm mt-2">升級 Premium 需要先登入您的帳戶</p>
+          <h2 className="text-xl font-black text-slate-800">{t.loginRequired}</h2>
+          <p className="text-slate-500 text-sm mt-2">{t.loginRequiredDesc}</p>
         </div>
         
         <a 
@@ -67,14 +67,14 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
           data-testid="button-login-to-upgrade"
         >
           <Store className="w-5 h-5" />
-          登入以繼續升級
+          {t.loginToContinue}
         </a>
         
         <button 
           onClick={() => setShowLoginPrompt(false)}
           className="w-full mt-3 py-3 text-slate-500 text-sm hover:bg-slate-50 rounded-xl"
         >
-          返回
+          {t.back}
         </button>
       </div>
     );
@@ -193,10 +193,10 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
                  <CheckCircle className="w-4 h-4 text-amber-600" /> {t.benefitSlots}
                </li>
                <li className="flex items-center gap-2 text-amber-800 text-sm font-bold">
-                 <CheckCircle className="w-4 h-4 text-amber-600" /> SSR/SP 大獎優惠券
+                 <CheckCircle className="w-4 h-4 text-amber-600" /> {t.benefitSSR}
                </li>
                <li className="flex items-center gap-2 text-amber-800 text-sm font-bold">
-                 <CheckCircle className="w-4 h-4 text-amber-600" /> 無限發行額度
+                 <CheckCircle className="w-4 h-4 text-amber-600" /> {t.benefitUnlimited}
                </li>
              </ul>
              <button 
@@ -208,12 +208,12 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
                {isCheckingOut ? (
                  <>
                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                   處理中...
+                   {t.processing}
                  </>
                ) : (
                  <>
                    <Crown className="w-5 h-5" />
-                   升級 Premium - NT$1,499/月
+                   {t.upgradePremium}
                  </>
                )}
              </button>
@@ -227,8 +227,8 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
               <Crown className="w-5 h-5 text-white" />
             </div>
             <div>
-              <div className="font-bold text-amber-900">Premium 會員</div>
-              <div className="text-xs text-amber-700">享有所有進階功能</div>
+              <div className="font-bold text-amber-900">{t.premiumMember}</div>
+              <div className="text-xs text-amber-700">{t.premiumDesc}</div>
             </div>
           </div>
         )}
@@ -242,8 +242,8 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
               <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <ShieldCheck className="w-8 h-8" />
               </div>
-              <h3 className="text-xl font-black text-slate-800 mb-2">需要登入</h3>
-              <p className="text-slate-500 text-sm">升級至 Premium 需要先登入您的帳號</p>
+              <h3 className="text-xl font-black text-slate-800 mb-2">{t.loginRequired}</h3>
+              <p className="text-slate-500 text-sm">{t.loginRequiredDesc}</p>
             </div>
             
             <div className="space-y-3">
@@ -253,14 +253,14 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
                 data-testid="button-login-for-upgrade"
               >
                 <Store className="w-5 h-5" />
-                登入以繼續
+                {t.loginToContinue}
               </a>
               <button
                 onClick={() => setShowLoginPrompt(false)}
                 className="w-full py-3 text-slate-500 font-bold hover:text-slate-700 transition-colors"
                 data-testid="button-cancel-login"
               >
-                稍後再說
+                {t.laterMaybe}
               </button>
             </div>
           </div>

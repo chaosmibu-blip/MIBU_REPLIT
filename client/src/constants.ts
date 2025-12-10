@@ -151,7 +151,19 @@ export const TRANSLATIONS = {
     merchantLogin: '商家登入',
     merchantName: '商家名稱',
     merchantEmail: '商家電子郵件',
-    backToHome: '返回首頁'
+    backToHome: '返回首頁',
+    loginRequired: '需要登入',
+    loginRequiredDesc: '升級 Premium 需要先登入您的帳戶',
+    loginToContinue: '登入以繼續',
+    back: '返回',
+    processing: '處理中...',
+    upgradePremium: '升級 Premium - NT$1,499/月',
+    benefitSSR: 'SSR/SP 大獎優惠券',
+    benefitUnlimited: '無限發行額度',
+    premiumMember: 'Premium 會員',
+    premiumDesc: '享有所有進階功能',
+    laterMaybe: '稍後再說',
+    enterName: '輸入您的名稱'
   },
   'en': {
     dailyLimitReached: 'Daily Limit Reached',
@@ -209,7 +221,19 @@ export const TRANSLATIONS = {
     merchantLogin: 'Merchant Login',
     merchantName: 'Merchant Name',
     merchantEmail: 'Merchant Email',
-    backToHome: 'Back to Home'
+    backToHome: 'Back to Home',
+    loginRequired: 'Login Required',
+    loginRequiredDesc: 'Please login to upgrade to Premium',
+    loginToContinue: 'Login to Continue',
+    back: 'Back',
+    processing: 'Processing...',
+    upgradePremium: 'Upgrade Premium - $49.99/mo',
+    benefitSSR: 'SSR/SP Grand Prize Coupons',
+    benefitUnlimited: 'Unlimited Issue Quota',
+    premiumMember: 'Premium Member',
+    premiumDesc: 'Enjoy all premium features',
+    laterMaybe: 'Maybe Later',
+    enterName: 'Enter your name'
   },
   'ja': {
     dailyLimitReached: '本日の上限に達しました',
@@ -267,7 +291,19 @@ export const TRANSLATIONS = {
     merchantLogin: '店舗ログイン',
     merchantName: '店舗名',
     merchantEmail: 'メールアドレス',
-    backToHome: 'ホームに戻る'
+    backToHome: 'ホームに戻る',
+    loginRequired: 'ログインが必要です',
+    loginRequiredDesc: 'Premiumへのアップグレードにはログインが必要です',
+    loginToContinue: 'ログインして続行',
+    back: '戻る',
+    processing: '処理中...',
+    upgradePremium: 'Premium にアップグレード',
+    benefitSSR: 'SSR/SP 大賞クーポン',
+    benefitUnlimited: '無制限発行枠',
+    premiumMember: 'Premium 会員',
+    premiumDesc: 'すべてのプレミアム機能をお楽しみください',
+    laterMaybe: 'また後で',
+    enterName: '名前を入力'
   },
   'ko': {
     dailyLimitReached: '일일 한도 도달',
@@ -325,7 +361,19 @@ export const TRANSLATIONS = {
     merchantLogin: '판매자 로그인',
     merchantName: '상점 이름',
     merchantEmail: '이메일 주소',
-    backToHome: '홈으로 돌아가기'
+    backToHome: '홈으로 돌아가기',
+    loginRequired: '로그인 필요',
+    loginRequiredDesc: 'Premium 업그레이드를 위해 로그인이 필요합니다',
+    loginToContinue: '로그인하여 계속',
+    back: '뒤로',
+    processing: '처리 중...',
+    upgradePremium: 'Premium 업그레이드',
+    benefitSSR: 'SSR/SP 대박 쿠폰',
+    benefitUnlimited: '무제한 발행 한도',
+    premiumMember: 'Premium 회원',
+    premiumDesc: '모든 프리미엄 기능을 즐기세요',
+    laterMaybe: '나중에',
+    enterName: '이름 입력'
   }
 };
 
