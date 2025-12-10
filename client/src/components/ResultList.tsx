@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { GachaResponse, GachaItem, Language } from '../types';
-import { MapPin, Ticket, Clock, Info, RefreshCw } from 'lucide-react';
+import { MapPin, Ticket, Clock, Info, RefreshCw, Navigation } from 'lucide-react';
 import { RARITY_COLORS, TRANSLATIONS } from '../constants';
 
 interface ResultListProps {
@@ -80,6 +80,25 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
                <p className="text-sm text-slate-500 line-clamp-2 mb-3">
                  {getContent(item.description, language)}
                </p>
+
+               {/* Google Maps Navigation Button */}
+               {(item.place_id || item.location || item.verified_address) && (
+                 <a
+                   href={item.place_id 
+                     ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.verified_name || getContent(item.place_name, language))}&destination_place_id=${item.place_id}`
+                     : item.location 
+                       ? `https://www.google.com/maps/dir/?api=1&destination=${item.location.lat},${item.location.lng}`
+                       : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.verified_address || '')}`
+                   }
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   className="inline-flex items-center gap-1.5 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-colors mb-3"
+                   data-testid={`button-navigate-${item.id}`}
+                 >
+                   <Navigation className="w-3.5 h-3.5" />
+                   {language === 'zh-TW' ? '導航' : language === 'ja' ? 'ナビ' : language === 'ko' ? '길찾기' : 'Navigate'}
+                 </a>
+               )}
 
                {/* Coupon / Promo Section */}
                {(item.is_coupon || item.is_promo_active) && (

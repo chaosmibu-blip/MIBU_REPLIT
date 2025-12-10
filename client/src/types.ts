@@ -91,6 +91,13 @@ export interface GachaItem {
   remaining_coupons?: number;
   impressionCount?: number;
   redemptionCount?: number;
+  place_id?: string | null;
+  verified_name?: string | null;
+  verified_address?: string | null;
+  google_rating?: number | null;
+  location?: { lat: number; lng: number } | null;
+  is_location_verified?: boolean;
+  district_center?: { lat: number; lng: number } | null;
 }
 
 export interface GachaMeta {
