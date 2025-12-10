@@ -71,7 +71,7 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
         <div className="space-y-4 pt-2">
            <div className="flex justify-between items-end px-1">
              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.intensity}</label>
-             <span className="text-2xl font-black text-indigo-600">Lv.{state.level}</span>
+             <span className="text-2xl font-black text-indigo-600">{state.level}</span>
            </div>
            <input
              type="range"

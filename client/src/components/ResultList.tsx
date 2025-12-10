@@ -24,7 +24,7 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
       <div className="mb-6 flex justify-between items-end">
         <div>
           <h2 className="text-3xl font-black text-slate-800">{getContent(data.meta.locked_district, language)}</h2>
-          <p className="text-slate-500 font-medium">{t.tripLevel.replace('{level}', data.meta.user_level.toString())}</p>
+          <p className="text-slate-500 font-medium">{data.meta.city}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold">
@@ -77,21 +77,21 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
                  {getContent(item.place_name, language)}
                </h3>
                
-               <p className="text-sm text-slate-500 line-clamp-2 mb-3">
+               <p className="text-sm text-slate-500 mb-3">
                  {getContent(item.description, language)}
                </p>
 
                {/* Google Search Button */}
                {(item.verified_name || item.place_name) && (
                  <a
-                   href={`https://www.google.com/search?q=${encodeURIComponent((item.verified_name || getContent(item.place_name, language)) + ' ' + (item.verified_address || item.city || ''))}`}
+                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.verified_name || getContent(item.place_name, language))}`}
                    target="_blank"
                    rel="noopener noreferrer"
                    className="inline-flex items-center gap-1.5 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-colors mb-3"
                    data-testid={`button-search-${item.id}`}
                  >
                    <Search className="w-3.5 h-3.5" />
-                   {language === 'zh-TW' ? '搜尋' : language === 'ja' ? '検索' : language === 'ko' ? '검색' : 'Search'}
+                   {language === 'zh-TW' ? '在GOOGLE中導航' : language === 'ja' ? 'Googleで案内' : language === 'ko' ? 'Google에서 길찾기' : 'Navigate in Google'}
                  </a>
                )}
 

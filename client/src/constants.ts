@@ -101,7 +101,7 @@ export const TRANSLATIONS = {
     paymentSuccess: '付款成功！您已升級為 Premium 商家。',
     // UI
     appTitle: '行程扭蛋',
-    appSubtitle: 'AI 旅遊扭蛋',
+    appSubtitle: '今天去哪玩?老天說了算',
     destination: '目的地',
     selectDestination: '選擇目的地',
     city: '城市',
