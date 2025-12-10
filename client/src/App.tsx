@@ -328,7 +328,7 @@ const App: React.FC = () => {
       <nav className="sticky top-0 z-[999] px-6 pt-safe-top pb-4 flex justify-between items-center w-full glass-nav transition-all">
          <div className="flex items-center gap-2">
            <img src="/app-icon.jpg" alt="Mibu" className="w-8 h-8 rounded-lg object-cover" />
-           <span className="font-display font-bold text-xl tracking-tight text-slate-800">MIBU</span>
+           <span className="font-bold text-xl tracking-tight text-slate-800" style={{ fontFamily: "'Noto Sans TC', sans-serif" }}>MIBU</span>
          </div>
          
          <div className="flex items-center gap-3">
