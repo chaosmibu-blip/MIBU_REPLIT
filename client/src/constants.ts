@@ -146,7 +146,12 @@ export const TRANSLATIONS = {
     signInReplit: '使用 Replit 登入',
     or: '或',
     guestLogin: '訪客登入',
-    welcomeBack: '歡迎回來'
+    welcomeBack: '歡迎回來',
+    loading: '載入中...',
+    merchantLogin: '商家登入',
+    merchantName: '商家名稱',
+    merchantEmail: '商家電子郵件',
+    backToHome: '返回首頁'
   },
   'en': {
     dailyLimitReached: 'Daily Limit Reached',
@@ -199,7 +204,12 @@ export const TRANSLATIONS = {
     signInReplit: 'Sign in with Replit',
     or: 'or',
     guestLogin: 'Guest Login',
-    welcomeBack: 'Welcome Back'
+    welcomeBack: 'Welcome Back',
+    loading: 'Loading...',
+    merchantLogin: 'Merchant Login',
+    merchantName: 'Merchant Name',
+    merchantEmail: 'Merchant Email',
+    backToHome: 'Back to Home'
   },
   'ja': {
     dailyLimitReached: '本日の上限に達しました',
@@ -252,7 +262,12 @@ export const TRANSLATIONS = {
     signInReplit: 'Replitでログイン',
     or: 'または',
     guestLogin: 'ゲストログイン',
-    welcomeBack: 'おかえりなさい'
+    welcomeBack: 'おかえりなさい',
+    loading: '読み込み中...',
+    merchantLogin: '店舗ログイン',
+    merchantName: '店舗名',
+    merchantEmail: 'メールアドレス',
+    backToHome: 'ホームに戻る'
   },
   'ko': {
     dailyLimitReached: '일일 한도 도달',
@@ -305,7 +320,12 @@ export const TRANSLATIONS = {
     signInReplit: 'Replit으로 로그인',
     or: '또는',
     guestLogin: '게스트 로그인',
-    welcomeBack: '환영합니다'
+    welcomeBack: '환영합니다',
+    loading: '로딩 중...',
+    merchantLogin: '판매자 로그인',
+    merchantName: '상점 이름',
+    merchantEmail: '이메일 주소',
+    backToHome: '홈으로 돌아가기'
   }
 };
 

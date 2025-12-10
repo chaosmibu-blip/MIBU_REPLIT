@@ -32,7 +32,7 @@ export interface SubscriptionConfig {
 }
 
 export interface User {
-  id?: number;
+  id?: string;
   name: string;
   avatar: string | null;
   email: string | null;

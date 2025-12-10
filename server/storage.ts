@@ -1,6 +1,6 @@
 import { 
   users, collections, merchants, coupons,
-  type User, type InsertUser,
+  type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
   type Coupon, type InsertCoupon
@@ -9,18 +9,16 @@ import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
 
 export interface IStorage {
-  // Users
-  getUser(id: number): Promise<User | undefined>;
-  getUserByEmail(email: string): Promise<User | undefined>;
-  getUserByProvider(provider: string, providerId: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  // Users (mandatory for Replit Auth)
+  getUser(id: string): Promise<User | undefined>;
+  upsertUser(user: UpsertUser): Promise<User>;
 
   // Collections
-  getUserCollections(userId: number): Promise<Collection[]>;
+  getUserCollections(userId: string): Promise<Collection[]>;
   addToCollection(collection: InsertCollection): Promise<Collection>;
 
   // Merchants
-  getMerchantByUserId(userId: number): Promise<Merchant | undefined>;
+  getMerchantByUserId(userId: string): Promise<Merchant | undefined>;
   createMerchant(merchant: InsertMerchant): Promise<Merchant>;
   updateMerchantPlan(merchantId: number, plan: string): Promise<Merchant>;
 
@@ -32,32 +30,29 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  // Users
-  async getUser(id: number): Promise<User | undefined> {
+  // Users (mandatory for Replit Auth)
+  async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user || undefined;
   }
 
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user || undefined;
-  }
-
-  async getUserByProvider(provider: string, providerId: string): Promise<User | undefined> {
+  async upsertUser(userData: UpsertUser): Promise<User> {
     const [user] = await db
-      .select()
-      .from(users)
-      .where(and(eq(users.provider, provider), eq(users.providerId, providerId)));
-    return user || undefined;
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
+      .insert(users)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
     return user;
   }
 
   // Collections
-  async getUserCollections(userId: number): Promise<Collection[]> {
+  async getUserCollections(userId: string): Promise<Collection[]> {
     return await db
       .select()
       .from(collections)
@@ -74,7 +69,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Merchants
-  async getMerchantByUserId(userId: number): Promise<Merchant | undefined> {
+  async getMerchantByUserId(userId: string): Promise<Merchant | undefined> {
     const [merchant] = await db
       .select()
       .from(merchants)

@@ -1,42 +1,53 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, index } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Users table - supports both OAuth and guest users
+// Session storage table for Replit Auth
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// Users table - supports Replit Auth
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  email: text("email"),
-  name: text("name").notNull(),
-  avatar: text("avatar"),
-  provider: text("provider"), // 'google', 'replit', 'guest'
-  providerId: text("provider_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email"),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // User's collected places
 export const collections = pgTable("collections", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
   placeName: text("place_name").notNull(),
   country: text("country").notNull(),
   city: text("city").notNull(),
-  rarity: text("rarity").notNull(), // 'R', 'S', 'SR', 'SSR', 'SP'
+  rarity: text("rarity").notNull(),
   category: text("category"),
   description: text("description"),
   isCoupon: boolean("is_coupon").default(false),
-  couponData: jsonb("coupon_data"), // {title, code, terms}
+  couponData: jsonb("coupon_data"),
   collectedAt: timestamp("collected_at").defaultNow().notNull(),
 });
 
 // Merchants
 export const merchants = pgTable("merchants", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
   name: text("name").notNull(),
   email: text("email").notNull(),
-  subscriptionPlan: text("subscription_plan").default('free').notNull(), // 'free', 'partner', 'premium'
+  subscriptionPlan: text("subscription_plan").default('free').notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -85,11 +96,8 @@ export const couponsRelations = relations(coupons, ({ one }) => ({
   }),
 }));
 
-// Insert schemas
-export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
-  createdAt: true,
-});
+// Insert/Upsert schemas
+export const upsertUserSchema = createInsertSchema(users);
 
 export const insertCollectionSchema = createInsertSchema(collections).omit({
   id: true,
@@ -107,7 +115,7 @@ export const insertCouponSchema = createInsertSchema(coupons).omit({
 });
 
 // Types
-export type InsertUser = z.infer<typeof insertUserSchema>;
+export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
 export type InsertCollection = z.infer<typeof insertCollectionSchema>;

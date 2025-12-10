@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { generateGachaItinerary } from './services/geminiService';
-import { apiService } from './services/apiService';
-import { AppState, Language, User, GachaItem, AppView, Merchant } from './types';
+import { useAuth } from './hooks/useAuth';
+import { AppState, Language, GachaItem, AppView, Merchant } from './types';
 import { InputForm } from './components/InputForm';
 import { GachaScene } from './components/GachaScene';
 import { ResultList } from './components/ResultList';
@@ -10,21 +10,21 @@ import { ItemBox } from './components/ItemBox';
 import { BottomNav } from './components/BottomNav';
 import { CouponCelebration } from './components/CouponCelebration';
 import { MerchantDashboard } from './components/MerchantDashboard';
-import { LoginModal } from './components/LoginModal';
 import { DEFAULT_LEVEL, TRANSLATIONS, MAX_DAILY_GENERATIONS } from './constants';
-import { Globe } from 'lucide-react';
+import { Globe, LogIn, LogOut } from 'lucide-react';
 
 const STORAGE_KEYS = {
   COLLECTION: 'travel_gacha_collection',
   LAST_COLLECTION_VISIT: 'mibu_last_visit_collection',
   LAST_BOX_VISIT: 'mibu_last_visit_itembox',
   MERCHANT_DB: 'mibu_merchant_db',
-  USER_PROFILE: 'mibu_user_profile',
   MERCHANT_PROFILE: 'mibu_merchant_profile_v3', 
   DAILY_LIMIT: 'mibu_daily_limit'
 };
 
 const App: React.FC = () => {
+  const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+  
   const [state, setState] = useState<AppState>({
     language: 'zh-TW', user: null, country: '', city: '', level: DEFAULT_LEVEL,
     loading: false, result: null, error: null, groundingSources: [], view: 'home',
@@ -33,57 +33,84 @@ const App: React.FC = () => {
     merchantDb: {}, currentMerchant: null
   });
 
-  const [inputName, setInputName] = useState('');
   const [showLangMenu, setShowLangMenu] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
 
-  const t = TRANSLATIONS[state.language];
+  const t = TRANSLATIONS[state.language] as any;
 
+  // Sync Replit Auth user to state
   useEffect(() => {
-    const loadUserData = async () => {
-      try {
-        const savedUser = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-        if (savedUser) {
-          const user = JSON.parse(savedUser);
-          setState(prev => ({ ...prev, user }));
-          
-          // Load user collections from backend if user has an ID
-          if (user.id) {
+    if (user) {
+      setState(prev => ({
+        ...prev,
+        user: {
+          id: user.id,
+          name: user.firstName || user.email || 'User',
+          email: user.email,
+          avatar: user.profileImageUrl,
+        }
+      }));
+    }
+  }, [user]);
+
+  // Load user collections when authenticated
+  useEffect(() => {
+    const loadCollections = async () => {
+      if (isAuthenticated && user?.id) {
+        try {
+          const response = await fetch('/api/collections');
+          if (response.ok) {
+            const data = await response.json();
+            setState(prev => ({ ...prev, collection: data.collections || [] }));
+          }
+        } catch (error) {
+          console.error('Failed to load collections:', error);
+          // Fall back to localStorage
+          const savedCollection = localStorage.getItem(STORAGE_KEYS.COLLECTION);
+          if (savedCollection) {
             try {
-              const collections = await apiService.getCollections(user.id);
-              setState(prev => ({ ...prev, collection: collections }));
-            } catch (error) {
-              console.error('Failed to load collections:', error);
-              // Fall back to localStorage
-              const savedCollection = localStorage.getItem(STORAGE_KEYS.COLLECTION);
-              if (savedCollection) {
-                const parsed = JSON.parse(savedCollection);
-                if (Array.isArray(parsed)) {
-                  const validItems = parsed.filter(i => i && typeof i === 'object' && i.place_name);
-                  setState(prev => ({ ...prev, collection: validItems }));
-                }
+              const parsed = JSON.parse(savedCollection);
+              if (Array.isArray(parsed)) {
+                const validItems = parsed.filter(i => i && typeof i === 'object' && i.place_name);
+                setState(prev => ({ ...prev, collection: validItems }));
               }
-            }
+            } catch (e) {}
           }
         }
-        
-        const savedMerchant = localStorage.getItem(STORAGE_KEYS.MERCHANT_PROFILE);
-        if (savedMerchant) setState(prev => ({ ...prev, currentMerchant: JSON.parse(savedMerchant) }));
-
-        const lastCol = localStorage.getItem(STORAGE_KEYS.LAST_COLLECTION_VISIT);
-        const lastBox = localStorage.getItem(STORAGE_KEYS.LAST_BOX_VISIT);
-        if (lastCol) setState(prev => ({ ...prev, lastVisitCollection: lastCol }));
-        if (lastBox) setState(prev => ({ ...prev, lastVisitItemBox: lastBox }));
-
-        const savedMerchantDb = localStorage.getItem(STORAGE_KEYS.MERCHANT_DB);
-        if (savedMerchantDb) setState(prev => ({ ...prev, merchantDb: JSON.parse(savedMerchantDb) }));
-      } catch (e) { 
-        console.error("Persistence Error", e); 
       }
     };
     
-    loadUserData();
-  }, []);
+    loadCollections();
+  }, [isAuthenticated, user?.id]);
+
+  // Load other persisted data
+  useEffect(() => {
+    try {
+      const savedMerchant = localStorage.getItem(STORAGE_KEYS.MERCHANT_PROFILE);
+      if (savedMerchant) setState(prev => ({ ...prev, currentMerchant: JSON.parse(savedMerchant) }));
+
+      const lastCol = localStorage.getItem(STORAGE_KEYS.LAST_COLLECTION_VISIT);
+      const lastBox = localStorage.getItem(STORAGE_KEYS.LAST_BOX_VISIT);
+      if (lastCol) setState(prev => ({ ...prev, lastVisitCollection: lastCol }));
+      if (lastBox) setState(prev => ({ ...prev, lastVisitItemBox: lastBox }));
+
+      const savedMerchantDb = localStorage.getItem(STORAGE_KEYS.MERCHANT_DB);
+      if (savedMerchantDb) setState(prev => ({ ...prev, merchantDb: JSON.parse(savedMerchantDb) }));
+      
+      // Load local collection for non-authenticated users
+      if (!isAuthenticated) {
+        const savedCollection = localStorage.getItem(STORAGE_KEYS.COLLECTION);
+        if (savedCollection) {
+          const parsed = JSON.parse(savedCollection);
+          if (Array.isArray(parsed)) {
+            const validItems = parsed.filter(i => i && typeof i === 'object' && i.place_name);
+            setState(prev => ({ ...prev, collection: validItems }));
+          }
+        }
+      }
+    } catch (e) { 
+      console.error("Persistence Error", e); 
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const checkPaymentStatus = async () => {
@@ -132,38 +159,6 @@ const App: React.FC = () => {
       const raw = item.place_name as any;
       if (typeof raw === 'string') return raw;
       return raw['en'] || raw['zh-TW'] || 'unknown';
-  };
-
-  const handleUserLogin = async (name: string, email: string, avatar: string = '') => {
-    try {
-      const user = await apiService.login({
-        name: name.trim(),
-        email: email.trim() || undefined,
-        avatar: avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name.trim())}&background=6366f1&color=fff&size=128`,
-        provider: 'guest'
-      });
-      
-      // Also save to localStorage for quick access
-      localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(user));
-      setState(prev => ({ ...prev, user }));
-      
-      // Load user's collections from backend
-      const collections = await apiService.getCollections(user.id);
-      setState(prev => ({ ...prev, collection: collections }));
-    } catch (error) {
-      console.error('Login failed:', error);
-      alert('Login failed. Please try again.');
-    }
-  };
-
-  const handleLogout = (e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    if (confirm("Are you sure you want to logout?")) {
-      localStorage.removeItem(STORAGE_KEYS.USER_PROFILE);
-      localStorage.removeItem(STORAGE_KEYS.MERCHANT_PROFILE);
-      localStorage.removeItem(STORAGE_KEYS.DAILY_LIMIT);
-      window.location.reload();
-    }
   };
 
   const handleMerchantLoginStart = () => setState(prev => ({ ...prev, view: 'merchant_login' }));
@@ -253,8 +248,8 @@ const App: React.FC = () => {
         const updatedCollection = [...prev.collection, ...uniqueNewItems];
         localStorage.setItem(STORAGE_KEYS.COLLECTION, JSON.stringify(updatedCollection));
         
-        // Save new items to backend if user is logged in
-        if (state.user?.id) {
+        // Save new items to backend if user is authenticated
+        if (isAuthenticated) {
           uniqueNewItems.forEach(async (item) => {
             try {
               const placeName = typeof item.place_name === 'string' 
@@ -265,16 +260,19 @@ const App: React.FC = () => {
                 ? item.description
                 : (item.description as any)['en'] || (item.description as any)['zh-TW'] || '';
               
-              await apiService.addToCollection({
-                userId: state.user!.id!,
-                placeName,
-                country: item.country || state.country,
-                city: item.city || state.city,
-                rarity: item.rarity,
-                category: item.category || null,
-                description,
-                isCoupon: item.is_coupon || false,
-                couponData: item.coupon_data || null,
+              await fetch('/api/collections', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  placeName,
+                  country: item.country || state.country,
+                  city: item.city || state.city,
+                  rarity: item.rarity,
+                  category: item.category || null,
+                  description,
+                  isCoupon: item.is_coupon || false,
+                  couponData: item.coupon_data || null,
+                }),
               });
             } catch (error) {
               console.error('Failed to save item to backend:', error);
@@ -309,18 +307,23 @@ const App: React.FC = () => {
   const hasNewCollection = state.collection.some(i => i.collected_at && i.collected_at > state.lastVisitCollection);
   const hasNewItems = state.collection.some(i => i.is_coupon && i.collected_at && i.collected_at > state.lastVisitItemBox);
 
+  // Show loading while auth is initializing
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600">{t.loading || 'Loading...'}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col font-sans relative bg-slate-50 text-slate-900 transition-colors duration-500 pb-20 select-none">
       <div className="fixed top-0 left-0 w-full h-96 bg-gradient-to-b from-indigo-50 to-transparent pointer-events-none -z-10"></div>
       
       {state.celebrationCoupons.length > 0 && <CouponCelebration items={state.celebrationCoupons} language={state.language} onClose={() => setState(p => ({ ...p, celebrationCoupons: [] }))} />}
-      
-      <LoginModal 
-         isOpen={showLoginModal}
-         onClose={() => setShowLoginModal(false)}
-         onLogin={handleUserLogin}
-         language={state.language}
-      />
 
       <nav className="sticky top-0 z-[999] px-6 pt-safe-top pb-4 flex justify-between items-center w-full glass-nav transition-all">
          <span className="font-display font-bold text-xl tracking-tight text-slate-800">MIBU</span>
@@ -328,51 +331,54 @@ const App: React.FC = () => {
          <div className="flex items-center gap-3">
             {/* Language Switcher */}
             <div className="relative">
-               <button onClick={() => setShowLangMenu(!showLangMenu)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors">
+               <button onClick={() => setShowLangMenu(!showLangMenu)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors" data-testid="button-language">
                   <Globe className="w-5 h-5 text-slate-600" />
                </button>
                {showLangMenu && (
                  <div className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden w-32 py-1 flex flex-col z-50">
-                    <button onClick={() => handleLanguageChange('zh-TW')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700">繁體中文</button>
-                    <button onClick={() => handleLanguageChange('en')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700">English</button>
-                    <button onClick={() => handleLanguageChange('ja')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700">日本語</button>
-                    <button onClick={() => handleLanguageChange('ko')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700">한국어</button>
+                    <button onClick={() => handleLanguageChange('zh-TW')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700" data-testid="button-lang-zh">繁體中文</button>
+                    <button onClick={() => handleLanguageChange('en')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700" data-testid="button-lang-en">English</button>
+                    <button onClick={() => handleLanguageChange('ja')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700" data-testid="button-lang-ja">日本語</button>
+                    <button onClick={() => handleLanguageChange('ko')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700" data-testid="button-lang-ko">한국어</button>
                  </div>
                )}
             </div>
 
-            {state.user ? (
-                <div className="flex items-center gap-2 cursor-pointer" onClick={handleLogout}>
-                  <img src={state.user.avatar || `https://ui-avatars.com/api/?name=${state.user.name}`} className="w-8 h-8 rounded-full border border-white shadow-sm" alt="User" />
-                  <span className="text-xs font-bold text-slate-600 hidden sm:block">{state.user.name}</span>
-                </div>
+            {isAuthenticated && user ? (
+                <a href="/api/logout" className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" data-testid="button-logout">
+                  <img 
+                    src={user.profileImageUrl || `https://ui-avatars.com/api/?name=${user.firstName || 'U'}`} 
+                    className="w-8 h-8 rounded-full border border-white shadow-sm object-cover" 
+                    alt="User" 
+                  />
+                  <span className="text-xs font-bold text-slate-600 hidden sm:block">{user.firstName || user.email}</span>
+                  <LogOut className="w-4 h-4 text-slate-400" />
+                </a>
             ) : (
-                <button 
-                  className="text-xs font-bold bg-slate-200 px-3 py-1.5 rounded-full hover:bg-slate-300 transition-colors"
-                  onClick={() => setShowLoginModal(true)}
+                <a 
+                  href="/api/login"
+                  className="flex items-center gap-2 text-xs font-bold bg-indigo-500 text-white px-4 py-2 rounded-full hover:bg-indigo-600 transition-colors"
+                  data-testid="button-login"
                 >
+                  <LogIn className="w-4 h-4" />
                   {t.login}
-                </button>
+                </a>
             )}
          </div>
       </nav>
 
       {state.loading && <GachaScene language={state.language} />}
 
-      <main className="flex-1 w-full max-w-lg mx-auto relative">
+      <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-4">
         {state.view === 'home' && !state.result && (
           <InputForm 
-            state={state} 
-            onUpdate={(u) => setState(p => ({ ...p, ...u }))} 
-            onSubmit={handlePull} 
+            state={state}
+            onUpdate={(updates) => setState(p => ({ ...p, ...updates }))}
+            onSubmit={handlePull}
           />
         )}
-        
+
         {state.view === 'result' && state.result && (
-          <ResultList data={state.result} language={state.language} />
-        )}
-        
-        {state.view === 'home' && state.result && (
           <ResultList data={state.result} language={state.language} />
         )}
 
@@ -381,20 +387,38 @@ const App: React.FC = () => {
         )}
 
         {state.view === 'item_box' && (
-          <ItemBox items={state.collection} language={state.language} />
+          <ItemBox items={state.collection.filter(i => i.is_coupon)} language={state.language} />
         )}
 
-        {(state.view === 'merchant_dashboard' || state.view === 'merchant_login') && (
-           <MerchantDashboard 
-             state={state} 
-             onLogin={handleMerchantLogin} 
-             onUpdateMerchant={handleMerchantUpdate}
-             onClaim={handleMerchantClaim}
-           />
+        {state.view === 'merchant_login' && (
+           <div className="flex flex-col items-center justify-center min-h-[60vh] p-6">
+              <div className="w-full max-w-sm bg-white/80 backdrop-blur-lg rounded-2xl p-6 shadow-lg border border-white/50">
+                 <h2 className="text-xl font-bold text-center mb-6">{t.merchantLogin}</h2>
+                 <form onSubmit={(e) => { e.preventDefault(); const form = e.target as HTMLFormElement; handleMerchantLogin((form.elements.namedItem('name') as HTMLInputElement).value, (form.elements.namedItem('email') as HTMLInputElement).value); }}>
+                    <input name="name" type="text" placeholder={t.merchantName} className="w-full px-4 py-3 rounded-xl border border-slate-200 mb-3 bg-white focus:ring-2 focus:ring-indigo-500 outline-none" required data-testid="input-merchant-name" />
+                    <input name="email" type="email" placeholder={t.merchantEmail} className="w-full px-4 py-3 rounded-xl border border-slate-200 mb-4 bg-white focus:ring-2 focus:ring-indigo-500 outline-none" required data-testid="input-merchant-email" />
+                    <button type="submit" className="w-full bg-indigo-500 text-white font-bold py-3 rounded-xl hover:bg-indigo-600 transition-colors" data-testid="button-merchant-submit">{t.login}</button>
+                 </form>
+                 <button onClick={() => setState(p => ({ ...p, view: 'home' }))} className="w-full mt-3 text-slate-500 text-sm hover:underline" data-testid="button-back-home">{t.backToHome}</button>
+              </div>
+           </div>
+        )}
+
+        {state.view === 'merchant_dashboard' && state.currentMerchant && (
+          <MerchantDashboard 
+            state={state}
+            onLogin={handleMerchantLogin}
+            onUpdateMerchant={handleMerchantUpdate}
+            onClaim={handleMerchantClaim}
+          />
         )}
       </main>
 
-      <BottomNav currentView={state.view} onChange={handleViewChange} language={state.language} />
+      <BottomNav 
+        currentView={state.view} 
+        onChange={handleViewChange}
+        language={state.language}
+      />
     </div>
   );
 };
