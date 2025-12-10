@@ -8,6 +8,98 @@ import { z } from "zod";
 const RECUR_API_URL = "https://api.recur.tw/v1";
 const RECUR_PREMIUM_PLAN_ID = "adkwbl9dya0wc6b53parl9yk";
 const UNLIMITED_GENERATION_EMAILS = ["s8869420@gmail.com"];
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+
+interface PlaceSearchResult {
+  name: string;
+  formatted_address: string;
+  place_id: string;
+  geometry?: {
+    location: { lat: number; lng: number };
+  };
+  rating?: number;
+  types?: string[];
+}
+
+async function searchPlaceInDistrict(
+  query: string,
+  district: string,
+  city: string,
+  country: string
+): Promise<PlaceSearchResult | null> {
+  if (!GOOGLE_MAPS_API_KEY) {
+    console.warn("Google Maps API key not configured");
+    return null;
+  }
+
+  try {
+    const searchQuery = encodeURIComponent(`${query} ${district} ${city}`);
+    const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchQuery}&key=${GOOGLE_MAPS_API_KEY}&language=zh-TW`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data.status === 'OK' && data.results && data.results.length > 0) {
+      const place = data.results[0];
+      return {
+        name: place.name,
+        formatted_address: place.formatted_address,
+        place_id: place.place_id,
+        geometry: place.geometry,
+        rating: place.rating,
+        types: place.types
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error("Google Places API error:", error);
+    return null;
+  }
+}
+
+async function getDistrictBoundary(
+  district: string,
+  city: string,
+  country: string
+): Promise<{ lat: number; lng: number } | null> {
+  if (!GOOGLE_MAPS_API_KEY) {
+    return null;
+  }
+
+  try {
+    const address = encodeURIComponent(`${district}, ${city}, ${country}`);
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${address}&key=${GOOGLE_MAPS_API_KEY}&language=zh-TW`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data.status === 'OK' && data.results && data.results.length > 0) {
+      const location = data.results[0].geometry.location;
+      return { lat: location.lat, lng: location.lng };
+    }
+    return null;
+  } catch (error) {
+    console.error("Google Geocoding API error:", error);
+    return null;
+  }
+}
+
+function isWithinRadius(
+  point1: { lat: number; lng: number },
+  point2: { lat: number; lng: number },
+  radiusKm: number
+): boolean {
+  const R = 6371;
+  const dLat = (point2.lat - point1.lat) * Math.PI / 180;
+  const dLon = (point2.lng - point1.lng) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(point1.lat * Math.PI / 180) * Math.cos(point2.lat * Math.PI / 180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const distance = R * c;
+  return distance <= radiusKm;
+}
 
 async function callGemini(prompt: string): Promise<string> {
   const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
@@ -507,10 +599,45 @@ ${skeleton.map((item, idx) => `    {
       
       const data = JSON.parse(jsonText);
       
-      data.inventory = data.inventory.map((item: any, idx: number) => ({
-        ...item,
-        id: Date.now() + idx
-      }));
+      const districtCenter = await getDistrictBoundary(targetDistrict, city, country);
+      
+      const verifiedInventory = await Promise.all(
+        data.inventory.map(async (item: any, idx: number) => {
+          const placeResult = await searchPlaceInDistrict(
+            item.place_name,
+            targetDistrict,
+            city,
+            country
+          );
+          
+          let isVerified = false;
+          let placeLocation: { lat: number; lng: number } | null = null;
+          
+          if (placeResult && placeResult.geometry) {
+            placeLocation = placeResult.geometry.location;
+            if (districtCenter) {
+              isVerified = isWithinRadius(districtCenter, placeLocation, 10);
+            } else {
+              isVerified = true;
+            }
+          }
+          
+          return {
+            ...item,
+            id: Date.now() + idx,
+            place_id: placeResult?.place_id || null,
+            verified_name: placeResult?.name || item.place_name,
+            verified_address: placeResult?.formatted_address || null,
+            google_rating: placeResult?.rating || null,
+            location: placeLocation,
+            is_location_verified: isVerified,
+            district_center: districtCenter
+          };
+        })
+      );
+
+      data.inventory = verifiedInventory;
+      data.meta.verification_enabled = !!GOOGLE_MAPS_API_KEY;
 
       res.json({ data, sources: [] });
     } catch (error) {
