@@ -1,13 +1,16 @@
 import { 
   users, collections, merchants, coupons, placeCache,
+  countries, regions, districts, categories, subcategories,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
   type Coupon, type InsertCoupon,
-  type PlaceCache, type InsertPlaceCache
+  type PlaceCache, type InsertPlaceCache,
+  type Country, type Region, type District,
+  type Category, type Subcategory
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 
 export interface IStorage {
   // Users (mandatory for Replit Auth)
@@ -34,6 +37,20 @@ export interface IStorage {
   getCachedPlaces(district: string, city: string, country: string): Promise<PlaceCache[]>;
   savePlaceToCache(place: InsertPlaceCache): Promise<PlaceCache>;
   savePlacesToCache(places: InsertPlaceCache[]): Promise<PlaceCache[]>;
+
+  // Location hierarchy
+  getCountries(): Promise<Country[]>;
+  getRegionsByCountry(countryId: number): Promise<Region[]>;
+  getDistrictsByRegion(regionId: number): Promise<District[]>;
+  getDistrictsByCountry(countryId: number): Promise<District[]>;
+  getRandomDistrictByCountry(countryId: number): Promise<District | undefined>;
+  getDistrictWithParents(districtId: number): Promise<{ district: District; region: Region; country: Country } | undefined>;
+
+  // Categories
+  getCategories(): Promise<Category[]>;
+  getSubcategoriesByCategory(categoryId: number): Promise<Subcategory[]>;
+  getRandomCategory(): Promise<Category | undefined>;
+  getRandomSubcategoryByCategory(categoryId: number): Promise<Subcategory | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -184,6 +201,99 @@ export class DatabaseStorage implements IStorage {
       .insert(placeCache)
       .values(places)
       .returning();
+  }
+
+  // Location hierarchy
+  async getCountries(): Promise<Country[]> {
+    return await db
+      .select()
+      .from(countries)
+      .where(eq(countries.isActive, true));
+  }
+
+  async getRegionsByCountry(countryId: number): Promise<Region[]> {
+    return await db
+      .select()
+      .from(regions)
+      .where(and(eq(regions.countryId, countryId), eq(regions.isActive, true)));
+  }
+
+  async getDistrictsByRegion(regionId: number): Promise<District[]> {
+    return await db
+      .select()
+      .from(districts)
+      .where(and(eq(districts.regionId, regionId), eq(districts.isActive, true)));
+  }
+
+  async getDistrictsByCountry(countryId: number): Promise<District[]> {
+    const result = await db
+      .select({ district: districts })
+      .from(districts)
+      .innerJoin(regions, eq(districts.regionId, regions.id))
+      .where(and(eq(regions.countryId, countryId), eq(districts.isActive, true)));
+    return result.map(r => r.district);
+  }
+
+  async getRandomDistrictByCountry(countryId: number): Promise<District | undefined> {
+    const result = await db
+      .select({ district: districts })
+      .from(districts)
+      .innerJoin(regions, eq(districts.regionId, regions.id))
+      .where(and(eq(regions.countryId, countryId), eq(districts.isActive, true)))
+      .orderBy(sql`RANDOM()`)
+      .limit(1);
+    return result[0]?.district;
+  }
+
+  async getDistrictWithParents(districtId: number): Promise<{ district: District; region: Region; country: Country } | undefined> {
+    const result = await db
+      .select({
+        district: districts,
+        region: regions,
+        country: countries
+      })
+      .from(districts)
+      .innerJoin(regions, eq(districts.regionId, regions.id))
+      .innerJoin(countries, eq(regions.countryId, countries.id))
+      .where(eq(districts.id, districtId))
+      .limit(1);
+    return result[0];
+  }
+
+  // Categories
+  async getCategories(): Promise<Category[]> {
+    return await db
+      .select()
+      .from(categories)
+      .where(eq(categories.isActive, true))
+      .orderBy(categories.sortOrder);
+  }
+
+  async getSubcategoriesByCategory(categoryId: number): Promise<Subcategory[]> {
+    return await db
+      .select()
+      .from(subcategories)
+      .where(and(eq(subcategories.categoryId, categoryId), eq(subcategories.isActive, true)));
+  }
+
+  async getRandomCategory(): Promise<Category | undefined> {
+    const [category] = await db
+      .select()
+      .from(categories)
+      .where(eq(categories.isActive, true))
+      .orderBy(sql`RANDOM()`)
+      .limit(1);
+    return category;
+  }
+
+  async getRandomSubcategoryByCategory(categoryId: number): Promise<Subcategory | undefined> {
+    const [subcategory] = await db
+      .select()
+      .from(subcategories)
+      .where(and(eq(subcategories.categoryId, categoryId), eq(subcategories.isActive, true)))
+      .orderBy(sql`RANDOM()`)
+      .limit(1);
+    return subcategory;
   }
 }
 

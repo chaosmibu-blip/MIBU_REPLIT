@@ -947,6 +947,199 @@ ${uncachedSkeleton.map((item, idx) => `  {
     });
   });
 
+  // ============ Location Hierarchy Routes ============
+
+  app.get("/api/locations/countries", async (req, res) => {
+    try {
+      const countriesList = await storage.getCountries();
+      res.json({ countries: countriesList });
+    } catch (error) {
+      console.error("Error fetching countries:", error);
+      res.status(500).json({ error: "Failed to fetch countries" });
+    }
+  });
+
+  app.get("/api/locations/regions/:countryId", async (req, res) => {
+    try {
+      const countryId = parseInt(req.params.countryId);
+      const regionsList = await storage.getRegionsByCountry(countryId);
+      res.json({ regions: regionsList });
+    } catch (error) {
+      console.error("Error fetching regions:", error);
+      res.status(500).json({ error: "Failed to fetch regions" });
+    }
+  });
+
+  app.get("/api/locations/districts/:regionId", async (req, res) => {
+    try {
+      const regionId = parseInt(req.params.regionId);
+      const districtsList = await storage.getDistrictsByRegion(regionId);
+      res.json({ districts: districtsList });
+    } catch (error) {
+      console.error("Error fetching districts:", error);
+      res.status(500).json({ error: "Failed to fetch districts" });
+    }
+  });
+
+  app.get("/api/locations/districts/country/:countryId", async (req, res) => {
+    try {
+      const countryId = parseInt(req.params.countryId);
+      const districtsList = await storage.getDistrictsByCountry(countryId);
+      res.json({ districts: districtsList, count: districtsList.length });
+    } catch (error) {
+      console.error("Error fetching districts by country:", error);
+      res.status(500).json({ error: "Failed to fetch districts" });
+    }
+  });
+
+  // ============ Category Routes ============
+
+  app.get("/api/categories", async (req, res) => {
+    try {
+      const categoriesList = await storage.getCategories();
+      res.json({ categories: categoriesList });
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+      res.status(500).json({ error: "Failed to fetch categories" });
+    }
+  });
+
+  app.get("/api/categories/:categoryId/subcategories", async (req, res) => {
+    try {
+      const categoryId = parseInt(req.params.categoryId);
+      const subcategoriesList = await storage.getSubcategoriesByCategory(categoryId);
+      res.json({ subcategories: subcategoriesList });
+    } catch (error) {
+      console.error("Error fetching subcategories:", error);
+      res.status(500).json({ error: "Failed to fetch subcategories" });
+    }
+  });
+
+  // ============ Gacha Pull Route ============
+
+  app.post("/api/gacha/pull", async (req, res) => {
+    try {
+      const { countryId, language = 'zh-TW' } = req.body;
+
+      if (!countryId) {
+        return res.status(400).json({ error: "countryId is required" });
+      }
+
+      // Step 1: Random district selection (1/N probability where N = total districts)
+      const district = await storage.getRandomDistrictByCountry(countryId);
+      if (!district) {
+        return res.status(404).json({ error: "No districts found for this country" });
+      }
+
+      const districtWithParents = await storage.getDistrictWithParents(district.id);
+      if (!districtWithParents) {
+        return res.status(500).json({ error: "Failed to get district info" });
+      }
+
+      // Step 2: Random category selection (1/8 probability)
+      const category = await storage.getRandomCategory();
+      if (!category) {
+        return res.status(404).json({ error: "No categories found" });
+      }
+
+      // Step 3: Random subcategory selection (1/Y probability where Y = subcategories in category)
+      const subcategory = await storage.getRandomSubcategoryByCategory(category.id);
+      if (!subcategory) {
+        return res.status(404).json({ error: "No subcategories found" });
+      }
+
+      // Determine name based on language
+      const getLocalizedName = (item: any, lang: string): string => {
+        switch (lang) {
+          case 'ja': return item.nameJa || item.nameZh || item.nameEn;
+          case 'ko': return item.nameKo || item.nameZh || item.nameEn;
+          case 'en': return item.nameEn;
+          default: return item.nameZh || item.nameEn;
+        }
+      };
+
+      const districtName = getLocalizedName(districtWithParents.district, language);
+      const regionName = getLocalizedName(districtWithParents.region, language);
+      const countryName = getLocalizedName(districtWithParents.country, language);
+      const categoryName = getLocalizedName(category, language);
+      const subcategoryName = getLocalizedName(subcategory, language);
+
+      // Build search query for Google Places
+      const searchQuery = `${districtName} ${subcategoryName}`;
+      const searchKeywords = subcategory.searchKeywords || subcategoryName;
+
+      // Search Google Places
+      let placeResult = null;
+      if (GOOGLE_MAPS_API_KEY) {
+        try {
+          const searchText = encodeURIComponent(`${searchKeywords} ${districtName}`);
+          const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchText}&key=${GOOGLE_MAPS_API_KEY}&language=zh-TW`;
+          
+          const response = await fetch(url);
+          const data = await response.json();
+          
+          if (data.status === 'OK' && data.results && data.results.length > 0) {
+            // Pick a random result from top 5 to add variety
+            const maxIndex = Math.min(5, data.results.length);
+            const randomIndex = Math.floor(Math.random() * maxIndex);
+            const place = data.results[randomIndex];
+            
+            placeResult = {
+              name: place.name,
+              address: place.formatted_address,
+              placeId: place.place_id,
+              location: place.geometry?.location,
+              rating: place.rating,
+              types: place.types
+            };
+          }
+        } catch (error) {
+          console.error("Google Places API error:", error);
+        }
+      }
+
+      // Return the gacha result
+      res.json({
+        success: true,
+        pull: {
+          location: {
+            district: {
+              id: district.id,
+              code: district.code,
+              name: districtName
+            },
+            region: {
+              id: districtWithParents.region.id,
+              code: districtWithParents.region.code,
+              name: regionName
+            },
+            country: {
+              id: districtWithParents.country.id,
+              code: districtWithParents.country.code,
+              name: countryName
+            }
+          },
+          category: {
+            id: category.id,
+            code: category.code,
+            name: categoryName,
+            colorHex: category.colorHex
+          },
+          subcategory: {
+            id: subcategory.id,
+            code: subcategory.code,
+            name: subcategoryName
+          },
+          searchQuery,
+          place: placeResult
+        }
+      });
+    } catch (error) {
+      console.error("Gacha pull error:", error);
+      res.status(500).json({ error: "Failed to perform gacha pull" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

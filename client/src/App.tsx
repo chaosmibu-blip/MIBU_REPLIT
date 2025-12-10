@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { generateGachaItinerary } from './services/geminiService';
 import { useAuth } from './hooks/useAuth';
-import { AppState, Language, GachaItem, AppView, Merchant } from './types';
+import { AppState, Language, GachaItem, GachaResponse, AppView, Merchant } from './types';
 import { InputForm } from './components/InputForm';
 import { GachaScene } from './components/GachaScene';
 import { ResultList } from './components/ResultList';
@@ -26,7 +25,7 @@ const App: React.FC = () => {
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   
   const [state, setState] = useState<AppState>({
-    language: 'zh-TW', user: null, country: '', city: '', level: DEFAULT_LEVEL,
+    language: 'zh-TW', user: null, country: '', city: '', countryId: null, level: DEFAULT_LEVEL,
     loading: false, result: null, error: null, groundingSources: [], view: 'home',
     collection: [], celebrationCoupons: [], 
     lastVisitCollection: new Date().toISOString(), lastVisitItemBox: new Date().toISOString(),
@@ -217,48 +216,69 @@ const App: React.FC = () => {
     if (!isUnlimitedUser && currentCount >= MAX_DAILY_GENERATIONS) { alert(`${t.dailyLimitReached}\n${t.dailyLimitReachedDesc}`); return; }
 
     setState(prev => ({ ...prev, loading: true, error: null, celebrationCoupons: [] }));
+    
     try {
-      const collectedNames = state.collection.filter(i => i && i.place_name).map(item => item.place_name as string);
-      const { data, sources } = await generateGachaItinerary(state.country, state.city, state.level, state.language, collectedNames);
-      localStorage.setItem(STORAGE_KEYS.DAILY_LIMIT, JSON.stringify({ date: today, count: currentCount + 1 }));
-
-      const updatedMerchantDb = { ...state.merchantDb };
-      let dbUpdated = false;
-      const processedInventory = data.inventory.map(item => {
-          const placeId = getPlaceId(item);
-          const merchantItem = updatedMerchantDb[placeId];
-          let finalItem = { ...item, country: state.country, city: state.city, district: (data.meta.locked_district as any)?.['zh-TW'] || data.meta.locked_district }; 
-          if (merchantItem) {
-              merchantItem.impressionCount = (merchantItem.impressionCount || 0) + 1;
-              dbUpdated = true;
-              finalItem.store_promo = merchantItem.store_promo;
-              finalItem.is_promo_active = merchantItem.is_promo_active;
-              const activeCoupons = (merchantItem.merchant_coupons || []).filter(c => c.is_active && !c.archived && c.remaining_quantity > 0);
-              if (activeCoupons.length > 0) {
-                   const winner = activeCoupons[Math.floor(Math.random() * activeCoupons.length)];
-                   finalItem.is_coupon = true;
-                   finalItem.coupon_data = { title: winner.title, code: winner.code, terms: winner.terms };
-                   merchantItem.redemptionCount = (merchantItem.redemptionCount || 0) + 1;
-                   winner.redeemed_count = (winner.redeemed_count || 0) + 1;
-                   winner.remaining_quantity--;
-              } else { finalItem.is_coupon = false; finalItem.coupon_data = null; }
-              updatedMerchantDb[placeId] = merchantItem;
-          }
-          return finalItem;
+      if (!state.countryId) {
+        throw new Error('Please select a destination');
+      }
+      
+      const response = await fetch('/api/gacha/pull', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ countryId: state.countryId, language: state.language })
       });
-      if (dbUpdated) localStorage.setItem(STORAGE_KEYS.MERCHANT_DB, JSON.stringify(updatedMerchantDb));
+      
+      if (!response.ok) {
+        throw new Error('Failed to perform gacha pull');
+      }
+      
+      const pullResult = await response.json();
+      localStorage.setItem(STORAGE_KEYS.DAILY_LIMIT, JSON.stringify({ date: today, count: currentCount + 1 }));
+      
+      const { pull } = pullResult;
+      
+      const gachaItem: GachaItem = {
+        id: Date.now(),
+        place_name: pull.place?.name || `${pull.location.district.name} ${pull.subcategory.name}`,
+        description: pull.place?.address || `${pull.location.region.name}, ${pull.location.country.name}`,
+        category: pull.category.code as any,
+        suggested_time: '',
+        duration: '',
+        search_query: pull.searchQuery,
+        color_hex: pull.category.colorHex || '#6366f1',
+        country: pull.location.country.name,
+        city: pull.location.region.name,
+        district: pull.location.district.name,
+        collectedAt: new Date().toISOString(),
+        is_coupon: false,
+        coupon_data: null,
+        place_id: pull.place?.placeId || null,
+        verified_name: pull.place?.name || null,
+        verified_address: pull.place?.address || null,
+        google_rating: pull.place?.rating || null,
+        location: pull.place?.location || null,
+        is_location_verified: !!pull.place
+      };
 
-      const newItems = processedInventory.map(item => ({ ...item, collectedAt: new Date().toISOString() }));
-      const newCoupons = newItems.filter(item => item.is_coupon && item.coupon_data);
+      const gachaResponse: GachaResponse = {
+        status: 'success',
+        meta: {
+          date: new Date().toISOString().split('T')[0],
+          country: pull.location.country.name,
+          city: pull.location.region.name,
+          locked_district: pull.location.district.name,
+          user_level: state.level
+        },
+        inventory: [gachaItem]
+      };
 
       setState(prev => {
         const existingKeys = new Set(prev.collection.map(getItemKey));
-        const uniqueNewItems = newItems.filter(i => !existingKeys.has(getItemKey(i)));
+        const uniqueNewItems = [gachaItem].filter(i => !existingKeys.has(getItemKey(i)));
         const updatedCollection = [...prev.collection, ...uniqueNewItems];
         localStorage.setItem(STORAGE_KEYS.COLLECTION, JSON.stringify(updatedCollection));
         
-        // Save new items to backend if user is authenticated
-        if (isAuthenticated) {
+        if (isAuthenticated && uniqueNewItems.length > 0) {
           uniqueNewItems.forEach(async (item) => {
             try {
               const placeName = typeof item.place_name === 'string' 
@@ -274,8 +294,8 @@ const App: React.FC = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   placeName,
-                  country: item.country || state.country,
-                  city: item.city || state.city,
+                  country: item.country,
+                  city: item.city,
                   district: item.district || null,
                   category: item.category || null,
                   description,
@@ -290,9 +310,13 @@ const App: React.FC = () => {
         }
         
         return {
-          ...prev, loading: false, result: { ...data, inventory: processedInventory },
-          groundingSources: sources, view: 'result', collection: updatedCollection,
-          celebrationCoupons: newCoupons, merchantDb: dbUpdated ? updatedMerchantDb : prev.merchantDb
+          ...prev, 
+          loading: false, 
+          result: gachaResponse,
+          groundingSources: [], 
+          view: 'result', 
+          collection: updatedCollection,
+          celebrationCoupons: []
         };
       });
     } catch (err: any) {
