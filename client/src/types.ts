@@ -125,6 +125,7 @@ export interface AppState {
   country: string; 
   city: string;    
   countryId: number | null;
+  regionId: number | null;
   level: number;
   loading: boolean;
   error: string | null;

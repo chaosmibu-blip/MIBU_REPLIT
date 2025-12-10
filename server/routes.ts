@@ -1019,16 +1019,21 @@ ${uncachedSkeleton.map((item, idx) => `  {
 
   app.post("/api/gacha/pull", async (req, res) => {
     try {
-      const { countryId, language = 'zh-TW' } = req.body;
+      const { countryId, regionId, language = 'zh-TW' } = req.body;
 
       if (!countryId) {
         return res.status(400).json({ error: "countryId is required" });
       }
 
-      // Step 1: Random district selection (1/N probability where N = total districts)
-      const district = await storage.getRandomDistrictByCountry(countryId);
+      // Step 1: Random district selection (1/N probability where N = total districts in region or country)
+      let district;
+      if (regionId) {
+        district = await storage.getRandomDistrictByRegion(regionId);
+      } else {
+        district = await storage.getRandomDistrictByCountry(countryId);
+      }
       if (!district) {
-        return res.status(404).json({ error: "No districts found for this country" });
+        return res.status(404).json({ error: "No districts found" });
       }
 
       const districtWithParents = await storage.getDistrictWithParents(district.id);

@@ -13,6 +13,15 @@ interface Country {
   nameKo: string | null;
 }
 
+interface Region {
+  id: number;
+  countryId: number;
+  nameEn: string;
+  nameZh: string;
+  nameJa: string | null;
+  nameKo: string | null;
+}
+
 interface InputFormProps {
   state: AppState;
   onUpdate: (updates: Partial<AppState>) => void;
@@ -22,9 +31,12 @@ interface InputFormProps {
 export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit }) => {
   const t = TRANSLATIONS[state.language];
   const [countries, setCountries] = useState<Country[]>([]);
+  const [regions, setRegions] = useState<Region[]>([]);
   const [districtCount, setDistrictCount] = useState<number>(0);
   const [selectedCountryId, setSelectedCountryId] = useState<number | null>(null);
+  const [selectedRegionId, setSelectedRegionId] = useState<number | null>(null);
   const [loadingCountries, setLoadingCountries] = useState(true);
+  const [loadingRegions, setLoadingRegions] = useState(false);
 
   useEffect(() => {
     const fetchCountries = async () => {
@@ -45,22 +57,50 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
 
   useEffect(() => {
     if (selectedCountryId) {
-      const fetchDistrictCount = async () => {
+      const fetchRegions = async () => {
+        setLoadingRegions(true);
         try {
-          const response = await fetch(`/api/locations/districts/country/${selectedCountryId}`);
+          const response = await fetch(`/api/locations/regions/${selectedCountryId}`);
           if (response.ok) {
             const data = await response.json();
-            setDistrictCount(data.count || 0);
+            setRegions(data.regions || []);
           }
         } catch (error) {
-          console.error('Failed to fetch district count:', error);
+          console.error('Failed to fetch regions:', error);
+        } finally {
+          setLoadingRegions(false);
         }
       };
-      fetchDistrictCount();
+      fetchRegions();
+      setSelectedRegionId(null);
     }
   }, [selectedCountryId]);
 
-  const getLocalizedName = (item: Country): string => {
+  useEffect(() => {
+    const fetchDistrictCount = async () => {
+      try {
+        let url: string;
+        if (selectedRegionId) {
+          url = `/api/locations/districts/${selectedRegionId}`;
+        } else if (selectedCountryId) {
+          url = `/api/locations/districts/country/${selectedCountryId}`;
+        } else {
+          setDistrictCount(0);
+          return;
+        }
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          setDistrictCount(data.districts?.length || data.count || 0);
+        }
+      } catch (error) {
+        console.error('Failed to fetch district count:', error);
+      }
+    };
+    fetchDistrictCount();
+  }, [selectedCountryId, selectedRegionId]);
+
+  const getLocalizedName = (item: Country | Region): string => {
     switch (state.language) {
       case 'ja': return item.nameJa || item.nameZh || item.nameEn;
       case 'ko': return item.nameKo || item.nameZh || item.nameEn;
@@ -73,11 +113,18 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
     const country = countries.find(c => c.id === countryId);
     if (country) {
       setSelectedCountryId(countryId);
-      onUpdate({ country: country.code, countryId: countryId });
+      setSelectedRegionId(null);
+      onUpdate({ country: country.code, countryId: countryId, regionId: null });
     }
   };
 
+  const handleRegionChange = (regionId: number | null) => {
+    setSelectedRegionId(regionId);
+    onUpdate({ regionId: regionId });
+  };
+
   const selectedCountry = countries.find(c => c.id === selectedCountryId);
+  const selectedRegion = regions.find(r => r.id === selectedRegionId);
 
   return (
     <div className="w-full max-w-md mx-auto p-6 space-y-8 mt-10">
@@ -115,21 +162,63 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
           </div>
         </div>
 
+        {/* Region Selection */}
+        {selectedCountryId && regions.length > 0 && (
+          <div className="space-y-3">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">
+              {state.language === 'zh-TW' && '選擇地區（選填）'}
+              {state.language === 'en' && 'Select Region (Optional)'}
+              {state.language === 'ja' && '地域を選択（任意）'}
+              {state.language === 'ko' && '지역 선택 (선택사항)'}
+            </label>
+            <div className="relative">
+              <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-purple-400" />
+              {loadingRegions ? (
+                <div className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl flex items-center">
+                  <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                  <span className="ml-2 text-slate-400">{t.loading}</span>
+                </div>
+              ) : (
+                <select
+                  value={selectedRegionId || ''}
+                  onChange={(e) => handleRegionChange(e.target.value ? parseInt(e.target.value) : null)}
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-purple-200 appearance-none"
+                  data-testid="select-region"
+                >
+                  <option value="">
+                    {state.language === 'zh-TW' && '全部地區（隨機）'}
+                    {state.language === 'en' && 'All Regions (Random)'}
+                    {state.language === 'ja' && 'すべての地域（ランダム）'}
+                    {state.language === 'ko' && '모든 지역 (랜덤)'}
+                  </option>
+                  {regions.map(region => (
+                    <option key={region.id} value={region.id}>
+                      {getLocalizedName(region)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* District Info Display */}
         {selectedCountry && districtCount > 0 && (
           <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl p-4 space-y-2">
             <div className="flex items-center gap-2 text-indigo-600">
               <MapPin className="w-4 h-4" />
-              <span className="font-bold text-sm">{getLocalizedName(selectedCountry)}</span>
+              <span className="font-bold text-sm">
+                {selectedRegion ? getLocalizedName(selectedRegion) : getLocalizedName(selectedCountry)}
+              </span>
             </div>
             <div className="text-xs text-slate-500">
-              {state.language === 'zh-TW' && `${districtCount} 個區域等你探索！`}
+              {state.language === 'zh-TW' && `${districtCount} 個鄉鎮區等你探索！`}
               {state.language === 'en' && `${districtCount} districts waiting to explore!`}
               {state.language === 'ja' && `${districtCount} 地区が探検を待っています！`}
               {state.language === 'ko' && `${districtCount}개 지역이 탐험을 기다리고 있습니다!`}
             </div>
             <div className="text-[10px] text-slate-400 uppercase tracking-wider">
-              {state.language === 'zh-TW' && '隨機抽選：地區 × 類別 × 子類別'}
+              {state.language === 'zh-TW' && '隨機抽選：鄉鎮區 × 類別 × 子類別'}
               {state.language === 'en' && 'Random draw: District × Category × Subcategory'}
               {state.language === 'ja' && 'ランダム抽選：地区 × カテゴリ × サブカテゴリ'}
               {state.language === 'ko' && '랜덤 뽑기: 지역 × 카테고리 × 하위 카테고리'}

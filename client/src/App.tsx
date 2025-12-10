@@ -25,7 +25,7 @@ const App: React.FC = () => {
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   
   const [state, setState] = useState<AppState>({
-    language: 'zh-TW', user: null, country: '', city: '', countryId: null, level: DEFAULT_LEVEL,
+    language: 'zh-TW', user: null, country: '', city: '', countryId: null, regionId: null, level: DEFAULT_LEVEL,
     loading: false, result: null, error: null, groundingSources: [], view: 'home',
     collection: [], celebrationCoupons: [], 
     lastVisitCollection: new Date().toISOString(), lastVisitItemBox: new Date().toISOString(),
@@ -225,7 +225,11 @@ const App: React.FC = () => {
       const response = await fetch('/api/gacha/pull', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ countryId: state.countryId, language: state.language })
+        body: JSON.stringify({ 
+          countryId: state.countryId, 
+          regionId: state.regionId,
+          language: state.language 
+        })
       });
       
       if (!response.ok) {

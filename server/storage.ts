@@ -44,6 +44,7 @@ export interface IStorage {
   getDistrictsByRegion(regionId: number): Promise<District[]>;
   getDistrictsByCountry(countryId: number): Promise<District[]>;
   getRandomDistrictByCountry(countryId: number): Promise<District | undefined>;
+  getRandomDistrictByRegion(regionId: number): Promise<District | undefined>;
   getDistrictWithParents(districtId: number): Promise<{ district: District; region: Region; country: Country } | undefined>;
 
   // Categories
@@ -243,6 +244,16 @@ export class DatabaseStorage implements IStorage {
       .orderBy(sql`RANDOM()`)
       .limit(1);
     return result[0]?.district;
+  }
+
+  async getRandomDistrictByRegion(regionId: number): Promise<District | undefined> {
+    const [district] = await db
+      .select()
+      .from(districts)
+      .where(and(eq(districts.regionId, regionId), eq(districts.isActive, true)))
+      .orderBy(sql`RANDOM()`)
+      .limit(1);
+    return district;
   }
 
   async getDistrictWithParents(districtId: number): Promise<{ district: District; region: Region; country: Country } | undefined> {
