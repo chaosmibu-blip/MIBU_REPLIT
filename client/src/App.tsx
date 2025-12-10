@@ -10,7 +10,7 @@ import { ItemBox } from './components/ItemBox';
 import { BottomNav } from './components/BottomNav';
 import { CouponCelebration } from './components/CouponCelebration';
 import { MerchantDashboard } from './components/MerchantDashboard';
-import { DEFAULT_LEVEL, TRANSLATIONS } from './constants';
+import { DEFAULT_LEVEL, TRANSLATIONS, MAX_DAILY_GENERATIONS } from './constants';
 import { Globe, LogIn, LogOut } from 'lucide-react';
 
 const STORAGE_KEYS = {
@@ -19,6 +19,7 @@ const STORAGE_KEYS = {
   LAST_BOX_VISIT: 'mibu_last_visit_itembox',
   MERCHANT_DB: 'mibu_merchant_db',
   MERCHANT_PROFILE: 'mibu_merchant_profile_v3', 
+  DAILY_LIMIT: 'mibu_daily_limit'
 };
 
 const App: React.FC = () => {
@@ -198,10 +199,17 @@ const App: React.FC = () => {
   };
 
   const handlePull = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const rawLimit = localStorage.getItem(STORAGE_KEYS.DAILY_LIMIT);
+    let currentCount = 0;
+    if (rawLimit) { try { const parsed = JSON.parse(rawLimit); if (parsed.date === today) currentCount = parsed.count; } catch (e) {} }
+    if (currentCount >= MAX_DAILY_GENERATIONS) { alert(`${t.dailyLimitReached}\n${t.dailyLimitReachedDesc}`); return; }
+
     setState(prev => ({ ...prev, loading: true, error: null, celebrationCoupons: [] }));
     try {
       const collectedNames = state.collection.filter(i => i && i.place_name).map(item => item.place_name as string);
       const { data, sources } = await generateGachaItinerary(state.country, state.city, state.level, state.language, collectedNames);
+      localStorage.setItem(STORAGE_KEYS.DAILY_LIMIT, JSON.stringify({ date: today, count: currentCount + 1 }));
 
       const updatedMerchantDb = { ...state.merchantDb };
       let dbUpdated = false;

@@ -10,7 +10,6 @@ interface ResultListProps {
 }
 
 const getContent = (content: any, lang: Language): string => {
-  if (!content) return '';
   if (typeof content === 'string') return content;
   return content[lang] || content['en'] || '';
 };
