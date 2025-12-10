@@ -1,34 +1,28 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Mibu旅遊行程" />
     
-    <title>Mibu 行程扭蛋 | AI 旅遊規劃</title>
-    <meta name="description" content="結合旅遊規劃與扭蛋樂趣的 AI 行程生成器。探索台灣、日本、香港的隱藏景點！" />
+    <title>Mibu旅遊行程</title>
     
-    <!-- Open Graph -->
-    <meta property="og:title" content="Mibu 行程扭蛋 | Mibu Travel Gacha" />
-    <meta property="og:description" content="搖一搖！用 AI 扭出你的專屬旅遊行程。收集圖鑑，解鎖隱藏優惠券！" />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://replit.com/public/images/opengraph.png" />
-    
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@replit" />
-    <meta name="twitter:title" content="Mibu 行程扭蛋" />
-    <meta name="twitter:description" content="AI 驅動的趣味旅遊行程生成器" />
-    <meta name="twitter:image" content="https://replit.com/public/images/opengraph.png" />
-
     <link rel="icon" type="image/png" href="/favicon.png" />
-    
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@300;400;500;700;800&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,600&display=swap" rel="stylesheet">
   </head>
-  <body>
+  <body class="selection:bg-indigo-100 selection:text-indigo-900">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Simple service worker registration placeholder
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          // navigator.serviceWorker.register('/service-worker.js').catch(console.error);
+        });
+      }
+    </script>
   </body>
 </html>

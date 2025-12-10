@@ -1,33 +1,62 @@
-import { Link, useLocation } from "wouter";
-import { Home, Compass, User, Map } from "lucide-react";
+import React from 'react';
+import { AppView } from '../types';
+import { Home, Compass, User, Archive } from 'lucide-react';
 
-export function BottomNav() {
-  const [location] = useLocation();
+interface BottomNavProps {
+  currentView: AppView;
+  onChange: (view: AppView) => void;
+}
 
-  const isActive = (path: string) => location === path;
+export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onChange }) => {
+  const navItems: { id: AppView, icon: React.FC<any>, label: string }[] = [
+    { id: 'home', icon: Compass, label: 'Gacha' },
+    { id: 'collection', icon: Archive, label: 'Collection' },
+    { id: 'item_box', icon: User, label: 'My Box' }, // Reusing ItemBox as My Box for simplicity
+  ];
+
+  const handleMerchant = () => {
+    if (currentView === 'merchant_dashboard' || currentView === 'merchant_login') {
+      onChange('home');
+    } else {
+      onChange('merchant_login');
+    }
+  };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-lg border-t border-gray-200 py-3 px-6 pb-safe z-50 flex justify-between items-center max-w-md mx-auto">
-      <Link href="/">
-        <a className={`flex flex-col items-center gap-1 ${isActive("/") ? "text-primary" : "text-gray-400"}`}>
-          <Compass className={`w-6 h-6 ${isActive("/") ? "fill-current" : ""}`} />
-          <span className="text-[10px] font-medium">Gacha</span>
-        </a>
-      </Link>
-      
-      <Link href="/collection">
-        <a className={`flex flex-col items-center gap-1 ${isActive("/collection") ? "text-primary" : "text-gray-400"}`}>
-          <Map className={`w-6 h-6 ${isActive("/collection") ? "fill-current" : ""}`} />
-          <span className="text-[10px] font-medium">Collection</span>
-        </a>
-      </Link>
-
-      <Link href="/merchant">
-        <a className={`flex flex-col items-center gap-1 ${isActive("/merchant") ? "text-primary" : "text-gray-400"}`}>
-          <User className={`w-6 h-6 ${isActive("/merchant") ? "fill-current" : ""}`} />
-          <span className="text-[10px] font-medium">Merchant</span>
-        </a>
-      </Link>
+    <nav className="fixed bottom-0 left-0 right-0 glass-nav pb-safe-bottom z-40 max-w-md mx-auto">
+      <div className="flex justify-around items-center h-16 px-2">
+        {navItems.map(item => {
+          const isActive = currentView === item.id || (item.id === 'home' && currentView === 'result');
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.id}
+              onClick={() => onChange(item.id)}
+              className={`flex flex-col items-center justify-center w-16 h-full transition-colors ${
+                isActive ? 'text-indigo-600' : 'text-slate-400'
+              }`}
+            >
+              <Icon className={`w-6 h-6 ${isActive ? 'fill-current' : ''}`} strokeWidth={isActive ? 2.5 : 2} />
+              <span className="text-[10px] font-bold mt-1">{item.label}</span>
+            </button>
+          );
+        })}
+        
+        {/* Merchant Toggle (Hidden or Small) */}
+        <button
+           onClick={handleMerchant}
+           className={`flex flex-col items-center justify-center w-16 h-full transition-colors ${
+             currentView.startsWith('merchant') ? 'text-indigo-600' : 'text-slate-300'
+           }`}
+        >
+          <StoreIcon className={`w-5 h-5`} />
+          <span className="text-[10px] font-bold mt-1">Store</span>
+        </button>
+      </div>
     </nav>
   );
-}
+};
+
+const StoreIcon = (props: any) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/><path d="M22 7v3a2 2 0 0 1-2 2v0a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12v0a2 2 0 0 1-2-2V7"/></svg>
+);

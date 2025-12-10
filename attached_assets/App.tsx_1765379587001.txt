@@ -240,60 +240,83 @@ const App: React.FC = () => {
       {state.celebrationCoupons.length > 0 && <CouponCelebration items={state.celebrationCoupons} language={state.language} onClose={() => setState(p => ({ ...p, celebrationCoupons: [] }))} />}
       
       <nav className="sticky top-0 z-[999] px-6 pt-safe-top pb-4 flex justify-between items-center w-full glass-nav transition-all">
-         <span className="font-display font-bold text-xl tracking-tight text-slate-800">MIBU</span>
-         {state.user ? (
-            <div className="flex items-center gap-2" onClick={handleLogout}>
-               <img src={state.user.avatar || `https://ui-avatars.com/api/?name=${state.user.name}`} className="w-8 h-8 rounded-full border border-white shadow-sm" alt="User" />
-               <span className="text-xs font-bold text-slate-600 hidden sm:block">{state.user.name}</span>
-            </div>
-         ) : (
-            <button 
-              className="text-xs font-bold bg-slate-200 px-3 py-1.5 rounded-full"
-              onClick={() => { const n = prompt("Enter Name"); if(n) { setInputName(n); handleUserLogin(); }}}
-            >
-              Login
-            </button>
-         )}
+        <div className="flex items-center gap-3 group cursor-pointer" onClick={() => handleViewChange('home')}>
+           <img src="https://i.ibb.co/S4JthF7R/mibu.jpg" alt="Mibu Logo" className="w-10 h-10 rounded-2xl shadow-lg shadow-indigo-200 transition-transform group-hover:rotate-12 bg-white p-1 object-cover" />
+           <span className="font-bold text-slate-800 tracking-tight text-lg">MIBU</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="relative group">
+            <select value={state.language} onChange={(e) => setState(prev => ({ ...prev, language: e.target.value as Language }))} className="appearance-none bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-sm rounded-full px-4 py-2 pr-8 outline-none focus:ring-2 focus:ring-indigo-100 transition-all cursor-pointer">
+              <option value="zh-TW">繁體中文</option><option value="en">English</option><option value="ja">日本語</option>
+            </select>
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg></div>
+          </div>
+          {state.user && (
+            <>
+               <div className="flex items-center gap-2">
+                  {state.user.isMerchant ? <div className="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold">M</div> : <img src={state.user.avatar} alt="User" className="w-9 h-9 rounded-full border border-slate-200" />}
+               </div>
+               <button onClick={handleLogout} className="relative z-50 w-10 h-10 rounded-full bg-slate-200 hover:bg-red-100 hover:text-red-600 text-slate-500 flex items-center justify-center transition-all cursor-pointer pointer-events-auto active:scale-95 hover:shadow-md" title="Logout">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+               </button>
+            </>
+          )}
+        </div>
       </nav>
 
-      {state.loading && <GachaScene />}
-
-      <main className="flex-1 w-full max-w-lg mx-auto relative">
-        {state.view === 'home' && !state.result && (
-          <InputForm 
-            state={state} 
-            onUpdate={(u) => setState(p => ({ ...p, ...u }))} 
-            onSubmit={handlePull} 
+      <main className="flex-grow flex flex-col items-center w-full max-w-7xl mx-auto pt-6 px-4">
+        {state.loading && <GachaScene language={state.language} />}
+        
+        {(state.view === 'merchant_login' || state.view === 'merchant_dashboard') && (
+          <MerchantDashboard 
+            language={state.language} 
+            globalCollection={state.collection} 
+            merchantDb={state.merchantDb} 
+            currentMerchant={state.currentMerchant} 
+            onLogin={handleMerchantLogin} 
+            onClaim={handleMerchantClaim} 
+            onUpdateItem={handleMerchantUpdateItem} 
+            onUpdateMerchant={handleMerchantUpdate} 
+            onBack={() => setState(prev => ({ ...prev, view: 'home' }))} 
           />
         )}
-        
-        {state.view === 'result' && state.result && (
-          <ResultList data={state.result} language={state.language} />
-        )}
-        
-        {state.view === 'home' && state.result && (
-          <ResultList data={state.result} language={state.language} />
+
+        {(state.view === 'home' || state.view === 'result') && (
+          <>
+            {!state.user ? (
+               <div className="flex-grow flex items-center justify-center w-full max-w-lg">
+                 <div className="w-full bg-white rounded-3xl p-8 shadow-xl border border-slate-100 animate-pop-up flex flex-col items-center text-center">
+                    <h1 className="font-display font-bold text-4xl text-slate-900 mb-6">{t.discoverTitle}</h1>
+                    <p className="text-slate-500 mb-8 leading-relaxed">{t.loginDesc}</p>
+                    <div className="w-full space-y-4">
+                      <div className="relative"><input type="text" value={inputName} onChange={(e) => setInputName(e.target.value)} placeholder={t.enterNamePlaceholder} className="w-full bg-slate-50 border border-slate-200 text-slate-800 font-bold text-lg py-4 px-6 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-center placeholder:font-normal placeholder:text-slate-400" onKeyDown={(e) => e.key === 'Enter' && handleUserLogin()} /></div>
+                      <button onClick={handleUserLogin} disabled={!inputName.trim()} className="w-full bg-indigo-600 text-white font-bold text-lg py-4 rounded-2xl hover:bg-indigo-700 transition-all hover:shadow-lg shadow-indigo-200 hover:-translate-y-1 active:translate-y-0 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">{t.startJourneyBtn}</button>
+                      <div className="pt-6 border-t border-slate-100 w-full"><button onClick={handleMerchantLoginStart} className="text-sm text-slate-400 font-bold hover:text-indigo-600 transition-colors">{t.loginMerchant}</button></div>
+                    </div>
+                 </div>
+               </div>
+            ) : (
+               <div className="w-full">
+                  {state.result && state.view === 'result' ? (
+                    <ResultList result={state.result} sources={state.groundingSources} language={state.language} onReset={() => setState(prev => ({ ...prev, result: null, view: 'home' }))} />
+                  ) : (
+                    <div className="flex items-center justify-center min-h-[60vh]">
+                       <div className="w-full max-w-lg bg-white rounded-3xl p-6 shadow-xl border border-slate-100 animate-pop-up">
+                         <div className="mb-6 text-center"><h2 className="font-display font-bold text-3xl text-slate-800">{t.appTitle}</h2><p className="text-sm text-slate-400 font-medium mt-1">{t.welcome} {state.user.name}</p></div>
+                         <InputForm country={state.country} city={state.city} level={state.level} language={state.language} setCountry={(v) => setState(p => ({ ...p, country: v }))} setCity={(v) => setState(p => ({ ...p, city: v }))} setLevel={(v) => setState(p => ({ ...p, level: v }))} onPull={handlePull} loading={state.loading} />
+                       </div>
+                    </div>
+                  )}
+               </div>
+            )}
+          </>
         )}
 
-        {state.view === 'collection' && (
-          <CollectionGrid items={state.collection} language={state.language} />
-        )}
-
-        {state.view === 'item_box' && (
-          <ItemBox items={state.collection} language={state.language} />
-        )}
-
-        {(state.view === 'merchant_dashboard' || state.view === 'merchant_login') && (
-           <MerchantDashboard 
-             state={state} 
-             onLogin={handleMerchantLogin} 
-             onUpdateMerchant={handleMerchantUpdate}
-             onClaim={handleMerchantClaim}
-           />
-        )}
+        {state.view === 'collection' && <CollectionGrid items={state.collection} language={state.language} merchantDb={state.merchantDb} />}
+        {state.view === 'item_box' && <ItemBox items={state.collection} language={state.language} />}
       </main>
 
-      <BottomNav currentView={state.view} onChange={handleViewChange} />
+      {state.user && <BottomNav view={state.view} setView={handleViewChange} language={state.language} hasUpdateCollection={hasNewCollection} hasUpdateItemBox={hasNewItems} />}
     </div>
   );
 };

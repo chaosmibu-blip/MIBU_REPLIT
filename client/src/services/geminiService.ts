@@ -1,76 +1,97 @@
-import { Itinerary, GachaItem, Coupon } from "@/types";
-import { SUB_DISTRICTS, CATEGORIES } from "@/lib/constants";
+import { GachaResponse, GachaItem, Category, Rarity } from "../types";
 
-const generateId = () => Math.random().toString(36).substring(2, 9);
+// Mock Data for Generator
+const MOCK_PLACES = {
+  [Category.Food]: [
+    "Din Tai Fung", "Addiction Aquatic Development", "Fu Hang Dou Jiang", "Raohe Night Market", 
+    "Ichiran Ramen", "Ay-Chung Flour-Rice Noodle", "SunnyHills", "Ice Monster"
+  ],
+  [Category.Stay]: [
+    "Grand Hyatt", "W Hotel", "Mandarin Oriental", "Regent Taipei", "Star Hostel", "Meander Hostel"
+  ],
+  [Category.Scenery]: [
+    "Taipei 101 Observatory", "Elephant Mountain", "Chiang Kai-shek Memorial Hall", "Longshan Temple", 
+    "Beitou Hot Spring", "Tamsui Fisherman's Wharf", "Maokong Gondola"
+  ],
+  [Category.Shopping]: [
+    "Ximending Shopping District", "Taipei 101 Mall", "Eslite Bookstore", "Don Don Donki", "Syntrend Creative Park"
+  ],
+  [Category.Entertainment]: [
+    "Party World KTV", "Vieshow Cinemas", "Escape Logic", "Taipei Zoo", "Miramar Ferris Wheel"
+  ],
+  [Category.Education]: [
+    "National Palace Museum", "Taipei Fine Arts Museum", "Huashan 1914 Creative Park", "Songshan Cultural Park"
+  ],
+  [Category.Activity]: [
+    "YouBike River Cycling", "Foot Massage", "Tea Ceremony", "Pineapple Cake DIY"
+  ]
+};
 
-const MOCK_PLACES = [
-  "Hidden Cat Cafe", "Old Town Temple", "Neon Night Market", "Sunset Viewpoint", 
-  "Retro Arcade Bar", "Secret Ramen Shop", "Vintage Bookstore", "Cloud 9 Observatory",
-  "Tiny Jazz Bar", "Mountain Shrine", "Seaside Park", "Antique Market"
-];
+const getRandomItem = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
-const MOCK_COUPONS: Partial<Coupon>[] = [
-  { title: "Free Drink", description: "Get a free drink with any meal", rarity: "R" },
-  { title: "10% Off", description: "10% discount on total bill", rarity: "R" },
-  { title: "Free Dessert", description: "Complimentary dessert", rarity: "SR" },
-  { title: "VIP Access", description: "Skip the line pass", rarity: "SSR" },
-  { title: "Owner's Treat", description: "Secret menu item for free", rarity: "SP" },
-];
-
-export async function generateItinerary(
+export const generateGachaItinerary = async (
   country: string,
   city: string,
-  intensity: number
-): Promise<Itinerary> {
-  // Simulate AI delay
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-
-  const districts = SUB_DISTRICTS[city] || ["Central"];
-  const mainDistrict = districts[Math.floor(Math.random() * districts.length)];
+  level: number,
+  language: string,
+  collectedNames: string[]
+): Promise<{ data: GachaResponse; sources: any[] }> => {
   
-  // Generate 3-6 items based on intensity
-  const itemCount = Math.max(3, Math.min(8, Math.floor(intensity / 2) + 2));
+  // Simulate API Delay
+  await new Promise(resolve => setTimeout(resolve, 2500));
+
   const items: GachaItem[] = [];
+  const itemCount = Math.min(8, Math.max(3, Math.floor(level / 1.5)));
+  
+  const districts = ["Xinyi District", "Da'an District", "Zhongshan District", "Wanhua District"];
+  const lockedDistrict = getRandomItem(districts);
 
   for (let i = 0; i < itemCount; i++) {
-    const hasCoupon = Math.random() > 0.7; // 30% chance
-    let coupon: Coupon | undefined;
-
-    if (hasCoupon) {
-      const template = MOCK_COUPONS[Math.floor(Math.random() * MOCK_COUPONS.length)];
-      coupon = {
-        id: generateId(),
-        code: `MIBU-${Math.floor(Math.random() * 10000)}`,
-        title: template.title!,
-        description: template.description!,
-        rarity: template.rarity!,
-        is_claimed: false,
-      } as Coupon;
-    }
-
-    const categoryKeys = Object.keys(CATEGORIES) as (keyof typeof CATEGORIES)[];
-    const categoryKey = categoryKeys[Math.floor(Math.random() * categoryKeys.length)];
-    const category = CATEGORIES[categoryKey];
+    const categoryKey = getRandomItem(Object.keys(MOCK_PLACES)) as Category;
+    const placeNameBase = getRandomItem(MOCK_PLACES[categoryKey]);
+    
+    // Simple Rarity Logic
+    const rand = Math.random();
+    let rarity = Rarity.R;
+    if (rand > 0.95) rarity = Rarity.SP;
+    else if (rand > 0.85) rarity = Rarity.SSR;
+    else if (rand > 0.70) rarity = Rarity.SR;
+    else if (rand > 0.50) rarity = Rarity.S;
 
     items.push({
-      id: generateId(),
-      place_name: `${mainDistrict} ${MOCK_PLACES[Math.floor(Math.random() * MOCK_PLACES.length)]}`,
-      description: `A wonderful ${category.label} spot in ${mainDistrict}. Highly recommended by locals.`,
-      category: category.id as any,
-      suggested_time: `${10 + i}:00 - ${11 + i}:30`,
-      coordinates: { lat: 0, lng: 0 },
-      district: mainDistrict,
-      coupon,
+      id: Date.now() + i,
+      place_name: `${placeNameBase} (${lockedDistrict})`,
+      description: `A wonderful ${categoryKey} spot located in ${lockedDistrict}. Great for level ${level} travelers.`,
+      category: categoryKey,
+      suggested_time: `${10 + i}:00`,
+      duration: "1.5 hours",
+      search_query: `${placeNameBase} ${city}`,
+      rarity: rarity,
+      color_hex: "#6366f1",
+      city: city,
+      country: country,
+      is_coupon: Math.random() > 0.7,
+      coupon_data: Math.random() > 0.7 ? {
+        title: "Free Drink",
+        code: "FREE-123",
+        terms: "Valid today only"
+      } : null,
+      operating_status: "OPEN"
     });
   }
 
   return {
-    id: generateId(),
-    country,
-    city,
-    district: mainDistrict,
-    intensity,
-    created_at: Date.now(),
-    items,
+    data: {
+      status: "success",
+      meta: {
+        date: new Date().toISOString().split('T')[0],
+        country,
+        city,
+        locked_district: lockedDistrict,
+        user_level: level
+      },
+      inventory: items
+    },
+    sources: []
   };
-}
+};
