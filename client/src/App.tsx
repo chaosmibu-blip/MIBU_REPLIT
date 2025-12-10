@@ -410,6 +410,7 @@ const App: React.FC = () => {
             onLogin={handleMerchantLogin}
             onUpdateMerchant={handleMerchantUpdate}
             onClaim={handleMerchantClaim}
+            isAuthenticated={isAuthenticated}
           />
         )}
       </main>

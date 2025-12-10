@@ -8,15 +8,22 @@ interface MerchantDashboardProps {
   state: AppState;
   onLogin: (name: string, email: string) => void;
   onUpdateMerchant: (merchant: Merchant) => void;
-  onClaim: (item: any) => void; 
+  onClaim: (item: any) => void;
+  isAuthenticated?: boolean;
 }
 
-export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onLogin, onUpdateMerchant }) => {
+export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onLogin, onUpdateMerchant, isAuthenticated }) => {
   const [name, setName] = useState('');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const t = TRANSLATIONS[state.language] as any;
 
   const handleUpgradeToPremium = async () => {
+    if (!isAuthenticated) {
+      setShowLoginPrompt(true);
+      return;
+    }
+    
     setIsCheckingOut(true);
     
     try {
@@ -42,6 +49,36 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
       setIsCheckingOut(false);
     }
   };
+
+  if (showLoginPrompt) {
+    return (
+      <div className="p-8 max-w-md mx-auto mt-20 bg-white rounded-3xl shadow-xl">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Crown className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-black text-slate-800">需要登入</h2>
+          <p className="text-slate-500 text-sm mt-2">升級 Premium 需要先登入您的帳戶</p>
+        </div>
+        
+        <a 
+          href="/api/login"
+          className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:from-amber-600 hover:to-orange-600 transition-colors shadow-lg"
+          data-testid="button-login-to-upgrade"
+        >
+          <Store className="w-5 h-5" />
+          登入以繼續升級
+        </a>
+        
+        <button 
+          onClick={() => setShowLoginPrompt(false)}
+          className="w-full mt-3 py-3 text-slate-500 text-sm hover:bg-slate-50 rounded-xl"
+        >
+          返回
+        </button>
+      </div>
+    );
+  }
   
   if (state.view === 'merchant_login') {
     return (
@@ -196,6 +233,39 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
           </div>
         )}
       </div>
+
+      {/* Login Required Modal */}
+      {showLoginPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <ShieldCheck className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-black text-slate-800 mb-2">需要登入</h3>
+              <p className="text-slate-500 text-sm">升級至 Premium 需要先登入您的帳號</p>
+            </div>
+            
+            <div className="space-y-3">
+              <a 
+                href="/api/login"
+                className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:from-amber-600 hover:to-orange-600 transition-all"
+                data-testid="button-login-for-upgrade"
+              >
+                <Store className="w-5 h-5" />
+                登入以繼續
+              </a>
+              <button
+                onClick={() => setShowLoginPrompt(false)}
+                className="w-full py-3 text-slate-500 font-bold hover:text-slate-700 transition-colors"
+                data-testid="button-cancel-login"
+              >
+                稍後再說
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
