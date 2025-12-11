@@ -560,17 +560,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const cacheMap = new Map(cachedPlaces.map(p => [p.subCategory, p]));
       
       // Separate skeleton items into cached and uncached
+      // Track used place names to prevent duplicates within the same pull
+      const usedPlaceNamesInPull: Set<string> = new Set(collectedNames || []);
       const cachedItems: any[] = [];
       const uncachedSkeleton: Array<typeof skeleton[0] & { originalIdx: number }> = [];
       
       skeleton.forEach((item, idx) => {
         const cached = cacheMap.get(item.subCategory);
-        if (cached && !collectedNames.includes(cached.placeName)) {
+        // Check both collectedNames AND usedPlaceNamesInPull to prevent duplicates
+        if (cached && !usedPlaceNamesInPull.has(cached.placeName)) {
           cachedItems.push({
             skeletonIdx: idx,
             cached: cached,
             skeleton: item
           });
+          // Mark this place as used so it won't appear again in this pull
+          usedPlaceNamesInPull.add(cached.placeName);
         } else {
           uncachedSkeleton.push({ ...item, originalIdx: idx });
         }
@@ -601,7 +606,7 @@ For each skeleton slot above, find a REAL, existing place in ${targetDistrict} t
 - Must be an actual business/location that exists
 
 【排除清單 Exclusions】
-Do NOT include: ${collectedNames.length > 0 ? collectedNames.join(', ') : 'none'}
+Do NOT include any of these places (already used): ${usedPlaceNamesInPull.size > 0 ? Array.from(usedPlaceNamesInPull).join(', ') : 'none'}
 
 Output language: ${outputLang}
 Output ONLY valid JSON array, no markdown, no explanation.
@@ -1530,6 +1535,116 @@ ${uncachedSkeleton.map((item, idx) => `  {
     } catch (error) {
       console.error("Gacha pull error:", error);
       res.status(500).json({ error: "Failed to perform gacha pull" });
+    }
+  });
+
+  // ============ Merchant Place Claim Routes ============
+  app.get("/api/merchant/places/search", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { query, district, city } = req.query;
+      if (!query || query.length < 2) {
+        return res.status(400).json({ error: "Query must be at least 2 characters" });
+      }
+
+      const places = await storage.searchPlacesForClaim(query, district, city);
+      res.json({ places });
+    } catch (error) {
+      console.error("Place search error:", error);
+      res.status(500).json({ error: "Failed to search places" });
+    }
+  });
+
+  app.post("/api/merchant/places/claim", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "You must be a registered merchant to claim places" });
+      }
+
+      const { placeName, district, city, country, placeCacheId } = req.body;
+      if (!placeName || !district || !city || !country) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      // Check if place is already claimed
+      const existingLink = await storage.getPlaceLinkByPlace(placeName, district, city);
+      if (existingLink) {
+        return res.status(409).json({ error: "This place is already claimed by another merchant" });
+      }
+
+      const link = await storage.createMerchantPlaceLink({
+        merchantId: merchant.id,
+        placeCacheId: placeCacheId || null,
+        placeName,
+        district,
+        city,
+        country,
+        status: 'pending'
+      });
+
+      res.json({ success: true, link });
+    } catch (error) {
+      console.error("Place claim error:", error);
+      res.status(500).json({ error: "Failed to claim place" });
+    }
+  });
+
+  app.get("/api/merchant/places", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant account required" });
+      }
+
+      const links = await storage.getMerchantPlaceLinks(merchant.id);
+      res.json({ places: links });
+    } catch (error) {
+      console.error("Get merchant places error:", error);
+      res.status(500).json({ error: "Failed to get merchant places" });
+    }
+  });
+
+  app.put("/api/merchant/places/:linkId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant account required" });
+      }
+
+      const linkId = parseInt(req.params.linkId);
+      const { promoTitle, promoDescription, promoImageUrl, isPromoActive } = req.body;
+
+      const updated = await storage.updateMerchantPlaceLink(linkId, {
+        promoTitle,
+        promoDescription,
+        promoImageUrl,
+        isPromoActive
+      });
+
+      res.json({ success: true, link: updated });
+    } catch (error) {
+      console.error("Update merchant place error:", error);
+      res.status(500).json({ error: "Failed to update place" });
     }
   });
 

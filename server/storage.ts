@@ -1,5 +1,5 @@
 import { 
-  users, collections, merchants, coupons, placeCache, placeFeedback,
+  users, collections, merchants, coupons, placeCache, placeFeedback, merchantPlaceLinks,
   countries, regions, districts, categories, subcategories,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
@@ -7,6 +7,7 @@ import {
   type Coupon, type InsertCoupon,
   type PlaceCache, type InsertPlaceCache,
   type PlaceFeedback, type InsertPlaceFeedback,
+  type MerchantPlaceLink, type InsertMerchantPlaceLink,
   type Country, type Region, type District,
   type Category, type Subcategory
 } from "@shared/schema";
@@ -59,6 +60,13 @@ export interface IStorage {
   getPlacePenalty(userId: string, placeName: string, district: string, city: string): Promise<number>;
   incrementPlacePenalty(userId: string, placeName: string, district: string, city: string, placeCacheId?: number): Promise<PlaceFeedback>;
   getExcludedPlaceNames(userId: string, district: string, city: string, threshold?: number): Promise<string[]>;
+
+  // Merchant Place Links (ownership/claim)
+  getMerchantPlaceLinks(merchantId: number): Promise<MerchantPlaceLink[]>;
+  getPlaceLinkByPlace(placeName: string, district: string, city: string): Promise<MerchantPlaceLink | undefined>;
+  createMerchantPlaceLink(link: InsertMerchantPlaceLink): Promise<MerchantPlaceLink>;
+  updateMerchantPlaceLink(linkId: number, data: Partial<MerchantPlaceLink>): Promise<MerchantPlaceLink>;
+  searchPlacesForClaim(query: string, district?: string, city?: string): Promise<PlaceCache[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -393,6 +401,62 @@ export class DatabaseStorage implements IStorage {
         sql`${placeFeedback.penaltyScore} >= ${threshold}`
       ));
     return results.map(r => r.placeName);
+  }
+
+  // Merchant Place Links methods
+  async getMerchantPlaceLinks(merchantId: number): Promise<MerchantPlaceLink[]> {
+    return db
+      .select()
+      .from(merchantPlaceLinks)
+      .where(eq(merchantPlaceLinks.merchantId, merchantId))
+      .orderBy(desc(merchantPlaceLinks.createdAt));
+  }
+
+  async getPlaceLinkByPlace(placeName: string, district: string, city: string): Promise<MerchantPlaceLink | undefined> {
+    const [link] = await db
+      .select()
+      .from(merchantPlaceLinks)
+      .where(and(
+        eq(merchantPlaceLinks.placeName, placeName),
+        eq(merchantPlaceLinks.district, district),
+        eq(merchantPlaceLinks.city, city),
+        eq(merchantPlaceLinks.status, 'approved')
+      ));
+    return link;
+  }
+
+  async createMerchantPlaceLink(link: InsertMerchantPlaceLink): Promise<MerchantPlaceLink> {
+    const [created] = await db
+      .insert(merchantPlaceLinks)
+      .values(link)
+      .returning();
+    return created;
+  }
+
+  async updateMerchantPlaceLink(linkId: number, data: Partial<MerchantPlaceLink>): Promise<MerchantPlaceLink> {
+    const [updated] = await db
+      .update(merchantPlaceLinks)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(merchantPlaceLinks.id, linkId))
+      .returning();
+    return updated;
+  }
+
+  async searchPlacesForClaim(query: string, district?: string, city?: string): Promise<PlaceCache[]> {
+    let whereConditions = sql`${placeCache.placeName} ILIKE ${'%' + query + '%'}`;
+    
+    if (district) {
+      whereConditions = sql`${whereConditions} AND ${placeCache.district} = ${district}`;
+    }
+    if (city) {
+      whereConditions = sql`${whereConditions} AND ${placeCache.city} = ${city}`;
+    }
+
+    return db
+      .select()
+      .from(placeCache)
+      .where(whereConditions)
+      .limit(20);
   }
 }
 

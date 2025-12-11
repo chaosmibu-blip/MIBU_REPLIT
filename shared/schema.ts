@@ -175,10 +175,32 @@ export const placeFeedback = pgTable("place_feedback", {
   index("IDX_place_feedback_lookup").on(table.userId, table.placeName, table.district, table.city),
 ]);
 
+// Merchant-Place Links (ownership/claim system)
+export const merchantPlaceLinks = pgTable("merchant_place_links", {
+  id: serial("id").primaryKey(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  placeCacheId: integer("place_cache_id").references(() => placeCache.id),
+  placeName: text("place_name").notNull(),
+  district: text("district").notNull(),
+  city: text("city").notNull(),
+  country: text("country").notNull(),
+  status: varchar("status", { length: 50 }).default('pending').notNull(), // pending, approved, rejected
+  promoTitle: text("promo_title"),
+  promoDescription: text("promo_description"),
+  promoImageUrl: text("promo_image_url"),
+  isPromoActive: boolean("is_promo_active").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_merchant_place_links_lookup").on(table.placeName, table.district, table.city),
+  index("IDX_merchant_place_links_merchant").on(table.merchantId),
+]);
+
 // Merchant coupons
 export const coupons = pgTable("coupons", {
   id: serial("id").primaryKey(),
   merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  merchantPlaceLinkId: integer("merchant_place_link_id").references(() => merchantPlaceLinks.id),
   placeName: text("place_name").notNull(),
   title: text("title").notNull(),
   code: text("code").notNull(),
@@ -272,6 +294,12 @@ export const insertCouponSchema = createInsertSchema(coupons).omit({
   createdAt: true,
 });
 
+export const insertMerchantPlaceLinkSchema = createInsertSchema(merchantPlaceLinks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertPlaceCacheSchema = createInsertSchema(placeCache).omit({
   id: true,
   createdAt: true,
@@ -321,6 +349,9 @@ export type Merchant = typeof merchants.$inferSelect;
 
 export type InsertCoupon = z.infer<typeof insertCouponSchema>;
 export type Coupon = typeof coupons.$inferSelect;
+
+export type InsertMerchantPlaceLink = z.infer<typeof insertMerchantPlaceLinkSchema>;
+export type MerchantPlaceLink = typeof merchantPlaceLinks.$inferSelect;
 
 export type InsertPlaceCache = z.infer<typeof insertPlaceCacheSchema>;
 export type PlaceCache = typeof placeCache.$inferSelect;
