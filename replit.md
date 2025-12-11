@@ -54,6 +54,12 @@ Preferred communication style: Simple, everyday language.
 - **Response Meta**: Includes `cache_hits` and `ai_generated` counts for monitoring
 
 ### Recent Changes (2025-12-11)
+- **Merchant Claiming System**: Merchants can manually claim their business locations
+  - Manual entry form: merchants input business name, select city/district
+  - Auto-approval: claims are immediately approved for testing (production should use pending → admin review)
+  - Promo integration: gacha results check for matching merchant claims and display promotions
+  - Matching logic: placeName + district + city (exact match required)
+  - API endpoints: `POST /api/merchant/places/claim`, `GET /api/merchant/places`, `PUT /api/merchant/places/:linkId`
 - **Place Exclusion System**: Users can click X button on itinerary cards to exclude places they don't like
   - Per-user tracking via `placeFeedback` table (userId, placeName, district, city, penaltyScore)
   - Penalty score increments each time a user excludes the same place
