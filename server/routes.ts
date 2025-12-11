@@ -1505,6 +1505,39 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // ============ Place Feedback Routes ============
+  app.post("/api/feedback/exclude", async (req, res) => {
+    try {
+      const { placeName, district, city, placeCacheId } = req.body;
+      
+      if (!placeName || !district || !city) {
+        return res.status(400).json({ 
+          error: "Missing required fields: placeName, district, city" 
+        });
+      }
+
+      const feedback = await storage.incrementPlacePenalty(
+        placeName,
+        district,
+        city,
+        placeCacheId || undefined
+      );
+
+      res.json({
+        success: true,
+        message: `Place "${placeName}" has been excluded`,
+        feedback: {
+          id: feedback.id,
+          placeName: feedback.placeName,
+          penaltyScore: feedback.penaltyScore
+        }
+      });
+    } catch (error) {
+      console.error("Feedback exclusion error:", error);
+      res.status(500).json({ error: "Failed to exclude place" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
