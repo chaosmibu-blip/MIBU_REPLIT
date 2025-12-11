@@ -53,7 +53,20 @@ Preferred communication style: Simple, everyday language.
 - **Benefits**: Subsequent requests for same district reuse cached places, reducing AI and Google API calls
 - **Response Meta**: Includes `cache_hits` and `ai_generated` counts for monitoring
 
-### Recent Changes (2025-12-10)
+### Recent Changes (2025-12-11)
+- **Place Exclusion System**: Users can click X button on itinerary cards to exclude places they don't like
+  - Per-user tracking via `placeFeedback` table (userId, placeName, district, city, penaltyScore)
+  - Penalty score increments each time a user excludes the same place
+  - Places with high penalty scores will appear less frequently in future pulls
+  - API endpoint: `POST /api/feedback/exclude` (requires authentication)
+- **Search Result Filtering**: Google Places results now filter out:
+  - Closed businesses (CLOSED_PERMANENTLY, CLOSED_TEMPORARILY)
+  - Non-tourism place types (travel_agency, library, lawyer, bank, etc.)
+  - Generic placeholder names (探索, 旅行社, 服務中心, etc.)
+- **Time Slot Ordering**: Subcategories now have `preferredTimeSlot` field (morning, lunch, afternoon, dinner, evening, stay)
+- **Animated Card Removal**: X button triggers smooth exit animation using Framer Motion's AnimatePresence
+
+### Previous Changes (2025-12-10)
 - **Removed Rarity System**: SP/SSR/SR/S/R grades have been completely removed from the system
 - **Category Labels**: Cards now display category type labels (Food, Stay, Scenery, Shopping, Entertainment, Activity, Education) instead of rarity badges
 - **District-Based Organization**: Collection items are grouped by district with accordion-style collapsible menus

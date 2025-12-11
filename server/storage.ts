@@ -56,9 +56,9 @@ export interface IStorage {
   getRandomSubcategoryByCategory(categoryId: number): Promise<Subcategory | undefined>;
 
   // Place Feedback (exclusion tracking)
-  getPlacePenalty(placeName: string, district: string, city: string): Promise<number>;
-  incrementPlacePenalty(placeName: string, district: string, city: string, placeCacheId?: number): Promise<PlaceFeedback>;
-  getExcludedPlaceNames(district: string, city: string, threshold?: number): Promise<string[]>;
+  getPlacePenalty(userId: string, placeName: string, district: string, city: string): Promise<number>;
+  incrementPlacePenalty(userId: string, placeName: string, district: string, city: string, placeCacheId?: number): Promise<PlaceFeedback>;
+  getExcludedPlaceNames(userId: string, district: string, city: string, threshold?: number): Promise<string[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -331,11 +331,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Place Feedback methods
-  async getPlacePenalty(placeName: string, district: string, city: string): Promise<number> {
+  async getPlacePenalty(userId: string, placeName: string, district: string, city: string): Promise<number> {
     const [feedback] = await db
       .select()
       .from(placeFeedback)
       .where(and(
+        eq(placeFeedback.userId, userId),
         eq(placeFeedback.placeName, placeName),
         eq(placeFeedback.district, district),
         eq(placeFeedback.city, city)
@@ -343,11 +344,12 @@ export class DatabaseStorage implements IStorage {
     return feedback?.penaltyScore || 0;
   }
 
-  async incrementPlacePenalty(placeName: string, district: string, city: string, placeCacheId?: number): Promise<PlaceFeedback> {
+  async incrementPlacePenalty(userId: string, placeName: string, district: string, city: string, placeCacheId?: number): Promise<PlaceFeedback> {
     const existing = await db
       .select()
       .from(placeFeedback)
       .where(and(
+        eq(placeFeedback.userId, userId),
         eq(placeFeedback.placeName, placeName),
         eq(placeFeedback.district, district),
         eq(placeFeedback.city, city)
@@ -367,6 +369,7 @@ export class DatabaseStorage implements IStorage {
       const [created] = await db
         .insert(placeFeedback)
         .values({
+          userId,
           placeName,
           district,
           city,
@@ -379,11 +382,12 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getExcludedPlaceNames(district: string, city: string, threshold: number = 3): Promise<string[]> {
+  async getExcludedPlaceNames(userId: string, district: string, city: string, threshold: number = 3): Promise<string[]> {
     const results = await db
       .select({ placeName: placeFeedback.placeName })
       .from(placeFeedback)
       .where(and(
+        eq(placeFeedback.userId, userId),
         eq(placeFeedback.district, district),
         eq(placeFeedback.city, city),
         sql`${placeFeedback.penaltyScore} >= ${threshold}`

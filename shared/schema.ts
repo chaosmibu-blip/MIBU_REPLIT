@@ -160,9 +160,10 @@ export const placeCache = pgTable("place_cache", {
   index("IDX_place_cache_lookup").on(table.subCategory, table.district, table.city, table.country),
 ]);
 
-// Place feedback for exclusion tracking
+// Place feedback for exclusion tracking (per-user)
 export const placeFeedback = pgTable("place_feedback", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id", { length: 255 }).references(() => users.id),
   placeCacheId: integer("place_cache_id").references(() => placeCache.id),
   placeName: text("place_name").notNull(),
   district: text("district").notNull(),
@@ -171,7 +172,7 @@ export const placeFeedback = pgTable("place_feedback", {
   lastInteractedAt: timestamp("last_interacted_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
-  index("IDX_place_feedback_lookup").on(table.placeName, table.district, table.city),
+  index("IDX_place_feedback_lookup").on(table.userId, table.placeName, table.district, table.city),
 ]);
 
 // Merchant coupons

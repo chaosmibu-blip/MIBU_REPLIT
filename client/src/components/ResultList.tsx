@@ -90,8 +90,8 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
         </div>
       </div>
 
-      <AnimatePresence mode="popLayout">
       <div className="space-y-4">
+        <AnimatePresence mode="popLayout">
         {visibleItems.map((item, idx) => {
           const categoryColor = item.category ? CATEGORY_COLORS[item.category] || '#6366f1' : '#6366f1';
           const isExcluding = excludingIds.has(item.id);
@@ -182,8 +182,8 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
             </motion.div>
           );
         })}
+        </AnimatePresence>
       </div>
-      </AnimatePresence>
     </div>
   );
 };

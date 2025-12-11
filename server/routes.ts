@@ -1534,8 +1534,13 @@ ${uncachedSkeleton.map((item, idx) => `  {
   });
 
   // ============ Place Feedback Routes ============
-  app.post("/api/feedback/exclude", async (req, res) => {
+  app.post("/api/feedback/exclude", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
       const { placeName, district, city, placeCacheId } = req.body;
       
       if (!placeName || !district || !city) {
@@ -1545,6 +1550,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
       }
 
       const feedback = await storage.incrementPlacePenalty(
+        userId,
         placeName,
         district,
         city,
