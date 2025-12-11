@@ -61,9 +61,42 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
 
   useEffect(() => {
     if (isAuthenticated) {
-      loadClaimedPlaces();
+      registerMerchantAndLoadData();
     }
   }, [isAuthenticated]);
+
+  const registerMerchantAndLoadData = async () => {
+    try {
+      // First, register/get merchant account
+      const regResponse = await fetch('/api/merchant/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({})
+      });
+      
+      if (regResponse.ok) {
+        const data = await regResponse.json();
+        console.log('Merchant registered:', data);
+        
+        // Update parent state with real merchant data from backend
+        if (data.merchant) {
+          onUpdateMerchant({
+            id: `merchant-${data.merchant.id}`,
+            name: data.merchant.name,
+            email: data.merchant.email,
+            claimedPlaceNames: [],
+            subscriptionPlan: data.merchant.subscriptionPlan || 'free'
+          });
+        }
+      }
+      
+      // Then load claimed places
+      loadClaimedPlaces();
+    } catch (error) {
+      console.error('Failed to register merchant:', error);
+    }
+  };
 
   const loadClaimedPlaces = async () => {
     setIsLoadingPlaces(true);
@@ -227,7 +260,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
     );
   }
   
-  if (state.view === 'merchant_login') {
+  if (state.view === 'merchant_login' || !isAuthenticated) {
     return (
       <div className="p-8 max-w-md mx-auto mt-20 bg-white rounded-3xl shadow-xl">
         <div className="text-center mb-8">
@@ -248,27 +281,9 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
             {t.signInReplit}
           </a>
           
-          <div className="relative flex py-2 items-center">
-             <div className="flex-grow border-t border-slate-200"></div>
-             <span className="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase">{t.or}</span>
-             <div className="flex-grow border-t border-slate-200"></div>
-          </div>
-
-          <input
-            type="text"
-            placeholder={t.storeName}
-            className="w-full p-4 bg-slate-50 rounded-xl font-bold"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            data-testid="input-merchant-store-name"
-          />
-          <button
-            onClick={() => onLogin(name, 'test@example.com')}
-            className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800"
-            data-testid="button-merchant-guest"
-          >
-            {t.enterDashboard}
-          </button>
+          <p className="text-center text-sm text-slate-400 mt-4">
+            登入後可搜尋並認領您的店家
+          </p>
         </div>
       </div>
     );

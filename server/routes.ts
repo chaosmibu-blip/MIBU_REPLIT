@@ -1538,6 +1538,59 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // ============ Merchant Registration ============
+  app.post("/api/merchant/register", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // Check if merchant already exists
+      let merchant = await storage.getMerchantByUserId(userId);
+      if (merchant) {
+        return res.json({ success: true, merchant, isNew: false });
+      }
+
+      // Get user info
+      const user = await storage.getUser(userId);
+      const name = req.body.name || user?.firstName || 'Merchant';
+      const email = req.body.email || user?.email || '';
+
+      // Create new merchant
+      merchant = await storage.createMerchant({
+        userId,
+        name,
+        email,
+        subscriptionPlan: 'free'
+      });
+
+      res.json({ success: true, merchant, isNew: true });
+    } catch (error) {
+      console.error("Merchant registration error:", error);
+      res.status(500).json({ error: "Failed to register merchant" });
+    }
+  });
+
+  app.get("/api/merchant/me", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.json({ merchant: null });
+      }
+
+      res.json({ merchant });
+    } catch (error) {
+      console.error("Get merchant error:", error);
+      res.status(500).json({ error: "Failed to get merchant info" });
+    }
+  });
+
   // ============ Merchant Place Claim Routes ============
   app.get("/api/merchant/places/search", isAuthenticated, async (req: any, res) => {
     try {

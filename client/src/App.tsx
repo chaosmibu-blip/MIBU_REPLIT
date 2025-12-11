@@ -162,16 +162,39 @@ const App: React.FC = () => {
 
   const handleMerchantLoginStart = () => setState(prev => ({ ...prev, view: 'merchant_login' }));
 
-  const handleMerchantLogin = (name: string, email: string) => {
-      if (state.currentMerchant && state.currentMerchant.name === name) {
-          setState(prev => ({ ...prev, user: { name, email, avatar: '', isMerchant: true }, view: 'merchant_dashboard' }));
-          return;
+  const handleMerchantLogin = async (name: string, email: string) => {
+      // If authenticated, use backend registration
+      if (isAuthenticated) {
+        try {
+          const response = await fetch('/api/merchant/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ name, email })
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.merchant) {
+              const merchant: Merchant = {
+                id: `merchant-${data.merchant.id}`,
+                name: data.merchant.name,
+                email: data.merchant.email,
+                claimedPlaceNames: [],
+                subscriptionPlan: data.merchant.subscriptionPlan || 'free'
+              };
+              localStorage.setItem(STORAGE_KEYS.MERCHANT_PROFILE, JSON.stringify(merchant));
+              setState(prev => ({ ...prev, currentMerchant: merchant, view: 'merchant_dashboard' }));
+              return;
+            }
+          }
+        } catch (error) {
+          console.error('Failed to register merchant:', error);
+        }
       }
-      const merchantId = `merchant-${name.toLowerCase().replace(/\s/g, '-')}`;
-      const claimedNames = Object.keys(state.merchantDb).filter(key => state.merchantDb[key].merchant_id === merchantId);
-      const merchant: Merchant = { id: merchantId, name, email, claimedPlaceNames: claimedNames, subscriptionPlan: 'free' };
-      localStorage.setItem(STORAGE_KEYS.MERCHANT_PROFILE, JSON.stringify(merchant));
-      setState(prev => ({ ...prev, user: { name, email, avatar: '', isMerchant: true }, currentMerchant: merchant, view: 'merchant_dashboard' }));
+      
+      // Fallback for unauthenticated (should not happen with new flow)
+      setState(prev => ({ ...prev, view: 'merchant_dashboard' }));
   };
 
   const handleMerchantUpdate = (updatedMerchant: Merchant) => {
