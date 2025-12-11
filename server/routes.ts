@@ -1073,30 +1073,77 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const searchQuery = `${districtName} ${subcategoryName}`;
       const searchKeywords = subcategory.searchKeywords || subcategoryName;
 
-      // Search Google Places
+      // Get district name in Chinese for address filtering (always use Chinese for Taiwan addresses)
+      const districtNameZh = districtWithParents.district.nameZh;
+      const regionNameZh = districtWithParents.region.nameZh;
+
+      // Search Google Places with address filtering
       let placeResult = null;
+      let isExactMatch = false;
       if (GOOGLE_MAPS_API_KEY) {
         try {
-          const searchText = encodeURIComponent(`${searchKeywords} ${districtName}`);
+          // Include region name for more precise search
+          const searchText = encodeURIComponent(`${searchKeywords} ${districtNameZh} ${regionNameZh}`);
           const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchText}&key=${GOOGLE_MAPS_API_KEY}&language=zh-TW`;
           
           const response = await fetch(url);
           const data = await response.json();
           
           if (data.status === 'OK' && data.results && data.results.length > 0) {
-            // Pick a random result from top 5 to add variety
-            const maxIndex = Math.min(5, data.results.length);
-            const randomIndex = Math.floor(Math.random() * maxIndex);
-            const place = data.results[randomIndex];
-            
-            placeResult = {
-              name: place.name,
-              address: place.formatted_address,
-              placeId: place.place_id,
-              location: place.geometry?.location,
-              rating: place.rating,
-              types: place.types
-            };
+            // Filter results to only include places within the selected district
+            const filteredResults = data.results.filter((place: any) => {
+              const address = place.formatted_address || '';
+              
+              // First check: address must contain the region name (e.g., 宜蘭縣)
+              if (!address.includes(regionNameZh)) {
+                return false;
+              }
+              
+              // Second check: address must contain the district name
+              // For full district name match (e.g., 礁溪鄉)
+              if (address.includes(districtNameZh)) {
+                return true;
+              }
+              
+              // For base name match, only if base length > 1 to avoid false positives
+              // e.g., "南區" -> "南" (1 char) would match too many addresses
+              const districtBase = districtNameZh.replace(/[區鄉鎮市]$/, '');
+              if (districtBase.length > 1 && address.includes(districtBase)) {
+                return true;
+              }
+              
+              return false;
+            });
+
+            if (filteredResults.length > 0) {
+              // Pick a random result from filtered results (max 5)
+              const maxIndex = Math.min(5, filteredResults.length);
+              const randomIndex = Math.floor(Math.random() * maxIndex);
+              const place = filteredResults[randomIndex];
+              
+              placeResult = {
+                name: place.name,
+                address: place.formatted_address,
+                placeId: place.place_id,
+                location: place.geometry?.location,
+                rating: place.rating,
+                types: place.types
+              };
+              isExactMatch = true;
+            } else {
+              // Fallback: if no exact match, use the first result but mark as not exact
+              const place = data.results[0];
+              placeResult = {
+                name: place.name,
+                address: place.formatted_address,
+                placeId: place.place_id,
+                location: place.geometry?.location,
+                rating: place.rating,
+                types: place.types
+              };
+              isExactMatch = false;
+              console.log(`No exact match for ${districtNameZh}, using nearby result: ${place.formatted_address}`);
+            }
           }
         } catch (error) {
           console.error("Google Places API error:", error);
@@ -1136,7 +1183,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
             name: subcategoryName
           },
           searchQuery,
-          place: placeResult
+          place: placeResult,
+          isExactMatch
         }
       });
     } catch (error) {
