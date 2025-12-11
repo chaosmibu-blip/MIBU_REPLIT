@@ -146,12 +146,12 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
                </div>
              ) : (
                <select
-                 value={selectedCountryId || ''}
-                 onChange={(e) => handleCountryChange(parseInt(e.target.value))}
+                 value={selectedCountryId ?? ''}
+                 onChange={(e) => e.target.value && handleCountryChange(parseInt(e.target.value))}
                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-indigo-200 appearance-none"
                  data-testid="select-country"
                >
-                 <option value="" disabled>{t.selectDestination}</option>
+                 <option value="">{t.selectDestination}</option>
                  {countries.map(country => (
                    <option key={country.id} value={country.id}>
                      {getLocalizedName(country)}
@@ -180,12 +180,12 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
                 </div>
               ) : (
                 <select
-                  value={selectedRegionId || ''}
+                  value={selectedRegionId ?? ''}
                   onChange={(e) => handleRegionChange(e.target.value ? parseInt(e.target.value) : null)}
                   className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-purple-200 appearance-none"
                   data-testid="select-region"
                 >
-                  <option value="" disabled>
+                  <option value="">
                     {state.language === 'zh-TW' && '選擇縣市'}
                     {state.language === 'en' && 'Select City/County'}
                     {state.language === 'ja' && '市区町村を選択'}
