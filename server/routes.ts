@@ -1368,6 +1368,24 @@ ${uncachedSkeleton.map((item, idx) => `  {
           if (result.source === 'cache') cacheHits++;
           else aiGenerated++;
 
+          // Check for merchant promotions for this place
+          let merchantPromo = null;
+          if (result.place?.name) {
+            const merchantLink = await storage.getPlaceLinkByPlace(
+              result.place.name,
+              districtNameZh,
+              regionNameZh
+            );
+            if (merchantLink && merchantLink.isPromoActive && merchantLink.promoTitle) {
+              merchantPromo = {
+                merchantId: merchantLink.merchantId,
+                title: merchantLink.promoTitle,
+                description: merchantLink.promoDescription,
+                imageUrl: merchantLink.promoImageUrl
+              };
+            }
+          }
+
           items.push({
             category: {
               id: result.category.id,
@@ -1382,7 +1400,10 @@ ${uncachedSkeleton.map((item, idx) => `  {
             },
             place: result.place,
             isVerified: result.isVerified,
-            source: result.source
+            source: result.source,
+            is_promo_active: !!merchantPromo,
+            store_promo: merchantPromo?.title || null,
+            merchant_promo: merchantPromo
           });
         }
       }
