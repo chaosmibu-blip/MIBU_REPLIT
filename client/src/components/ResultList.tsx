@@ -41,9 +41,6 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
           <p className="text-slate-500 font-medium">{data.meta.city}</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold">
-            {t.spotsCount.replace('{count}', data.inventory.length.toString())}
-          </div>
           {onResearch && (
             <button
               onClick={onResearch}
