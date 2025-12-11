@@ -65,20 +65,23 @@ Preferred communication style: Simple, everyday language.
 - **Purpose**: Generate travel itineraries with location verification using Google Search grounding
 - **Configuration**: API credentials via environment variables (`AI_INTEGRATIONS_GEMINI_*`)
 
-### Gacha Pull Logic (Updated 2025-12-11)
-- **Probability Distribution**: Uniform random selection at each level
-  1. **District Selection**: 1/N probability (N = total active districts in country)
-  2. **Category Selection**: 1/8 probability (8 fixed categories)
-  3. **Subcategory Selection**: 1/Y probability (Y = subcategories in selected category)
-- **Implementation**: PostgreSQL `ORDER BY RANDOM() LIMIT 1` ensures true uniform distribution
+### Gacha Itinerary Logic (Updated 2025-12-11)
+- **Single District Lock Per Session**: When user initiates a gacha pull, system randomly selects ONE district and generates ALL itinerary items within that single district
+- **Multi-Category Diversity**: Each pull generates multiple places covering different categories (食、宿、遊程體驗、娛樂設施、活動、景點、購物、生態文化教育)
+- **API Endpoint**: `/api/gacha/itinerary` - returns a complete itinerary with:
+  - `location`: The locked district, region, and country information
+  - `items[]`: Array of places, each with category, subcategory, place details
+  - `meta`: totalItems, cacheHits, aiGenerated, verifiedCount
+- **Parallel Generation**: All category places are generated in parallel for speed
 - **Place Generation Flow**:
-  1. Check `placeCache` for existing result (key: subcategory + district + region + country)
-  2. If cache hit → return cached place data
-  3. If cache miss → call Gemini AI to generate a place specifically in the selected district
-  4. Verify AI result with Google Places API (check if address matches district)
-  5. Save to `placeCache` with verification status
-- **AI Prompt Design**: Explicitly requires Gemini to recommend a real place within the exact 縣市+鄉鎮區
-- **Response Meta**: Includes `source` (cache/ai) and `isVerified` flags for transparency
+  1. Randomly select ONE district within the selected region/country
+  2. Shuffle all 8 categories and select up to `itemCount` categories
+  3. For each category, pick a random subcategory
+  4. Check `placeCache` for existing result (key: subcategory + district + region + country)
+  5. If cache miss → call Gemini AI to generate a place, verify with Google Places API
+  6. Only save verified places to cache
+- **Verification**: Each place is verified to be genuinely within the selected district (address must contain both 縣市 and 鄉鎮區 names)
+- **Response Meta**: Includes `source` (cache/ai), `isVerified` flags, and counts for monitoring
 - **No Rarity System**: Categories use color coding instead of SP/SSR/SR grades
 
 ### Key Design Patterns
