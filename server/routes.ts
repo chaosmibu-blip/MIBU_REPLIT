@@ -1663,7 +1663,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
         district,
         city,
         country,
-        status: 'pending'
+        status: 'approved'
       });
 
       res.json({ success: true, link });

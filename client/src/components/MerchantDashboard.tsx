@@ -46,12 +46,8 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [activeTab, setActiveTab] = useState<'places' | 'coupons'>('places');
   
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<PlaceCache[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [claimedPlaces, setClaimedPlaces] = useState<MerchantPlaceLink[]>([]);
   const [isLoadingPlaces, setIsLoadingPlaces] = useState(false);
-  const [claimingPlaceId, setClaimingPlaceId] = useState<number | null>(null);
   
   const [editingPromo, setEditingPromo] = useState<number | null>(null);
   const [promoForm, setPromoForm] = useState({ title: '', description: '' });
@@ -121,57 +117,6 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
       console.error('Failed to load claimed places:', error);
     } finally {
       setIsLoadingPlaces(false);
-    }
-  };
-
-  const handleSearch = async () => {
-    if (searchQuery.length < 2) return;
-    
-    setIsSearching(true);
-    try {
-      const response = await fetch(`/api/merchant/places/search?query=${encodeURIComponent(searchQuery)}`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setSearchResults(data.places || []);
-      }
-    } catch (error) {
-      console.error('Search error:', error);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handleClaim = async (place: PlaceCache) => {
-    setClaimingPlaceId(place.id);
-    try {
-      const response = await fetch('/api/merchant/places/claim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          placeName: place.placeName,
-          district: place.district,
-          city: place.city,
-          country: place.country,
-          placeCacheId: place.id
-        })
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setClaimedPlaces(prev => [data.link, ...prev]);
-        setSearchResults(prev => prev.filter(p => p.id !== place.id));
-      } else {
-        const error = await response.json();
-        alert(error.error || '認領失敗');
-      }
-    } catch (error) {
-      console.error('Claim error:', error);
-      alert('認領失敗，請稍後再試');
-    } finally {
-      setClaimingPlaceId(null);
     }
   };
 
