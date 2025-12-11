@@ -14,9 +14,17 @@ const getContent = (content: any, lang: Language): string => {
   return content[lang] || content['en'] || '';
 };
 
+const cleanPlaceName = (name: string): string => {
+  if (!name) return '';
+  return name
+    .replace(/\s*[（(][^）)]*[）)]\s*/g, '')
+    .replace(/\s*\|.*$/g, '')
+    .trim();
+};
+
 const getPlaceName = (item: any, lang: Language): string => {
   const name = item.place_name || item.placeName || '';
-  return getContent(name, lang);
+  return cleanPlaceName(getContent(name, lang));
 };
 
 interface AccordionSectionProps {
@@ -137,24 +145,23 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
   const renderItemCard = (item: GachaItem, idx: number) => {
     const categoryColor = item.category ? CATEGORY_COLORS[item.category] || '#6366f1' : '#6366f1';
     const description = getDescription(item, language);
-    const address = getAddress(item);
     const rating = getRating(item);
     
     return (
       <div 
         key={`${item.id}-${idx}`}
-        className="bg-white rounded-xl p-3 shadow-sm border border-slate-100 relative overflow-hidden hover:shadow-md transition-shadow"
+        className="bg-white rounded-xl shadow-sm border border-slate-100/80 relative overflow-hidden hover:shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
         data-testid={`card-collection-${item.id}`}
       >
         <div 
           className="absolute left-0 top-0 bottom-0 w-1" 
           style={{ backgroundColor: categoryColor }}
         />
-        <div className="pl-2">
-          <div className="flex items-center justify-between mb-1">
+        <div className="p-3 pl-3.5">
+          <div className="flex items-center justify-between mb-1.5">
             {item.category && (
               <span 
-                className="inline-flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded text-white"
+                className="inline-flex items-center gap-0.5 text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md text-white"
                 style={{ backgroundColor: categoryColor }}
                 data-testid={`tag-category-collection-${item.id}`}
               >
@@ -164,7 +171,7 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
             )}
             <div className="flex items-center gap-1">
               {rating && (
-                <span className="flex items-center gap-0.5 text-[9px] font-bold text-amber-600 bg-amber-50 px-1 py-0.5 rounded">
+                <span className="flex items-center gap-0.5 text-[8px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md">
                   <Star className="w-2 h-2 fill-amber-500 text-amber-500" />
                   {rating}
                 </span>
@@ -174,26 +181,20 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
               )}
             </div>
           </div>
-          <h4 className="font-bold text-sm text-slate-800 line-clamp-2 leading-tight mb-1">
+          <h4 className="font-bold text-[13px] text-slate-800 line-clamp-2 leading-snug mb-1.5">
             {getPlaceName(item, language)}
           </h4>
           {description && (
-            <p className="text-[10px] text-slate-500 line-clamp-2 mb-1">
+            <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed mb-2">
               {description}
             </p>
           )}
-          {address && (
-            <div className="flex items-start gap-0.5 text-[9px] text-slate-400 mb-1">
-              <Navigation className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />
-              <span className="line-clamp-1">{address}</span>
-            </div>
-          )}
-          <div className="flex items-center justify-between mt-1">
-            <div className="text-[10px] text-slate-400 font-medium">
+          <div className="flex items-center justify-between pt-1.5 border-t border-slate-50">
+            <div className="text-[9px] text-slate-400 font-medium">
               {new Date(item.collectedAt || Date.now()).toLocaleDateString()}
             </div>
             {item.district && (
-              <div className="flex items-center gap-0.5 text-[10px] text-slate-400">
+              <div className="flex items-center gap-0.5 text-[9px] text-slate-400 font-medium">
                 <MapPin className="w-2.5 h-2.5" />
                 {item.district}
               </div>

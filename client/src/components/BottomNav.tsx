@@ -26,7 +26,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onChange, lan
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 glass-nav pb-safe-bottom z-40 max-w-md mx-auto">
+    <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-slate-100 pb-safe-bottom z-40 max-w-md mx-auto shadow-lg shadow-slate-200/30">
       <div className="flex justify-around items-center h-16 px-2">
         {navItems.map(item => {
           const isActive = currentView === item.id || (item.id === 'home' && currentView === 'result');
@@ -35,25 +35,31 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onChange, lan
             <button
               key={item.id}
               onClick={() => onChange(item.id)}
-              className={`flex flex-col items-center justify-center w-16 h-full transition-colors ${
-                isActive ? 'text-indigo-600' : 'text-slate-400'
+              className={`flex flex-col items-center justify-center w-16 h-full transition-all ${
+                isActive ? 'text-indigo-600 scale-105' : 'text-slate-400 hover:text-slate-600'
               }`}
+              data-testid={`nav-${item.id}`}
             >
-              <Icon className={`w-6 h-6 ${isActive ? 'fill-current' : ''}`} strokeWidth={isActive ? 2.5 : 2} />
-              <span className="text-[10px] font-bold mt-1">{item.label}</span>
+              <div className={`p-1.5 rounded-xl transition-colors ${isActive ? 'bg-indigo-50' : ''}`}>
+                <Icon className={`w-5 h-5 ${isActive ? '' : ''}`} strokeWidth={isActive ? 2.5 : 2} />
+              </div>
+              <span className="text-[10px] font-bold mt-0.5">{item.label}</span>
             </button>
           );
         })}
         
-        {/* Merchant Toggle (Hidden or Small) */}
+        {/* Merchant Toggle */}
         <button
            onClick={handleMerchant}
-           className={`flex flex-col items-center justify-center w-16 h-full transition-colors ${
-             currentView.startsWith('merchant') ? 'text-indigo-600' : 'text-slate-300'
+           className={`flex flex-col items-center justify-center w-16 h-full transition-all ${
+             currentView.startsWith('merchant') ? 'text-indigo-600 scale-105' : 'text-slate-300 hover:text-slate-500'
            }`}
+           data-testid="nav-merchant"
         >
-          <StoreIcon className={`w-5 h-5`} />
-          <span className="text-[10px] font-bold mt-1">{t.navStore}</span>
+          <div className={`p-1.5 rounded-xl transition-colors ${currentView.startsWith('merchant') ? 'bg-indigo-50' : ''}`}>
+            <StoreIcon className={`w-5 h-5`} />
+          </div>
+          <span className="text-[10px] font-bold mt-0.5">{t.navStore}</span>
         </button>
       </div>
     </nav>

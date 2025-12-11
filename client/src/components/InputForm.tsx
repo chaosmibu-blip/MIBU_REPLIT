@@ -140,13 +140,13 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
   const selectedRegion = regions.find(r => r.id === selectedRegionId);
 
   return (
-    <div className="w-full max-w-md mx-auto p-6 space-y-8 mt-10">
+    <div className="w-full max-w-md mx-auto p-4 space-y-6 mt-6">
       <div className="text-center space-y-2">
-        <h1 className="text-4xl font-black text-indigo-600 tracking-tight">{t.appTitle}</h1>
-        <p className="text-slate-500 font-medium">{t.appSubtitle}</p>
+        <h1 className="text-3xl font-black bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent tracking-tight">{t.appTitle}</h1>
+        <p className="text-slate-500 font-medium text-sm">{t.appSubtitle}</p>
       </div>
 
-      <div className="bg-white rounded-3xl p-6 shadow-xl shadow-indigo-100 border border-indigo-50 space-y-6">
+      <div className="bg-white rounded-2xl p-5 shadow-lg shadow-slate-200/50 border border-slate-100 space-y-5">
         {/* Country Selection */}
         <div className="space-y-3">
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">{t.destination}</label>
@@ -280,14 +280,17 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
           whileTap={{ scale: 0.98 }}
           onClick={onSubmit}
           disabled={!selectedCountryId || districtCount === 0}
-          className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl transition-all ${
+          className={`w-full py-4 rounded-xl font-bold text-base shadow-lg transition-all ${
             !selectedCountryId || districtCount === 0
-              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-              : 'bg-indigo-600 text-white shadow-indigo-200 hover:shadow-indigo-300'
+              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-indigo-200 hover:shadow-indigo-300 hover:opacity-95'
           }`}
           data-testid="button-start-gacha"
         >
-          {t.startGacha}
+          <span className="flex items-center justify-center gap-2">
+            <Sparkles className="w-5 h-5" />
+            {t.startGacha}
+          </span>
         </motion.button>
       </div>
     </div>
