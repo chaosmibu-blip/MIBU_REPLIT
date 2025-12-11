@@ -147,7 +147,7 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
              ) : (
                <select
                  value={selectedCountryId ?? ''}
-                 onChange={(e) => e.target.value && handleCountryChange(parseInt(e.target.value))}
+                 onChange={(e) => { if (e.target.value) handleCountryChange(parseInt(e.target.value)); }}
                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-indigo-200 appearance-none"
                  data-testid="select-country"
                >
