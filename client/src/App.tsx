@@ -241,8 +241,8 @@ const App: React.FC = () => {
       const result = await response.json();
       const { itinerary } = result;
       
-      // Convert API response to GachaItem format
-      const allItems: GachaItem[] = itinerary.items.map((item: any, index: number) => ({
+      // Convert API response to GachaItem format and sort (stay/lodging last)
+      const rawItems: GachaItem[] = itinerary.items.map((item: any, index: number) => ({
         id: Date.now() + index,
         place_name: item.place?.name || `${itinerary.location.district.name} ${item.subcategory.name}`,
         description: `${itinerary.location.region.name} ${itinerary.location.district.name}`,
@@ -265,6 +265,17 @@ const App: React.FC = () => {
         location: item.place?.location || null,
         is_location_verified: item.isVerified || false
       }));
+      
+      // Sort items: put "stay" category at the end
+      const allItems = rawItems.sort((a, b) => {
+        const catA = String(a.category).toLowerCase();
+        const catB = String(b.category).toLowerCase();
+        const aIsStay = catA === 'stay';
+        const bIsStay = catB === 'stay';
+        if (aIsStay && !bIsStay) return 1;
+        if (!aIsStay && bIsStay) return -1;
+        return 0;
+      });
       
       localStorage.setItem(STORAGE_KEYS.DAILY_LIMIT, JSON.stringify({ date: today, count: currentCount + 1 }));
       
