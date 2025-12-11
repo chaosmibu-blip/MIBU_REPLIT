@@ -484,7 +484,7 @@ const App: React.FC = () => {
            </div>
         )}
 
-        {state.view === 'merchant_dashboard' && state.currentMerchant && (
+        {state.view === 'merchant_dashboard' && (
           <MerchantDashboard 
             state={state}
             onLogin={handleMerchantLogin}
