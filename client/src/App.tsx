@@ -293,9 +293,11 @@ const App: React.FC = () => {
                 ? item.place_name 
                 : (item.place_name as any)['en'] || (item.place_name as any)['zh-TW'] || 'unknown';
               
-              const description = typeof item.description === 'string'
-                ? item.description
-                : (item.description as any)['en'] || (item.description as any)['zh-TW'] || '';
+              // Prefer ai_description for meaningful content
+              const aiDesc = item.ai_description;
+              const description = aiDesc
+                ? (typeof aiDesc === 'string' ? aiDesc : (aiDesc as any)['en'] || (aiDesc as any)['zh-TW'] || '')
+                : (typeof item.description === 'string' ? item.description : (item.description as any)['en'] || (item.description as any)['zh-TW'] || '');
               
               await fetch('/api/collections', {
                 method: 'POST',

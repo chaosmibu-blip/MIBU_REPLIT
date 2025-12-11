@@ -70,16 +70,19 @@ Preferred communication style: Simple, everyday language.
 - **Multi-Category Diversity**: Each pull generates multiple places covering different categories (食、宿、遊程體驗、娛樂設施、活動、景點、購物、生態文化教育)
 - **API Endpoint**: `/api/gacha/itinerary` - returns a complete itinerary with:
   - `location`: The locked district, region, and country information
-  - `items[]`: Array of places, each with category, subcategory, place details
+  - `items[]`: Array of places, each with category, subcategory, place details (including AI-generated description)
   - `meta`: totalItems, cacheHits, aiGenerated, verifiedCount
-- **Parallel Generation**: All category places are generated in parallel for speed
+- **Sequential Generation with Duplicate Prevention**: Places are generated one at a time; each place name is tracked and passed to subsequent AI calls via exclusion list to prevent duplicates within the same pull
+- **AI Description Field**: Each item includes `ai_description` with tourism-focused content instead of plain address
+- **Tourism-Only Filter**: AI prompt explicitly excludes non-tourism locations (libraries, government offices, schools, etc.)
 - **Place Generation Flow**:
   1. Randomly select ONE district within the selected region/country
   2. Shuffle all 8 categories and select up to `itemCount` categories
-  3. For each category, pick a random subcategory
-  4. Check `placeCache` for existing result (key: subcategory + district + region + country)
-  5. If cache miss → call Gemini AI to generate a place, verify with Google Places API
-  6. Only save verified places to cache
+  3. For each category (sequentially), pick a random subcategory
+  4. Check `placeCache` for existing result (skip if place name already used in this pull)
+  5. If cache miss → call Gemini AI with exclusion list, verify with Google Places API
+  6. Track generated place name to prevent duplicates
+  7. Only save verified places to cache
 - **Verification**: Each place is verified to be genuinely within the selected district (address must contain both 縣市 and 鄉鎮區 names)
 - **Response Meta**: Includes `source` (cache/ai), `isVerified` flags, and counts for monitoring
 - **No Rarity System**: Categories use color coding instead of SP/SSR/SR grades
