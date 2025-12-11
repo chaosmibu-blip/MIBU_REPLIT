@@ -166,19 +166,27 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
                  </button>
                </div>
              ) : (
-               <select
-                 value={selectedCountryId || ''}
-                 onChange={(e) => handleCountryChange(parseInt(e.target.value))}
-                 className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-indigo-200 appearance-none"
-                 data-testid="select-country"
-               >
-                 <option value="" disabled>{t.selectDestination}</option>
-                 {countries.map(country => (
-                   <option key={country.id} value={country.id}>
-                     {getLocalizedName(country)}
-                   </option>
-                 ))}
-               </select>
+               <>
+                 <select
+                   value={selectedCountryId || ''}
+                   onChange={(e) => handleCountryChange(parseInt(e.target.value))}
+                   className="w-full pl-12 pr-10 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-indigo-200 cursor-pointer"
+                   style={{ WebkitAppearance: 'menulist', MozAppearance: 'menulist' }}
+                   data-testid="select-country"
+                 >
+                   <option value="" disabled>{t.selectDestination}</option>
+                   {countries.map(country => (
+                     <option key={country.id} value={country.id}>
+                       {getLocalizedName(country)}
+                     </option>
+                   ))}
+                 </select>
+                 <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                   <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                   </svg>
+                 </div>
+               </>
              )}
           </div>
         </div>
@@ -200,24 +208,32 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
                   <span className="ml-2 text-slate-400">{t.loading}</span>
                 </div>
               ) : (
-                <select
-                  value={selectedRegionId || ''}
-                  onChange={(e) => handleRegionChange(e.target.value ? parseInt(e.target.value) : null)}
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-purple-200 appearance-none"
-                  data-testid="select-region"
-                >
-                  <option value="" disabled>
-                    {state.language === 'zh-TW' && '選擇縣市'}
-                    {state.language === 'en' && 'Select City/County'}
-                    {state.language === 'ja' && '市区町村を選択'}
-                    {state.language === 'ko' && '시/군 선택'}
-                  </option>
-                  {regions.map(region => (
-                    <option key={region.id} value={region.id}>
-                      {getLocalizedName(region)}
+                <>
+                  <select
+                    value={selectedRegionId || ''}
+                    onChange={(e) => handleRegionChange(e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-full pl-12 pr-10 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-purple-200 cursor-pointer"
+                    style={{ WebkitAppearance: 'menulist', MozAppearance: 'menulist' }}
+                    data-testid="select-region"
+                  >
+                    <option value="" disabled>
+                      {state.language === 'zh-TW' && '選擇縣市'}
+                      {state.language === 'en' && 'Select City/County'}
+                      {state.language === 'ja' && '市区町村を選択'}
+                      {state.language === 'ko' && '시/군 선택'}
                     </option>
-                  ))}
-                </select>
+                    {regions.map(region => (
+                      <option key={region.id} value={region.id}>
+                        {getLocalizedName(region)}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </>
               )}
             </div>
           </div>
