@@ -14,6 +14,11 @@ const getContent = (content: any, lang: Language): string => {
   return content[lang] || content['en'] || '';
 };
 
+const getPlaceName = (item: any, lang: Language): string => {
+  const name = item.place_name || item.placeName || '';
+  return getContent(name, lang);
+};
+
 interface AccordionSectionProps {
   title: string;
   count: number;
@@ -146,7 +151,7 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
             )}
           </div>
           <h4 className="font-bold text-sm text-slate-800 line-clamp-2 leading-tight mb-1">
-            {getContent(item.place_name, language)}
+            {getPlaceName(item, language)}
           </h4>
           <div className="flex items-center justify-between mt-1">
             <div className="text-[10px] text-slate-400 font-medium">
