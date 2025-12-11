@@ -158,6 +158,8 @@ export const placeCache = pgTable("place_cache", {
   verifiedName: text("verified_name"),
   verifiedAddress: text("verified_address"),
   googleRating: text("google_rating"),
+  googleTypes: text("google_types"),
+  primaryType: text("primary_type"),
   locationLat: text("location_lat"),
   locationLng: text("location_lng"),
   isLocationVerified: boolean("is_location_verified").default(false),

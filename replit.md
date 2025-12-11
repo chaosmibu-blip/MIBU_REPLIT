@@ -54,8 +54,15 @@ Preferred communication style: Simple, everyday language.
 - **Response Meta**: Includes `cache_hits` and `ai_generated` counts for monitoring
 
 ### Recent Changes (2025-12-11)
-- **Merchant Claiming System**: Merchants can manually claim their business locations
-  - Manual entry form: merchants input business name, select city/district
+- **Google Types Integration**: Display Google Places type labels on itinerary cards
+  - Schema: Added `googleTypes` (comma-separated types) and `primaryType` fields to placeCache
+  - Backend: verifyPlaceWithGoogle() now captures and stores Google Places `types` array
+  - Frontend: Cards display translated Google type labels (e.g., "百貨公司", "餐廳", "咖啡廳")
+  - Translation: GOOGLE_TYPE_TRANSLATIONS mapping for 70+ place types to Chinese labels
+- **Merchant Claiming System (Google-style)**: Improved ownership claim workflow
+  - Search-first flow: merchants search existing placeCache before manual entry
+  - Two-step process: 1) Search for business, 2) Manual entry if not found
+  - API endpoint: `GET /api/merchant/places/search?query=...&city=...`
   - Auto-approval: claims are immediately approved for testing (production should use pending → admin review)
   - Promo integration: gacha results check for matching merchant claims and display promotions
   - Matching logic: placeName + district + city (exact match required)

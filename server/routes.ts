@@ -1113,6 +1113,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
     verifiedAddress?: string;
     rating?: number;
     location?: { lat: number; lng: number };
+    googleTypes?: string[];
+    primaryType?: string;
   }> {
     if (!GOOGLE_MAPS_API_KEY) {
       return { verified: false };
@@ -1133,13 +1135,20 @@ ${uncachedSkeleton.map((item, idx) => `  {
         // Check if the result is in the correct district
         const isInDistrict = address.includes(regionNameZh) && address.includes(districtNameZh);
         
+        // Get Google types (first non-generic type as primary)
+        const googleTypes = place.types || [];
+        const genericTypes = ['point_of_interest', 'establishment', 'premise', 'political', 'locality', 'sublocality'];
+        const primaryType = googleTypes.find((t: string) => !genericTypes.includes(t)) || googleTypes[0];
+        
         return {
           verified: isInDistrict,
           placeId: place.place_id,
           verifiedName: place.name,
           verifiedAddress: address,
           rating: place.rating,
-          location: place.geometry?.location
+          location: place.geometry?.location,
+          googleTypes,
+          primaryType
         };
       }
       
@@ -1188,6 +1197,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
           address: cachedPlace.verifiedAddress,
           placeId: cachedPlace.placeId,
           rating: cachedPlace.googleRating,
+          googleTypes: cachedPlace.googleTypes?.split(',').filter(Boolean) || [],
+          primaryType: cachedPlace.primaryType || null,
           location: cachedPlace.locationLat && cachedPlace.locationLng ? {
             lat: parseFloat(cachedPlace.locationLat),
             lng: parseFloat(cachedPlace.locationLng)
@@ -1240,6 +1251,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
             verifiedName: verification.verifiedName || null,
             verifiedAddress: verification.verifiedAddress || null,
             googleRating: verification.rating?.toString() || null,
+            googleTypes: verification.googleTypes?.join(',') || null,
+            primaryType: verification.primaryType || null,
             locationLat: verification.location?.lat?.toString() || null,
             locationLng: verification.location?.lng?.toString() || null,
             isLocationVerified: true
@@ -1255,6 +1268,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
               address: cacheEntry.verifiedAddress,
               placeId: cacheEntry.placeId,
               rating: cacheEntry.googleRating,
+              googleTypes: cacheEntry.googleTypes?.split(',').filter(Boolean) || [],
+              primaryType: cacheEntry.primaryType || null,
               location: cacheEntry.locationLat && cacheEntry.locationLng ? {
                 lat: parseFloat(cacheEntry.locationLat),
                 lng: parseFloat(cacheEntry.locationLng)

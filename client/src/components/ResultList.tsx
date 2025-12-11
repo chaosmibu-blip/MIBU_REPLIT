@@ -39,6 +39,97 @@ const getCategoryTranslationKey = (categoryCode: string): string => {
   return codeMap[categoryCode?.toLowerCase()] || 'catActivity';
 };
 
+const GOOGLE_TYPE_TRANSLATIONS: Record<string, string> = {
+  'department_store': '百貨公司',
+  'shopping_mall': '購物中心',
+  'store': '商店',
+  'restaurant': '餐廳',
+  'cafe': '咖啡廳',
+  'bakery': '烘焙坊',
+  'bar': '酒吧',
+  'night_club': '夜店',
+  'food': '美食',
+  'meal_delivery': '外送餐廳',
+  'meal_takeaway': '外帶餐廳',
+  'lodging': '住宿',
+  'hotel': '飯店',
+  'tourist_attraction': '觀光景點',
+  'museum': '博物館',
+  'art_gallery': '藝廊',
+  'park': '公園',
+  'natural_feature': '自然景觀',
+  'campground': '露營地',
+  'zoo': '動物園',
+  'aquarium': '水族館',
+  'amusement_park': '遊樂園',
+  'bowling_alley': '保齡球館',
+  'movie_theater': '電影院',
+  'stadium': '體育場',
+  'gym': '健身房',
+  'spa': 'SPA',
+  'beauty_salon': '美容院',
+  'hair_care': '美髮店',
+  'clothing_store': '服飾店',
+  'shoe_store': '鞋店',
+  'jewelry_store': '珠寶店',
+  'electronics_store': '電器行',
+  'furniture_store': '傢俱店',
+  'book_store': '書店',
+  'convenience_store': '便利商店',
+  'supermarket': '超市',
+  'grocery_or_supermarket': '超市雜貨',
+  'liquor_store': '酒類專賣',
+  'florist': '花店',
+  'pet_store': '寵物店',
+  'pharmacy': '藥局',
+  'temple': '寺廟',
+  'church': '教會',
+  'hindu_temple': '印度廟',
+  'mosque': '清真寺',
+  'synagogue': '猶太教堂',
+  'place_of_worship': '宗教場所',
+  'transit_station': '轉運站',
+  'train_station': '火車站',
+  'bus_station': '公車站',
+  'subway_station': '捷運站',
+  'airport': '機場',
+  'car_rental': '租車',
+  'gas_station': '加油站',
+  'parking': '停車場',
+  'atm': 'ATM',
+  'bank': '銀行',
+  'post_office': '郵局',
+  'hospital': '醫院',
+  'doctor': '診所',
+  'dentist': '牙醫',
+  'veterinary_care': '獸醫',
+  'police': '警察局',
+  'fire_station': '消防局',
+  'city_hall': '市政府',
+  'local_government_office': '政府機關',
+  'school': '學校',
+  'university': '大學',
+  'library': '圖書館',
+  'casino': '賭場',
+  'laundry': '洗衣店',
+  'rv_park': '露營車營地',
+  'home_goods_store': '居家用品店',
+  'hardware_store': '五金行',
+  'bicycle_store': '自行車店',
+  'car_dealer': '汽車經銷商',
+};
+
+const getGoogleTypeLabel = (types: string[] | undefined, lang: string): string | null => {
+  if (!types || types.length === 0) return null;
+  const genericTypes = ['point_of_interest', 'establishment', 'premise', 'political', 'locality', 'sublocality'];
+  const primaryType = types.find(t => !genericTypes.includes(t));
+  if (!primaryType) return null;
+  if (lang === 'zh-TW') {
+    return GOOGLE_TYPE_TRANSLATIONS[primaryType] || primaryType.replace(/_/g, ' ');
+  }
+  return primaryType.replace(/_/g, ' ');
+};
+
 export const ResultList: React.FC<ResultListProps> = ({ data, language, onResearch, isLoading }) => {
   const t = TRANSLATIONS[language];
   const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set());
@@ -139,7 +230,7 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
               />
 
               <div className="p-4 pl-5">
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center flex-wrap gap-2 mb-2">
                   <span 
                     className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-1 rounded-md text-white"
                     style={{ backgroundColor: categoryColor }}
@@ -148,6 +239,17 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
                     <Tag className="w-2.5 h-2.5" />
                     {(t as any)[getCategoryTranslationKey(item.category as any)] || item.category}
                   </span>
+                  {(() => {
+                    const googleTypeLabel = getGoogleTypeLabel((item as any).google_types, language);
+                    return googleTypeLabel ? (
+                      <span 
+                        className="inline-flex items-center text-[10px] font-medium px-2 py-1 rounded-md bg-slate-100 text-slate-600"
+                        data-testid={`tag-google-type-${item.id}`}
+                      >
+                        {googleTypeLabel}
+                      </span>
+                    ) : null;
+                  })()}
                   <span className="text-[10px] text-slate-400 font-medium">#{idx + 1}</span>
                 </div>
 

@@ -56,6 +56,14 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualForm, setManualForm] = useState({ placeName: '', city: '', district: '' });
   const [submittingManual, setSubmittingManual] = useState(false);
+  
+  const [showClaimFlow, setShowClaimFlow] = useState(false);
+  const [claimStep, setClaimStep] = useState<'search' | 'manual'>('search');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchCity, setSearchCity] = useState('');
+  const [searchResults, setSearchResults] = useState<PlaceCache[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [claimingPlaceId, setClaimingPlaceId] = useState<number | null>(null);
 
   const t = TRANSLATIONS[state.language] as any;
   
@@ -154,6 +162,67 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
     }
   };
 
+  const handleSearchPlaces = async () => {
+    if (!searchQuery || searchQuery.length < 2) {
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      const params = new URLSearchParams({ query: searchQuery });
+      if (searchCity) params.append('city', searchCity);
+      
+      const response = await fetch(`/api/merchant/places/search?${params}`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setSearchResults(data.places || []);
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleClaimFromSearch = async (place: PlaceCache) => {
+    setClaimingPlaceId(place.id);
+    try {
+      const response = await fetch('/api/merchant/places/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          placeName: place.placeName,
+          district: place.district,
+          city: place.city,
+          country: place.country,
+          placeCacheId: place.id
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setClaimedPlaces(prev => [data.link, ...prev]);
+        setSearchResults(prev => prev.filter(p => p.id !== place.id));
+        setShowClaimFlow(false);
+        setSearchQuery('');
+        setSearchCity('');
+        setSearchResults([]);
+      } else {
+        const error = await response.json();
+        alert(error.error || '認領失敗');
+      }
+    } catch (error) {
+      console.error('Claim error:', error);
+      alert('認領失敗，請稍後再試');
+    } finally {
+      setClaimingPlaceId(null);
+    }
+  };
+
   const handleManualSubmit = async () => {
     if (!manualForm.placeName || !manualForm.city) {
       alert('請填寫店家名稱和縣市');
@@ -180,6 +249,8 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
         setClaimedPlaces(prev => [data.link, ...prev]);
         setManualForm({ placeName: '', city: '', district: '' });
         setShowManualForm(false);
+        setShowClaimFlow(false);
+        setClaimStep('search');
       } else {
         const error = await response.json();
         alert(error.error || '提交失敗');
@@ -190,6 +261,16 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
     } finally {
       setSubmittingManual(false);
     }
+  };
+
+  const resetClaimFlow = () => {
+    setShowClaimFlow(false);
+    setClaimStep('search');
+    setSearchQuery('');
+    setSearchCity('');
+    setSearchResults([]);
+    setShowManualForm(false);
+    setManualForm({ placeName: '', city: '', district: '' });
   };
 
   const handleUpgradeToPremium = async () => {
@@ -343,75 +424,190 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
 
       {activeTab === 'places' && (
         <div className="space-y-4">
-          {!showManualForm ? (
+          {!showClaimFlow ? (
             <button
-              onClick={() => setShowManualForm(true)}
+              onClick={() => setShowClaimFlow(true)}
               className="w-full py-4 border-2 border-dashed border-indigo-300 rounded-2xl text-indigo-500 font-bold flex items-center justify-center gap-2 hover:bg-indigo-50 hover:border-indigo-400 transition-colors"
               data-testid="button-add-place"
             >
               <Plus className="w-5 h-5" />
-              新增我的店家
+              聲明商家擁有權
             </button>
           ) : (
-            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-indigo-500" />
-                新增店家資訊
-              </h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-bold text-slate-600 mb-1">店家名稱 *</label>
-                  <input
-                    type="text"
-                    placeholder="例如：阿明小吃店"
-                    className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
-                    value={manualForm.placeName}
-                    onChange={e => setManualForm(p => ({ ...p, placeName: e.target.value }))}
-                    data-testid="input-place-name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-600 mb-1">縣市 *</label>
-                  <select
-                    className="w-full px-4 py-3 pr-10 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
-                    value={manualForm.city}
-                    onChange={e => setManualForm(p => ({ ...p, city: e.target.value }))}
-                    data-testid="select-city"
-                  >
-                    <option value="">選擇縣市</option>
-                    {taiwanCities.map(city => (
-                      <option key={city} value={city}>{city}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-600 mb-1">鄉鎮區（選填）</label>
-                  <input
-                    type="text"
-                    placeholder="例如：中正區"
-                    className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
-                    value={manualForm.district}
-                    onChange={e => setManualForm(p => ({ ...p, district: e.target.value }))}
-                    data-testid="input-district"
-                  />
-                </div>
-                <div className="flex gap-2 pt-2">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-3 flex items-center justify-between">
+                <h3 className="font-bold text-white flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4" />
+                  聲明商家擁有權
+                </h3>
+                <button
+                  onClick={resetClaimFlow}
+                  className="text-white/70 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4">
+                <div className="flex gap-2 mb-4">
                   <button
-                    onClick={handleManualSubmit}
-                    disabled={submittingManual || !manualForm.placeName || !manualForm.city}
-                    className="flex-1 py-3 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 disabled:opacity-50 flex items-center justify-center gap-2"
-                    data-testid="button-submit-place"
+                    onClick={() => setClaimStep('search')}
+                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${claimStep === 'search' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}
                   >
-                    {submittingManual ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-                    提交認領
+                    <Search className="w-3.5 h-3.5 inline mr-1" />
+                    搜尋店家
                   </button>
                   <button
-                    onClick={() => { setShowManualForm(false); setManualForm({ placeName: '', city: '', district: '' }); }}
-                    className="px-4 py-3 bg-slate-200 text-slate-600 rounded-xl font-bold"
+                    onClick={() => setClaimStep('manual')}
+                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${claimStep === 'manual' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}
                   >
-                    <X className="w-5 h-5" />
+                    <Edit3 className="w-3.5 h-3.5 inline mr-1" />
+                    手動新增
                   </button>
                 </div>
+
+                {claimStep === 'search' && (
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="輸入店家名稱..."
+                        className="flex-1 px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleSearchPlaces()}
+                        data-testid="input-search-place"
+                      />
+                      <button
+                        onClick={handleSearchPlaces}
+                        disabled={isSearching || searchQuery.length < 2}
+                        className="px-4 py-3 bg-indigo-500 text-white rounded-xl font-bold hover:bg-indigo-600 disabled:opacity-50 flex items-center gap-2"
+                        data-testid="button-search-place"
+                      >
+                        {isSearching ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                      </button>
+                    </div>
+
+                    <select
+                      className="w-full px-4 py-2 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                      value={searchCity}
+                      onChange={e => setSearchCity(e.target.value)}
+                    >
+                      <option value="">所有縣市</option>
+                      {taiwanCities.map(city => (
+                        <option key={city} value={city}>{city}</option>
+                      ))}
+                    </select>
+
+                    {searchResults.length > 0 && (
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {searchResults.map(place => (
+                          <div key={place.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-bold text-slate-800 truncate">{place.placeName}</div>
+                              <div className="text-xs text-slate-500">{place.city} {place.district}</div>
+                              {place.googleRating && (
+                                <div className="text-xs text-amber-600 mt-1">⭐ {place.googleRating}</div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => handleClaimFromSearch(place)}
+                              disabled={claimingPlaceId === place.id}
+                              className="ml-2 px-3 py-2 bg-emerald-500 text-white rounded-lg text-xs font-bold hover:bg-emerald-600 disabled:opacity-50 flex items-center gap-1 whitespace-nowrap"
+                              data-testid={`button-claim-${place.id}`}
+                            >
+                              {claimingPlaceId === place.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                              )}
+                              認領
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {searchQuery.length >= 2 && !isSearching && searchResults.length === 0 && (
+                      <div className="py-6 text-center text-slate-400">
+                        <MapPin className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">找不到相符的店家</p>
+                        <button
+                          onClick={() => {
+                            setClaimStep('manual');
+                            setManualForm(prev => ({ ...prev, placeName: searchQuery }));
+                          }}
+                          className="mt-2 text-indigo-500 text-sm font-bold hover:underline"
+                        >
+                          手動新增此店家
+                        </button>
+                      </div>
+                    )}
+
+                    {searchQuery.length < 2 && (
+                      <div className="py-6 text-center text-slate-400">
+                        <Search className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">輸入店家名稱來搜尋</p>
+                        <p className="text-xs mt-1">搜尋已在平台上被使用者探索過的店家</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {claimStep === 'manual' && (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                      <p className="text-xs text-amber-700">
+                        <strong>注意：</strong>手動新增的店家需要經過審核確認，通過後即可管理優惠活動。
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-slate-600 mb-1">店家名稱 *</label>
+                      <input
+                        type="text"
+                        placeholder="例如：阿明小吃店"
+                        className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        value={manualForm.placeName}
+                        onChange={e => setManualForm(p => ({ ...p, placeName: e.target.value }))}
+                        data-testid="input-place-name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-slate-600 mb-1">縣市 *</label>
+                      <select
+                        className="w-full px-4 py-3 pr-10 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        value={manualForm.city}
+                        onChange={e => setManualForm(p => ({ ...p, city: e.target.value }))}
+                        data-testid="select-city"
+                      >
+                        <option value="">選擇縣市</option>
+                        {taiwanCities.map(city => (
+                          <option key={city} value={city}>{city}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-slate-600 mb-1">鄉鎮區（選填）</label>
+                      <input
+                        type="text"
+                        placeholder="例如：中正區"
+                        className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        value={manualForm.district}
+                        onChange={e => setManualForm(p => ({ ...p, district: e.target.value }))}
+                        data-testid="input-district"
+                      />
+                    </div>
+                    <button
+                      onClick={handleManualSubmit}
+                      disabled={submittingManual || !manualForm.placeName || !manualForm.city}
+                      className="w-full py-3 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                      data-testid="button-submit-place"
+                    >
+                      {submittingManual ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
+                      提交擁有權申請
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

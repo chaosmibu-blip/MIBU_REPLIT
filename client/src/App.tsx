@@ -285,6 +285,8 @@ const App: React.FC = () => {
         verified_name: item.place?.name || null,
         verified_address: item.place?.address || null,
         google_rating: item.place?.rating || null,
+        google_types: item.place?.googleTypes || [],
+        primary_type: item.place?.primaryType || null,
         location: item.place?.location || null,
         is_location_verified: item.isVerified || false
       }));
