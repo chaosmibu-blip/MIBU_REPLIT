@@ -1197,54 +1197,90 @@ ${uncachedSkeleton.map((item, idx) => `  {
         source = 'cache';
         isVerified = cachedPlace.isLocationVerified || false;
       } else {
-        // Step 5: Generate with Gemini AI
-        const aiResult = await generatePlaceWithAI(
-          districtNameZh,
-          regionNameZh,
-          countryNameZh,
-          subcategoryNameZh,
-          categoryNameZh
-        );
+        // Step 5: Generate with Gemini AI with retry logic
+        const MAX_RETRIES = 3;
+        let attempts = 0;
+        let failedAttempts: string[] = [];
 
-        if (aiResult) {
-          // Step 6: Verify with Google Places
-          const verification = await verifyPlaceWithGoogle(
-            aiResult.placeName,
+        while (attempts < MAX_RETRIES && !placeResult) {
+          attempts++;
+          
+          // Build prompt with exclusion list for retries
+          const exclusionNote = failedAttempts.length > 0 
+            ? `\n注意：請不要推薦以下已經嘗試過的店家：${failedAttempts.join('、')}` 
+            : '';
+          
+          const aiResult = await generatePlaceWithAI(
             districtNameZh,
-            regionNameZh
+            regionNameZh,
+            countryNameZh,
+            subcategoryNameZh + exclusionNote,
+            categoryNameZh
           );
 
-          // Step 7: Save to cache
-          const cacheEntry = await storage.savePlaceToCache({
-            subCategory: subcategoryNameZh,
-            district: districtNameZh,
-            city: regionNameZh,
-            country: countryNameZh,
-            placeName: verification.verifiedName || aiResult.placeName,
-            description: aiResult.description,
-            category: categoryNameZh,
-            searchQuery: `${subcategoryNameZh} ${districtNameZh} ${regionNameZh}`,
-            placeId: verification.placeId || null,
-            verifiedName: verification.verifiedName || null,
-            verifiedAddress: verification.verifiedAddress || null,
-            googleRating: verification.rating?.toString() || null,
-            locationLat: verification.location?.lat?.toString() || null,
-            locationLng: verification.location?.lng?.toString() || null,
-            isLocationVerified: verification.verified
-          });
+          if (aiResult) {
+            // Step 6: Verify with Google Places
+            const verification = await verifyPlaceWithGoogle(
+              aiResult.placeName,
+              districtNameZh,
+              regionNameZh
+            );
 
+            // Only save to cache and return if verification passed
+            if (verification.verified) {
+              // Step 7: Save to cache only when verified
+              const cacheEntry = await storage.savePlaceToCache({
+                subCategory: subcategoryNameZh,
+                district: districtNameZh,
+                city: regionNameZh,
+                country: countryNameZh,
+                placeName: verification.verifiedName || aiResult.placeName,
+                description: aiResult.description,
+                category: categoryNameZh,
+                searchQuery: `${subcategoryNameZh} ${districtNameZh} ${regionNameZh}`,
+                placeId: verification.placeId || null,
+                verifiedName: verification.verifiedName || null,
+                verifiedAddress: verification.verifiedAddress || null,
+                googleRating: verification.rating?.toString() || null,
+                locationLat: verification.location?.lat?.toString() || null,
+                locationLng: verification.location?.lng?.toString() || null,
+                isLocationVerified: true
+              });
+
+              placeResult = {
+                name: cacheEntry.placeName,
+                description: cacheEntry.description,
+                address: cacheEntry.verifiedAddress,
+                placeId: cacheEntry.placeId,
+                rating: cacheEntry.googleRating,
+                location: cacheEntry.locationLat && cacheEntry.locationLng ? {
+                  lat: parseFloat(cacheEntry.locationLat),
+                  lng: parseFloat(cacheEntry.locationLng)
+                } : null
+              };
+              isVerified = true;
+              console.log(`Verified place found on attempt ${attempts}: ${aiResult.placeName}`);
+            } else {
+              // Verification failed - add to exclusion list and retry
+              failedAttempts.push(aiResult.placeName);
+              console.log(`Attempt ${attempts}: Verification failed for ${aiResult.placeName} in ${districtNameZh}, address was: ${verification.verifiedAddress}`);
+            }
+          }
+        }
+
+        // If all retries failed, return the last attempt with warning
+        if (!placeResult && failedAttempts.length > 0) {
+          console.log(`All ${MAX_RETRIES} attempts failed for ${subcategoryNameZh} in ${districtNameZh}`);
           placeResult = {
-            name: cacheEntry.placeName,
-            description: cacheEntry.description,
-            address: cacheEntry.verifiedAddress,
-            placeId: cacheEntry.placeId,
-            rating: cacheEntry.googleRating,
-            location: cacheEntry.locationLat && cacheEntry.locationLng ? {
-              lat: parseFloat(cacheEntry.locationLat),
-              lng: parseFloat(cacheEntry.locationLng)
-            } : null
+            name: `${districtNameZh}探索`,
+            description: `探索${regionNameZh}${districtNameZh}的${subcategoryNameZh}。這個區域可能較少此類型的店家，建議實地探訪發掘在地美食。`,
+            address: null,
+            placeId: null,
+            rating: null,
+            location: null,
+            warning: `該區域目前無法找到驗證過的${subcategoryNameZh}店家`
           };
-          isVerified = verification.verified;
+          isVerified = false;
         }
       }
 
