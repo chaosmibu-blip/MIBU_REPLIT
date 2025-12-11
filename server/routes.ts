@@ -1017,6 +1017,99 @@ ${uncachedSkeleton.map((item, idx) => `  {
 
   // ============ Gacha Pull Route ============
 
+  // Helper function to generate place using Gemini AI
+  async function generatePlaceWithAI(
+    districtNameZh: string, 
+    regionNameZh: string, 
+    countryNameZh: string,
+    subcategoryNameZh: string,
+    categoryNameZh: string
+  ): Promise<{ placeName: string; description: string } | null> {
+    try {
+      const prompt = `你是台灣在地旅遊專家。請推薦一個位於「${regionNameZh}${districtNameZh}」的「${subcategoryNameZh}」類型店家或景點。
+
+要求：
+1. 必須是真實存在的店家或景點
+2. 必須確實位於 ${regionNameZh}${districtNameZh} 這個行政區內
+3. 提供一個簡短的介紹（約30-50字）
+
+請以 JSON 格式回答：
+{
+  "placeName": "店家或景點名稱",
+  "description": "簡短介紹"
+}
+
+只回答 JSON，不要有其他文字。`;
+
+      const responseText = await callGemini(prompt);
+      
+      // Parse the JSON response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.error("Failed to parse Gemini response:", responseText);
+        return null;
+      }
+      
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        placeName: parsed.placeName,
+        description: parsed.description
+      };
+    } catch (error) {
+      console.error("Gemini AI generation error:", error);
+      return null;
+    }
+  }
+
+  // Helper function to verify place with Google Places API
+  async function verifyPlaceWithGoogle(
+    placeName: string,
+    districtNameZh: string,
+    regionNameZh: string
+  ): Promise<{
+    verified: boolean;
+    placeId?: string;
+    verifiedName?: string;
+    verifiedAddress?: string;
+    rating?: number;
+    location?: { lat: number; lng: number };
+  }> {
+    if (!GOOGLE_MAPS_API_KEY) {
+      return { verified: false };
+    }
+
+    try {
+      // Search for the specific place name in the district
+      const searchText = encodeURIComponent(`${placeName} ${districtNameZh} ${regionNameZh}`);
+      const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchText}&key=${GOOGLE_MAPS_API_KEY}&language=zh-TW`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.status === 'OK' && data.results && data.results.length > 0) {
+        const place = data.results[0];
+        const address = place.formatted_address || '';
+        
+        // Check if the result is in the correct district
+        const isInDistrict = address.includes(regionNameZh) && address.includes(districtNameZh);
+        
+        return {
+          verified: isInDistrict,
+          placeId: place.place_id,
+          verifiedName: place.name,
+          verifiedAddress: address,
+          rating: place.rating,
+          location: place.geometry?.location
+        };
+      }
+      
+      return { verified: false };
+    } catch (error) {
+      console.error("Google Places verification error:", error);
+      return { verified: false };
+    }
+  }
+
   app.post("/api/gacha/pull", async (req, res) => {
     try {
       const { countryId, regionId, language = 'zh-TW' } = req.body;
@@ -1025,7 +1118,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
         return res.status(400).json({ error: "countryId is required" });
       }
 
-      // Step 1: Random district selection (1/N probability where N = total districts in region or country)
+      // Step 1: Random district selection
       let district;
       if (regionId) {
         district = await storage.getRandomDistrictByRegion(regionId);
@@ -1041,19 +1134,19 @@ ${uncachedSkeleton.map((item, idx) => `  {
         return res.status(500).json({ error: "Failed to get district info" });
       }
 
-      // Step 2: Random category selection (1/8 probability)
+      // Step 2: Random category selection
       const category = await storage.getRandomCategory();
       if (!category) {
         return res.status(404).json({ error: "No categories found" });
       }
 
-      // Step 3: Random subcategory selection (1/Y probability where Y = subcategories in category)
+      // Step 3: Random subcategory selection
       const subcategory = await storage.getRandomSubcategoryByCategory(category.id);
       if (!subcategory) {
         return res.status(404).json({ error: "No subcategories found" });
       }
 
-      // Determine name based on language
+      // Get names for response
       const getLocalizedName = (item: any, lang: string): string => {
         switch (lang) {
           case 'ja': return item.nameJa || item.nameZh || item.nameEn;
@@ -1069,84 +1162,89 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const categoryName = getLocalizedName(category, language);
       const subcategoryName = getLocalizedName(subcategory, language);
 
-      // Build search query for Google Places
-      const searchQuery = `${districtName} ${subcategoryName}`;
-      const searchKeywords = subcategory.searchKeywords || subcategoryName;
-
-      // Get district name in Chinese for address filtering (always use Chinese for Taiwan addresses)
+      // Always use Chinese names for cache keys and AI prompts
       const districtNameZh = districtWithParents.district.nameZh;
       const regionNameZh = districtWithParents.region.nameZh;
+      const countryNameZh = districtWithParents.country.nameZh;
+      const categoryNameZh = category.nameZh;
+      const subcategoryNameZh = subcategory.nameZh;
 
-      // Search Google Places with address filtering
+      // Step 4: Check cache first
       let placeResult = null;
-      let isExactMatch = false;
-      if (GOOGLE_MAPS_API_KEY) {
-        try {
-          // Include region name for more precise search
-          const searchText = encodeURIComponent(`${searchKeywords} ${districtNameZh} ${regionNameZh}`);
-          const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${searchText}&key=${GOOGLE_MAPS_API_KEY}&language=zh-TW`;
-          
-          const response = await fetch(url);
-          const data = await response.json();
-          
-          if (data.status === 'OK' && data.results && data.results.length > 0) {
-            // Filter results to only include places within the selected district
-            const filteredResults = data.results.filter((place: any) => {
-              const address = place.formatted_address || '';
-              
-              // First check: address must contain the region name (e.g., 宜蘭縣)
-              if (!address.includes(regionNameZh)) {
-                return false;
-              }
-              
-              // Second check: address must contain the district name
-              // For full district name match (e.g., 礁溪鄉)
-              if (address.includes(districtNameZh)) {
-                return true;
-              }
-              
-              // For base name match, only if base length > 1 to avoid false positives
-              // e.g., "南區" -> "南" (1 char) would match too many addresses
-              const districtBase = districtNameZh.replace(/[區鄉鎮市]$/, '');
-              if (districtBase.length > 1 && address.includes(districtBase)) {
-                return true;
-              }
-              
-              return false;
-            });
+      let source: 'cache' | 'ai' = 'ai';
+      let isVerified = false;
 
-            if (filteredResults.length > 0) {
-              // Pick a random result from filtered results (max 5)
-              const maxIndex = Math.min(5, filteredResults.length);
-              const randomIndex = Math.floor(Math.random() * maxIndex);
-              const place = filteredResults[randomIndex];
-              
-              placeResult = {
-                name: place.name,
-                address: place.formatted_address,
-                placeId: place.place_id,
-                location: place.geometry?.location,
-                rating: place.rating,
-                types: place.types
-              };
-              isExactMatch = true;
-            } else {
-              // Fallback: if no exact match, use the first result but mark as not exact
-              const place = data.results[0];
-              placeResult = {
-                name: place.name,
-                address: place.formatted_address,
-                placeId: place.place_id,
-                location: place.geometry?.location,
-                rating: place.rating,
-                types: place.types
-              };
-              isExactMatch = false;
-              console.log(`No exact match for ${districtNameZh}, using nearby result: ${place.formatted_address}`);
-            }
-          }
-        } catch (error) {
-          console.error("Google Places API error:", error);
+      const cachedPlace = await storage.getCachedPlace(
+        subcategoryNameZh,
+        districtNameZh,
+        regionNameZh,
+        countryNameZh
+      );
+
+      if (cachedPlace) {
+        // Use cached data
+        placeResult = {
+          name: cachedPlace.placeName,
+          description: cachedPlace.description,
+          address: cachedPlace.verifiedAddress,
+          placeId: cachedPlace.placeId,
+          rating: cachedPlace.googleRating,
+          location: cachedPlace.locationLat && cachedPlace.locationLng ? {
+            lat: parseFloat(cachedPlace.locationLat),
+            lng: parseFloat(cachedPlace.locationLng)
+          } : null
+        };
+        source = 'cache';
+        isVerified = cachedPlace.isLocationVerified || false;
+      } else {
+        // Step 5: Generate with Gemini AI
+        const aiResult = await generatePlaceWithAI(
+          districtNameZh,
+          regionNameZh,
+          countryNameZh,
+          subcategoryNameZh,
+          categoryNameZh
+        );
+
+        if (aiResult) {
+          // Step 6: Verify with Google Places
+          const verification = await verifyPlaceWithGoogle(
+            aiResult.placeName,
+            districtNameZh,
+            regionNameZh
+          );
+
+          // Step 7: Save to cache
+          const cacheEntry = await storage.savePlaceToCache({
+            subCategory: subcategoryNameZh,
+            district: districtNameZh,
+            city: regionNameZh,
+            country: countryNameZh,
+            placeName: verification.verifiedName || aiResult.placeName,
+            description: aiResult.description,
+            category: categoryNameZh,
+            searchQuery: `${subcategoryNameZh} ${districtNameZh} ${regionNameZh}`,
+            placeId: verification.placeId || null,
+            verifiedName: verification.verifiedName || null,
+            verifiedAddress: verification.verifiedAddress || null,
+            googleRating: verification.rating?.toString() || null,
+            locationLat: verification.location?.lat?.toString() || null,
+            locationLng: verification.location?.lng?.toString() || null,
+            isLocationVerified: verification.verified
+          });
+
+          placeResult = {
+            name: cacheEntry.placeName,
+            description: cacheEntry.description,
+            address: cacheEntry.verifiedAddress,
+            placeId: cacheEntry.placeId,
+            rating: cacheEntry.googleRating,
+            location: cacheEntry.locationLat && cacheEntry.locationLng ? {
+              lat: parseFloat(cacheEntry.locationLat),
+              lng: parseFloat(cacheEntry.locationLng)
+            } : null
+          };
+          isVerified = verification.verified;
         }
       }
 
@@ -1158,12 +1256,14 @@ ${uncachedSkeleton.map((item, idx) => `  {
             district: {
               id: district.id,
               code: district.code,
-              name: districtName
+              name: districtName,
+              nameZh: districtNameZh
             },
             region: {
               id: districtWithParents.region.id,
               code: districtWithParents.region.code,
-              name: regionName
+              name: regionName,
+              nameZh: regionNameZh
             },
             country: {
               id: districtWithParents.country.id,
@@ -1182,9 +1282,11 @@ ${uncachedSkeleton.map((item, idx) => `  {
             code: subcategory.code,
             name: subcategoryName
           },
-          searchQuery,
           place: placeResult,
-          isExactMatch
+          meta: {
+            source,
+            isVerified
+          }
         }
       });
     } catch (error) {
