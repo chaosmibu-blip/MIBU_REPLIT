@@ -50,6 +50,7 @@ export interface IStorage {
   // Categories
   getCategories(): Promise<Category[]>;
   getSubcategoriesByCategory(categoryId: number): Promise<Subcategory[]>;
+  getAllSubcategoriesWithCategory(): Promise<Array<Subcategory & { category: Category }>>;
   getRandomCategory(): Promise<Category | undefined>;
   getRandomSubcategoryByCategory(categoryId: number): Promise<Subcategory | undefined>;
 }
@@ -305,6 +306,22 @@ export class DatabaseStorage implements IStorage {
       .orderBy(sql`RANDOM()`)
       .limit(1);
     return subcategory;
+  }
+
+  async getAllSubcategoriesWithCategory(): Promise<Array<Subcategory & { category: Category }>> {
+    const results = await db
+      .select({
+        subcategory: subcategories,
+        category: categories
+      })
+      .from(subcategories)
+      .innerJoin(categories, eq(subcategories.categoryId, categories.id))
+      .where(and(eq(subcategories.isActive, true), eq(categories.isActive, true)));
+    
+    return results.map(r => ({
+      ...r.subcategory,
+      category: r.category
+    }));
   }
 }
 

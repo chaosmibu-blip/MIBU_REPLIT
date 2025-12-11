@@ -1117,12 +1117,13 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   }
 
-  // Helper function to generate a single place for a category in a specific district
-  async function generatePlaceForCategory(
+  // Helper function to generate a single place for a subcategory in a specific district
+  async function generatePlaceForSubcategory(
     districtNameZh: string,
     regionNameZh: string,
     countryNameZh: string,
     category: any,
+    subcategory: any,
     language: string,
     excludePlaceNames: string[] = []
   ): Promise<{
@@ -1132,10 +1133,6 @@ ${uncachedSkeleton.map((item, idx) => `  {
     source: 'cache' | 'ai';
     isVerified: boolean;
   } | null> {
-    // Get a random subcategory for this category
-    const subcategory = await storage.getRandomSubcategoryByCategory(category.id);
-    if (!subcategory) return null;
-
     const subcategoryNameZh = subcategory.nameZh;
     const categoryNameZh = category.nameZh;
 
@@ -1295,40 +1292,45 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const regionNameZh = districtWithParents.region.nameZh;
       const countryNameZh = districtWithParents.country.nameZh;
 
-      // Step 2: Get all categories
-      const allCategories = await storage.getCategories();
-      if (!allCategories || allCategories.length === 0) {
-        return res.status(404).json({ error: "No categories found" });
+      // Step 2: Get all subcategories with their parent categories
+      const allSubcategories = await storage.getAllSubcategoriesWithCategory();
+      if (!allSubcategories || allSubcategories.length === 0) {
+        return res.status(404).json({ error: "No subcategories found" });
       }
 
-      console.log(`\n=== Generating itinerary for ${regionNameZh}${districtNameZh} ===`);
+      console.log(`\n=== Generating itinerary for ${regionNameZh}${districtNameZh} (${itemCount} items from ${allSubcategories.length} subcategories) ===`);
 
-      // Step 3: Generate places for each category (one per category for diversity)
+      // Step 3: Generate places from random subcategories
       const items: any[] = [];
       let cacheHits = 0;
       let aiGenerated = 0;
       const usedPlaceNames: string[] = [];
+      const usedSubcategoryIds: Set<number> = new Set();
 
-      // Shuffle categories and pick up to itemCount
-      const shuffledCategories = [...allCategories].sort(() => Math.random() - 0.5);
-      const selectedCategories = shuffledCategories.slice(0, Math.min(itemCount, shuffledCategories.length));
+      // Shuffle subcategories and pick up to itemCount (without repeating subcategories)
+      const shuffledSubcategories = [...allSubcategories].sort(() => Math.random() - 0.5);
 
       // Generate places sequentially to track used place names and avoid duplicates
-      for (const category of selectedCategories) {
-        const result = await generatePlaceForCategory(
+      for (const subcatWithCategory of shuffledSubcategories) {
+        if (items.length >= itemCount) break;
+        if (usedSubcategoryIds.has(subcatWithCategory.id)) continue;
+        
+        const result = await generatePlaceForSubcategory(
           districtNameZh,
           regionNameZh,
           countryNameZh,
-          category,
+          subcatWithCategory.category,
+          subcatWithCategory,
           language,
           usedPlaceNames
         );
 
         if (result) {
-          // Track this place name to avoid duplicates
+          // Track this place name and subcategory to avoid duplicates
           if (result.place?.name) {
             usedPlaceNames.push(result.place.name);
           }
+          usedSubcategoryIds.add(subcatWithCategory.id);
           
           if (result.source === 'cache') cacheHits++;
           else aiGenerated++;
@@ -1417,10 +1419,15 @@ ${uncachedSkeleton.map((item, idx) => `  {
         return res.status(500).json({ error: "Failed to get district info" });
       }
 
-      // Step 2: Random category selection
+      // Step 2: Random category and subcategory selection
       const category = await storage.getRandomCategory();
       if (!category) {
         return res.status(404).json({ error: "No categories found" });
+      }
+      
+      const subcategory = await storage.getRandomSubcategoryByCategory(category.id);
+      if (!subcategory) {
+        return res.status(404).json({ error: "No subcategories found" });
       }
 
       // Get names for response
@@ -1437,12 +1444,13 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const regionNameZh = districtWithParents.region.nameZh;
       const countryNameZh = districtWithParents.country.nameZh;
 
-      // Generate place for this category
-      const result = await generatePlaceForCategory(
+      // Generate place for this subcategory
+      const result = await generatePlaceForSubcategory(
         districtNameZh,
         regionNameZh,
         countryNameZh,
         category,
+        subcategory,
         language
       );
 
