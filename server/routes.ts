@@ -19,6 +19,27 @@ interface PlaceSearchResult {
   };
   rating?: number;
   types?: string[];
+  business_status?: string;
+}
+
+const EXCLUDED_BUSINESS_STATUS = ['CLOSED_PERMANENTLY', 'CLOSED_TEMPORARILY'];
+const EXCLUDED_PLACE_TYPES = ['travel_agency', 'insurance_agency', 'real_estate_agency', 'lawyer', 'accounting', 'bank', 'library'];
+const GENERIC_NAME_PATTERNS = ['探索', '旅行社', '旅遊', '服務中心', '遊客中心', '旅行', 'Travel', 'Explore', 'Tour'];
+
+function isPlaceValid(place: any): boolean {
+  if (place.business_status && EXCLUDED_BUSINESS_STATUS.includes(place.business_status)) {
+    return false;
+  }
+  
+  if (place.types && place.types.some((t: string) => EXCLUDED_PLACE_TYPES.includes(t))) {
+    return false;
+  }
+  
+  if (place.name && GENERIC_NAME_PATTERNS.some(pattern => place.name.includes(pattern))) {
+    return false;
+  }
+  
+  return true;
 }
 
 async function searchPlaceInDistrict(
@@ -40,15 +61,22 @@ async function searchPlaceInDistrict(
     const data = await response.json();
     
     if (data.status === 'OK' && data.results && data.results.length > 0) {
-      const place = data.results[0];
-      return {
-        name: place.name,
-        formatted_address: place.formatted_address,
-        place_id: place.place_id,
-        geometry: place.geometry,
-        rating: place.rating,
-        types: place.types
-      };
+      for (const place of data.results) {
+        if (!isPlaceValid(place)) {
+          continue;
+        }
+        
+        return {
+          name: place.name,
+          formatted_address: place.formatted_address,
+          place_id: place.place_id,
+          geometry: place.geometry,
+          rating: place.rating,
+          types: place.types,
+          business_status: place.business_status
+        };
+      }
+      return null;
     }
     return null;
   } catch (error) {
