@@ -12,7 +12,7 @@ import {
   type Category, type Subcategory
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, ilike } from "drizzle-orm";
 
 export interface IStorage {
   // Users (mandatory for Replit Auth)
@@ -443,19 +443,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async searchPlacesForClaim(query: string, district?: string, city?: string): Promise<PlaceCache[]> {
-    let whereConditions = sql`${placeCache.placeName} ILIKE ${'%' + query + '%'}`;
+    const conditions = [ilike(placeCache.placeName, `%${query}%`)];
     
     if (district) {
-      whereConditions = sql`${whereConditions} AND ${placeCache.district} = ${district}`;
+      conditions.push(eq(placeCache.district, district));
     }
     if (city) {
-      whereConditions = sql`${whereConditions} AND ${placeCache.city} = ${city}`;
+      conditions.push(eq(placeCache.city, city));
     }
 
     return db
       .select()
       .from(placeCache)
-      .where(whereConditions)
+      .where(and(...conditions))
       .limit(20);
   }
 }
