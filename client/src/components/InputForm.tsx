@@ -120,7 +120,9 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
     }
   };
 
-  const handleCountryChange = (countryId: number) => {
+  const handleCountryChange = (value: string) => {
+    const countryId = parseInt(value, 10);
+    if (isNaN(countryId)) return;
     const country = countries.find(c => c.id === countryId);
     if (country) {
       setSelectedCountryId(countryId);
@@ -168,8 +170,8 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
              ) : (
                <select
                  value={selectedCountryId || ''}
-                 onChange={(e) => handleCountryChange(parseInt(e.target.value))}
-                 className="w-full pl-12 pr-10 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-indigo-200"
+                 onChange={(e) => handleCountryChange(e.target.value)}
+                 className="w-full pl-12 pr-10 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-indigo-200 appearance-none cursor-pointer"
                  data-testid="select-country"
                >
                  <option value="" disabled>{t.selectDestination}</option>
