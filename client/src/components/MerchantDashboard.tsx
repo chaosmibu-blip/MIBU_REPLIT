@@ -373,7 +373,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
                 <div>
                   <label className="block text-sm font-bold text-slate-600 mb-1">縣市 *</label>
                   <select
-                    className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full px-4 py-3 pr-10 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                     value={manualForm.city}
                     onChange={e => setManualForm(p => ({ ...p, city: e.target.value }))}
                     data-testid="select-city"
