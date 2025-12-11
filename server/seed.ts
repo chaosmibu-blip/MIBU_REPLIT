@@ -56,12 +56,21 @@ async function seed() {
   ];
 
   const insertedRegions: Record<string, number> = {};
+  
+  // Check if regions already exist
+  const existingRegions = await db.select().from(regions);
+  const existingRegionCodes = new Set(existingRegions.map(r => r.code));
+  
   for (const region of regionData) {
+    // Skip if region already exists
+    if (existingRegionCodes.has(region.code)) {
+      continue;
+    }
     const [inserted] = await db.insert(regions).values({
       countryId: taiwanId!,
       ...region,
       isActive: true,
-    }).onConflictDoNothing().returning();
+    }).returning();
     if (inserted) insertedRegions[region.code] = inserted.id;
   }
 
