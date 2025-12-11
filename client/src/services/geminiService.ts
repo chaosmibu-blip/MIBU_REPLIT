@@ -1,4 +1,4 @@
-import { GachaResponse, GachaItem, Category, Rarity } from "../types";
+import { GachaResponse, GachaItem, Category } from "../types";
 
 export const generateGachaItinerary = async (
   country: string,
