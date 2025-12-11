@@ -245,7 +245,8 @@ const App: React.FC = () => {
       const allItems: GachaItem[] = itinerary.items.map((item: any, index: number) => ({
         id: Date.now() + index,
         place_name: item.place?.name || `${itinerary.location.district.name} ${item.subcategory.name}`,
-        description: item.place?.address || `${itinerary.location.region.name}, ${itinerary.location.country.name}`,
+        description: `${itinerary.location.region.name} ${itinerary.location.district.name}`,
+        ai_description: item.place?.description || '',
         category: item.category.code as any,
         suggested_time: '',
         duration: '',

@@ -1023,15 +1023,22 @@ ${uncachedSkeleton.map((item, idx) => `  {
     regionNameZh: string, 
     countryNameZh: string,
     subcategoryNameZh: string,
-    categoryNameZh: string
+    categoryNameZh: string,
+    excludePlaceNames: string[] = []
   ): Promise<{ placeName: string; description: string } | null> {
     try {
+      const exclusionNote = excludePlaceNames.length > 0 
+        ? `\n注意：請不要推薦以下已經出現過的地點：${excludePlaceNames.join('、')}` 
+        : '';
+      
       const prompt = `你是台灣在地旅遊專家。請推薦一個位於「${regionNameZh}${districtNameZh}」的「${subcategoryNameZh}」類型店家或景點。
 
 要求：
-1. 必須是真實存在的店家或景點
+1. 必須是真實存在、適合觀光旅遊的店家或景點
 2. 必須確實位於 ${regionNameZh}${districtNameZh} 這個行政區內
-3. 提供一個簡短的介紹（約30-50字）
+3. 提供一個有吸引力的介紹（約30-50字），說明為什麼遊客應該造訪
+4. 不要推薦一般性的公共設施（如普通的公立圖書館、區公所、戶政事務所、學校等）
+5. 優先推薦有特色、有口碑、適合遊客體驗的地點${exclusionNote}
 
 請以 JSON 格式回答：
 {
@@ -1116,7 +1123,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
     regionNameZh: string,
     countryNameZh: string,
     category: any,
-    language: string
+    language: string,
+    excludePlaceNames: string[] = []
   ): Promise<{
     category: any;
     subcategory: any;
@@ -1139,7 +1147,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
       countryNameZh
     );
 
-    if (cachedPlace) {
+    // Only use cache if the place is not in the exclusion list
+    if (cachedPlace && !excludePlaceNames.includes(cachedPlace.placeName)) {
       return {
         category,
         subcategory,
@@ -1167,16 +1176,16 @@ ${uncachedSkeleton.map((item, idx) => `  {
     while (attempts < MAX_RETRIES) {
       attempts++;
       
-      const exclusionNote = failedAttempts.length > 0 
-        ? `\n注意：請不要推薦以下已經嘗試過的店家：${failedAttempts.join('、')}` 
-        : '';
+      // Combine failed attempts with already used places
+      const allExclusions = [...excludePlaceNames, ...failedAttempts];
       
       const aiResult = await generatePlaceWithAI(
         districtNameZh,
         regionNameZh,
         countryNameZh,
-        subcategoryNameZh + exclusionNote,
-        categoryNameZh
+        subcategoryNameZh,
+        categoryNameZh,
+        allExclusions
       );
 
       if (aiResult) {
@@ -1298,26 +1307,29 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const items: any[] = [];
       let cacheHits = 0;
       let aiGenerated = 0;
+      const usedPlaceNames: string[] = [];
 
       // Shuffle categories and pick up to itemCount
       const shuffledCategories = [...allCategories].sort(() => Math.random() - 0.5);
       const selectedCategories = shuffledCategories.slice(0, Math.min(itemCount, shuffledCategories.length));
 
-      // Generate places in parallel for speed
-      const placePromises = selectedCategories.map(category => 
-        generatePlaceForCategory(
+      // Generate places sequentially to track used place names and avoid duplicates
+      for (const category of selectedCategories) {
+        const result = await generatePlaceForCategory(
           districtNameZh,
           regionNameZh,
           countryNameZh,
           category,
-          language
-        )
-      );
+          language,
+          usedPlaceNames
+        );
 
-      const placeResults = await Promise.all(placePromises);
-
-      for (const result of placeResults) {
         if (result) {
+          // Track this place name to avoid duplicates
+          if (result.place?.name) {
+            usedPlaceNames.push(result.place.name);
+          }
+          
           if (result.source === 'cache') cacheHits++;
           else aiGenerated++;
 

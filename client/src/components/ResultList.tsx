@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { GachaResponse, GachaItem, Language } from '../types';
-import { MapPin, Ticket, Clock, Info, RefreshCw, Search, Tag } from 'lucide-react';
+import { Ticket, RefreshCw, Search, Tag } from 'lucide-react';
 import { CATEGORY_COLORS, TRANSLATIONS } from '../constants';
 
 interface ResultListProps {
@@ -15,6 +15,20 @@ const getContent = (content: any, lang: Language): string => {
   if (!content) return '';
   if (typeof content === 'string') return content;
   return content[lang] || content['en'] || '';
+};
+
+const getCategoryTranslationKey = (categoryCode: string): string => {
+  const codeMap: Record<string, string> = {
+    'food': 'catFood',
+    'stay': 'catStay',
+    'scenery': 'catScenery',
+    'shopping': 'catShopping',
+    'entertainment': 'catEntertainment',
+    'education': 'catEducation',
+    'activity': 'catActivity',
+    'experience': 'catActivity',
+  };
+  return codeMap[categoryCode?.toLowerCase()] || 'catActivity';
 };
 
 export const ResultList: React.FC<ResultListProps> = ({ data, language, onResearch, isLoading }) => {
@@ -70,12 +84,8 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
                     data-testid={`tag-category-${item.id}`}
                   >
                     <Tag className="w-2.5 h-2.5" />
-                    {t[`cat${item.category}`] || item.category}
+                    {(t as any)[getCategoryTranslationKey(item.category as any)] || item.category}
                   </span>
-                  <div className="flex items-center text-slate-400 text-xs gap-1">
-                    <Clock className="w-3 h-3" />
-                    {item.suggested_time}
-                  </div>
                 </div>
 
                 <h3 className="text-lg font-bold text-slate-800 leading-tight mb-1">
@@ -83,7 +93,7 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
                 </h3>
                 
                 <p className="text-sm text-slate-500 mb-3">
-                  {getContent(item.description, language)}
+                  {getContent(item.ai_description || item.description, language)}
                 </p>
 
                 {(item.verified_name || item.place_name) && (

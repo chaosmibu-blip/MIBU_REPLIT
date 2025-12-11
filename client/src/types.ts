@@ -63,6 +63,7 @@ export interface GachaItem {
   id: number;
   place_name: LocalizedContent;
   description: LocalizedContent;
+  ai_description?: LocalizedContent;
   category: Category;
   suggested_time: string;
   duration: string;
