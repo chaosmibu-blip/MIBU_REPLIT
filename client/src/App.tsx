@@ -222,52 +222,48 @@ const App: React.FC = () => {
         throw new Error('Please select a destination');
       }
       
-      const allItems: GachaItem[] = [];
-      const pullCount = state.level;
+      // Use the new itinerary endpoint that generates multiple categories for ONE district
+      const response = await fetch('/api/gacha/itinerary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          countryId: state.countryId, 
+          regionId: state.regionId,
+          language: state.language,
+          itemCount: state.level  // Use level to determine how many items
+        })
+      });
       
-      for (let i = 0; i < pullCount; i++) {
-        const response = await fetch('/api/gacha/pull', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            countryId: state.countryId, 
-            regionId: state.regionId,
-            language: state.language 
-          })
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to perform gacha pull');
-        }
-        
-        const pullResult = await response.json();
-        const { pull } = pullResult;
-        
-        const gachaItem: GachaItem = {
-          id: Date.now() + i,
-          place_name: pull.place?.name || `${pull.location.district.name} ${pull.subcategory.name}`,
-          description: pull.place?.address || `${pull.location.region.name}, ${pull.location.country.name}`,
-          category: pull.category.code as any,
-          suggested_time: '',
-          duration: '',
-          search_query: pull.searchQuery,
-          color_hex: pull.category.colorHex || '#6366f1',
-          country: pull.location.country.name,
-          city: pull.location.region.name,
-          district: pull.location.district.name,
-          collectedAt: new Date().toISOString(),
-          is_coupon: false,
-          coupon_data: null,
-          place_id: pull.place?.placeId || null,
-          verified_name: pull.place?.name || null,
-          verified_address: pull.place?.address || null,
-          google_rating: pull.place?.rating || null,
-          location: pull.place?.location || null,
-          is_location_verified: !!pull.place
-        };
-        
-        allItems.push(gachaItem);
+      if (!response.ok) {
+        throw new Error('Failed to generate itinerary');
       }
+      
+      const result = await response.json();
+      const { itinerary } = result;
+      
+      // Convert API response to GachaItem format
+      const allItems: GachaItem[] = itinerary.items.map((item: any, index: number) => ({
+        id: Date.now() + index,
+        place_name: item.place?.name || `${itinerary.location.district.name} ${item.subcategory.name}`,
+        description: item.place?.address || `${itinerary.location.region.name}, ${itinerary.location.country.name}`,
+        category: item.category.code as any,
+        suggested_time: '',
+        duration: '',
+        search_query: '',
+        color_hex: item.category.colorHex || '#6366f1',
+        country: itinerary.location.country.name,
+        city: itinerary.location.region.name,
+        district: itinerary.location.district.name,  // ALL items share the SAME district
+        collectedAt: new Date().toISOString(),
+        is_coupon: false,
+        coupon_data: null,
+        place_id: item.place?.placeId || null,
+        verified_name: item.place?.name || null,
+        verified_address: item.place?.address || null,
+        google_rating: item.place?.rating || null,
+        location: item.place?.location || null,
+        is_location_verified: item.isVerified || false
+      }));
       
       localStorage.setItem(STORAGE_KEYS.DAILY_LIMIT, JSON.stringify({ date: today, count: currentCount + 1 }));
       
@@ -275,9 +271,9 @@ const App: React.FC = () => {
         status: 'success',
         meta: {
           date: new Date().toISOString().split('T')[0],
-          country: allItems[0]!.country,
-          city: allItems[0]!.city,
-          locked_district: allItems[0]!.district,
+          country: itinerary.location.country.name,
+          city: itinerary.location.region.name,
+          locked_district: itinerary.location.district.name,  // Display locked district
           user_level: state.level
         },
         inventory: allItems

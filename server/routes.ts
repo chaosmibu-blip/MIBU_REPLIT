@@ -1110,6 +1110,277 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   }
 
+  // Helper function to generate a single place for a category in a specific district
+  async function generatePlaceForCategory(
+    districtNameZh: string,
+    regionNameZh: string,
+    countryNameZh: string,
+    category: any,
+    language: string
+  ): Promise<{
+    category: any;
+    subcategory: any;
+    place: any;
+    source: 'cache' | 'ai';
+    isVerified: boolean;
+  } | null> {
+    // Get a random subcategory for this category
+    const subcategory = await storage.getRandomSubcategoryByCategory(category.id);
+    if (!subcategory) return null;
+
+    const subcategoryNameZh = subcategory.nameZh;
+    const categoryNameZh = category.nameZh;
+
+    // Check cache first
+    const cachedPlace = await storage.getCachedPlace(
+      subcategoryNameZh,
+      districtNameZh,
+      regionNameZh,
+      countryNameZh
+    );
+
+    if (cachedPlace) {
+      return {
+        category,
+        subcategory,
+        place: {
+          name: cachedPlace.placeName,
+          description: cachedPlace.description,
+          address: cachedPlace.verifiedAddress,
+          placeId: cachedPlace.placeId,
+          rating: cachedPlace.googleRating,
+          location: cachedPlace.locationLat && cachedPlace.locationLng ? {
+            lat: parseFloat(cachedPlace.locationLat),
+            lng: parseFloat(cachedPlace.locationLng)
+          } : null
+        },
+        source: 'cache',
+        isVerified: cachedPlace.isLocationVerified || false
+      };
+    }
+
+    // Generate with AI and verify
+    const MAX_RETRIES = 2;
+    let attempts = 0;
+    let failedAttempts: string[] = [];
+
+    while (attempts < MAX_RETRIES) {
+      attempts++;
+      
+      const exclusionNote = failedAttempts.length > 0 
+        ? `\n注意：請不要推薦以下已經嘗試過的店家：${failedAttempts.join('、')}` 
+        : '';
+      
+      const aiResult = await generatePlaceWithAI(
+        districtNameZh,
+        regionNameZh,
+        countryNameZh,
+        subcategoryNameZh + exclusionNote,
+        categoryNameZh
+      );
+
+      if (aiResult) {
+        const verification = await verifyPlaceWithGoogle(
+          aiResult.placeName,
+          districtNameZh,
+          regionNameZh
+        );
+
+        if (verification.verified) {
+          // Save to cache
+          const cacheEntry = await storage.savePlaceToCache({
+            subCategory: subcategoryNameZh,
+            district: districtNameZh,
+            city: regionNameZh,
+            country: countryNameZh,
+            placeName: verification.verifiedName || aiResult.placeName,
+            description: aiResult.description,
+            category: categoryNameZh,
+            searchQuery: `${subcategoryNameZh} ${districtNameZh} ${regionNameZh}`,
+            placeId: verification.placeId || null,
+            verifiedName: verification.verifiedName || null,
+            verifiedAddress: verification.verifiedAddress || null,
+            googleRating: verification.rating?.toString() || null,
+            locationLat: verification.location?.lat?.toString() || null,
+            locationLng: verification.location?.lng?.toString() || null,
+            isLocationVerified: true
+          });
+
+          console.log(`[${categoryNameZh}] Verified: ${aiResult.placeName}`);
+          return {
+            category,
+            subcategory,
+            place: {
+              name: cacheEntry.placeName,
+              description: cacheEntry.description,
+              address: cacheEntry.verifiedAddress,
+              placeId: cacheEntry.placeId,
+              rating: cacheEntry.googleRating,
+              location: cacheEntry.locationLat && cacheEntry.locationLng ? {
+                lat: parseFloat(cacheEntry.locationLat),
+                lng: parseFloat(cacheEntry.locationLng)
+              } : null
+            },
+            source: 'ai',
+            isVerified: true
+          };
+        } else {
+          failedAttempts.push(aiResult.placeName);
+        }
+      }
+    }
+
+    // Return a placeholder if no verified place found
+    return {
+      category,
+      subcategory,
+      place: {
+        name: `${districtNameZh}${categoryNameZh}探索`,
+        description: `探索${regionNameZh}${districtNameZh}的${subcategoryNameZh}特色。`,
+        address: null,
+        placeId: null,
+        rating: null,
+        location: null,
+        warning: `該區域目前較少此類型店家`
+      },
+      source: 'ai',
+      isVerified: false
+    };
+  }
+
+  // New endpoint: Generate a complete itinerary for a single district with multiple categories
+  app.post("/api/gacha/itinerary", async (req, res) => {
+    try {
+      const { countryId, regionId, language = 'zh-TW', itemCount = 8 } = req.body;
+
+      if (!countryId) {
+        return res.status(400).json({ error: "countryId is required" });
+      }
+
+      // Step 1: Random district selection (one district for the entire itinerary)
+      let district;
+      if (regionId) {
+        district = await storage.getRandomDistrictByRegion(regionId);
+      } else {
+        district = await storage.getRandomDistrictByCountry(countryId);
+      }
+      if (!district) {
+        return res.status(404).json({ error: "No districts found" });
+      }
+
+      const districtWithParents = await storage.getDistrictWithParents(district.id);
+      if (!districtWithParents) {
+        return res.status(500).json({ error: "Failed to get district info" });
+      }
+
+      const getLocalizedName = (item: any, lang: string): string => {
+        switch (lang) {
+          case 'ja': return item.nameJa || item.nameZh || item.nameEn;
+          case 'ko': return item.nameKo || item.nameZh || item.nameEn;
+          case 'en': return item.nameEn;
+          default: return item.nameZh || item.nameEn;
+        }
+      };
+
+      const districtNameZh = districtWithParents.district.nameZh;
+      const regionNameZh = districtWithParents.region.nameZh;
+      const countryNameZh = districtWithParents.country.nameZh;
+
+      // Step 2: Get all categories
+      const allCategories = await storage.getCategories();
+      if (!allCategories || allCategories.length === 0) {
+        return res.status(404).json({ error: "No categories found" });
+      }
+
+      console.log(`\n=== Generating itinerary for ${regionNameZh}${districtNameZh} ===`);
+
+      // Step 3: Generate places for each category (one per category for diversity)
+      const items: any[] = [];
+      let cacheHits = 0;
+      let aiGenerated = 0;
+
+      // Shuffle categories and pick up to itemCount
+      const shuffledCategories = [...allCategories].sort(() => Math.random() - 0.5);
+      const selectedCategories = shuffledCategories.slice(0, Math.min(itemCount, shuffledCategories.length));
+
+      // Generate places in parallel for speed
+      const placePromises = selectedCategories.map(category => 
+        generatePlaceForCategory(
+          districtNameZh,
+          regionNameZh,
+          countryNameZh,
+          category,
+          language
+        )
+      );
+
+      const placeResults = await Promise.all(placePromises);
+
+      for (const result of placeResults) {
+        if (result) {
+          if (result.source === 'cache') cacheHits++;
+          else aiGenerated++;
+
+          items.push({
+            category: {
+              id: result.category.id,
+              code: result.category.code,
+              name: getLocalizedName(result.category, language),
+              colorHex: result.category.colorHex
+            },
+            subcategory: {
+              id: result.subcategory.id,
+              code: result.subcategory.code,
+              name: getLocalizedName(result.subcategory, language)
+            },
+            place: result.place,
+            isVerified: result.isVerified,
+            source: result.source
+          });
+        }
+      }
+
+      console.log(`Generated ${items.length} items (cache: ${cacheHits}, AI: ${aiGenerated})`);
+
+      // Return the complete itinerary
+      res.json({
+        success: true,
+        itinerary: {
+          location: {
+            district: {
+              id: district.id,
+              code: district.code,
+              name: getLocalizedName(districtWithParents.district, language),
+              nameZh: districtNameZh
+            },
+            region: {
+              id: districtWithParents.region.id,
+              code: districtWithParents.region.code,
+              name: getLocalizedName(districtWithParents.region, language),
+              nameZh: regionNameZh
+            },
+            country: {
+              id: districtWithParents.country.id,
+              code: districtWithParents.country.code,
+              name: getLocalizedName(districtWithParents.country, language)
+            }
+          },
+          items,
+          meta: {
+            totalItems: items.length,
+            cacheHits,
+            aiGenerated,
+            verifiedCount: items.filter(i => i.isVerified).length
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Itinerary generation error:", error);
+      res.status(500).json({ error: "Failed to generate itinerary" });
+    }
+  });
+
+  // Keep original single pull endpoint for backward compatibility
   app.post("/api/gacha/pull", async (req, res) => {
     try {
       const { countryId, regionId, language = 'zh-TW' } = req.body;
@@ -1140,12 +1411,6 @@ ${uncachedSkeleton.map((item, idx) => `  {
         return res.status(404).json({ error: "No categories found" });
       }
 
-      // Step 3: Random subcategory selection
-      const subcategory = await storage.getRandomSubcategoryByCategory(category.id);
-      if (!subcategory) {
-        return res.status(404).json({ error: "No subcategories found" });
-      }
-
       // Get names for response
       const getLocalizedName = (item: any, lang: string): string => {
         switch (lang) {
@@ -1156,132 +1421,21 @@ ${uncachedSkeleton.map((item, idx) => `  {
         }
       };
 
-      const districtName = getLocalizedName(districtWithParents.district, language);
-      const regionName = getLocalizedName(districtWithParents.region, language);
-      const countryName = getLocalizedName(districtWithParents.country, language);
-      const categoryName = getLocalizedName(category, language);
-      const subcategoryName = getLocalizedName(subcategory, language);
-
-      // Always use Chinese names for cache keys and AI prompts
       const districtNameZh = districtWithParents.district.nameZh;
       const regionNameZh = districtWithParents.region.nameZh;
       const countryNameZh = districtWithParents.country.nameZh;
-      const categoryNameZh = category.nameZh;
-      const subcategoryNameZh = subcategory.nameZh;
 
-      // Step 4: Check cache first
-      let placeResult = null;
-      let source: 'cache' | 'ai' = 'ai';
-      let isVerified = false;
-
-      const cachedPlace = await storage.getCachedPlace(
-        subcategoryNameZh,
+      // Generate place for this category
+      const result = await generatePlaceForCategory(
         districtNameZh,
         regionNameZh,
-        countryNameZh
+        countryNameZh,
+        category,
+        language
       );
 
-      if (cachedPlace) {
-        // Use cached data
-        placeResult = {
-          name: cachedPlace.placeName,
-          description: cachedPlace.description,
-          address: cachedPlace.verifiedAddress,
-          placeId: cachedPlace.placeId,
-          rating: cachedPlace.googleRating,
-          location: cachedPlace.locationLat && cachedPlace.locationLng ? {
-            lat: parseFloat(cachedPlace.locationLat),
-            lng: parseFloat(cachedPlace.locationLng)
-          } : null
-        };
-        source = 'cache';
-        isVerified = cachedPlace.isLocationVerified || false;
-      } else {
-        // Step 5: Generate with Gemini AI with retry logic
-        const MAX_RETRIES = 3;
-        let attempts = 0;
-        let failedAttempts: string[] = [];
-
-        while (attempts < MAX_RETRIES && !placeResult) {
-          attempts++;
-          
-          // Build prompt with exclusion list for retries
-          const exclusionNote = failedAttempts.length > 0 
-            ? `\n注意：請不要推薦以下已經嘗試過的店家：${failedAttempts.join('、')}` 
-            : '';
-          
-          const aiResult = await generatePlaceWithAI(
-            districtNameZh,
-            regionNameZh,
-            countryNameZh,
-            subcategoryNameZh + exclusionNote,
-            categoryNameZh
-          );
-
-          if (aiResult) {
-            // Step 6: Verify with Google Places
-            const verification = await verifyPlaceWithGoogle(
-              aiResult.placeName,
-              districtNameZh,
-              regionNameZh
-            );
-
-            // Only save to cache and return if verification passed
-            if (verification.verified) {
-              // Step 7: Save to cache only when verified
-              const cacheEntry = await storage.savePlaceToCache({
-                subCategory: subcategoryNameZh,
-                district: districtNameZh,
-                city: regionNameZh,
-                country: countryNameZh,
-                placeName: verification.verifiedName || aiResult.placeName,
-                description: aiResult.description,
-                category: categoryNameZh,
-                searchQuery: `${subcategoryNameZh} ${districtNameZh} ${regionNameZh}`,
-                placeId: verification.placeId || null,
-                verifiedName: verification.verifiedName || null,
-                verifiedAddress: verification.verifiedAddress || null,
-                googleRating: verification.rating?.toString() || null,
-                locationLat: verification.location?.lat?.toString() || null,
-                locationLng: verification.location?.lng?.toString() || null,
-                isLocationVerified: true
-              });
-
-              placeResult = {
-                name: cacheEntry.placeName,
-                description: cacheEntry.description,
-                address: cacheEntry.verifiedAddress,
-                placeId: cacheEntry.placeId,
-                rating: cacheEntry.googleRating,
-                location: cacheEntry.locationLat && cacheEntry.locationLng ? {
-                  lat: parseFloat(cacheEntry.locationLat),
-                  lng: parseFloat(cacheEntry.locationLng)
-                } : null
-              };
-              isVerified = true;
-              console.log(`Verified place found on attempt ${attempts}: ${aiResult.placeName}`);
-            } else {
-              // Verification failed - add to exclusion list and retry
-              failedAttempts.push(aiResult.placeName);
-              console.log(`Attempt ${attempts}: Verification failed for ${aiResult.placeName} in ${districtNameZh}, address was: ${verification.verifiedAddress}`);
-            }
-          }
-        }
-
-        // If all retries failed, return the last attempt with warning
-        if (!placeResult && failedAttempts.length > 0) {
-          console.log(`All ${MAX_RETRIES} attempts failed for ${subcategoryNameZh} in ${districtNameZh}`);
-          placeResult = {
-            name: `${districtNameZh}探索`,
-            description: `探索${regionNameZh}${districtNameZh}的${subcategoryNameZh}。這個區域可能較少此類型的店家，建議實地探訪發掘在地美食。`,
-            address: null,
-            placeId: null,
-            rating: null,
-            location: null,
-            warning: `該區域目前無法找到驗證過的${subcategoryNameZh}店家`
-          };
-          isVerified = false;
-        }
+      if (!result) {
+        return res.status(500).json({ error: "Failed to generate place" });
       }
 
       // Return the gacha result
@@ -1292,36 +1446,36 @@ ${uncachedSkeleton.map((item, idx) => `  {
             district: {
               id: district.id,
               code: district.code,
-              name: districtName,
+              name: getLocalizedName(districtWithParents.district, language),
               nameZh: districtNameZh
             },
             region: {
               id: districtWithParents.region.id,
               code: districtWithParents.region.code,
-              name: regionName,
+              name: getLocalizedName(districtWithParents.region, language),
               nameZh: regionNameZh
             },
             country: {
               id: districtWithParents.country.id,
               code: districtWithParents.country.code,
-              name: countryName
+              name: getLocalizedName(districtWithParents.country, language)
             }
           },
           category: {
-            id: category.id,
-            code: category.code,
-            name: categoryName,
-            colorHex: category.colorHex
+            id: result.category.id,
+            code: result.category.code,
+            name: getLocalizedName(result.category, language),
+            colorHex: result.category.colorHex
           },
           subcategory: {
-            id: subcategory.id,
-            code: subcategory.code,
-            name: subcategoryName
+            id: result.subcategory.id,
+            code: result.subcategory.code,
+            name: getLocalizedName(result.subcategory, language)
           },
-          place: placeResult,
+          place: result.place,
           meta: {
-            source,
-            isVerified
+            source: result.source,
+            isVerified: result.isVerified
           }
         }
       });
