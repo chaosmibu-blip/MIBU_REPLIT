@@ -65,6 +65,7 @@ export const categories = pgTable("categories", {
 });
 
 // Subcategories (e.g., 火鍋, 鐵板燒, 排餐 under 食)
+// preferredTimeSlot: morning, lunch, afternoon, dinner, evening, anytime
 export const subcategories = pgTable("subcategories", {
   id: serial("id").primaryKey(),
   categoryId: integer("category_id").references(() => categories.id).notNull(),
@@ -74,6 +75,7 @@ export const subcategories = pgTable("subcategories", {
   nameJa: text("name_ja"),
   nameKo: text("name_ko"),
   searchKeywords: text("search_keywords"),
+  preferredTimeSlot: varchar("preferred_time_slot", { length: 20 }).default('anytime'),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
@@ -151,9 +153,25 @@ export const placeCache = pgTable("place_cache", {
   locationLat: text("location_lat"),
   locationLng: text("location_lng"),
   isLocationVerified: boolean("is_location_verified").default(false),
+  businessStatus: varchar("business_status", { length: 50 }),
+  lastVerifiedAt: timestamp("last_verified_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_place_cache_lookup").on(table.subCategory, table.district, table.city, table.country),
+]);
+
+// Place feedback for exclusion tracking
+export const placeFeedback = pgTable("place_feedback", {
+  id: serial("id").primaryKey(),
+  placeCacheId: integer("place_cache_id").references(() => placeCache.id),
+  placeName: text("place_name").notNull(),
+  district: text("district").notNull(),
+  city: text("city").notNull(),
+  penaltyScore: integer("penalty_score").default(1).notNull(),
+  lastInteractedAt: timestamp("last_interacted_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_place_feedback_lookup").on(table.placeName, table.district, table.city),
 ]);
 
 // Merchant coupons
@@ -258,6 +276,11 @@ export const insertPlaceCacheSchema = createInsertSchema(placeCache).omit({
   createdAt: true,
 });
 
+export const insertPlaceFeedbackSchema = createInsertSchema(placeFeedback).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Location schemas
 export const insertCountrySchema = createInsertSchema(countries).omit({
   id: true,
@@ -300,6 +323,9 @@ export type Coupon = typeof coupons.$inferSelect;
 
 export type InsertPlaceCache = z.infer<typeof insertPlaceCacheSchema>;
 export type PlaceCache = typeof placeCache.$inferSelect;
+
+export type InsertPlaceFeedback = z.infer<typeof insertPlaceFeedbackSchema>;
+export type PlaceFeedback = typeof placeFeedback.$inferSelect;
 
 // Location types
 export type InsertCountry = z.infer<typeof insertCountrySchema>;

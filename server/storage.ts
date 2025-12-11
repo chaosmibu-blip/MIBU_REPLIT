@@ -1,11 +1,12 @@
 import { 
-  users, collections, merchants, coupons, placeCache,
+  users, collections, merchants, coupons, placeCache, placeFeedback,
   countries, regions, districts, categories, subcategories,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
   type Coupon, type InsertCoupon,
   type PlaceCache, type InsertPlaceCache,
+  type PlaceFeedback, type InsertPlaceFeedback,
   type Country, type Region, type District,
   type Category, type Subcategory
 } from "@shared/schema";
@@ -53,6 +54,11 @@ export interface IStorage {
   getAllSubcategoriesWithCategory(): Promise<Array<Subcategory & { category: Category }>>;
   getRandomCategory(): Promise<Category | undefined>;
   getRandomSubcategoryByCategory(categoryId: number): Promise<Subcategory | undefined>;
+
+  // Place Feedback (exclusion tracking)
+  getPlacePenalty(placeName: string, district: string, city: string): Promise<number>;
+  incrementPlacePenalty(placeName: string, district: string, city: string, placeCacheId?: number): Promise<PlaceFeedback>;
+  getExcludedPlaceNames(district: string, city: string, threshold?: number): Promise<string[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -322,6 +328,67 @@ export class DatabaseStorage implements IStorage {
       ...r.subcategory,
       category: r.category
     }));
+  }
+
+  // Place Feedback methods
+  async getPlacePenalty(placeName: string, district: string, city: string): Promise<number> {
+    const [feedback] = await db
+      .select()
+      .from(placeFeedback)
+      .where(and(
+        eq(placeFeedback.placeName, placeName),
+        eq(placeFeedback.district, district),
+        eq(placeFeedback.city, city)
+      ));
+    return feedback?.penaltyScore || 0;
+  }
+
+  async incrementPlacePenalty(placeName: string, district: string, city: string, placeCacheId?: number): Promise<PlaceFeedback> {
+    const existing = await db
+      .select()
+      .from(placeFeedback)
+      .where(and(
+        eq(placeFeedback.placeName, placeName),
+        eq(placeFeedback.district, district),
+        eq(placeFeedback.city, city)
+      ));
+
+    if (existing.length > 0) {
+      const [updated] = await db
+        .update(placeFeedback)
+        .set({
+          penaltyScore: existing[0].penaltyScore + 1,
+          lastInteractedAt: new Date()
+        })
+        .where(eq(placeFeedback.id, existing[0].id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(placeFeedback)
+        .values({
+          placeName,
+          district,
+          city,
+          placeCacheId: placeCacheId || null,
+          penaltyScore: 1,
+          lastInteractedAt: new Date()
+        })
+        .returning();
+      return created;
+    }
+  }
+
+  async getExcludedPlaceNames(district: string, city: string, threshold: number = 3): Promise<string[]> {
+    const results = await db
+      .select({ placeName: placeFeedback.placeName })
+      .from(placeFeedback)
+      .where(and(
+        eq(placeFeedback.district, district),
+        eq(placeFeedback.city, city),
+        sql`${placeFeedback.penaltyScore} >= ${threshold}`
+      ));
+    return results.map(r => r.placeName);
   }
 }
 
