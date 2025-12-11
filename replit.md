@@ -65,14 +65,20 @@ Preferred communication style: Simple, everyday language.
 - **Purpose**: Generate travel itineraries with location verification using Google Search grounding
 - **Configuration**: API credentials via environment variables (`AI_INTEGRATIONS_GEMINI_*`)
 
-### Gacha Pull Logic (Updated 2025-12-10)
+### Gacha Pull Logic (Updated 2025-12-11)
 - **Probability Distribution**: Uniform random selection at each level
-  1. **District Selection**: 1/N probability (N = total active districts in country, e.g., 61 for Taiwan)
+  1. **District Selection**: 1/N probability (N = total active districts in country)
   2. **Category Selection**: 1/8 probability (8 fixed categories)
   3. **Subcategory Selection**: 1/Y probability (Y = subcategories in selected category)
 - **Implementation**: PostgreSQL `ORDER BY RANDOM() LIMIT 1` ensures true uniform distribution
-- **Search Query**: Uses `{district.nameZh} {subcategory.nameZh}` for Google Places API
-- **Result Data**: Includes place name, district, region, country, category, and verification status
+- **Place Generation Flow**:
+  1. Check `placeCache` for existing result (key: subcategory + district + region + country)
+  2. If cache hit → return cached place data
+  3. If cache miss → call Gemini AI to generate a place specifically in the selected district
+  4. Verify AI result with Google Places API (check if address matches district)
+  5. Save to `placeCache` with verification status
+- **AI Prompt Design**: Explicitly requires Gemini to recommend a real place within the exact 縣市+鄉鎮區
+- **Response Meta**: Includes `source` (cache/ai) and `isVerified` flags for transparency
 - **No Rarity System**: Categories use color coding instead of SP/SSR/SR grades
 
 ### Key Design Patterns
