@@ -38,16 +38,27 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
   const [loadingCountries, setLoadingCountries] = useState(true);
   const [loadingRegions, setLoadingRegions] = useState(false);
 
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   useEffect(() => {
     const fetchCountries = async () => {
+      setFetchError(null);
       try {
-        const response = await fetch('/api/locations/countries');
+        const response = await fetch('/api/locations/countries', {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+          credentials: 'same-origin'
+        });
         if (response.ok) {
           const data = await response.json();
           setCountries(data.countries || []);
+        } else {
+          console.error('Countries API returned:', response.status, response.statusText);
+          setFetchError(`無法載入目的地 (${response.status})`);
         }
       } catch (error) {
         console.error('Failed to fetch countries:', error);
+        setFetchError('網路連線錯誤，請重新整理頁面');
       } finally {
         setLoadingCountries(false);
       }
@@ -143,6 +154,16 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
                <div className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl flex items-center">
                  <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
                  <span className="ml-2 text-slate-400">{t.loading}</span>
+               </div>
+             ) : fetchError ? (
+               <div className="w-full pl-12 pr-4 py-4 bg-red-50 rounded-2xl flex items-center justify-between">
+                 <span className="text-red-500 text-sm">{fetchError}</span>
+                 <button 
+                   onClick={() => window.location.reload()} 
+                   className="text-xs bg-red-100 text-red-600 px-3 py-1 rounded-lg hover:bg-red-200"
+                 >
+                   重試
+                 </button>
                </div>
              ) : (
                <select
