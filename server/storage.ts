@@ -101,6 +101,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async addToCollection(collection: InsertCollection): Promise<Collection> {
+    const existing = await db
+      .select()
+      .from(collections)
+      .where(
+        and(
+          eq(collections.userId, collection.userId),
+          eq(collections.placeName, collection.placeName),
+          collection.district ? eq(collections.district, collection.district) : sql`TRUE`
+        )
+      )
+      .limit(1);
+    
+    if (existing.length > 0) {
+      return existing[0];
+    }
+    
     const [newCollection] = await db
       .insert(collections)
       .values(collection)

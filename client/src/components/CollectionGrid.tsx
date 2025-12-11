@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { GachaItem, Language, Category } from '../types';
 import { CATEGORY_COLORS, TRANSLATIONS } from '../constants';
-import { MapPin, BookOpen, ChevronDown, ChevronRight, Sparkles, Tag, FolderOpen } from 'lucide-react';
+import { MapPin, BookOpen, ChevronDown, ChevronRight, Sparkles, Tag, FolderOpen, Star, Navigation } from 'lucide-react';
 
 interface CollectionGridProps {
   items: GachaItem[];
@@ -121,8 +121,24 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
     );
   }
 
+  const getDescription = (item: any, lang: Language): string => {
+    const desc = item.description || item.ai_description || '';
+    return getContent(desc, lang);
+  };
+
+  const getAddress = (item: any): string => {
+    return item.address || item.verified_address || '';
+  };
+
+  const getRating = (item: any): string | null => {
+    return item.rating || item.google_rating?.toString() || null;
+  };
+
   const renderItemCard = (item: GachaItem, idx: number) => {
     const categoryColor = item.category ? CATEGORY_COLORS[item.category] || '#6366f1' : '#6366f1';
+    const description = getDescription(item, language);
+    const address = getAddress(item);
+    const rating = getRating(item);
     
     return (
       <div 
@@ -146,13 +162,32 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
                 {t[`cat${item.category}`] || item.category}
               </span>
             )}
-            {item.is_coupon && (
-              <Sparkles className="w-3 h-3 text-amber-500" />
-            )}
+            <div className="flex items-center gap-1">
+              {rating && (
+                <span className="flex items-center gap-0.5 text-[9px] font-bold text-amber-600 bg-amber-50 px-1 py-0.5 rounded">
+                  <Star className="w-2 h-2 fill-amber-500 text-amber-500" />
+                  {rating}
+                </span>
+              )}
+              {item.is_coupon && (
+                <Sparkles className="w-3 h-3 text-amber-500" />
+              )}
+            </div>
           </div>
           <h4 className="font-bold text-sm text-slate-800 line-clamp-2 leading-tight mb-1">
             {getPlaceName(item, language)}
           </h4>
+          {description && (
+            <p className="text-[10px] text-slate-500 line-clamp-2 mb-1">
+              {description}
+            </p>
+          )}
+          {address && (
+            <div className="flex items-start gap-0.5 text-[9px] text-slate-400 mb-1">
+              <Navigation className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />
+              <span className="line-clamp-1">{address}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between mt-1">
             <div className="text-[10px] text-slate-400 font-medium">
               {new Date(item.collectedAt || Date.now()).toLocaleDateString()}

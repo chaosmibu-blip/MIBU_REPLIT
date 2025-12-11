@@ -115,11 +115,19 @@ export const collections = pgTable("collections", {
   city: text("city").notNull(),
   district: text("district"),
   category: text("category"),
+  subcategory: text("subcategory"),
   description: text("description"),
+  address: text("address"),
+  placeId: text("place_id"),
+  rating: text("rating"),
+  locationLat: text("location_lat"),
+  locationLng: text("location_lng"),
   isCoupon: boolean("is_coupon").default(false),
   couponData: jsonb("coupon_data"),
   collectedAt: timestamp("collected_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_collections_user_place").on(table.userId, table.placeName, table.district),
+]);
 
 // Merchants
 export const merchants = pgTable("merchants", {
