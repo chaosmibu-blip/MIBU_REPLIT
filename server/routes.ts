@@ -1712,13 +1712,34 @@ ${uncachedSkeleton.map((item, idx) => `  {
         // Wait for all tasks to complete in parallel
         const results = await Promise.all(taskPromises);
         
-        // Filter out null results AND deduplicate by place name within this worker
-        const seenPlaceNames = new Set<string>();
+        // Normalize place names by removing common suffixes/variations
+        // Returns original trimmed name if normalization results in empty string
+        const normalizePlaceName = (name: string): string => {
+          if (!name) return '';
+          const trimmed = name.trim();
+          const normalized = trimmed
+            .replace(/[（(][^）)]*[）)]/g, '') // Remove content in parentheses
+            .replace(/旅遊服務園區|生態園區|園區|服務中心|遊客中心|觀光工廠|休閒農場/g, '')
+            .replace(/\s+/g, '')
+            .trim();
+          // Fall back to original if normalization removes everything
+          return normalized || trimmed;
+        };
+        
+        // Filter out null results AND deduplicate by Google Place ID (or normalized name as fallback)
+        const seenPlaceIds = new Set<string>();
         return results.filter((item): item is NonNullable<typeof item> => {
           if (item === null) return false;
+          const placeId = item.place?.place_id || item.place?.placeId;
           const placeName = item.place?.name;
-          if (!placeName || seenPlaceNames.has(placeName)) return false;
-          seenPlaceNames.add(placeName);
+          const normalizedName = normalizePlaceName(placeName || '');
+          // Use Place ID as primary dedup key, fall back to normalized name
+          const dedupKey = placeId || normalizedName;
+          if (!dedupKey || seenPlaceIds.has(dedupKey)) {
+            console.log(`[Dedup] Skipping duplicate: ${placeName} (key: ${dedupKey})`);
+            return false;
+          }
+          seenPlaceIds.add(dedupKey);
           return true;
         });
       };
@@ -1738,17 +1759,39 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const workerResults = await Promise.all(workerPromises);
       console.log(`=== All workers completed in ${Date.now() - parallelStartTime}ms (parallel execution) ===\n`);
 
+      // Normalize place names by removing common suffixes/variations
+      // Returns original trimmed name if normalization results in empty string
+      const normalizePlaceName = (name: string): string => {
+        if (!name) return '';
+        const trimmed = name.trim();
+        const normalized = trimmed
+          .replace(/[（(][^）)]*[）)]/g, '') // Remove content in parentheses
+          .replace(/旅遊服務園區|生態園區|園區|服務中心|遊客中心|觀光工廠|休閒農場/g, '')
+          .replace(/\s+/g, '')
+          .trim();
+        // Fall back to original if normalization removes everything
+        return normalized || trimmed;
+      };
+      
       // Merge results in order: ai1_morning -> ai2_afternoon -> ai3_evening -> ai4_night
+      // Use Google Place ID for deduplication to avoid same location with different names
       const items: any[] = [];
-      const globalSeenNames = new Set<string>();
+      const globalSeenPlaceIds = new Set<string>();
       
       for (const workerItems of workerResults) {
         for (const item of workerItems) {
-          if (!globalSeenNames.has(item.place?.name)) {
-            globalSeenNames.add(item.place?.name);
+          const placeId = item.place?.place_id || item.place?.placeId;
+          const placeName = item.place?.name;
+          const normalizedName = normalizePlaceName(placeName || '');
+          const dedupKey = placeId || normalizedName;
+          
+          if (dedupKey && !globalSeenPlaceIds.has(dedupKey)) {
+            globalSeenPlaceIds.add(dedupKey);
             items.push(item);
             if (item.source === 'cache') cacheHits++;
             else aiGenerated++;
+          } else {
+            console.log(`[Global Dedup] Skipping: ${placeName} (key: ${dedupKey})`);
           }
         }
       }
