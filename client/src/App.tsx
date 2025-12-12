@@ -11,6 +11,7 @@ import { CouponCelebration } from './components/CouponCelebration';
 import { MerchantDashboard } from './components/MerchantDashboard';
 import { TripPlanner } from '../../modules/trip-planner/client';
 import { LocationView } from '../../modules/trip-planner/client/components/LocationView';
+import { ChatView } from '../../modules/trip-planner/client/components/ChatView';
 import { DEFAULT_LEVEL, TRANSLATIONS, MAX_DAILY_GENERATIONS } from './constants';
 import { Globe, LogIn, LogOut } from 'lucide-react';
 
@@ -759,9 +760,11 @@ const App: React.FC = () => {
             )}
             
             {plannerSubView === 'chat' && (
-              <div className="text-center py-12 text-slate-500">
-                <p>聊天功能開發中...</p>
-              </div>
+              <ChatView 
+                language={state.language} 
+                userId={user?.id} 
+                isAuthenticated={isAuthenticated} 
+              />
             )}
           </div>
         )}

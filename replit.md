@@ -118,6 +118,10 @@ Mibu 旅行扭蛋是一個結合旅遊規劃與扭蛋遊戲化的漸進式網頁
 - 更新子分類資料，共 67 個子分類
 - 新增「遊程體驗」分類的子分類：手作體驗、一日遊、導覽遊程
 - **地點不足回補機制**：當區域地點不足時，自動嘗試其他子分類/分類，仍不足則顯示提醒
+- **Twilio 聊天系統**：整合 Twilio Conversations API
+  - 後端 Token API：`/api/chat/token`
+  - 聊天室管理 API：`/api/chat/conversations`
+  - 前端 ChatView 元件：在旅程策劃模組的「聊天」分頁
 
 ### 2025-12-11 更動
 - **Google 類型整合**：在行程卡片上顯示 Google 地點類型標籤
@@ -155,6 +159,8 @@ Mibu 旅行扭蛋是一個結合旅遊規劃與扭蛋遊戲化的漸進式網頁
 ### 第三方服務
 - **Replit Auth**: 登入驗證系統
 - **Google Gemini API**: AI 產生行程
+- **Twilio Conversations API**: 即時聊天系統
+  - 支援多人聊天室、已讀回執、跨裝置同步
 - **Recur（台灣金流）**: 商家訂閱付款（透過 PAYUNi）
   - 方案：免費版、夥伴版（$499/月）、專業版（$1,499/月）
 
@@ -172,3 +178,7 @@ Mibu 旅行扭蛋是一個結合旅遊規劃與扭蛋遊戲化的漸進式網頁
 | `AI_INTEGRATIONS_GEMINI_API_KEY` | Gemini API 金鑰 |
 | `ISSUER_URL` | Replit 登入驗證網址 |
 | `REPL_ID` | Replit 環境識別碼 |
+| `TWILIO_ACCOUNT_SID` | Twilio 帳號 SID（AC 開頭） |
+| `TWILIO_API_KEY_SID` | Twilio API Key SID（SK 開頭） |
+| `TWILIO_API_KEY_SECRET` | Twilio API Key 密鑰 |
+| `TWILIO_CONVERSATIONS_SERVICE_SID` | Twilio 聊天服務 SID（IS 開頭） |

@@ -5,6 +5,9 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema } from "@shared/schema";
 import { z } from "zod";
 import { createTripPlannerRoutes } from "../modules/trip-planner/server/routes";
+import twilio from "twilio";
+const { AccessToken } = twilio.jwt;
+const ChatGrant = AccessToken.ChatGrant;
 
 const RECUR_API_URL = "https://api.recur.tw/v1";
 const RECUR_PREMIUM_PLAN_ID = "adkwbl9dya0wc6b53parl9yk";
@@ -2267,6 +2270,166 @@ ${uncachedSkeleton.map((item, idx) => `  {
     } catch (error) {
       console.error("Update merchant place error:", error);
       res.status(500).json({ error: "Failed to update place" });
+    }
+  });
+
+  // ============ Twilio Chat Routes ============
+  app.post("/api/chat/token", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const apiKeySid = process.env.TWILIO_API_KEY_SID;
+      const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+      const conversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
+
+      if (!accountSid || !apiKeySid || !apiKeySecret || !conversationsServiceSid) {
+        console.error("Missing Twilio credentials");
+        return res.status(500).json({ error: "Chat service not configured" });
+      }
+
+      const token = new AccessToken(accountSid, apiKeySid, apiKeySecret, {
+        identity: userId,
+        ttl: 3600
+      });
+
+      const chatGrant = new ChatGrant({
+        serviceSid: conversationsServiceSid
+      });
+      token.addGrant(chatGrant);
+
+      res.json({ 
+        token: token.toJwt(),
+        identity: userId
+      });
+    } catch (error) {
+      console.error("Twilio token error:", error);
+      res.status(500).json({ error: "Failed to generate chat token" });
+    }
+  });
+
+  app.post("/api/chat/conversations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { friendlyName, uniqueName } = req.body;
+      
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const apiKeySid = process.env.TWILIO_API_KEY_SID;
+      const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+      const conversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
+
+      if (!accountSid || !apiKeySid || !apiKeySecret || !conversationsServiceSid) {
+        return res.status(500).json({ error: "Chat service not configured" });
+      }
+
+      const client = twilio(apiKeySid, apiKeySecret, { accountSid });
+
+      const conversation = await client.conversations.v1
+        .services(conversationsServiceSid)
+        .conversations
+        .create({
+          friendlyName: friendlyName || `Trip Chat ${Date.now()}`,
+          uniqueName: uniqueName || `trip_${Date.now()}_${userId.slice(0, 8)}`
+        });
+
+      // Add the creator as a participant
+      await client.conversations.v1
+        .services(conversationsServiceSid)
+        .conversations(conversation.sid)
+        .participants
+        .create({ identity: userId });
+
+      res.json({ 
+        conversationSid: conversation.sid,
+        friendlyName: conversation.friendlyName
+      });
+    } catch (error: any) {
+      console.error("Create conversation error:", error);
+      if (error.code === 50433) {
+        return res.status(409).json({ error: "Conversation already exists" });
+      }
+      res.status(500).json({ error: "Failed to create conversation" });
+    }
+  });
+
+  app.get("/api/chat/conversations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const apiKeySid = process.env.TWILIO_API_KEY_SID;
+      const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+      const conversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
+
+      if (!accountSid || !apiKeySid || !apiKeySecret || !conversationsServiceSid) {
+        return res.status(500).json({ error: "Chat service not configured" });
+      }
+
+      const client = twilio(apiKeySid, apiKeySecret, { accountSid });
+
+      // Get all participant records for this user
+      const participants = await client.conversations.v1
+        .services(conversationsServiceSid)
+        .participantConversations
+        .list({ identity: userId, limit: 50 });
+
+      const conversations = participants.map((p: any) => ({
+        conversationSid: p.conversationSid,
+        friendlyName: p.conversationFriendlyName,
+        state: p.conversationState,
+        unreadMessagesCount: p.unreadMessagesCount || 0
+      }));
+
+      res.json({ conversations });
+    } catch (error) {
+      console.error("List conversations error:", error);
+      res.status(500).json({ error: "Failed to list conversations" });
+    }
+  });
+
+  app.post("/api/chat/conversations/:conversationSid/join", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { conversationSid } = req.params;
+      
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const apiKeySid = process.env.TWILIO_API_KEY_SID;
+      const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+      const conversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
+
+      if (!accountSid || !apiKeySid || !apiKeySecret || !conversationsServiceSid) {
+        return res.status(500).json({ error: "Chat service not configured" });
+      }
+
+      const client = twilio(apiKeySid, apiKeySecret, { accountSid });
+
+      await client.conversations.v1
+        .services(conversationsServiceSid)
+        .conversations(conversationSid)
+        .participants
+        .create({ identity: userId });
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Join conversation error:", error);
+      if (error.code === 50433) {
+        return res.json({ success: true, message: "Already a participant" });
+      }
+      res.status(500).json({ error: "Failed to join conversation" });
     }
   });
 
