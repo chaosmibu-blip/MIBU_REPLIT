@@ -53,6 +53,19 @@ Preferred communication style: Simple, everyday language.
 - **Benefits**: Subsequent requests for same district reuse cached places, reducing AI and Google API calls
 - **Response Meta**: Includes `cache_hits` and `ai_generated` counts for monitoring
 
+### Modular Architecture (Added 2025-12-12)
+- **Directory Structure**: 
+  - `modules/` - Feature modules (trip-planner, travel-gacha, admin)
+  - `core/` - Shared infrastructure (contracts, common utilities)
+- **Module Structure**: Each module follows `{module}/client/`, `{module}/server/`, `{module}/shared/` pattern
+- **Trip Planner Module** (`modules/trip-planner/`):
+  - Client: TripPlanner component with TripPlanList, TripPlanEditor, CreateTripModal
+  - Server: CRUD routes for trip plans (`/api/trips/*`)
+  - Schema: `tripPlans` table with userId, name, destination, items JSON array
+- **Navigation**: BottomNav includes Planner tab with Map icon, translated in all 4 languages (策劃師/Planner/プランナー/플래너)
+- **Module Registry**: `modules/registry.ts` for scalable feature mounting
+- **Integration**: App.tsx renders modules based on `state.view` matching module identifier
+
 ### Recent Changes (2025-12-11)
 - **Google Types Integration**: Display Google Places type labels on itinerary cards
   - Schema: Added `googleTypes` (comma-separated types) and `primaryType` fields to placeCache
