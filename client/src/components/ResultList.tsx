@@ -133,7 +133,7 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, x: -100, height: 0, marginBottom: 0 }}
               transition={{ delay: idx * 0.02, duration: 0.15 }}
-              className="rounded-2xl border-2 relative overflow-hidden shadow-sm"
+              className="rounded-2xl border-2 relative overflow-hidden"
               style={{ 
                 borderColor: categoryColor + '50',
                 background: `linear-gradient(135deg, ${categoryColor}08 0%, white 50%)`
