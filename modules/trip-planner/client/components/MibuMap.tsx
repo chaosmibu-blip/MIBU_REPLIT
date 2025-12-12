@@ -225,10 +225,10 @@ export const MibuMap: React.FC<MibuMapProps> = ({
   };
 
   return (
-    <div className={`relative rounded-xl overflow-hidden ${className}`}>
+    <div className={`relative rounded-xl overflow-hidden ${className}`} style={{ minHeight: '320px' }}>
       <div
         ref={mapContainer}
-        className="w-full h-full min-h-[300px]"
+        className="absolute inset-0 w-full h-full"
         style={{ backgroundColor: MIBU_BRAND_COLORS.background }}
       />
 
