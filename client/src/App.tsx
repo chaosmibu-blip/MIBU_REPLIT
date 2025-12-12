@@ -748,7 +748,9 @@ const App: React.FC = () => {
             />
             
             {plannerSubView === 'location' && (
-              <LocationView language={state.language} />
+              <div className="h-[calc(100vh-180px)]">
+                <LocationView language={state.language} />
+              </div>
             )}
             
             {plannerSubView === 'itinerary' && (
