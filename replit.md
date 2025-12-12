@@ -1,173 +1,173 @@
-# Mibu Travel Gacha
+# Mibu 旅行扭蛋
 
-## Overview
+## 專案概述
 
-Mibu Travel Gacha is a Progressive Web App (PWA) that combines travel planning with gacha-style gamification. Users input a destination and intensity level, and AI generates randomized, verified local itineraries. The app features a collection system where users can gather places organized by district and category with accordion-style menus. A merchant dashboard allows businesses to claim locations and manage promotional offers with subscription-based tiers.
+Mibu 旅行扭蛋是一個結合旅遊規劃與扭蛋遊戲化的漸進式網頁應用程式（PWA）。使用者輸入目的地和行程節奏，AI 會隨機產生經過驗證的在地行程。應用程式有收藏系統，讓使用者可以收集地點，並以地區和分類的折疊選單方式整理。商家後台讓店家可以認領地點並管理優惠活動，搭配訂閱制方案。
 
-## User Preferences
+## 使用者偏好
 
-Preferred communication style: Simple, everyday language.
+偏好的溝通方式：簡單、日常用語。
 
-**修改說明規範 (Added 2025-12-12)**:
+**修改說明規範 (2025-12-12 新增)**:
 每次進行程式碼修改時，必須說明：
 1. 修改了什麼 - 具體更動的檔案和程式碼
 2. 修改的邏輯說明 - 為什麼要這樣修改
 3. 修改後的結果 - 預期的效果和實際運行結果
 
-## System Architecture
+---
 
-### Frontend Architecture
-- **Framework**: React 18 with TypeScript in strict mode
-- **Build Tool**: Vite 5.x with custom plugins for meta images and Replit integration
-- **Styling**: Tailwind CSS with custom theme configuration (glassmorphism, mobile-first design)
-- **State Management**: React Query for server state, React useState for local state
-- **UI Components**: shadcn/ui component library with Radix UI primitives
-- **Animations**: Framer Motion for transitions and celebratory effects
+## 資料表對照表（Database Tables）
 
-### Backend Architecture
-- **Runtime**: Node.js with Express
-- **Language**: TypeScript with ES modules
-- **API Pattern**: RESTful endpoints under `/api/` prefix
-- **Authentication**: Replit Auth with OpenID Connect, session-based with PostgreSQL session store
-- **Role-Based Access Control (Added 2025-12-12)**:
-  - User roles: `consumer` (default), `merchant`, `admin`
-  - Middleware: `requireRole()`, `isMerchant`, `isAdmin` in `server/replitAuth.ts`
-  - API namespacing: `/api/consumer/*` for B2C, `/api/merchant/*` for B2B (planned)
+這是專案中所有資料表的中文說明：
 
-### Data Storage
-- **Database**: PostgreSQL with Drizzle ORM
-- **Schema Location**: `shared/schema.ts` - contains users, collections, merchants, coupons, placeCache, sessions, and location/category hierarchy tables
-- **Migrations**: Drizzle Kit with `db:push` command for schema synchronization
+| 英文名稱 | 中文用途 | 說明 |
+|---------|---------|------|
+| `users` | 使用者 | 儲存登入的使用者帳號資料 |
+| `sessions` | 登入狀態 | 記錄使用者的登入連線資訊 |
+| `countries` | 國家 | 國家資料（目前只有台灣） |
+| `regions` | 縣市 | 台灣的 22 個縣市 |
+| `districts` | 鄉鎮區 | 台灣的 139 個鄉鎮區 |
+| `categories` | 行程分類 | 8 大分類：食、宿、景點、購物、娛樂、活動、生態文化、遊程體驗 |
+| `subcategories` | 子分類 | 各分類下的細項（如：火鍋、咖啡廳、設計旅店等） |
+| `place_cache` | 地點快取 | 已經產生過的地點資料，避免重複呼叫 AI |
+| `collections` | 收藏紀錄 | 使用者收藏的地點 |
+| `place_feedback` | 地點回饋 | 使用者排除不喜歡的地點紀錄 |
+| `merchants` | 商家 | 商家帳號資料 |
+| `merchant_place_links` | 商家認領 | 商家認領的地點關聯 |
+| `coupons` | 優惠券 | 商家發放的優惠券 |
+| `trip_plans` | 行程規劃 | 使用者建立的行程計畫 |
 
-### Location Hierarchy (Updated 2025-12-10)
-- **Tables**: countries → regions (縣市) → districts (鄉鎮區) (three-level hierarchy)
-- **Multilingual**: Each table has nameEn, nameZh, nameJa, nameKo columns for localization
-- **Taiwan Data**: 1 country, 22 cities/counties (直轄市/縣市), 139 districts (鄉鎮區)
-- **Cities/Counties**: 6 special municipalities (台北市, 新北市, 桃園市, 台中市, 台南市, 高雄市), 3 provincial cities (基隆市, 新竹市, 嘉義市), 13 counties
-- **Foreign Keys**: regions.countryId → countries.id, districts.regionId → regions.id
+---
 
-### Category System (Added 2025-12-10)
-- **Tables**: categories → subcategories (two-level hierarchy)
-- **8 Categories**: 食/宿/生態文化教育/遊程體驗/娛樂設施/活動/景點/購物
-- **Subcategories**: Each category has multiple subcategories (e.g., 食 has 便當, 小吃, 咖啡廳, etc.)
-- **Multilingual**: Each table has nameEn, nameZh for localization
+## 系統架構
 
-### Place Cache System (Added 2025-12-10)
-- **Purpose**: Reduce AI (Gemini) consumption by caching previously generated place data
-- **Cache Key**: (subCategory, district, city, country) - stores one place per sub-category per district
-- **Cached Data**: place_name, description, category, Google verification data (place_id, verified_name, verified_address, google_rating, location coordinates, is_location_verified)
-- **Cache Hit Logic**: 
-  1. When generating itinerary, check cache for each skeleton item's subCategory
-  2. If cached AND not in user's collectedNames exclusion list → use cached data (skip AI)
-  3. If not cached → call Gemini AI, verify with Google Maps, save to cache
-- **Benefits**: Subsequent requests for same district reuse cached places, reducing AI and Google API calls
-- **Response Meta**: Includes `cache_hits` and `ai_generated` counts for monitoring
+### 前端架構（Frontend Architecture）
+前端就是使用者看到的畫面和互動介面。
 
-### Modular Architecture (Added 2025-12-12)
-- **Directory Structure**: 
-  - `modules/` - Feature modules (trip-planner, travel-gacha, admin)
-  - `core/` - Shared infrastructure (contracts, common utilities)
-- **Module Structure**: Each module follows `{module}/client/`, `{module}/server/`, `{module}/shared/` pattern
-- **Trip Planner Module** (`modules/trip-planner/`):
-  - Client: TripPlanner component with TripPlanList, TripPlanEditor, CreateTripModal
-  - Server: CRUD routes for trip plans (`/api/trips/*`)
-  - Schema: `tripPlans` table with userId, name, destination, items JSON array
-- **Navigation Architecture (Updated 2025-12-12)**: Two-tier nested navigation
-  - **Global Nav** (SideNav.tsx): 4 items - 首頁 (mibu_home), 行程扭蛋 (gacha_module), 旅程策劃 (planner_module), 設定 (settings)
-  - **Gacha Module Sub-Nav** (ModuleNav.tsx): 3 tabs - 扭蛋, 圖鑑, 道具箱 + back button to home
-  - **Planner Module Sub-Nav**: 3 tabs - 定位, 行程, 聊天 + back button to home
-  - **Settings Page**: 3 tabs - Mibu (language/profile), 行程扭蛋 (links to collection/itembox/merchant), 旅程策劃 (placeholder)
-  - **View Types**: login, mibu_home, gacha_module, planner_module, settings, result, merchant_login, merchant_dashboard
-  - **Sub-View State**: gachaSubView (gacha/collection/itembox), plannerSubView (location/itinerary/chat)
-  - Responsive design: right-rail (desktop md+) and bottom-bar (mobile) layouts
-  - All labels translated in 4 languages (zh-TW, en, ja, ko)
-- **Module Registry**: `modules/registry.ts` for scalable feature mounting
-- **Integration**: App.tsx renders modules based on `state.view` matching module identifier
+- **框架 Framework**: React 18 + TypeScript（嚴格模式）
+  - React 是一個建立使用者介面的工具
+  - TypeScript 是一種程式語言，幫助減少錯誤
+- **建置工具 Build Tool**: Vite 5.x
+  - 讓程式碼可以在瀏覽器中運行的工具
+- **樣式 Styling**: Tailwind CSS
+  - 設計畫面外觀的工具，支援手機優先設計
+- **狀態管理 State Management**: React Query + React useState
+  - 管理資料和畫面狀態的方式
+- **UI 元件 UI Components**: shadcn/ui + Radix UI
+  - 預先做好的按鈕、選單等介面元件
+- **動畫 Animations**: Framer Motion
+  - 讓畫面有動態效果的工具
 
-### Recent Changes (2025-12-11)
-- **Google Types Integration**: Display Google Places type labels on itinerary cards
-  - Schema: Added `googleTypes` (comma-separated types) and `primaryType` fields to placeCache
-  - Backend: verifyPlaceWithGoogle() now captures and stores Google Places `types` array
-  - Frontend: Cards display translated Google type labels (e.g., "百貨公司", "餐廳", "咖啡廳")
-  - Translation: GOOGLE_TYPE_TRANSLATIONS mapping for 70+ place types to Chinese labels
-- **Merchant Claiming System (Google Place ID-based)**: Improved ownership claim workflow
-  - Search-first flow: merchants search existing placeCache before manual entry
-  - Two-step process: 1) Search for business, 2) Manual entry if not found
-  - API endpoint: `GET /api/merchant/places/search?query=...&city=...`
-  - Auto-approval: claims are immediately approved for testing (production should use pending → admin review)
-  - Promo integration: gacha results check for matching merchant claims and display promotions
-  - **Matching logic (Updated 2025-12-12)**: Prioritizes `googlePlaceId` matching for accuracy, with fallback to placeName + district + city for backward compatibility
-  - Schema: Added `googlePlaceId` field to `merchant_place_links` table with dedicated index
-  - API endpoints: `POST /api/merchant/places/claim` (accepts `googlePlaceId`), `GET /api/merchant/places`, `PUT /api/merchant/places/:linkId`
-- **Place Exclusion System**: Users can click X button on itinerary cards to exclude places they don't like
-  - Per-user tracking via `placeFeedback` table (userId, placeName, district, city, penaltyScore)
-  - Penalty score increments each time a user excludes the same place
-  - Places with high penalty scores will appear less frequently in future pulls
-  - API endpoint: `POST /api/feedback/exclude` (requires authentication)
-- **Search Result Filtering**: Google Places results now filter out:
-  - Closed businesses (CLOSED_PERMANENTLY, CLOSED_TEMPORARILY)
-  - Non-tourism place types (travel_agency, library, lawyer, bank, etc.)
-  - Generic placeholder names (探索, 旅行社, 服務中心, etc.)
-- **Time Slot Ordering**: Subcategories now have `preferredTimeSlot` field (morning, lunch, afternoon, dinner, evening, stay)
-- **Animated Card Removal**: X button triggers smooth exit animation using Framer Motion's AnimatePresence
+### 後端架構（Backend Architecture）
+後端就是處理資料、連接資料庫的伺服器程式。
 
-### Previous Changes (2025-12-10)
-- **Removed Rarity System**: SP/SSR/SR/S/R grades have been completely removed from the system
-- **Category Labels**: Cards now display category type labels (Food, Stay, Scenery, Shopping, Entertainment, Activity, Education) instead of rarity badges
-- **District-Based Organization**: Collection items are grouped by district with accordion-style collapsible menus
-- **Dual View Modes**: Collection view supports toggling between district grouping and category grouping
-- **Field Naming**: Frontend consistently uses `collectedAt` (camelCase) to match Drizzle API responses
+- **執行環境 Runtime**: Node.js + Express
+  - Node.js 是讓 JavaScript 在伺服器執行的環境
+  - Express 是處理網路請求的框架
+- **程式語言 Language**: TypeScript（ES modules 模式）
+- **API 模式 API Pattern**: RESTful，網址以 `/api/` 開頭
+- **登入驗證 Authentication**: Replit Auth（OpenID Connect）
+  - 使用 Replit 的登入系統
+- **角色權限 Role-Based Access Control (2025-12-12 新增)**:
+  - 使用者角色：`consumer`（一般用戶）、`merchant`（商家）、`admin`（管理員）
+  - API 網址區分：`/api/consumer/*` 給一般用戶，`/api/merchant/*` 給商家
 
-### AI Integration
-- **Provider**: Google Gemini API (gemini-2.5-flash model)
-- **Purpose**: Generate travel itineraries with location verification using Google Search grounding
-- **Configuration**: API credentials via environment variables (`AI_INTEGRATIONS_GEMINI_*`)
+### 資料儲存（Data Storage）
+- **資料庫 Database**: PostgreSQL + Drizzle ORM
+  - PostgreSQL 是資料庫系統
+  - Drizzle ORM 是用程式碼操作資料庫的工具
+- **資料結構定義位置 Schema Location**: `shared/schema.ts`
+- **同步指令 Migrations**: 用 `npm run db:push` 同步資料庫結構
 
-### Gacha Itinerary Logic (Updated 2025-12-11)
-- **Single District Lock Per Session**: When user initiates a gacha pull, system randomly selects ONE district and generates ALL itinerary items within that single district
-- **Multi-Category Diversity**: Each pull generates multiple places covering different categories (食、宿、遊程體驗、娛樂設施、活動、景點、購物、生態文化教育)
-- **API Endpoint**: `/api/gacha/itinerary` - returns a complete itinerary with:
-  - `location`: The locked district, region, and country information
-  - `items[]`: Array of places, each with category, subcategory, place details (including AI-generated description)
-  - `meta`: totalItems, cacheHits, aiGenerated, verifiedCount
-- **Sequential Generation with Duplicate Prevention**: Places are generated one at a time; each place name is tracked and passed to subsequent AI calls via exclusion list to prevent duplicates within the same pull
-- **AI Description Field**: Each item includes `ai_description` with tourism-focused content instead of plain address
-- **Tourism-Only Filter**: AI prompt explicitly excludes non-tourism locations (libraries, government offices, schools, etc.)
-- **Place Generation Flow**:
-  1. Randomly select ONE district within the selected region/country
-  2. Shuffle all 8 categories and select up to `itemCount` categories
-  3. For each category (sequentially), pick a random subcategory
-  4. Check `placeCache` for existing result (skip if place name already used in this pull)
-  5. If cache miss → call Gemini AI with exclusion list, verify with Google Places API
-  6. Track generated place name to prevent duplicates
-  7. Only save verified places to cache
-- **Verification**: Each place is verified to be genuinely within the selected district (address must contain both 縣市 and 鄉鎮區 names)
-- **Response Meta**: Includes `source` (cache/ai), `isVerified` flags, and counts for monitoring
-- **No Rarity System**: Categories use color coding instead of SP/SSR/SR grades
+### 地區階層（Location Hierarchy）(2025-12-10 更新)
+- 三層架構：國家 → 縣市 → 鄉鎮區
+- 多語言支援：每個表都有 nameEn、nameZh、nameJa、nameKo 欄位
+- 台灣資料：1 個國家、22 個縣市、139 個鄉鎮區
+- 六都：台北市、新北市、桃園市、台中市、台南市、高雄市
+- 省轄市：基隆市、新竹市、嘉義市
+- 其他 13 個縣
 
-### Key Design Patterns
-- **Shared Schema**: Types and schemas in `shared/` directory are used by both frontend and backend
-- **Path Aliases**: `@/` for client source, `@shared/` for shared code, `@assets/` for attached assets
-- **API Proxy**: Frontend calls `/api/*` endpoints, backend handles AI and payment integrations
-- **PWA Support**: Service worker caching, manifest.json, mobile-optimized viewport settings
+### 分類系統（Category System）(2025-12-10 新增)
+- 兩層架構：分類 → 子分類
+- 8 大分類：食、宿、生態文化教育、遊程體驗、娛樂設施、活動、景點、購物
+- 每個分類下有多個子分類（例如：食 有 火鍋、咖啡廳、拉麵等）
 
-## External Dependencies
+### 地點快取系統（Place Cache System）(2025-12-10 新增)
+- **用途**：減少 AI（Gemini）的使用量，把產生過的地點存起來
+- **快取邏輯**：
+  1. 產生行程時，先檢查快取有沒有這個子分類的地點
+  2. 如果有，而且使用者沒排除過 → 直接用快取資料（不呼叫 AI）
+  3. 如果沒有 → 呼叫 Gemini AI，用 Google 地圖驗證，存到快取
+- **好處**：同一個地區的重複請求可以重用資料，省 AI 和 Google API 費用
 
-### Third-Party Services
-- **Replit Auth**: OpenID Connect authentication via `@replit/vite-plugin-*` packages
-- **Google Gemini API**: AI-powered itinerary generation with location verification
-- **Recur (Taiwan Payment Gateway)**: Subscription payments for merchant tiers via PAYUNi
-  - SDK: `recur-tw@0.7.5` loaded via CDN
-  - Plans: Free, Partner ($499/mo), Premium ($1,499/mo)
+### 模組化架構（Modular Architecture）(2025-12-12 新增)
+- **目錄結構**: 
+  - `modules/` - 功能模組（trip-planner 行程規劃、travel-gacha 旅行扭蛋、admin 管理）
+  - `core/` - 共用的基礎程式碼
+- **導航架構 (2025-12-12 更新)**: 雙層嵌套導航
+  - **全域導航** (SideNav.tsx): 4 個項目 - 首頁、行程扭蛋、旅程策劃、設定
+  - **扭蛋模組子導航** (ModuleNav.tsx): 3 個分頁 - 扭蛋、圖鑑、道具箱
+  - **策劃模組子導航**: 3 個分頁 - 定位、行程、聊天
+  - 響應式設計：電腦版在右邊，手機版在底部
 
-### Database
-- **PostgreSQL**: Required, connection via `DATABASE_URL` environment variable
-- **Session Storage**: `connect-pg-simple` for Express sessions
+---
 
-### Required Environment Variables
-- `DATABASE_URL`: PostgreSQL connection string
-- `SESSION_SECRET`: Secret for session encryption
-- `AI_INTEGRATIONS_GEMINI_BASE_URL`: Gemini API base URL
-- `AI_INTEGRATIONS_GEMINI_API_KEY`: Gemini API key
-- `ISSUER_URL`: Replit OIDC issuer (defaults to `https://replit.com/oidc`)
-- `REPL_ID`: Replit environment identifier
+## 最近更動
+
+### 2025-12-12 更動
+- 更新子分類資料，共 67 個子分類
+- 新增「遊程體驗」分類的子分類：手作體驗、一日遊、導覽遊程
+
+### 2025-12-11 更動
+- **Google 類型整合**：在行程卡片上顯示 Google 地點類型標籤
+- **商家認領系統**：改用 Google Place ID 進行精確配對
+- **地點排除系統**：使用者可以點 X 按鈕排除不喜歡的地點
+- **搜尋結果過濾**：過濾掉已關閉的店家和非觀光類型
+
+### 2025-12-10 更動
+- **移除稀有度系統**：不再使用 SP/SSR/SR/S/R 等級
+- **分類標籤**：卡片改為顯示分類標籤（美食、住宿、景點等）
+- **地區分組**：收藏以地區折疊選單方式整理
+
+---
+
+## AI 整合
+
+- **服務商 Provider**: Google Gemini API（gemini-2.5-flash 模型）
+- **用途 Purpose**: 產生旅遊行程，並用 Google 搜尋驗證地點
+- **設定 Configuration**: 透過環境變數設定 API 金鑰
+
+---
+
+## 扭蛋行程邏輯（Gacha Itinerary Logic）(2025-12-11 更新)
+
+1. **單一地區鎖定**：每次扭蛋隨機選一個鄉鎮區，所有地點都在這個區域內
+2. **多分類多樣性**：每次產生多個地點，涵蓋不同分類
+3. **避免重複**：每次扭蛋會追蹤已產生的地點，避免重複
+4. **AI 描述**：每個地點有 AI 產生的觀光導向描述
+5. **地點驗證**：每個地點會驗證是否真的在選定的鄉鎮區內
+
+---
+
+## 外部服務（External Dependencies）
+
+### 第三方服務
+- **Replit Auth**: 登入驗證系統
+- **Google Gemini API**: AI 產生行程
+- **Recur（台灣金流）**: 商家訂閱付款（透過 PAYUNi）
+  - 方案：免費版、夥伴版（$499/月）、專業版（$1,499/月）
+
+### 資料庫
+- **PostgreSQL**: 主要資料庫，透過 `DATABASE_URL` 環境變數連線
+
+### 需要的環境變數（Environment Variables）
+這些是系統運作需要的設定值，在 Replit 的「Secrets」分頁設定：
+
+| 變數名稱 | 用途 |
+|---------|------|
+| `DATABASE_URL` | 資料庫連線網址 |
+| `SESSION_SECRET` | 登入連線加密用的密鑰 |
+| `AI_INTEGRATIONS_GEMINI_BASE_URL` | Gemini API 網址 |
+| `AI_INTEGRATIONS_GEMINI_API_KEY` | Gemini API 金鑰 |
+| `ISSUER_URL` | Replit 登入驗證網址 |
+| `REPL_ID` | Replit 環境識別碼 |
