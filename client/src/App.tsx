@@ -6,7 +6,7 @@ import { GachaScene } from './components/GachaScene';
 import { ResultList } from './components/ResultList';
 import { CollectionGrid } from './components/CollectionGrid';
 import { ItemBox } from './components/ItemBox';
-import { BottomNav } from './components/BottomNav';
+import { SideNav } from './components/SideNav';
 import { CouponCelebration } from './components/CouponCelebration';
 import { MerchantDashboard } from './components/MerchantDashboard';
 import { TripPlanner } from '../../modules/trip-planner/client';
@@ -458,7 +458,7 @@ const App: React.FC = () => {
 
       {state.loading && <GachaScene language={state.language} />}
 
-      <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-4">
+      <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-4 md:pr-20 pb-24 md:pb-4">
         {state.view === 'home' && !state.result && (
           <InputForm 
             state={state}
@@ -513,7 +513,7 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <BottomNav 
+      <SideNav 
         currentView={state.view} 
         onChange={handleViewChange}
         language={state.language}
