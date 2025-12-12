@@ -95,13 +95,19 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// Users table - supports Replit Auth
+// User roles: consumer (default), merchant, admin
+export type UserRole = 'consumer' | 'merchant' | 'admin';
+
+// Users table - supports Replit Auth and guest login
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email"),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  role: varchar("role", { length: 20 }).default('consumer').notNull(),
+  provider: varchar("provider", { length: 20 }), // 'replit' | 'guest' | 'email'
+  isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

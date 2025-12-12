@@ -57,6 +57,7 @@ async function upsertUser(claims: any) {
     firstName: claims["first_name"],
     lastName: claims["last_name"],
     profileImageUrl: claims["profile_image_url"],
+    provider: 'replit',
   });
 }
 
@@ -162,3 +163,41 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     return;
   }
 };
+
+// Role-based access control middleware
+export const requireRole = (...allowedRoles: string[]): RequestHandler => {
+  return async (req, res, next) => {
+    const user = req.user as any;
+    
+    if (!req.isAuthenticated() || !user?.claims?.sub) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    
+    try {
+      const dbUser = await storage.getUser(user.claims.sub);
+      if (!dbUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      const userRole = dbUser.role || 'consumer';
+      if (!allowedRoles.includes(userRole)) {
+        return res.status(403).json({ message: "Forbidden: insufficient permissions" });
+      }
+      
+      // Attach role to request for downstream use
+      (req as any).userRole = userRole;
+      (req as any).dbUser = dbUser;
+      
+      return next();
+    } catch (error) {
+      console.error("Role check error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  };
+};
+
+// Middleware for merchant-only routes
+export const isMerchant = requireRole('merchant', 'admin');
+
+// Middleware for admin-only routes
+export const isAdmin = requireRole('admin');
