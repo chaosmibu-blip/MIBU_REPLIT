@@ -59,14 +59,15 @@ Preferred communication style: Simple, everyday language.
   - Backend: verifyPlaceWithGoogle() now captures and stores Google Places `types` array
   - Frontend: Cards display translated Google type labels (e.g., "百貨公司", "餐廳", "咖啡廳")
   - Translation: GOOGLE_TYPE_TRANSLATIONS mapping for 70+ place types to Chinese labels
-- **Merchant Claiming System (Google-style)**: Improved ownership claim workflow
+- **Merchant Claiming System (Google Place ID-based)**: Improved ownership claim workflow
   - Search-first flow: merchants search existing placeCache before manual entry
   - Two-step process: 1) Search for business, 2) Manual entry if not found
   - API endpoint: `GET /api/merchant/places/search?query=...&city=...`
   - Auto-approval: claims are immediately approved for testing (production should use pending → admin review)
   - Promo integration: gacha results check for matching merchant claims and display promotions
-  - Matching logic: placeName + district + city (exact match required)
-  - API endpoints: `POST /api/merchant/places/claim`, `GET /api/merchant/places`, `PUT /api/merchant/places/:linkId`
+  - **Matching logic (Updated 2025-12-12)**: Prioritizes `googlePlaceId` matching for accuracy, with fallback to placeName + district + city for backward compatibility
+  - Schema: Added `googlePlaceId` field to `merchant_place_links` table with dedicated index
+  - API endpoints: `POST /api/merchant/places/claim` (accepts `googlePlaceId`), `GET /api/merchant/places`, `PUT /api/merchant/places/:linkId`
 - **Place Exclusion System**: Users can click X button on itinerary cards to exclude places they don't like
   - Per-user tracking via `placeFeedback` table (userId, placeName, district, city, penaltyScore)
   - Penalty score increments each time a user excludes the same place
