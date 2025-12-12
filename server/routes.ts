@@ -1134,11 +1134,30 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const data = await response.json();
       
       if (data.status === 'OK' && data.results && data.results.length > 0) {
-        const place = data.results[0];
-        const address = place.formatted_address || '';
+        // === HARDCODED: Select from top 10 results with 1/N probability ===
+        // Filter to valid results (in correct district, not generic placeholder names)
+        const genericPlaceholderPatterns = ['探索', '旅行社', '服務中心', '遊客中心', '資訊站'];
+        const validResults = data.results.slice(0, 10).filter((place: any) => {
+          const address = place.formatted_address || '';
+          const name = place.name || '';
+          
+          // Must be in correct district
+          const isInDistrict = address.includes(regionNameZh) && address.includes(districtNameZh);
+          
+          // Must not be a generic placeholder name
+          const isGenericPlaceholder = genericPlaceholderPatterns.some(pattern => name.includes(pattern));
+          
+          return isInDistrict && !isGenericPlaceholder;
+        });
         
-        // Check if the result is in the correct district
-        const isInDistrict = address.includes(regionNameZh) && address.includes(districtNameZh);
+        if (validResults.length === 0) {
+          return { verified: false };
+        }
+        
+        // Random 1/N selection from valid results
+        const randomIndex = Math.floor(Math.random() * validResults.length);
+        const place = validResults[randomIndex];
+        const address = place.formatted_address || '';
         
         // Get Google types (first non-generic type as primary)
         const googleTypes = place.types || [];
@@ -1146,7 +1165,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
         const primaryType = googleTypes.find((t: string) => !genericTypes.includes(t)) || googleTypes[0];
         
         return {
-          verified: isInDistrict,
+          verified: true,
           placeId: place.place_id,
           verifiedName: place.name,
           verifiedAddress: address,
@@ -1562,7 +1581,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
       let collectedPlaceNames: Set<string> = new Set();
       if (userId) {
         try {
-          const userCollections = await storage.getUserCollection(userId);
+          const userCollections = await storage.getUserCollections(userId);
           for (const collection of userCollections) {
             if (collection.placeName) {
               collectedPlaceNames.add(collection.placeName);
