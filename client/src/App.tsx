@@ -542,35 +542,35 @@ const App: React.FC = () => {
             {/* 右上角切換用戶別 */}
             <button
               onClick={() => setShowRoleMenu(!showRoleMenu)}
-              className="absolute top-0 right-0 text-xs text-slate-400 hover:text-indigo-600 transition-colors flex items-center gap-1"
+              className="absolute top-0 right-0 text-xs text-slate-400 hover:text-indigo-600 transition-colors"
               data-testid="button-switch-role"
             >
-              👤 {t.switchRole || '切換用戶別'}
+              {t.switchRole || '切換用戶別'}
             </button>
             
             {/* 角色選擇下拉選單 */}
             {showRoleMenu && (
-              <div className="absolute top-8 right-0 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden w-40 py-1 z-50">
+              <div className="absolute top-8 right-0 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden w-32 py-1 z-50">
                 <button
                   onClick={() => { setSelectedRole('consumer'); setShowRoleMenu(false); }}
-                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium flex items-center gap-2 ${selectedRole === 'consumer' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-700'}`}
+                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium ${selectedRole === 'consumer' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-700'}`}
                   data-testid="role-consumer"
                 >
-                  🎒 {t.roleConsumer || '旅客'}
+                  {t.roleConsumer || '旅客'}
                 </button>
                 <button
                   onClick={() => { setSelectedRole('merchant'); setShowRoleMenu(false); }}
-                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium flex items-center gap-2 ${selectedRole === 'merchant' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-700'}`}
+                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium ${selectedRole === 'merchant' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-700'}`}
                   data-testid="role-merchant"
                 >
-                  🏪 {t.roleMerchant || '企業端'}
+                  {t.roleMerchant || '企業端'}
                 </button>
                 <button
                   onClick={() => { setSelectedRole('admin'); setShowRoleMenu(false); }}
-                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium flex items-center gap-2 ${selectedRole === 'admin' ? 'text-amber-600 bg-amber-50' : 'text-slate-700'}`}
+                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium ${selectedRole === 'admin' ? 'text-amber-600 bg-amber-50' : 'text-slate-700'}`}
                   data-testid="role-admin"
                 >
-                  ⚙️ {t.roleAdmin || '管理端'}
+                  {t.roleAdmin || '管理端'}
                 </button>
               </div>
             )}
@@ -578,12 +578,6 @@ const App: React.FC = () => {
             <div className="text-center">
               <h1 className="text-4xl font-bold text-slate-800 mb-2">Mibu</h1>
               <p className="text-slate-500">{t.appSubtitle || '探索台灣的最佳方式'}</p>
-              {/* 顯示當前選擇的角色 */}
-              <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-full text-sm text-slate-600">
-                {selectedRole === 'consumer' && <span>🎒 {t.roleConsumer || '旅客'}</span>}
-                {selectedRole === 'merchant' && <span>🏪 {t.roleMerchant || '企業端'}</span>}
-                {selectedRole === 'admin' && <span>⚙️ {t.roleAdmin || '管理端'}</span>}
-              </div>
             </div>
             
             {/* 登入區塊 */}
