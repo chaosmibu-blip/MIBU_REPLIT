@@ -1,0 +1,35 @@
+Category.Food]: [
+    "Michelin/Bib Gourmand (米其林/必比登)", "Hidden Gem Cafe (巷弄咖啡)", "Local Breakfast (在地早餐)", 
+    "Traditional Dessert (古早味甜點)", "Late Night Supper/Rechao (宵夜/熱炒)", "Street Food/Snack (銅板美食)",
+    "Ramen/Soba (拉麵/蕎麥麵)", "Izakaya/Bar (居酒屋/餐酒館)", "Hot Pot (火鍋)", "Steak/Teppanyaki (牛排/鐵板燒)",
+    "Vegetarian (素食/蔬食)", "Seafood Restaurant (海鮮餐廳)", "Theme Restaurant (主題餐廳)"
+  ],
+  [Category.Stay]: [
+    "Design Hotel (設計旅店)", "Hot Spring/Ryokan (溫泉飯店/旅館)", "Luxury Camping/Glamping (豪華露營)", 
+    "Historic Homestay (老宅民宿)", "Seaview/Mountain View (海景/山景住宿)", "Backpacker Hostel (青年旅館)", 
+    "Business Hotel (商務旅館)", "Luxury 5-Star (五星級飯店)"
+  ],
+  [Category.Scenery]: [
+    "IG Photo Spot (網美打卡點)", "Historical Old Street (懷舊老街)", "Secret Viewpoint (私房景點/秘境)", 
+    "Night View (百萬夜景)", "Temple/Shrine (寺廟/神社)", "Waterfront/Pier (水岸/碼頭)", 
+    "Seasonal Flower/Nature (賞花/自然生態)", "Architectural Landmark (特色建築)", "Urban Park (城市公園)"
+  ],
+  [Category.Shopping]: [
+    "Select Shop/Boutique (風格選物店)", "Local Souvenir (在地伴手禮)", "Vintage/Second-hand (古著/二手)", 
+    "Creative Market (文創市集)", "Drugstore/Cosmetics (藥妝)", "Department Store (百貨公司)", 
+    "Outlet Mall (暢貨中心)", "Anime/Gacha Shop (動漫/扭蛋店)", "Traditional Market (傳統市場)"
+  ],
+  [Category.Education]: [
+    "Cultural & Creative Park (文創園區)", "Interactive Museum (互動博物館)", "Art Gallery/Exhibition (美術館/展覽)", 
+    "Historical Site/Monument (古蹟遺址)", "Public Library (特色圖書館)", "Science Center (科教館)", 
+    "Local Workshop (在地工坊)", "Botanical Garden (植物園)"
+  ],
+  [Category.Entertainment]: [
+    "Claw Machine/Arcade (夾娃娃/遊樂場)", "Karaoke/KTV (KTV/卡拉OK)", "Escape Room (密室逃脫)", 
+    "Board Game Cafe (桌遊店)", "Live House/Jazz Bar (音樂展演空間)", "Cinema (電影院)", 
+    "Bowling/Batting Cage (保齡球/打擊場)", "Theme Park (主題樂園)"
+  ],
+  [Category.Activity]: [
+    "DIY Workshop (手作體驗-陶藝/金工)", "Massage/Spa/Foot Bath (按摩/足湯)", "Cycling/Biking (自行車/單車)", 
+    "Hiking Trail (登山步道)", "Water Sports/SUP (水上活動)", "Farm Experience/Fruit Picking (農場/採果)", 
+    "Tea Ceremony/Tasting (品茶/茶道)", "Cooking Class (烹飪教室)", "Kimono/Costume Rental (變裝體驗)"
