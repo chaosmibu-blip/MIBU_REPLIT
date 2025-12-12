@@ -53,6 +53,8 @@ export const MibuMap: React.FC<MibuMapProps> = ({
     if (map.current) return;
 
     const accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
+    console.log('Mapbox token exists:', !!accessToken);
+    console.log('Token prefix:', accessToken?.substring(0, 10));
     if (!accessToken) {
       setMapError('地圖服務未設定');
       console.error('Mapbox access token not found');
