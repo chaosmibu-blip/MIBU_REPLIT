@@ -1483,10 +1483,23 @@ ${uncachedSkeleton.map((item, idx) => `  {
       // Step 6: Generate items for each time slot in FULL PARALLEL
       // Each time slot processes ALL its items in parallel (not sequential)
       const generateForSlot = async (slot: TimeSlot, count: number): Promise<any[]> => {
-        const slotSubcategories = subcategoriesBySlot[slot].slice(0, count * 2); // Take extra for fallback
+        let slotSubcategories = subcategoriesBySlot[slot];
+        
+        // For evening slot: limit accommodation to max 1, prioritize entertainment/nightlife
+        if (slot === 'evening') {
+          const staySubcats = slotSubcategories.filter(s => s.preferredTimeSlot === 'stay');
+          const nightlifeSubcats = slotSubcategories.filter(s => s.preferredTimeSlot === 'evening');
+          // Take nightlife first, then only 1 accommodation at the end
+          slotSubcategories = [
+            ...nightlifeSubcats.slice(0, count - 1),
+            ...staySubcats.slice(0, 1) // Max 1 accommodation
+          ];
+        }
+        
+        slotSubcategories = slotSubcategories.slice(0, count);
         
         // Generate ALL items for this slot in parallel
-        const itemPromises = slotSubcategories.slice(0, count).map(async (subcatWithCategory) => {
+        const itemPromises = slotSubcategories.map(async (subcatWithCategory) => {
           const result = await generatePlaceForSubcategory(
             districtNameZh, regionNameZh, countryNameZh,
             subcatWithCategory.category, subcatWithCategory, language,
