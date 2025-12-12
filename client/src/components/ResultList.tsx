@@ -25,7 +25,11 @@ const cleanPlaceName = (name: string): string => {
     .trim();
 };
 
-const getCategoryLabel = (categoryCode: string, t: any): string => {
+const getCategoryLabel = (category: any, t: any): string => {
+  if (typeof category === 'object' && category?.name) {
+    return category.name;
+  }
+  const code = typeof category === 'string' ? category.toLowerCase() : '';
   const codeMap: Record<string, string> = {
     'food': 'catFood',
     'stay': 'catStay',
@@ -36,8 +40,8 @@ const getCategoryLabel = (categoryCode: string, t: any): string => {
     'activity': 'catActivity',
     'experience': 'catActivity',
   };
-  const key = codeMap[categoryCode?.toLowerCase()] || 'catActivity';
-  return t[key] || categoryCode;
+  const key = codeMap[code] || 'catActivity';
+  return t[key] || code;
 };
 
 export const ResultList: React.FC<ResultListProps> = ({ data, language, onResearch, isLoading }) => {
@@ -104,7 +108,21 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
       <div className="px-4 pt-4 space-y-4">
         <AnimatePresence mode="popLayout">
         {visibleItems.map((item, idx) => {
-          const categoryColor = item.category ? CATEGORY_COLORS[item.category] || '#6366f1' : '#6366f1';
+          const getCategoryColor = () => {
+            if (!item.category) return '#6366f1';
+            const cat = item.category as any;
+            if (typeof cat === 'object' && cat.colorHex) {
+              return cat.colorHex;
+            }
+            const code = typeof cat === 'string' ? cat.toLowerCase() : '';
+            const colorMap: Record<string, string> = {
+              'food': '#ea580c', 'stay': '#0891b2', 'education': '#7c3aed',
+              'entertainment': '#db2777', 'scenery': '#10b981', 'shopping': '#f59e0b',
+              'activity': '#84cc16', 'experience': '#f59e0b'
+            };
+            return colorMap[code] || '#6366f1';
+          };
+          const categoryColor = getCategoryColor();
           const isExcluding = excludingIds.has(item.id);
           const duration = item.duration || '1h';
           

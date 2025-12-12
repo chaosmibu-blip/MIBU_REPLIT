@@ -141,7 +141,12 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
                     {Object.entries(data.byCategory)
                       .sort((a, b) => b[1].length - a[1].length)
                       .map(([category, categoryItems]) => {
-                        const categoryColor = CATEGORY_COLORS[category as Category] || '#6366f1';
+                        const colorMap: Record<string, string> = {
+                          'food': '#ea580c', 'stay': '#0891b2', 'education': '#7c3aed',
+                          'entertainment': '#db2777', 'scenery': '#10b981', 'shopping': '#f59e0b',
+                          'activity': '#84cc16', 'experience': '#f59e0b'
+                        };
+                        const categoryColor = colorMap[category.toLowerCase()] || '#6366f1';
                         const categoryKey = `${region}-${category}`;
                         const isCategoryOpen = openCategories.has(categoryKey);
                         
