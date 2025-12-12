@@ -519,7 +519,12 @@ const App: React.FC = () => {
               <p className="text-slate-500">{t.appSubtitle || '探索台灣的最佳方式'}</p>
             </div>
             
+            {/* 消費者登入區塊 */}
             <div className="w-full max-w-sm space-y-4">
+              <div className="text-center mb-2">
+                <span className="text-sm font-medium text-slate-500">{t.consumerLogin || '旅客登入'}</span>
+              </div>
+              
               <a
                 href="/api/login"
                 className="flex items-center justify-center gap-2 w-full bg-indigo-500 text-white font-bold py-4 rounded-2xl hover:bg-indigo-600 transition-colors shadow-lg"
@@ -551,8 +556,34 @@ const App: React.FC = () => {
                 {t.guestLogin || '訪客登入'}
               </button>
               
-              <p className="text-center text-xs text-slate-400 mt-4">
+              <p className="text-center text-xs text-slate-400">
                 {t.guestLoginNote || '訪客模式的資料僅保存在此裝置，之後可綁定帳號保留'}
+              </p>
+            </div>
+            
+            {/* 分隔線 */}
+            <div className="w-full max-w-sm flex items-center gap-4">
+              <div className="flex-1 h-px bg-slate-200"></div>
+              <span className="text-xs text-slate-400">{t.or || '或'}</span>
+              <div className="flex-1 h-px bg-slate-200"></div>
+            </div>
+            
+            {/* 企業端登入區塊 */}
+            <div className="w-full max-w-sm space-y-4">
+              <div className="text-center mb-2">
+                <span className="text-sm font-medium text-slate-500">{t.merchantLogin || '商家/企業登入'}</span>
+              </div>
+              
+              <button
+                onClick={() => setState(prev => ({ ...prev, view: 'merchant_login' }))}
+                className="flex items-center justify-center gap-2 w-full bg-emerald-500 text-white font-bold py-4 rounded-2xl hover:bg-emerald-600 transition-colors shadow-lg"
+                data-testid="button-merchant-login-entry"
+              >
+                🏪 {t.merchantDashboard || '進入商家後台'}
+              </button>
+              
+              <p className="text-center text-xs text-slate-400">
+                {t.merchantLoginNote || '景點業者、餐廳、住宿等企業合作夥伴'}
               </p>
             </div>
           </div>
