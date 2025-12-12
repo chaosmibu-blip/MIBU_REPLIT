@@ -1754,6 +1754,13 @@ ${uncachedSkeleton.map((item, idx) => `  {
           );
 
           if (result && result.place?.name) {
+            // Skip if AI returned "no match found" type response
+            const desc = result.place.description || '';
+            if (desc.includes('無符合條件') || desc.includes('目前無符合') || desc.includes('沒有符合')) {
+              console.log(`[${aiTask.worker}] Skipping no-match result: ${result.place.name}`);
+              return null;
+            }
+            
             if (collectedPlaceNames.has(result.place.name)) {
               if (Math.random() < COLLECTED_REDUCTION_PROBABILITY) {
                 console.log(`[${aiTask.worker}] Skipping collected AI: ${result.place.name}`);
@@ -1883,6 +1890,13 @@ ${uncachedSkeleton.map((item, idx) => `  {
           );
           
           if (result && result.place?.name) {
+            // Skip if AI returned "no match found" type response
+            const desc = result.place.description || '';
+            if (desc.includes('無符合條件') || desc.includes('目前無符合') || desc.includes('沒有符合')) {
+              console.log(`[Backfill] Skipping no-match result: ${result.place.name}`);
+              continue;
+            }
+            
             const placeId = result.place.place_id || result.place.placeId;
             const normalizedName = normalizePlaceName(result.place.name);
             const dedupKey = placeId || normalizedName;
