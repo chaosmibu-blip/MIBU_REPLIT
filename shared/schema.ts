@@ -606,6 +606,7 @@ export const insertServicePlanSchema = createInsertSchema(servicePlans).omit({
 
 export const insertServiceOrderSchema = createInsertSchema(serviceOrders).omit({
   id: true,
+  orderNumber: true,
   createdAt: true,
   updatedAt: true,
 });

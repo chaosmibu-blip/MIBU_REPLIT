@@ -5,6 +5,7 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema } from "@shared/schema";
 import { z } from "zod";
 import { createTripPlannerRoutes } from "../modules/trip-planner/server/routes";
+import { createPlannerServiceRoutes } from "../modules/trip-planner/server/planner-routes";
 import twilio from "twilio";
 const { AccessToken } = twilio.jwt;
 const ChatGrant = AccessToken.ChatGrant;
@@ -205,6 +206,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ Module Routes ============
   // Trip Planner Module
   app.use('/api/planner', createTripPlannerRoutes());
+  
+  // Planner Service Routes (策劃師服務)
+  createPlannerServiceRoutes(app);
 
   // ============ Auth Routes ============
   
