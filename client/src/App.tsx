@@ -10,6 +10,7 @@ import { ModuleHeader, GachaModuleNav, PlannerModuleNav, HomeNav } from './compo
 import { CouponCelebration } from './components/CouponCelebration';
 import { MerchantDashboard } from './components/MerchantDashboard';
 import { TripPlanner } from '../../modules/trip-planner/client';
+import { LocationView } from '../../modules/trip-planner/client/components/LocationView';
 import { DEFAULT_LEVEL, TRANSLATIONS, MAX_DAILY_GENERATIONS } from './constants';
 import { Globe, LogIn, LogOut } from 'lucide-react';
 
@@ -746,9 +747,7 @@ const App: React.FC = () => {
             />
             
             {plannerSubView === 'location' && (
-              <div className="text-center py-12 text-slate-500">
-                <p>定位功能開發中...</p>
-              </div>
+              <LocationView language={state.language} />
             )}
             
             {plannerSubView === 'itinerary' && (
