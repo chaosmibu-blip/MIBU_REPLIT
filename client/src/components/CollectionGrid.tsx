@@ -1,10 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Language, Category, GachaItem } from '../types';
+import { Language, GachaItem } from '../types';
 import { TRANSLATIONS, GOOGLE_TYPE_TRANSLATIONS } from '../constants';
-import { MapPin, ChevronDown, ChevronUp, Navigation, Star, Tag, Gift, X } from 'lucide-react';
+import { MapPin, X, Tag, Navigation } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
-// Collection item can come from either GachaItem (local state) or Collection (from API)
 interface CollectionGridProps {
   items: GachaItem[];
   language: Language;
@@ -16,7 +15,6 @@ interface MerchantPromo {
   imageUrl?: string;
 }
 
-// Helper to extract place name from various formats
 const getPlaceName = (item: any): string => {
   const name = item.placeName || item.place_name || '';
   if (typeof name === 'string') return cleanPlaceName(name);
@@ -34,7 +32,6 @@ const cleanPlaceName = (name: string): string => {
     .trim();
 };
 
-// Helper to extract description
 const getDescription = (item: any): string => {
   const desc = item.description || item.ai_description || '';
   if (typeof desc === 'string') return desc;
@@ -44,24 +41,10 @@ const getDescription = (item: any): string => {
   return '';
 };
 
-// Helper to extract placeId
 const getPlaceId = (item: any): string | null => {
   return item.placeId || item.place_id || null;
 };
 
-// Helper to extract address
-const getAddress = (item: any): string | null => {
-  return item.address || item.verified_address || null;
-};
-
-// Helper to extract rating
-const getRating = (item: any): string | null => {
-  if (item.rating) return item.rating;
-  if (item.google_rating) return String(item.google_rating);
-  return null;
-};
-
-// Helper to extract location
 const getLocation = (item: any): { lat: string; lng: string } | null => {
   if (item.locationLat && item.locationLng) {
     return { lat: item.locationLat, lng: item.locationLng };
@@ -72,59 +55,84 @@ const getLocation = (item: any): { lat: string; lng: string } | null => {
   return null;
 };
 
-// Helper to extract google types
-const getGoogleTypes = (item: any): string[] => {
-  if (item.googleTypes && typeof item.googleTypes === 'string') {
-    return item.googleTypes.split(',').filter(Boolean);
-  }
-  if (Array.isArray(item.google_types)) {
-    return item.google_types;
-  }
-  return [];
+const getCity = (item: any): string => {
+  return item.city || '';
 };
 
-const getCategoryLabel = (category: string, t: any): string => {
-  const labelMap: Record<string, string> = {
-    'Food': t.catFood || '美食',
-    'Stay': t.catStay || '住宿',
-    'Scenery': t.catScenery || '景點',
-    'Shopping': t.catShopping || '購物',
-    'Entertainment': t.catEntertainment || '娛樂',
-    'Education': t.catEducation || '生態文化',
-    'Activity': t.catActivity || '體驗',
+const getDistrict = (item: any): string => {
+  return item.district || '';
+};
+
+const getCategory = (item: any): string => {
+  return (item.category || '').toLowerCase();
+};
+
+const getCollectedAt = (item: any): string => {
+  return item.collectedAt || item.collected_at || '';
+};
+
+const getCategoryColor = (category: string): string => {
+  const colorMap: Record<string, string> = {
+    'food': '#ea580c',
+    'stay': '#0891b2',
+    'education': '#7c3aed',
+    'entertainment': '#db2777',
+    'scenery': '#10b981',
+    'shopping': '#f59e0b',
+    'activity': '#84cc16',
+    'experience': '#f59e0b'
   };
-  return labelMap[category] || category;
+  return colorMap[category?.toLowerCase()] || '#6366f1';
 };
 
-const getGoogleTypeLabel = (type: string): string => {
-  return GOOGLE_TYPE_TRANSLATIONS[type] || type;
+const getCategoryLabel = (category: string, language: Language): string => {
+  const labels: Record<string, Record<string, string>> = {
+    'food': { 'zh-TW': '美食', 'en': 'Food', 'ja': 'グルメ', 'ko': '맛집' },
+    'stay': { 'zh-TW': '住宿', 'en': 'Stay', 'ja': '宿泊', 'ko': '숙박' },
+    'education': { 'zh-TW': '生態文化', 'en': 'Culture', 'ja': '文化', 'ko': '문화' },
+    'entertainment': { 'zh-TW': '娛樂', 'en': 'Fun', 'ja': '娯楽', 'ko': '놀이' },
+    'scenery': { 'zh-TW': '景點', 'en': 'Scenery', 'ja': '景色', 'ko': '명소' },
+    'shopping': { 'zh-TW': '購物', 'en': 'Shop', 'ja': '買物', 'ko': '쇼핑' },
+    'activity': { 'zh-TW': '體驗', 'en': 'Activity', 'ja': '体験', 'ko': '체험' },
+    'experience': { 'zh-TW': '體驗', 'en': 'Experience', 'ja': '体験', 'ko': '체험' }
+  };
+  const categoryKey = category?.toLowerCase() || '';
+  return labels[categoryKey]?.[language] || labels[categoryKey]?.['zh-TW'] || category || '';
 };
 
-// Detail card modal component
+const formatDate = (dateStr: string | undefined): string => {
+  if (!dateStr) return '';
+  try {
+    const date = new Date(dateStr);
+    return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
+  } catch {
+    return '';
+  }
+};
+
 const PlaceDetailModal: React.FC<{
   item: any;
   language: Language;
-  categoryColor: string;
   onClose: () => void;
-}> = ({ item, language, categoryColor, onClose }) => {
-  const t = TRANSLATIONS[language] as any;
+}> = ({ item, language, onClose }) => {
   const placeName = getPlaceName(item);
   const placeId = getPlaceId(item);
-  const address = getAddress(item);
-  const rating = getRating(item);
   const location = getLocation(item);
-  const googleTypes = getGoogleTypes(item);
   const description = getDescription(item);
+  const category = getCategory(item);
+  const categoryColor = getCategoryColor(category);
+  const date = formatDate(getCollectedAt(item));
+  const city = getCity(item);
+  const district = getDistrict(item);
   
-  // Fetch merchant promo
   const { data: promoData } = useQuery<{ promo: MerchantPromo | null }>({
-    queryKey: ['placePromo', placeId, placeName, item.district, item.city],
+    queryKey: ['placePromo', placeId, placeName, district, city],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (placeId) params.append('placeId', placeId);
       if (placeName) params.append('placeName', placeName);
-      if (item.district) params.append('district', item.district);
-      if (item.city) params.append('city', item.city);
+      if (district) params.append('district', district);
+      if (city) params.append('city', city);
       const res = await fetch(`/api/place/promo?${params}`);
       return res.json();
     },
@@ -138,138 +146,85 @@ const PlaceDetailModal: React.FC<{
     if (location) {
       url = `https://www.google.com/maps/dir/?api=1&destination=${location.lat},${location.lng}`;
     } else {
-      url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(placeName + ' ' + (item.district || '') + ' ' + (item.city || ''))}`;
+      const query = [placeName, district, city].filter(Boolean).join(' ');
+      url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`;
     }
     window.open(url, '_blank');
   };
 
+  const locationText = [district, city].filter(Boolean).join(' • ') || city;
+
   return (
     <div 
-      className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4"
+      className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center"
       onClick={onClose}
     >
       <div 
-        className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden relative"
+        className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden relative animate-in slide-in-from-bottom duration-300"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header with color bar */}
         <div 
-          className="h-2 w-full"
+          className="h-32 w-full relative"
           style={{ backgroundColor: categoryColor }}
-        />
-        
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-6 right-6 w-8 h-8 bg-white/80 rounded-full flex items-center justify-center shadow-md z-10"
-          data-testid="button-close-detail"
         >
-          <X className="w-4 h-4" />
-        </button>
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 w-10 h-10 bg-white/90 rounded-full flex items-center justify-center shadow-lg"
+            data-testid="button-close-detail"
+          >
+            <X className="w-5 h-5 text-slate-600" />
+          </button>
+          
+          <div className="absolute bottom-4 left-5">
+            <span className="inline-block px-3 py-1.5 rounded-full text-xs font-bold bg-white/20 text-white backdrop-blur-sm">
+              {getCategoryLabel(category, language)}
+            </span>
+          </div>
+        </div>
         
-        <div className="p-6 overflow-y-auto max-h-[calc(85vh-8px)]">
-          {/* Place name and category */}
-          <div className="mb-4">
-            <span 
-              className="inline-block px-3 py-1 rounded-full text-xs font-bold text-white mb-2"
-              style={{ backgroundColor: categoryColor }}
-            >
-              {getCategoryLabel(item.category || '', t)}
-            </span>
-            <h2 className="text-2xl font-black text-slate-800" data-testid="text-detail-name">
-              {placeName}
-            </h2>
+        <div className="px-5 pb-6 pt-4 overflow-y-auto max-h-[calc(85vh-128px)]">
+          <h2 className="text-2xl font-black text-slate-800 mb-2" data-testid="text-detail-name">
+            {placeName}
+          </h2>
+          
+          <div className="flex items-center gap-2 text-slate-500 mb-5">
+            <span className="text-sm font-medium">{date}</span>
+            {locationText && (
+              <>
+                <span className="text-slate-300">•</span>
+                <span className="text-sm">{locationText}</span>
+              </>
+            )}
           </div>
           
-          {/* Location info */}
-          <div className="flex items-center gap-2 text-slate-500 mb-4">
-            <MapPin className="w-4 h-4" />
-            <span className="text-sm">
-              {[item.district, item.city].filter(Boolean).join(', ')}
-            </span>
-          </div>
-          
-          {/* Address */}
-          {address && (
-            <div className="bg-slate-50 rounded-xl p-4 mb-4">
-              <p className="text-sm text-slate-600" data-testid="text-detail-address">
-                {address}
-              </p>
-            </div>
-          )}
-          
-          {/* Rating */}
-          {rating && (
-            <div className="flex items-center gap-2 mb-4">
-              <Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
-              <span className="font-bold text-slate-700" data-testid="text-detail-rating">
-                {rating}
-              </span>
-              <span className="text-slate-400 text-sm">Google 評分</span>
-            </div>
-          )}
-          
-          {/* Google types as tags */}
-          {googleTypes.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-4">
-              {googleTypes.slice(0, 5).map((type: string, idx: number) => (
-                <span 
-                  key={idx}
-                  className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-lg text-xs text-slate-600"
-                >
-                  <Tag className="w-3 h-3" />
-                  {getGoogleTypeLabel(type.trim())}
-                </span>
-              ))}
-            </div>
-          )}
-          
-          {/* Description */}
           {description && (
-            <div className="mb-6">
-              <p className="text-sm text-slate-600 leading-relaxed" data-testid="text-detail-description">
-                {description}
-              </p>
-            </div>
+            <p className="text-slate-600 leading-relaxed mb-5" data-testid="text-detail-description">
+              {description}
+            </p>
           )}
           
-          {/* Merchant promo section */}
           {promo && (
             <div 
-              className="bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-200 rounded-2xl p-4 mb-6"
+              className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 mb-5"
               data-testid="promo-section"
             >
               <div className="flex items-center gap-2 mb-2">
-                <Gift className="w-5 h-5 text-orange-500" />
-                <span className="font-bold text-orange-700">商家優惠</span>
+                <Tag className="w-5 h-5 text-amber-600" />
+                <span className="font-bold text-amber-700">店家優惠資訊</span>
               </div>
-              <h3 className="font-bold text-lg text-slate-800 mb-1" data-testid="text-promo-title">
-                {promo.title}
-              </h3>
-              {promo.description && (
-                <p className="text-sm text-slate-600" data-testid="text-promo-description">
-                  {promo.description}
-                </p>
-              )}
-              {promo.imageUrl && (
-                <img 
-                  src={promo.imageUrl} 
-                  alt={promo.title}
-                  className="mt-3 rounded-xl w-full object-cover max-h-40"
-                />
-              )}
+              <p className="text-amber-800" data-testid="text-promo-title">
+                {promo.title || promo.description || '憑券享優惠'}
+              </p>
             </div>
           )}
           
-          {/* Navigation button */}
           <button
             onClick={handleNavigate}
-            className="w-full py-4 rounded-2xl font-bold text-white flex items-center justify-center gap-2 transition-transform active:scale-95"
-            style={{ backgroundColor: categoryColor }}
+            className="w-full py-4 rounded-2xl font-bold text-white flex items-center justify-center gap-2 transition-all active:scale-98 bg-slate-800 hover:bg-slate-700"
             data-testid="button-navigate"
           >
             <Navigation className="w-5 h-5" />
-            {language === 'zh-TW' ? '導航前往' : language === 'ja' ? 'ナビ開始' : 'Navigate'}
+            在 Google 地圖中查看
           </button>
         </div>
       </div>
@@ -277,51 +232,92 @@ const PlaceDetailModal: React.FC<{
   );
 };
 
+const CollectionCard: React.FC<{
+  item: any;
+  language: Language;
+  isNew?: boolean;
+  onClick: () => void;
+}> = ({ item, language, isNew, onClick }) => {
+  const placeName = getPlaceName(item);
+  const description = getDescription(item);
+  const category = getCategory(item);
+  const categoryColor = getCategoryColor(category);
+  const date = formatDate(getCollectedAt(item));
+  const location = getLocation(item);
+  const city = getCity(item);
+  const district = getDistrict(item);
+
+  const handleMapClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    let url: string;
+    if (location) {
+      url = `https://www.google.com/maps/dir/?api=1&destination=${location.lat},${location.lng}`;
+    } else {
+      const query = [placeName, district, city].filter(Boolean).join(' ');
+      url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`;
+    }
+    window.open(url, '_blank');
+  };
+
+  return (
+    <div 
+      className="bg-white rounded-2xl border-2 border-slate-100 p-5 cursor-pointer transition-all hover:shadow-lg hover:border-slate-200 relative"
+      onClick={onClick}
+      data-testid={`card-collection-${item.id || placeName}`}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm text-slate-400 font-medium">{date}</span>
+        <div className="relative">
+          <span 
+            className="inline-block px-3 py-1 rounded-full text-xs font-bold text-white"
+            style={{ backgroundColor: categoryColor }}
+          >
+            {getCategoryLabel(category, language)}
+          </span>
+          {isNew && (
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full" />
+          )}
+        </div>
+      </div>
+      
+      <h3 className="text-xl font-black text-slate-800 mb-2">
+        {placeName}
+      </h3>
+      
+      {description && (
+        <p className="text-slate-500 text-sm leading-relaxed line-clamp-3 mb-4">
+          {description}
+        </p>
+      )}
+      
+      <button
+        onClick={handleMapClick}
+        className="flex items-center gap-2 text-slate-500 hover:text-slate-700 transition-colors py-2"
+        data-testid={`button-map-${item.id || placeName}`}
+      >
+        <MapPin className="w-4 h-4" />
+        <span className="text-sm font-medium">在 Google 地圖中查看</span>
+      </button>
+    </div>
+  );
+};
+
 export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language }) => {
   const t = TRANSLATIONS[language] as any;
-  const [openRegions, setOpenRegions] = useState<Set<string>>(new Set());
-  const [openCategories, setOpenCategories] = useState<Set<string>>(new Set());
   const [selectedItem, setSelectedItem] = useState<any>(null);
-  const [selectedColor, setSelectedColor] = useState<string>('#6366f1');
 
-  const toggleRegion = (region: string) => {
-    setOpenRegions(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(region)) newSet.delete(region);
-      else newSet.add(region);
-      return newSet;
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a, b) => {
+      const dateA = new Date(getCollectedAt(a) || 0).getTime();
+      const dateB = new Date(getCollectedAt(b) || 0).getTime();
+      return dateB - dateA;
     });
-  };
+  }, [items]);
 
-  const toggleCategory = (key: string) => {
-    setOpenCategories(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(key)) newSet.delete(key);
-      else newSet.add(key);
-      return newSet;
-    });
-  };
-
-  const groupedData = useMemo(() => {
-    const cityMap: Record<string, { items: any[], byCategory: Record<string, any[]> }> = {};
-    
-    items.forEach(item => {
-      const city = item.city || t.unknown || 'Unknown';
-      const category = item.category || 'Other';
-      
-      if (!cityMap[city]) {
-        cityMap[city] = { items: [], byCategory: {} };
-      }
-      cityMap[city].items.push(item);
-      
-      if (!cityMap[city].byCategory[category]) {
-        cityMap[city].byCategory[category] = [];
-      }
-      cityMap[city].byCategory[category].push(item);
-    });
-    
-    return cityMap;
-  }, [items, t.unknown]);
+  const today = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
+  }, []);
 
   if (items.length === 0) {
     return (
@@ -333,161 +329,31 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
     );
   }
 
-  const getRegionInitial = (region: string): string => {
-    return region.charAt(0);
-  };
-
-  const colorMap: Record<string, string> = {
-    'food': '#ea580c', 'stay': '#0891b2', 'education': '#7c3aed',
-    'entertainment': '#db2777', 'scenery': '#10b981', 'shopping': '#f59e0b',
-    'activity': '#84cc16', 'experience': '#f59e0b'
-  };
-
-  const handleCardClick = (item: any, categoryColor: string) => {
-    setSelectedItem(item);
-    setSelectedColor(categoryColor);
-  };
-
   return (
     <>
-      <div className="pb-32 max-w-md mx-auto">
-        <div className="text-center py-8">
-          <h1 className="text-3xl font-black text-slate-800 mb-2" data-testid="text-collection-title">
-            {language === 'zh-TW' ? '我的足跡' : language === 'ja' ? '私の足跡' : 'My Footprints'}
-          </h1>
-          <span className="inline-block bg-slate-100 text-slate-600 text-sm font-bold px-4 py-1.5 rounded-full" data-testid="text-collection-count">
-            {items.length} {language === 'zh-TW' ? '個地點' : language === 'ja' ? '箇所' : 'places'}
-          </span>
-        </div>
-
-        <div className="px-4 space-y-4">
-          {Object.entries(groupedData)
-            .sort((a, b) => b[1].items.length - a[1].items.length)
-            .map(([region, data]) => {
-              const isRegionOpen = openRegions.has(region);
-              
-              return (
-                <div key={region} className="bg-white rounded-2xl border-2 border-slate-100 overflow-hidden">
-                  <button
-                    onClick={() => toggleRegion(region)}
-                    className="w-full flex items-center justify-between p-4"
-                    data-testid={`accordion-region-${region}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-indigo-500 rounded-xl flex items-center justify-center text-white font-black text-lg">
-                        {getRegionInitial(region)}
-                      </div>
-                      <div className="text-left">
-                        <p className="font-bold text-lg text-slate-800">{region}</p>
-                        <p className="text-sm text-slate-400">{data.items.length} {language === 'zh-TW' ? '個地點' : 'places'}</p>
-                      </div>
-                    </div>
-                    <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500">
-                      {isRegionOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                    </div>
-                  </button>
-
-                  {isRegionOpen && (
-                    <div className="px-4 pb-4 space-y-3">
-                      {Object.entries(data.byCategory)
-                        .sort((a, b) => b[1].length - a[1].length)
-                        .map(([category, categoryItems]) => {
-                          const categoryColor = colorMap[category.toLowerCase()] || '#6366f1';
-                          const categoryKey = `${region}-${category}`;
-                          const isCategoryOpen = openCategories.has(categoryKey);
-                          
-                          return (
-                            <div key={categoryKey}>
-                              <button
-                                onClick={() => toggleCategory(categoryKey)}
-                                className="w-full flex items-center justify-between p-4 bg-slate-50 rounded-xl"
-                                data-testid={`accordion-category-${categoryKey}`}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div 
-                                    className="w-1.5 h-8 rounded-full"
-                                    style={{ backgroundColor: categoryColor }}
-                                  />
-                                  <span className="font-bold text-slate-700">
-                                    {getCategoryLabel(category, t)}
-                                  </span>
-                                  <span className="text-sm text-slate-400 bg-white px-2 py-0.5 rounded-full">
-                                    {categoryItems.length}
-                                  </span>
-                                </div>
-                                <ChevronDown 
-                                  className={`w-5 h-5 text-slate-400 transition-transform ${isCategoryOpen ? 'rotate-180' : ''}`} 
-                                />
-                              </button>
-                              
-                              {isCategoryOpen && (
-                                <div className="mt-2 space-y-2 pl-4">
-                                  {categoryItems.map((item: any, idx: number) => {
-                                    const placeName = getPlaceName(item);
-                                    const rating = getRating(item);
-                                    
-                                    return (
-                                      <button
-                                        key={`${item.id || idx}-${idx}`}
-                                        onClick={() => handleCardClick(item, categoryColor)}
-                                        className="w-full text-left p-3 rounded-xl border-2 transition-all hover:shadow-md relative overflow-hidden"
-                                        style={{ 
-                                          borderColor: categoryColor + '30',
-                                          background: `linear-gradient(135deg, ${categoryColor}10 0%, white 60%)`
-                                        }}
-                                        data-testid={`card-collection-${item.id || idx}`}
-                                      >
-                                        <div 
-                                          className="absolute top-0 left-0 right-0 h-0.5"
-                                          style={{ backgroundColor: categoryColor }}
-                                        />
-                                        <div className="flex items-start gap-2">
-                                          <div 
-                                            className="w-1 h-full min-h-[40px] rounded-full flex-shrink-0"
-                                            style={{ backgroundColor: categoryColor }}
-                                          />
-                                          <div className="flex-1 min-w-0">
-                                            <p className="font-bold text-slate-800 text-sm truncate">
-                                              {placeName}
-                                            </p>
-                                            {item.district && (
-                                              <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                                                <MapPin className="w-3 h-3" />
-                                                {item.district}
-                                              </p>
-                                            )}
-                                            {/* Show rating if available */}
-                                            {rating && (
-                                              <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                                                <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                                                {rating}
-                                              </p>
-                                            )}
-                                          </div>
-                                          <ChevronDown className="w-4 h-4 text-slate-300 flex-shrink-0 -rotate-90" />
-                                        </div>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+      <div className="pb-32 max-w-md mx-auto px-4">
+        <div className="space-y-4 pt-4">
+          {sortedItems.map((item, idx) => {
+            const itemDate = formatDate(getCollectedAt(item));
+            const isNew = itemDate === today;
+            
+            return (
+              <CollectionCard
+                key={item.id || idx}
+                item={item}
+                language={language}
+                isNew={isNew}
+                onClick={() => setSelectedItem(item)}
+              />
+            );
+          })}
         </div>
       </div>
       
-      {/* Detail modal */}
       {selectedItem && (
         <PlaceDetailModal
           item={selectedItem}
           language={language}
-          categoryColor={selectedColor}
           onClose={() => setSelectedItem(null)}
         />
       )}
