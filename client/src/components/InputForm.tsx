@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { AppState, Language } from '../types';
 import { TRANSLATIONS } from '../constants';
-import { MapPin, Globe, Sparkles, Loader2 } from 'lucide-react';
+import { ChevronDown, Loader2 } from 'lucide-react';
 
 interface Country {
   id: number;
@@ -26,9 +25,10 @@ interface InputFormProps {
   state: AppState;
   onUpdate: (updates: Partial<AppState>) => void;
   onSubmit: () => void;
+  userName?: string;
 }
 
-export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit }) => {
+export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit, userName }) => {
   const t = TRANSLATIONS[state.language];
   const [countries, setCountries] = useState<Country[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
@@ -37,7 +37,6 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
   const [selectedRegionId, setSelectedRegionId] = useState<number | null>(null);
   const [loadingCountries, setLoadingCountries] = useState(true);
   const [loadingRegions, setLoadingRegions] = useState(false);
-
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,11 +52,9 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
           const data = await response.json();
           setCountries(data.countries || []);
         } else {
-          console.error('Countries API returned:', response.status, response.statusText);
           setFetchError(`無法載入目的地 (${response.status})`);
         }
       } catch (error) {
-        console.error('Failed to fetch countries:', error);
         setFetchError('網路連線錯誤，請重新整理頁面');
       } finally {
         setLoadingCountries(false);
@@ -136,83 +133,84 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
     onUpdate({ regionId: regionId });
   };
 
-  const selectedCountry = countries.find(c => c.id === selectedCountryId);
-  const selectedRegion = regions.find(r => r.id === selectedRegionId);
+  const getLevelLabel = () => {
+    if (state.language === 'zh-TW') return `${state.level} Stops`;
+    if (state.language === 'ja') return `${state.level} スポット`;
+    if (state.language === 'ko') return `${state.level} 스톱`;
+    return `${state.level} Stops`;
+  };
 
   return (
-    <div className="w-full max-w-md mx-auto p-4 space-y-6 mt-6">
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-black bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent tracking-tight">{t.appTitle}</h1>
-        <p className="text-slate-500 font-medium text-sm">{t.appSubtitle}</p>
+    <div className="w-full max-w-md mx-auto px-5 pt-8 pb-4">
+      <div className="text-center mb-8">
+        <h1 className="text-3xl font-black text-slate-800 tracking-tight">{t.appTitle}</h1>
+        {userName && (
+          <p className="text-slate-400 mt-2 text-sm">
+            {state.language === 'zh-TW' ? `歡迎回來, ${userName}` : `Welcome back, ${userName}`}
+          </p>
+        )}
       </div>
 
-      <div className="bg-white rounded-2xl p-5 shadow-lg shadow-slate-200/50 border border-slate-100 space-y-5">
-        {/* Country Selection */}
-        <div className="space-y-3">
-          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">{t.destination}</label>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-bold text-slate-700 mb-2">
+            {state.language === 'zh-TW' ? '選擇探索國家' : t.destination}
+          </label>
           <div className="relative">
-             <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-400" />
-             {loadingCountries ? (
-               <div className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl flex items-center">
-                 <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-                 <span className="ml-2 text-slate-400">{t.loading}</span>
-               </div>
-             ) : fetchError ? (
-               <div className="w-full pl-12 pr-4 py-4 bg-red-50 rounded-2xl flex items-center justify-between">
-                 <span className="text-red-500 text-sm">{fetchError}</span>
-                 <button 
-                   onClick={() => window.location.reload()} 
-                   className="text-xs bg-red-100 text-red-600 px-3 py-1 rounded-lg hover:bg-red-200"
-                 >
-                   重試
-                 </button>
-               </div>
-             ) : (
-               <select
-                 value={selectedCountryId || ''}
-                 onChange={(e) => handleCountryChange(e.target.value)}
-                 className="w-full pl-12 pr-10 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-indigo-200 appearance-none cursor-pointer"
-                 data-testid="select-country"
-               >
-                 <option value="" disabled>{t.selectDestination}</option>
-                 {countries.map(country => (
-                   <option key={country.id} value={country.id}>
-                     {getLocalizedName(country)}
-                   </option>
-                 ))}
-               </select>
-             )}
+            {loadingCountries ? (
+              <div className="w-full px-4 py-4 bg-slate-50 rounded-2xl flex items-center">
+                <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                <span className="ml-2 text-slate-400">{t.loading}</span>
+              </div>
+            ) : fetchError ? (
+              <div className="w-full px-4 py-4 bg-red-50 rounded-2xl flex items-center justify-between">
+                <span className="text-red-500 text-sm">{fetchError}</span>
+                <button 
+                  onClick={() => window.location.reload()} 
+                  className="text-xs bg-red-100 text-red-600 px-3 py-1 rounded-lg"
+                >
+                  重試
+                </button>
+              </div>
+            ) : (
+              <>
+                <select
+                  value={selectedCountryId || ''}
+                  onChange={(e) => handleCountryChange(e.target.value)}
+                  className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-200 appearance-none pr-12"
+                  data-testid="select-country"
+                >
+                  <option value="" disabled>
+                    {state.language === 'zh-TW' ? '請選擇國家' : t.selectDestination}
+                  </option>
+                  {countries.map(country => (
+                    <option key={country.id} value={country.id}>
+                      {getLocalizedName(country)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+              </>
+            )}
           </div>
         </div>
 
-        {/* City/County Selection */}
         {selectedCountryId && regions.length > 0 && (
-          <div className="space-y-3">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">
-              {state.language === 'zh-TW' && '選擇縣市'}
-              {state.language === 'en' && 'Select City/County'}
-              {state.language === 'ja' && '市区町村を選択'}
-              {state.language === 'ko' && '시/군 선택'}
-            </label>
-            <div className="relative">
-              <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-purple-400" />
-              {loadingRegions ? (
-                <div className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl flex items-center">
-                  <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-                  <span className="ml-2 text-slate-400">{t.loading}</span>
-                </div>
-              ) : (
+          <div className="relative">
+            {loadingRegions ? (
+              <div className="w-full px-4 py-4 bg-slate-50 rounded-2xl flex items-center">
+                <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+              </div>
+            ) : (
+              <>
                 <select
                   value={selectedRegionId || ''}
                   onChange={(e) => handleRegionChange(e.target.value ? parseInt(e.target.value) : null)}
-                  className="w-full pl-12 pr-10 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-bold focus:ring-2 focus:ring-purple-200"
+                  className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-200 appearance-none pr-12"
                   data-testid="select-region"
                 >
                   <option value="" disabled>
-                    {state.language === 'zh-TW' && '選擇縣市'}
-                    {state.language === 'en' && 'Select City/County'}
-                    {state.language === 'ja' && '市区町村を選択'}
-                    {state.language === 'ko' && '시/군 선택'}
+                    {state.language === 'zh-TW' ? '請選擇城市/地區' : 'Select City/Region'}
                   </option>
                   {regions.map(region => (
                     <option key={region.id} value={region.id}>
@@ -220,100 +218,62 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
                     </option>
                   ))}
                 </select>
-              )}
-            </div>
+                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+              </>
+            )}
           </div>
         )}
 
-        {/* Itinerary Length Slider */}
         {selectedCountryId && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between ml-1">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                {state.language === 'zh-TW' && '行程數量'}
-                {state.language === 'en' && 'Itinerary Length'}
-                {state.language === 'ja' && '行程の長さ'}
-                {state.language === 'ko' && '행정 길이'}
-              </label>
-              <motion.span 
-                key={state.level}
-                initial={{ scale: 1.3, color: '#4f46e5' }}
-                animate={{ scale: 1, color: '#4f46e5' }}
-                className="text-lg font-black text-indigo-600 tabular-nums" 
-                data-testid="text-level"
-              >
-                {state.level}
-              </motion.span>
+          <div className="pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-bold text-slate-700">
+                {state.language === 'zh-TW' ? '行程豐富度' : 'Itinerary Length'}
+              </span>
+              <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-sm font-bold" data-testid="text-level">
+                {getLevelLabel()}
+              </span>
             </div>
-            <div className="space-y-3">
-              <div className="relative h-10 flex items-center">
-                <div className="absolute inset-x-0 h-3 bg-slate-200 rounded-full overflow-hidden">
-                  <motion.div 
-                    className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
-                    initial={false}
-                    animate={{ width: `${((state.level - 5) / 7) * 100}%` }}
-                    transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                  />
-                </div>
-                <input
-                  type="range"
-                  min="5"
-                  max="12"
-                  value={state.level}
-                  onChange={(e) => onUpdate({ level: parseInt(e.target.value) })}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                  data-testid="slider-level"
-                />
-                <motion.div 
-                  className="absolute w-6 h-6 bg-white rounded-full shadow-lg border-2 border-indigo-500 pointer-events-none"
-                  initial={false}
-                  animate={{ left: `calc(${((state.level - 5) / 7) * 100}% - 12px)` }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-                  whileTap={{ scale: 1.2 }}
+            <div className="relative">
+              <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-indigo-500 rounded-full transition-all duration-200"
+                  style={{ width: `${((state.level - 5) / 7) * 100}%` }}
                 />
               </div>
-              <div className="flex justify-between px-1">
-                <span className="text-xs font-bold text-slate-500">
-                  {state.language === 'zh-TW' && '悠閒'}
-                  {state.language === 'en' && 'Relaxed'}
-                  {state.language === 'ja' && 'リラックス'}
-                  {state.language === 'ko' && '여유로운'}
-                </span>
-                <span className="text-xs font-bold text-slate-500">
-                  {state.language === 'zh-TW' && '標準'}
-                  {state.language === 'en' && 'Standard'}
-                  {state.language === 'ja' && '標準'}
-                  {state.language === 'ko' && '표준'}
-                </span>
-                <span className="text-xs font-bold text-slate-500">
-                  {state.language === 'zh-TW' && '充實'}
-                  {state.language === 'en' && 'Packed'}
-                  {state.language === 'ja' && '充実'}
-                  {state.language === 'ko' && '알찬'}
-                </span>
-              </div>
+              <input
+                type="range"
+                min="5"
+                max="12"
+                value={state.level}
+                onChange={(e) => onUpdate({ level: parseInt(e.target.value) })}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                data-testid="slider-level"
+              />
+              <div 
+                className="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-white rounded-full border-2 border-indigo-500 shadow-sm pointer-events-none transition-all duration-200"
+                style={{ left: `calc(${((state.level - 5) / 7) * 100}% - 10px)` }}
+              />
+            </div>
+            <div className="flex justify-between mt-2 text-xs text-slate-400">
+              <span>{state.language === 'zh-TW' ? '惬意 (5點)' : 'Relaxed (5)'}</span>
+              <span>{state.language === 'zh-TW' ? '極限 (12點)' : 'Packed (12)'}</span>
             </div>
           </div>
         )}
 
-        {/* Submit Button */}
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+        <button
           onClick={onSubmit}
           disabled={!selectedCountryId || districtCount === 0}
-          className={`w-full py-4 rounded-xl font-bold text-base shadow-lg transition-all ${
+          className={`w-full py-4 rounded-2xl font-bold text-base mt-4 transition-all ${
             !selectedCountryId || districtCount === 0
               ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-indigo-200 hover:shadow-indigo-300 hover:opacity-95'
+              : 'bg-slate-200 text-slate-600 hover:bg-slate-300 active:scale-[0.98]'
           }`}
           data-testid="button-start-gacha"
         >
-          <span className="flex items-center justify-center gap-2">
-            <Sparkles className="w-5 h-5" />
-            {t.startGacha}
-          </span>
-        </motion.button>
+          {state.language === 'zh-TW' ? '開始探索' : t.startGacha}
+        </button>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import React from 'react';
 import { AppView, Language } from '../types';
-import { Home, Compass, User, Archive } from 'lucide-react';
+import { Compass, BookOpen, Package } from 'lucide-react';
 import { TRANSLATIONS } from '../constants';
 
 interface BottomNavProps {
@@ -13,8 +13,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onChange, lan
   const t = TRANSLATIONS[language];
   const navItems: { id: AppView, icon: React.FC<any>, label: string }[] = [
     { id: 'home', icon: Compass, label: t.navGacha },
-    { id: 'collection', icon: Archive, label: t.navCollection },
-    { id: 'item_box', icon: User, label: t.navMyBox }, 
+    { id: 'collection', icon: BookOpen, label: t.navCollection },
+    { id: 'item_box', icon: Package, label: t.navMyBox }, 
   ];
 
   const handleMerchant = () => {
@@ -26,40 +26,62 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onChange, lan
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-slate-100 pb-safe-bottom z-40 max-w-md mx-auto shadow-lg shadow-slate-200/30">
-      <div className="flex justify-around items-center h-16 px-2">
-        {navItems.map(item => {
+    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 pb-safe-bottom z-40 max-w-md mx-auto">
+      <div className="flex justify-around items-end h-20 px-4">
+        {navItems.map((item, idx) => {
           const isActive = currentView === item.id || (item.id === 'home' && currentView === 'result');
           const Icon = item.icon;
+          const isCenter = idx === 1;
+          
+          if (isCenter) {
+            return (
+              <button
+                key={item.id}
+                onClick={() => onChange(item.id)}
+                className="flex flex-col items-center -mt-4"
+                data-testid={`nav-${item.id}`}
+              >
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-all ${
+                  isActive 
+                    ? 'bg-indigo-600 text-white' 
+                    : 'bg-slate-100 text-slate-500'
+                }`}>
+                  <Icon className="w-6 h-6" strokeWidth={2} />
+                </div>
+                <span className={`text-xs font-bold mt-1.5 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
+                  {item.label}
+                </span>
+              </button>
+            );
+          }
+          
           return (
             <button
               key={item.id}
               onClick={() => onChange(item.id)}
-              className={`flex flex-col items-center justify-center w-16 h-full transition-all ${
-                isActive ? 'text-indigo-600 scale-105' : 'text-slate-400 hover:text-slate-600'
-              }`}
+              className="flex flex-col items-center justify-center pb-2"
               data-testid={`nav-${item.id}`}
             >
-              <div className={`p-1.5 rounded-xl transition-colors ${isActive ? 'bg-indigo-50' : ''}`}>
-                <Icon className={`w-5 h-5 ${isActive ? '' : ''}`} strokeWidth={isActive ? 2.5 : 2} />
-              </div>
-              <span className="text-[10px] font-bold mt-0.5">{item.label}</span>
+              <Icon 
+                className={`w-6 h-6 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} 
+                strokeWidth={isActive ? 2.5 : 2} 
+              />
+              <span className={`text-xs font-medium mt-1 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`}>
+                {item.label}
+              </span>
             </button>
           );
         })}
         
-        {/* Merchant Toggle */}
         <button
            onClick={handleMerchant}
-           className={`flex flex-col items-center justify-center w-16 h-full transition-all ${
-             currentView.startsWith('merchant') ? 'text-indigo-600 scale-105' : 'text-slate-300 hover:text-slate-500'
-           }`}
+           className="flex flex-col items-center justify-center pb-2"
            data-testid="nav-merchant"
         >
-          <div className={`p-1.5 rounded-xl transition-colors ${currentView.startsWith('merchant') ? 'bg-indigo-50' : ''}`}>
-            <StoreIcon className={`w-5 h-5`} />
-          </div>
-          <span className="text-[10px] font-bold mt-0.5">{t.navStore}</span>
+          <StoreIcon className={`w-6 h-6 ${currentView.startsWith('merchant') ? 'text-indigo-600' : 'text-slate-300'}`} />
+          <span className={`text-xs font-medium mt-1 ${currentView.startsWith('merchant') ? 'text-indigo-600' : 'text-slate-300'}`}>
+            {t.navStore}
+          </span>
         </button>
       </div>
     </nav>
