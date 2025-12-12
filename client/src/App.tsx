@@ -20,7 +20,17 @@ const STORAGE_KEYS = {
   MERCHANT_DB: 'mibu_merchant_db',
   MERCHANT_PROFILE: 'mibu_merchant_profile_v3', 
   DAILY_LIMIT: 'mibu_daily_limit',
-  GUEST_ID: 'mibu_guest_id'
+  GUEST_ID: 'mibu_guest_id',
+  SELECTED_ROLE: 'mibu_selected_role'
+};
+
+const getViewForRole = (role: string): 'mibu_home' | 'merchant_dashboard' | 'agent_dashboard' | 'admin_dashboard' => {
+  switch (role) {
+    case 'merchant': return 'merchant_dashboard';
+    case 'agent': return 'agent_dashboard';
+    case 'admin': return 'admin_dashboard';
+    default: return 'mibu_home';
+  }
 };
 
 const generateGuestId = () => `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -66,12 +76,14 @@ const App: React.FC = () => {
 
   const t = TRANSLATIONS[state.language] as any;
 
-  // Sync Replit Auth user to state and redirect from login
+  // Sync Replit Auth user to state and redirect from login based on selected role
   useEffect(() => {
     if (user) {
+      const savedRole = localStorage.getItem(STORAGE_KEYS.SELECTED_ROLE) || 'consumer';
+      const targetView = getViewForRole(savedRole);
       setState(prev => ({
         ...prev,
-        view: prev.view === 'login' ? 'mibu_home' : prev.view,
+        view: prev.view === 'login' ? targetView : prev.view,
         user: {
           id: user.id,
           name: user.firstName || user.email || 'User',
@@ -589,8 +601,11 @@ const App: React.FC = () => {
             
             {/* 登入區塊 */}
             <div className="w-full max-w-sm space-y-4">
-              <a
-                href="/api/login"
+              <button
+                onClick={() => {
+                  localStorage.setItem(STORAGE_KEYS.SELECTED_ROLE, selectedRole);
+                  window.location.href = '/api/login';
+                }}
                 className={`flex items-center justify-center gap-2 w-full font-bold py-4 rounded-2xl transition-colors shadow-lg ${
                   selectedRole === 'consumer' ? 'bg-indigo-500 hover:bg-indigo-600 text-white' :
                   selectedRole === 'merchant' ? 'bg-emerald-500 hover:bg-emerald-600 text-white' :
@@ -601,7 +616,7 @@ const App: React.FC = () => {
               >
                 <LogIn className="w-5 h-5" />
                 {t.loginWithGoogle || 'Google 登入'}
-              </a>
+              </button>
               
               {selectedRole === 'consumer' && (
                 <button
@@ -779,6 +794,142 @@ const App: React.FC = () => {
             onClaim={handleMerchantClaim}
             isAuthenticated={isAuthenticated}
           />
+        )}
+
+        {state.view === 'agent_dashboard' && (
+          <div className="space-y-6 pb-24">
+            <ModuleHeader 
+              onBack={() => setState(prev => ({ ...prev, view: 'login' }))} 
+              language={state.language} 
+            />
+            
+            <div className="text-center py-8">
+              <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-3xl">👤</span>
+              </div>
+              <h1 className="text-2xl font-bold text-slate-800 mb-2">{t.agentDashboard || '專員後台'}</h1>
+              <p className="text-slate-500">{t.agentWelcome || '歡迎回來，專員'}</p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center">
+                <div className="text-3xl font-bold text-purple-600 mb-1">128</div>
+                <div className="text-sm text-slate-500">{t.pendingTasks || '待處理任務'}</div>
+              </div>
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center">
+                <div className="text-3xl font-bold text-emerald-600 mb-1">45</div>
+                <div className="text-sm text-slate-500">{t.completedToday || '今日完成'}</div>
+              </div>
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center">
+                <div className="text-3xl font-bold text-amber-600 mb-1">12</div>
+                <div className="text-sm text-slate-500">{t.merchantReviews || '商家審核'}</div>
+              </div>
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center">
+                <div className="text-3xl font-bold text-indigo-600 mb-1">89%</div>
+                <div className="text-sm text-slate-500">{t.satisfactionRate || '滿意度'}</div>
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <h3 className="font-bold text-slate-800 mb-4">{t.recentTasks || '近期任務'}</h3>
+              <div className="space-y-3">
+                {[
+                  { title: '審核商家申請 - 阿里山茶園', status: 'pending', time: '10 分鐘前' },
+                  { title: '處理用戶反饋 - 行程建議', status: 'processing', time: '30 分鐘前' },
+                  { title: '更新景點資料 - 日月潭', status: 'completed', time: '1 小時前' },
+                ].map((task, i) => (
+                  <div key={i} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">{task.title}</p>
+                      <p className="text-xs text-slate-400">{task.time}</p>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      task.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                      task.status === 'processing' ? 'bg-blue-100 text-blue-700' :
+                      'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {task.status === 'pending' ? '待處理' : task.status === 'processing' ? '處理中' : '已完成'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {state.view === 'admin_dashboard' && (
+          <div className="space-y-6 pb-24">
+            <ModuleHeader 
+              onBack={() => setState(prev => ({ ...prev, view: 'login' }))} 
+              language={state.language} 
+            />
+            
+            <div className="text-center py-8">
+              <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-3xl">⚙️</span>
+              </div>
+              <h1 className="text-2xl font-bold text-slate-800 mb-2">{t.adminDashboard || '管理後台'}</h1>
+              <p className="text-slate-500">{t.adminWelcome || '系統管理中心'}</p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center">
+                <div className="text-3xl font-bold text-indigo-600 mb-1">15,234</div>
+                <div className="text-sm text-slate-500">{t.totalUsers || '總用戶數'}</div>
+              </div>
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center">
+                <div className="text-3xl font-bold text-emerald-600 mb-1">892</div>
+                <div className="text-sm text-slate-500">{t.totalMerchants || '合作商家'}</div>
+              </div>
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center">
+                <div className="text-3xl font-bold text-purple-600 mb-1">24</div>
+                <div className="text-sm text-slate-500">{t.totalAgents || '專員人數'}</div>
+              </div>
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center">
+                <div className="text-3xl font-bold text-amber-600 mb-1">98.5%</div>
+                <div className="text-sm text-slate-500">{t.systemUptime || '系統穩定度'}</div>
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <h3 className="font-bold text-slate-800 mb-4">{t.quickActions || '快速操作'}</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <button className="p-4 bg-indigo-50 rounded-xl text-indigo-700 font-medium text-sm hover:bg-indigo-100 transition-colors">
+                  {t.manageUsers || '用戶管理'}
+                </button>
+                <button className="p-4 bg-emerald-50 rounded-xl text-emerald-700 font-medium text-sm hover:bg-emerald-100 transition-colors">
+                  {t.manageMerchants || '商家管理'}
+                </button>
+                <button className="p-4 bg-purple-50 rounded-xl text-purple-700 font-medium text-sm hover:bg-purple-100 transition-colors">
+                  {t.manageAgents || '專員管理'}
+                </button>
+                <button className="p-4 bg-amber-50 rounded-xl text-amber-700 font-medium text-sm hover:bg-amber-100 transition-colors">
+                  {t.systemSettings || '系統設定'}
+                </button>
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <h3 className="font-bold text-slate-800 mb-4">{t.systemLogs || '系統日誌'}</h3>
+              <div className="space-y-2 text-sm font-mono">
+                {[
+                  { level: 'info', msg: '用戶 user_12345 登入成功', time: '14:32:01' },
+                  { level: 'warn', msg: 'API 請求超時 - /api/gacha', time: '14:28:45' },
+                  { level: 'info', msg: '商家 merchant_789 資料更新', time: '14:25:12' },
+                  { level: 'error', msg: '支付處理失敗 - session_abc', time: '14:20:33' },
+                ].map((log, i) => (
+                  <div key={i} className="flex items-center gap-2 py-1">
+                    <span className={`w-2 h-2 rounded-full ${
+                      log.level === 'info' ? 'bg-blue-500' :
+                      log.level === 'warn' ? 'bg-amber-500' : 'bg-red-500'
+                    }`}></span>
+                    <span className="text-slate-400">[{log.time}]</span>
+                    <span className="text-slate-700">{log.msg}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
 
         {state.view === 'settings' && (
