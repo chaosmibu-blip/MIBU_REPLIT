@@ -6,7 +6,6 @@ import { GachaScene } from './components/GachaScene';
 import { ResultList } from './components/ResultList';
 import { CollectionGrid } from './components/CollectionGrid';
 import { ItemBox } from './components/ItemBox';
-import { SideNav } from './components/SideNav';
 import { ModuleHeader, GachaModuleNav, PlannerModuleNav } from './components/ModuleNav';
 import { CouponCelebration } from './components/CouponCelebration';
 import { MerchantDashboard } from './components/MerchantDashboard';
@@ -480,7 +479,7 @@ const App: React.FC = () => {
 
       {state.loading && <GachaScene language={state.language} />}
 
-      <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-4 md:mr-20 pb-24 md:pb-4">
+      <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-4">
         {/* Mibu Home */}
         {state.view === 'mibu_home' && (
           <div className="space-y-6">
@@ -507,13 +506,21 @@ const App: React.FC = () => {
                 <h2 className="text-xl font-bold mb-1">{t.navPlannerModule || '旅程策劃'}</h2>
                 <p className="text-white/80 text-sm">規劃你的完美旅程</p>
               </button>
+              
+              <button
+                onClick={() => handleViewChange('settings')}
+                className="bg-slate-100 text-slate-700 p-4 rounded-2xl text-left hover:bg-slate-200 transition-all"
+                data-testid="button-settings"
+              >
+                <h2 className="text-lg font-medium">{t.navSettings || '設定'}</h2>
+              </button>
             </div>
           </div>
         )}
 
         {/* Gacha Module */}
         {state.view === 'gacha_module' && (
-          <div>
+          <div className="pb-24">
             <ModuleHeader 
               title={t.navGachaModule || '行程扭蛋'} 
               onBack={handleBackToHome} 
@@ -546,7 +553,7 @@ const App: React.FC = () => {
 
         {/* Planner Module */}
         {state.view === 'planner_module' && (
-          <div>
+          <div className="pb-24">
             <ModuleHeader 
               title={t.navPlannerModule || '旅程策劃'} 
               onBack={handleBackToHome} 
@@ -582,7 +589,7 @@ const App: React.FC = () => {
 
         {/* Result view - stays in gacha module context */}
         {state.view === 'result' && state.result && (
-          <div>
+          <div className="pb-24">
             <ModuleHeader 
               title={t.navGachaModule || '行程扭蛋'} 
               onBack={handleBackToHome} 
@@ -623,7 +630,11 @@ const App: React.FC = () => {
 
         {state.view === 'settings' && (
           <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-slate-800">{t.navSettings}</h1>
+            <ModuleHeader 
+              title={t.navSettings || '設定'} 
+              onBack={handleBackToHome} 
+              language={state.language} 
+            />
             
             <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
               {([
@@ -746,11 +757,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <SideNav 
-        currentView={state.view} 
-        onChange={handleViewChange}
-        language={state.language}
-      />
     </div>
   );
 };
