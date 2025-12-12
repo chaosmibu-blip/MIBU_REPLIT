@@ -511,6 +511,93 @@ const App: React.FC = () => {
             onNavigateHome={() => setState(prev => ({ ...prev, view: 'home' }))}
           />
         )}
+
+        {state.view === 'settings' && (
+          <div className="space-y-6">
+            <h1 className="text-2xl font-bold text-slate-800">{t.navSettings}</h1>
+            
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-700 font-medium">{t.language || '語言'}</span>
+                <div className="flex gap-2">
+                  {(['zh-TW', 'en', 'ja', 'ko'] as Language[]).map(lang => (
+                    <button
+                      key={lang}
+                      onClick={() => setState(p => ({ ...p, language: lang }))}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                        state.language === lang 
+                          ? 'bg-indigo-500 text-white' 
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                      data-testid={`button-lang-${lang}`}
+                    >
+                      {lang === 'zh-TW' ? '繁中' : lang === 'en' ? 'EN' : lang === 'ja' ? '日本語' : '한국어'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {isAuthenticated && user && (
+                <div className="pt-4 border-t border-slate-100">
+                  <div className="flex items-center gap-3 mb-4">
+                    {user.profileImageUrl && (
+                      <img src={user.profileImageUrl} alt="" className="w-10 h-10 rounded-full" />
+                    )}
+                    <div>
+                      <p className="font-medium text-slate-800">{user.firstName || user.email}</p>
+                      <p className="text-sm text-slate-500">{user.email}</p>
+                    </div>
+                  </div>
+                  <a 
+                    href="/api/logout" 
+                    className="flex items-center gap-2 text-red-500 hover:text-red-600 text-sm font-medium"
+                    data-testid="button-logout"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    {t.logout || '登出'}
+                  </a>
+                </div>
+              )}
+
+              {!isAuthenticated && (
+                <div className="pt-4 border-t border-slate-100">
+                  <a 
+                    href="/api/login" 
+                    className="flex items-center gap-2 text-indigo-500 hover:text-indigo-600 font-medium"
+                    data-testid="button-login-settings"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    {t.login}
+                  </a>
+                </div>
+              )}
+
+              <div className="pt-4 border-t border-slate-100">
+                <button
+                  onClick={() => setState(p => ({ ...p, view: 'collection' }))}
+                  className="w-full text-left py-2 text-slate-700 hover:text-indigo-600"
+                  data-testid="link-collection"
+                >
+                  📚 {t.navCollection}
+                </button>
+                <button
+                  onClick={() => setState(p => ({ ...p, view: 'item_box' }))}
+                  className="w-full text-left py-2 text-slate-700 hover:text-indigo-600"
+                  data-testid="link-itembox"
+                >
+                  📦 {t.navMyBox}
+                </button>
+                <button
+                  onClick={() => setState(p => ({ ...p, view: 'merchant_login' }))}
+                  className="w-full text-left py-2 text-slate-700 hover:text-indigo-600"
+                  data-testid="link-merchant"
+                >
+                  🏪 {t.navStore}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       <SideNav 

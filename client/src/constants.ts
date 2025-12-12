@@ -118,6 +118,7 @@ export const TRANSLATIONS = {
     navCollection: '圖鑑',
     navMyBox: '道具箱',
     navStore: '商家',
+    navSettings: '設定',
     // Merchant
     merchantAccess: '商家登入',
     manageStore: '管理您的商店',
@@ -184,6 +185,7 @@ export const TRANSLATIONS = {
     navCollection: 'Collection',
     navMyBox: 'My Box',
     navStore: 'Store',
+    navSettings: 'Settings',
     // Merchant
     merchantAccess: 'Merchant Access',
     manageStore: 'Manage your store presence',
@@ -250,6 +252,7 @@ export const TRANSLATIONS = {
     navCollection: '図鑑',
     navMyBox: '道具箱',
     navStore: '店舗',
+    navSettings: '設定',
     // Merchant
     merchantAccess: '店舗ログイン',
     manageStore: '店舗情報の管理',
@@ -316,6 +319,7 @@ export const TRANSLATIONS = {
     navCollection: '도감',
     navMyBox: '보관함',
     navStore: '스토어',
+    navSettings: '설정',
     // Merchant
     merchantAccess: '판매자 로그인',
     manageStore: '스토어 관리',
