@@ -1,6 +1,6 @@
 import React from 'react';
 import { AppView, Language } from '../types';
-import { Compass, BookOpen, Package } from 'lucide-react';
+import { Compass, BookOpen, Package, Map } from 'lucide-react';
 import { TRANSLATIONS } from '../constants';
 
 interface BottomNavProps {
@@ -13,6 +13,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onChange, lan
   const t = TRANSLATIONS[language];
   const navItems: { id: AppView, icon: React.FC<any>, label: string }[] = [
     { id: 'home', icon: Compass, label: t.navGacha },
+    { id: 'trip_planner', icon: Map, label: t.navPlanner || '策劃師' },
     { id: 'collection', icon: BookOpen, label: t.navCollection },
     { id: 'item_box', icon: Package, label: t.navMyBox }, 
   ];

@@ -9,6 +9,7 @@ import { ItemBox } from './components/ItemBox';
 import { BottomNav } from './components/BottomNav';
 import { CouponCelebration } from './components/CouponCelebration';
 import { MerchantDashboard } from './components/MerchantDashboard';
+import { TripPlanner } from '../../modules/trip-planner/client';
 import { DEFAULT_LEVEL, TRANSLATIONS, MAX_DAILY_GENERATIONS } from './constants';
 import { Globe, LogIn, LogOut } from 'lucide-react';
 
@@ -500,6 +501,14 @@ const App: React.FC = () => {
             onUpdateMerchant={handleMerchantUpdate}
             onClaim={handleMerchantClaim}
             isAuthenticated={isAuthenticated}
+          />
+        )}
+
+        {state.view === 'trip_planner' && (
+          <TripPlanner
+            userId={user?.id}
+            isAuthenticated={isAuthenticated}
+            onNavigateHome={() => setState(prev => ({ ...prev, view: 'home' }))}
           />
         )}
       </main>

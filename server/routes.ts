@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema } from "@shared/schema";
 import { z } from "zod";
+import { createTripPlannerRoutes } from "../modules/trip-planner/server/routes";
 
 const RECUR_API_URL = "https://api.recur.tw/v1";
 const RECUR_PREMIUM_PLAN_ID = "adkwbl9dya0wc6b53parl9yk";
@@ -165,6 +166,10 @@ async function callGemini(prompt: string): Promise<string> {
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth
   await setupAuth(app);
+
+  // ============ Module Routes ============
+  // Trip Planner Module
+  app.use('/api/planner', createTripPlannerRoutes());
 
   // ============ Auth Routes ============
   

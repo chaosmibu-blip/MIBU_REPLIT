@@ -121,7 +121,7 @@ export interface LocationData {
   };
 }
 
-export type AppView = 'home' | 'result' | 'collection' | 'item_box' | 'merchant_login' | 'merchant_dashboard';
+export type AppView = 'home' | 'result' | 'collection' | 'item_box' | 'merchant_login' | 'merchant_dashboard' | 'trip_planner';
 
 export interface AppState {
   language: Language;

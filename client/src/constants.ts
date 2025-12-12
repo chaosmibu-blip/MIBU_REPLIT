@@ -114,6 +114,7 @@ export const TRANSLATIONS = {
     collectReward: '領取獎勵',
     // Nav
     navGacha: '扭蛋',
+    navPlanner: '策劃師',
     navCollection: '圖鑑',
     navMyBox: '道具箱',
     navStore: '商家',
@@ -179,6 +180,7 @@ export const TRANSLATIONS = {
     collectReward: 'Collect Reward',
     // Nav
     navGacha: 'Gacha',
+    navPlanner: 'Planner',
     navCollection: 'Collection',
     navMyBox: 'My Box',
     navStore: 'Store',
@@ -244,6 +246,7 @@ export const TRANSLATIONS = {
     collectReward: '報酬を受け取る',
     // Nav
     navGacha: 'ガチャ',
+    navPlanner: 'プランナー',
     navCollection: '図鑑',
     navMyBox: '道具箱',
     navStore: '店舗',
@@ -309,6 +312,7 @@ export const TRANSLATIONS = {
     collectReward: '보상 받기',
     // Nav
     navGacha: '가챠',
+    navPlanner: '플래너',
     navCollection: '도감',
     navMyBox: '보관함',
     navStore: '스토어',
