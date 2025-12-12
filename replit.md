@@ -8,6 +8,12 @@ Mibu Travel Gacha is a Progressive Web App (PWA) that combines travel planning w
 
 Preferred communication style: Simple, everyday language.
 
+**修改說明規範 (Added 2025-12-12)**:
+每次進行程式碼修改時，必須說明：
+1. 修改了什麼 - 具體更動的檔案和程式碼
+2. 修改的邏輯說明 - 為什麼要這樣修改
+3. 修改後的結果 - 預期的效果和實際運行結果
+
 ## System Architecture
 
 ### Frontend Architecture
