@@ -1213,11 +1213,16 @@ ${uncachedSkeleton.map((item, idx) => `  {
       
       if (data.status === 'OK' && data.results && data.results.length > 0) {
         // === HARDCODED: Select from top 10 results with 1/N probability ===
-        // Filter to valid results (in correct district, not generic placeholder names)
+        // Filter to valid results (in correct district, not closed, not generic placeholder names)
         const genericPlaceholderPatterns = ['探索', '旅行社', '服務中心', '遊客中心', '資訊站'];
         const validResults = data.results.slice(0, 10).filter((place: any) => {
           const address = place.formatted_address || '';
           const name = place.name || '';
+          
+          // Must not be closed (permanently or temporarily)
+          if (!isPlaceValid(place)) {
+            return false;
+          }
           
           // Must be in correct district
           const isInDistrict = address.includes(regionNameZh) && address.includes(districtNameZh);
