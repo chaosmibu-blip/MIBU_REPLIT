@@ -47,7 +47,7 @@ const App: React.FC = () => {
 
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<'consumer' | 'merchant' | 'admin'>('consumer');
+  const [selectedRole, setSelectedRole] = useState<'consumer' | 'merchant' | 'agent' | 'admin'>('consumer');
   const [gachaSubView, setGachaSubViewRaw] = useState<GachaSubView>('gacha');
   const [plannerSubView, setPlannerSubView] = useState<PlannerSubView>('itinerary');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('mibu');
@@ -566,6 +566,13 @@ const App: React.FC = () => {
                   {t.roleMerchant || '企業端'}
                 </button>
                 <button
+                  onClick={() => { setSelectedRole('agent'); setShowRoleMenu(false); }}
+                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium ${selectedRole === 'agent' ? 'text-purple-600 bg-purple-50' : 'text-slate-700'}`}
+                  data-testid="role-agent"
+                >
+                  {t.roleAgent || '專員端'}
+                </button>
+                <button
                   onClick={() => { setSelectedRole('admin'); setShowRoleMenu(false); }}
                   className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium ${selectedRole === 'admin' ? 'text-amber-600 bg-amber-50' : 'text-slate-700'}`}
                   data-testid="role-admin"
@@ -587,6 +594,7 @@ const App: React.FC = () => {
                 className={`flex items-center justify-center gap-2 w-full font-bold py-4 rounded-2xl transition-colors shadow-lg ${
                   selectedRole === 'consumer' ? 'bg-indigo-500 hover:bg-indigo-600 text-white' :
                   selectedRole === 'merchant' ? 'bg-emerald-500 hover:bg-emerald-600 text-white' :
+                  selectedRole === 'agent' ? 'bg-purple-500 hover:bg-purple-600 text-white' :
                   'bg-amber-500 hover:bg-amber-600 text-white'
                 }`}
                 data-testid="button-google-login"
