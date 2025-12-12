@@ -1375,10 +1375,10 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const usedPlaceNames: string[] = [];
       const usedSubcategoryIds: Set<number> = new Set();
 
-      // Set a deadline for generation (20 seconds max)
+      // Set a deadline for generation (45 seconds max for larger requests)
       const startTime = Date.now();
-      const DEADLINE_MS = 20000;
-      const MAX_AI_CALLS = Math.min(itemCount, 6); // Limit AI calls to prevent timeout
+      const DEADLINE_MS = 45000;
+      const MAX_AI_CALLS = Math.min(itemCount, 12); // Allow up to 12 AI calls
       let aiCallCount = 0;
 
       // Process subcategories with timeout awareness
