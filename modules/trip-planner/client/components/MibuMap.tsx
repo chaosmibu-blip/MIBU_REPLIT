@@ -45,66 +45,82 @@ export const MibuMap: React.FC<MibuMapProps> = ({
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!mapContainer.current) return;
+    if (map.current) return;
 
     const accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
     if (!accessToken) {
+      setMapError('地圖服務未設定');
       console.error('Mapbox access token not found');
       return;
     }
 
-    mapboxgl.accessToken = accessToken;
+    try {
+      mapboxgl.accessToken = accessToken;
 
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/light-v11',
-      center: center,
-      zoom: zoom,
-      attributionControl: false,
-    });
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: 'mapbox://styles/mapbox/light-v11',
+        center: center,
+        zoom: zoom,
+        attributionControl: false,
+      });
 
-    map.current.addControl(
-      new mapboxgl.AttributionControl({ compact: true }),
-      'bottom-left'
-    );
+      map.current.addControl(
+        new mapboxgl.AttributionControl({ compact: true }),
+        'bottom-left'
+      );
 
-    map.current.on('load', () => {
-      if (!map.current) return;
+      map.current.on('load', () => {
+        setMapLoaded(true);
+        if (!map.current) return;
 
-      try {
-        map.current.setPaintProperty('water', 'fill-color', MIBU_BRAND_COLORS.water);
-      } catch (e) {}
-      
-      try {
-        map.current.setPaintProperty('background', 'background-color', MIBU_BRAND_COLORS.land);
-      } catch (e) {}
-      
-      try {
-        map.current.setPaintProperty('landuse', 'fill-color', MIBU_BRAND_COLORS.land);
-      } catch (e) {}
-      
-      try {
-        map.current.setPaintProperty('landcover', 'fill-color', MIBU_BRAND_COLORS.land);
-      } catch (e) {}
-      
-      try {
-        map.current.setPaintProperty('building', 'fill-color', MIBU_BRAND_COLORS.building);
-      } catch (e) {}
-      
-      try {
-        const roadLayers = ['road-street', 'road-minor', 'road-primary', 'road-secondary-tertiary', 'road-motorway-trunk'];
-        roadLayers.forEach(layer => {
-          try {
-            map.current?.setPaintProperty(layer, 'line-color', MIBU_BRAND_COLORS.road);
-          } catch (e) {}
-        });
-      } catch (e) {}
-    });
+        try {
+          map.current.setPaintProperty('water', 'fill-color', MIBU_BRAND_COLORS.water);
+        } catch (e) {}
+        
+        try {
+          map.current.setPaintProperty('background', 'background-color', MIBU_BRAND_COLORS.land);
+        } catch (e) {}
+        
+        try {
+          map.current.setPaintProperty('landuse', 'fill-color', MIBU_BRAND_COLORS.land);
+        } catch (e) {}
+        
+        try {
+          map.current.setPaintProperty('landcover', 'fill-color', MIBU_BRAND_COLORS.land);
+        } catch (e) {}
+        
+        try {
+          map.current.setPaintProperty('building', 'fill-color', MIBU_BRAND_COLORS.building);
+        } catch (e) {}
+        
+        try {
+          const roadLayers = ['road-street', 'road-minor', 'road-primary', 'road-secondary-tertiary', 'road-motorway-trunk'];
+          roadLayers.forEach(layer => {
+            try {
+              map.current?.setPaintProperty(layer, 'line-color', MIBU_BRAND_COLORS.road);
+            } catch (e) {}
+          });
+        } catch (e) {}
+      });
+
+      map.current.on('error', (e) => {
+        console.error('Map error:', e);
+        setMapError('地圖載入失敗');
+      });
+    } catch (err) {
+      console.error('Failed to initialize map:', err);
+      setMapError('地圖初始化失敗');
+    }
 
     return () => {
       map.current?.remove();
+      map.current = null;
     };
   }, []);
 
@@ -232,11 +248,29 @@ export const MibuMap: React.FC<MibuMapProps> = ({
         style={{ backgroundColor: MIBU_BRAND_COLORS.background }}
       />
 
-      {showUserLocation && (
+      {!mapLoaded && !mapError && (
+        <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: MIBU_BRAND_COLORS.background }}>
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" style={{ color: MIBU_BRAND_COLORS.primary }} />
+            <p className="text-sm" style={{ color: MIBU_BRAND_COLORS.accent }}>載入地圖中...</p>
+          </div>
+        </div>
+      )}
+
+      {mapError && (
+        <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: MIBU_BRAND_COLORS.background }}>
+          <div className="text-center p-4">
+            <MapPin className="w-8 h-8 mx-auto mb-2" style={{ color: MIBU_BRAND_COLORS.primary }} />
+            <p className="text-sm font-medium" style={{ color: MIBU_BRAND_COLORS.accent }}>{mapError}</p>
+          </div>
+        </div>
+      )}
+
+      {showUserLocation && mapLoaded && (
         <button
           onClick={getCurrentLocation}
           disabled={isLocating}
-          className="absolute bottom-4 right-4 p-3 bg-white rounded-full shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
+          className="absolute bottom-4 right-4 p-3 bg-white rounded-full shadow-lg hover:shadow-xl transition-all disabled:opacity-50 z-10"
           style={{ border: `2px solid ${MIBU_BRAND_COLORS.primary}` }}
           data-testid="button-locate-me"
         >
@@ -250,7 +284,7 @@ export const MibuMap: React.FC<MibuMapProps> = ({
 
       {locationError && (
         <div
-          className="absolute top-4 left-4 right-4 p-3 rounded-lg text-sm"
+          className="absolute top-4 left-4 right-4 p-3 rounded-lg text-sm z-10"
           style={{
             backgroundColor: MIBU_BRAND_COLORS.background,
             color: MIBU_BRAND_COLORS.accent,
@@ -261,9 +295,9 @@ export const MibuMap: React.FC<MibuMapProps> = ({
         </div>
       )}
 
-      {userLocation && (
+      {userLocation && mapLoaded && (
         <div
-          className="absolute top-4 left-4 px-3 py-2 rounded-lg text-xs"
+          className="absolute top-4 left-4 px-3 py-2 rounded-lg text-xs z-10"
           style={{
             backgroundColor: MIBU_BRAND_COLORS.background,
             color: MIBU_BRAND_COLORS.accent,
