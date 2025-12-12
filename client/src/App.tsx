@@ -458,7 +458,7 @@ const App: React.FC = () => {
 
       {state.loading && <GachaScene language={state.language} />}
 
-      <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-4 md:pr-20 pb-24 md:pb-4">
+      <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-4 md:mr-20 pb-24 md:pb-4">
         {state.view === 'home' && !state.result && (
           <InputForm 
             state={state}
