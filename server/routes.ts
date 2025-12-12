@@ -1421,8 +1421,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
           let merchantLink = null;
           
           // First try matching by Google Place ID (more accurate)
-          if (result.place?.placeId) {
-            merchantLink = await storage.getPlaceLinkByGooglePlaceId(result.place.placeId);
+          if (result.place?.place_id) {
+            merchantLink = await storage.getPlaceLinkByGooglePlaceId(result.place.place_id);
           }
           
           // Fallback to name/district/city matching
