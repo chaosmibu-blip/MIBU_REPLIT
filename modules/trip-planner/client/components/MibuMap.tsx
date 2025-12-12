@@ -46,6 +46,81 @@ export const MibuMap: React.FC<MibuMapProps> = ({
   const [mapError, setMapError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
+  const updateUserMarker = (lng: number, lat: number, shouldFlyTo: boolean = true) => {
+    if (!map.current) return;
+
+    if (userMarkerRef.current) {
+      userMarkerRef.current.remove();
+    }
+
+    const el = document.createElement('div');
+    el.style.width = '16px';
+    el.style.height = '16px';
+    el.style.backgroundColor = '#3B82F6';
+    el.style.border = '3px solid white';
+    el.style.borderRadius = '50%';
+    el.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.3), 0 2px 8px rgba(0,0,0,0.3)';
+
+    userMarkerRef.current = new mapboxgl.Marker(el)
+      .setLngLat([lng, lat])
+      .addTo(map.current);
+
+    if (shouldFlyTo) {
+      map.current.flyTo({
+        center: [lng, lat],
+        zoom: 15,
+        duration: 1000,
+      });
+    }
+  };
+
+  const getCurrentLocation = (shouldFlyTo: boolean = true) => {
+    if (!navigator.geolocation) {
+      setLocationError('您的瀏覽器不支援定位功能');
+      return;
+    }
+
+    setIsLocating(true);
+    setLocationError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setUserLocation([longitude, latitude]);
+        setIsLocating(false);
+        
+        if (map.current && mapLoaded) {
+          updateUserMarker(longitude, latitude, shouldFlyTo);
+        }
+        
+        if (onLocationUpdate) {
+          onLocationUpdate({ lat: latitude, lng: longitude });
+        }
+      },
+      (error) => {
+        setIsLocating(false);
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            setLocationError('請允許存取您的位置');
+            break;
+          case error.POSITION_UNAVAILABLE:
+            setLocationError('無法取得位置資訊');
+            break;
+          case error.TIMEOUT:
+            setLocationError('定位逾時，請重試');
+            break;
+          default:
+            setLocationError('定位失敗');
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000,
+      }
+    );
+  };
+
   useEffect(() => {
     if (map.current || !mapContainer.current) return;
 
@@ -65,18 +140,43 @@ export const MibuMap: React.FC<MibuMapProps> = ({
 
         mapboxgl.accessToken = config.accessToken;
 
+        // Try to get user location first
+        let initialCenter = center;
+        let initialZoom = zoom;
+        
+        if (navigator.geolocation) {
+          try {
+            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 5000,
+                maximumAge: 60000,
+              });
+            });
+            initialCenter = [position.coords.longitude, position.coords.latitude];
+            initialZoom = 15;
+            setUserLocation(initialCenter);
+          } catch (e) {
+            // Use default center if geolocation fails
+          }
+        }
+
         map.current = new mapboxgl.Map({
           container: mapContainer.current!,
           style: 'mapbox://styles/mapbox/streets-v12',
-          center: center,
-          zoom: zoom,
-          attributionControl: true,
+          center: initialCenter,
+          zoom: initialZoom,
+          attributionControl: false,
         });
 
         map.current.on('load', () => {
           setMapLoaded(true);
           setIsInitializing(false);
-          console.log('Mapbox map loaded successfully');
+          
+          // Add user marker if we have location
+          if (userLocation) {
+            updateUserMarker(userLocation[0], userLocation[1], false);
+          }
         });
 
         map.current.on('error', (e) => {
@@ -103,6 +203,13 @@ export const MibuMap: React.FC<MibuMapProps> = ({
       }
     };
   }, []);
+
+  // Add user marker when map loads and we have location
+  useEffect(() => {
+    if (mapLoaded && userLocation && map.current) {
+      updateUserMarker(userLocation[0], userLocation[1], false);
+    }
+  }, [mapLoaded, userLocation]);
 
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
@@ -144,77 +251,6 @@ export const MibuMap: React.FC<MibuMapProps> = ({
     });
   }, [markers, mapLoaded]);
 
-  const updateUserMarker = (lng: number, lat: number) => {
-    if (!map.current || !mapLoaded) return;
-
-    if (userMarkerRef.current) {
-      userMarkerRef.current.remove();
-    }
-
-    const el = document.createElement('div');
-    el.style.width = '16px';
-    el.style.height = '16px';
-    el.style.backgroundColor = '#3B82F6';
-    el.style.border = '3px solid white';
-    el.style.borderRadius = '50%';
-    el.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.3), 0 2px 8px rgba(0,0,0,0.3)';
-
-    userMarkerRef.current = new mapboxgl.Marker(el)
-      .setLngLat([lng, lat])
-      .addTo(map.current);
-
-    map.current.flyTo({
-      center: [lng, lat],
-      zoom: 15,
-      duration: 1000,
-    });
-  };
-
-  const getCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setLocationError('您的瀏覽器不支援定位功能');
-      return;
-    }
-
-    setIsLocating(true);
-    setLocationError(null);
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setUserLocation([longitude, latitude]);
-        setIsLocating(false);
-        
-        updateUserMarker(longitude, latitude);
-        
-        if (onLocationUpdate) {
-          onLocationUpdate({ lat: latitude, lng: longitude });
-        }
-      },
-      (error) => {
-        setIsLocating(false);
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            setLocationError('請允許存取您的位置');
-            break;
-          case error.POSITION_UNAVAILABLE:
-            setLocationError('無法取得位置資訊');
-            break;
-          case error.TIMEOUT:
-            setLocationError('定位逾時，請重試');
-            break;
-          default:
-            setLocationError('定位失敗');
-        }
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000,
-      }
-    );
-  };
-
   return (
     <div className={`relative rounded-xl overflow-hidden ${className}`} style={{ minHeight: '320px', height: '320px' }}>
       <div 
@@ -249,7 +285,7 @@ export const MibuMap: React.FC<MibuMapProps> = ({
 
       {showUserLocation && mapLoaded && (
         <button
-          onClick={getCurrentLocation}
+          onClick={() => getCurrentLocation(true)}
           disabled={isLocating}
           className="absolute bottom-4 right-4 p-3 bg-white rounded-full shadow-lg hover:shadow-xl transition-all disabled:opacity-50 z-10"
           style={{ border: `2px solid ${MIBU_BRAND_COLORS.primary}` }}
@@ -273,20 +309,6 @@ export const MibuMap: React.FC<MibuMapProps> = ({
           }}
         >
           {locationError}
-        </div>
-      )}
-
-      {userLocation && mapLoaded && (
-        <div
-          className="absolute top-4 left-4 px-3 py-2 rounded-lg text-xs z-10"
-          style={{
-            backgroundColor: MIBU_BRAND_COLORS.background,
-            color: MIBU_BRAND_COLORS.accent,
-            border: `1px solid ${MIBU_BRAND_COLORS.secondary}`,
-          }}
-        >
-          <MapPin className="w-3 h-3 inline mr-1" />
-          {userLocation[1].toFixed(4)}, {userLocation[0].toFixed(4)}
         </div>
       )}
     </div>
