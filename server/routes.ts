@@ -1855,6 +1855,61 @@ ${uncachedSkeleton.map((item, idx) => `  {
         }
       }
 
+      // === BACKFILL PHASE: Try to fill missing slots ===
+      let shortageWarning: string | null = null;
+      const usedSubcatIds = new Set<number>(items.map(i => i.subcategory?.id).filter(Boolean));
+      
+      if (items.length < itemCount) {
+        const missing = itemCount - items.length;
+        console.log(`\n=== BACKFILL: Need ${missing} more items ===`);
+        
+        let backfillAttempts = 0;
+        const maxBackfillAttempts = missing * 3;
+        
+        // Clone and shuffle to avoid mutating original array
+        const availableSubcats = allSubcategories
+          .filter(s => !usedSubcatIds.has(s.id))
+          .slice()
+          .sort(() => Math.random() - 0.5);
+        
+        for (const subcat of availableSubcats) {
+          if (items.length >= itemCount || backfillAttempts >= maxBackfillAttempts) break;
+          backfillAttempts++;
+          
+          console.log(`[Backfill] Trying: ${subcat.category?.nameZh} - ${subcat.nameZh}`);
+          const result = await generatePlaceForSubcategory(
+            districtNameZh, regionNameZh, countryNameZh,
+            subcat.category, subcat, language, []
+          );
+          
+          if (result && result.place?.name) {
+            const placeId = result.place.place_id || result.place.placeId;
+            const normalizedName = normalizePlaceName(result.place.name);
+            const dedupKey = placeId || normalizedName;
+            if (!globalSeenPlaceIds.has(dedupKey)) {
+              globalSeenPlaceIds.add(dedupKey);
+              usedSubcatIds.add(subcat.id);
+              const item = await buildItemWithPromo(result);
+              items.push({ ...item, aiWorker: 'backfill', taskType: 'backfill' });
+              aiGenerated++;
+              console.log(`[Backfill] Added: ${result.place.name}`);
+            }
+          }
+        }
+      }
+      
+      // Always set warning when below target
+      if (items.length < itemCount) {
+        shortageWarning = language === 'zh-TW' 
+          ? `此區域的觀光資源有限，僅找到 ${items.length} 個地點`
+          : language === 'ja'
+          ? `このエリアでは ${items.length} 件のスポットのみ見つかりました`
+          : language === 'ko'
+          ? `이 지역에서 ${items.length}개의 장소만 찾았습니다`
+          : `Only ${items.length} spots found in this area`;
+        console.log(`[Shortage] Warning: ${shortageWarning}`);
+      }
+
       const duration = Date.now() - startTime;
       console.log(`Generated ${items.length}/${itemCount} items in ${duration}ms (cache: ${cacheHits}, AI: ${aiGenerated}, workers: ${aiDistribution.length})`);
 
@@ -1884,9 +1939,11 @@ ${uncachedSkeleton.map((item, idx) => `  {
           items,
           meta: {
             totalItems: items.length,
+            requestedItems: itemCount,
             cacheHits,
             aiGenerated,
-            verifiedCount: items.filter(i => i.isVerified).length
+            verifiedCount: items.filter(i => i.isVerified).length,
+            shortageWarning
           }
         }
       });

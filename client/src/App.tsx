@@ -339,6 +339,13 @@ const App: React.FC = () => {
       const result = await response.json();
       const { itinerary } = result;
       
+      // Show shortage warning if fewer items than requested
+      if (itinerary.meta?.shortageWarning) {
+        setTimeout(() => {
+          alert(itinerary.meta.shortageWarning);
+        }, 500);
+      }
+      
       // Convert API response to GachaItem format and sort (stay/lodging last)
       // Use nameZh as canonical key for grouping to avoid duplicates, but store localized name for display
       const rawItems: GachaItem[] = itinerary.items.map((item: any, index: number) => ({
