@@ -110,10 +110,14 @@ export const MibuMap: React.FC<MibuMapProps> = ({
       });
 
       map.current.on('error', (e: any) => {
+        const errorMessage = e?.error?.message || e?.message || '';
+        // Ignore layer styling errors - these are non-critical
+        if (errorMessage.includes('does not exist in the map') || errorMessage.includes('layer')) {
+          console.warn('Map styling warning:', errorMessage);
+          return;
+        }
         console.error('Map error:', e);
-        const errorMessage = e?.error?.message || e?.message || '地圖載入失敗';
-        console.error('Detailed error:', errorMessage);
-        setMapError(errorMessage);
+        setMapError('地圖載入失敗');
       });
     } catch (err) {
       console.error('Failed to initialize map:', err);
