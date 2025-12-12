@@ -109,9 +109,11 @@ export const MibuMap: React.FC<MibuMapProps> = ({
         } catch (e) {}
       });
 
-      map.current.on('error', (e) => {
+      map.current.on('error', (e: any) => {
         console.error('Map error:', e);
-        setMapError('地圖載入失敗');
+        const errorMessage = e?.error?.message || e?.message || '地圖載入失敗';
+        console.error('Detailed error:', errorMessage);
+        setMapError(errorMessage);
       });
     } catch (err) {
       console.error('Failed to initialize map:', err);
