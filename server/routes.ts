@@ -1351,75 +1351,126 @@ ${uncachedSkeleton.map((item, idx) => `  {
         return res.status(404).json({ error: "No subcategories found" });
       }
 
-      // Step 3: Define time slot distribution based on itemCount
-      // 5-6: 2 AI (morning, lunch)
-      // 7-9: 3 AI (morning, lunch, dinner)
-      // 10-12: 4 AI (morning, lunch, dinner, evening+stay)
-      type TimeSlot = 'morning' | 'lunch' | 'dinner' | 'evening';
-      const getTimeSlotDistribution = (count: number): Record<TimeSlot, number> => {
-        switch (count) {
-          case 5: return { morning: 2, lunch: 3, dinner: 0, evening: 0 };
-          case 6: return { morning: 3, lunch: 3, dinner: 0, evening: 0 };
-          case 7: return { morning: 2, lunch: 3, dinner: 2, evening: 0 };
-          case 8: return { morning: 3, lunch: 3, dinner: 2, evening: 0 };
-          case 9: return { morning: 3, lunch: 3, dinner: 3, evening: 0 };
-          case 10: return { morning: 2, lunch: 3, dinner: 3, evening: 2 };
-          case 11: return { morning: 3, lunch: 3, dinner: 3, evening: 2 };
-          case 12: return { morning: 3, lunch: 3, dinner: 3, evening: 3 };
-          default: return { morning: 3, lunch: 3, dinner: 0, evening: 0 };
-        }
-      };
-
-      const distribution = getTimeSlotDistribution(itemCount);
-      const activeSlots = (Object.keys(distribution) as TimeSlot[]).filter(slot => distribution[slot] > 0);
+      // Step 3: Define AI worker distribution based on itemCount
+      // Each AI has specific responsibilities per time slot
+      type AIWorker = 'ai1_morning' | 'ai2_afternoon' | 'ai3_evening' | 'ai4_night';
       
-      console.log(`\n=== Generating itinerary for ${regionNameZh}${districtNameZh} (${itemCount} items, ${activeSlots.length} time slots) ===`);
-      console.log(`Distribution: morning=${distribution.morning}, lunch=${distribution.lunch}, dinner=${distribution.dinner}, evening=${distribution.evening}`);
-
-      // Step 4: Group subcategories by preferred time slot
-      const timeSlotMapping: Record<string, TimeSlot | null> = {
-        'morning': 'morning',
-        'lunch': 'lunch',
-        'afternoon': 'lunch', // afternoon activities go with lunch slot
-        'dinner': 'dinner',
-        'evening': 'evening',
-        'stay': 'evening', // accommodation goes with evening slot
-        'anytime': null // will be distributed across active slots
+      interface AITask {
+        worker: AIWorker;
+        tasks: { type: 'breakfast' | 'lunch' | 'dinner' | 'activity' | 'stay'; count: number }[];
+      }
+      
+      const getAIDistribution = (count: number): AITask[] => {
+        switch (count) {
+          case 5: return [
+            { worker: 'ai1_morning', tasks: [{ type: 'breakfast', count: 1 }, { type: 'activity', count: 1 }] }, // 早餐 + 1項早上活動
+            { worker: 'ai2_afternoon', tasks: [{ type: 'lunch', count: 1 }, { type: 'activity', count: 2 }] }  // 午餐 + 2項下午活動
+          ];
+          case 6: return [
+            { worker: 'ai1_morning', tasks: [{ type: 'breakfast', count: 1 }, { type: 'activity', count: 2 }] }, // 早餐 + 2項早上活動
+            { worker: 'ai2_afternoon', tasks: [{ type: 'lunch', count: 1 }, { type: 'activity', count: 2 }] }  // 午餐 + 2項下午活動
+          ];
+          case 7: return [
+            { worker: 'ai1_morning', tasks: [{ type: 'breakfast', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai2_afternoon', tasks: [{ type: 'lunch', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai3_evening', tasks: [{ type: 'dinner', count: 1 }] }
+          ];
+          case 8: return [
+            { worker: 'ai1_morning', tasks: [{ type: 'breakfast', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai2_afternoon', tasks: [{ type: 'lunch', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai3_evening', tasks: [{ type: 'dinner', count: 1 }, { type: 'activity', count: 1 }] }
+          ];
+          case 9: return [
+            { worker: 'ai1_morning', tasks: [{ type: 'breakfast', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai2_afternoon', tasks: [{ type: 'lunch', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai3_evening', tasks: [{ type: 'dinner', count: 1 }, { type: 'activity', count: 2 }] }
+          ];
+          case 10: return [
+            { worker: 'ai1_morning', tasks: [{ type: 'breakfast', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai2_afternoon', tasks: [{ type: 'lunch', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai3_evening', tasks: [{ type: 'dinner', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai4_night', tasks: [{ type: 'stay', count: 1 }] }
+          ];
+          case 11: return [
+            { worker: 'ai1_morning', tasks: [{ type: 'breakfast', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai2_afternoon', tasks: [{ type: 'lunch', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai3_evening', tasks: [{ type: 'dinner', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai4_night', tasks: [{ type: 'stay', count: 1 }, { type: 'activity', count: 1 }] }
+          ];
+          case 12: return [
+            { worker: 'ai1_morning', tasks: [{ type: 'breakfast', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai2_afternoon', tasks: [{ type: 'lunch', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai3_evening', tasks: [{ type: 'dinner', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai4_night', tasks: [{ type: 'stay', count: 1 }, { type: 'activity', count: 2 }] }
+          ];
+          default: return [
+            { worker: 'ai1_morning', tasks: [{ type: 'breakfast', count: 1 }, { type: 'activity', count: 2 }] },
+            { worker: 'ai2_afternoon', tasks: [{ type: 'lunch', count: 1 }, { type: 'activity', count: 2 }] }
+          ];
+        }
       };
 
-      const subcategoriesBySlot: Record<TimeSlot, typeof allSubcategories> = {
-        morning: [],
-        lunch: [],
-        dinner: [],
-        evening: []
+      const aiDistribution = getAIDistribution(itemCount);
+      
+      console.log(`\n=== Generating itinerary for ${regionNameZh}${districtNameZh} (${itemCount} items, ${aiDistribution.length} AI workers) ===`);
+      console.log(`AI Distribution:`, aiDistribution.map(a => `${a.worker}: ${a.tasks.map(t => `${t.type}×${t.count}`).join('+')}`).join(' | '));
+
+      // Step 4: Group subcategories by task type for each AI worker
+      const getSubcategoriesForTask = (worker: AIWorker, taskType: string): typeof allSubcategories => {
+        let filtered: typeof allSubcategories = [];
+        
+        if (taskType === 'breakfast') {
+          // 早餐類：早午餐、咖啡廳
+          filtered = allSubcategories.filter(s => 
+            s.nameZh === '早午餐' || s.nameZh === '咖啡廳' || s.preferredTimeSlot === 'morning'
+          );
+        } else if (taskType === 'lunch') {
+          // 午餐類：各種正餐（非晚餐時段）
+          filtered = allSubcategories.filter(s => 
+            s.preferredTimeSlot === 'lunch' && s.category.code === 'food'
+          );
+        } else if (taskType === 'dinner') {
+          // 晚餐類：火鍋、鐵板燒、燒烤等
+          filtered = allSubcategories.filter(s => 
+            s.preferredTimeSlot === 'dinner' && s.category.code === 'food'
+          );
+        } else if (taskType === 'stay') {
+          // 住宿類
+          filtered = allSubcategories.filter(s => 
+            s.preferredTimeSlot === 'stay' || s.category.code === 'stay'
+          );
+        } else if (taskType === 'activity') {
+          // 活動類：根據 AI worker 決定適合的時段
+          if (worker === 'ai1_morning') {
+            // 早上活動：景點、生態文化、輕量體驗
+            filtered = allSubcategories.filter(s => 
+              (s.category.code === 'scenery' || s.category.code === 'education' || s.category.code === 'experience') &&
+              s.preferredTimeSlot !== 'evening' && s.preferredTimeSlot !== 'stay'
+            );
+          } else if (worker === 'ai2_afternoon') {
+            // 下午活動：購物、體驗、娛樂、景點
+            filtered = allSubcategories.filter(s => 
+              (s.category.code === 'shopping' || s.category.code === 'entertainment' || 
+               s.category.code === 'experience' || s.category.code === 'scenery') &&
+              s.preferredTimeSlot !== 'evening' && s.preferredTimeSlot !== 'stay'
+            );
+          } else if (worker === 'ai3_evening') {
+            // 晚上活動：娛樂、活動
+            filtered = allSubcategories.filter(s => 
+              (s.category.code === 'entertainment' || s.category.code === 'activity') &&
+              s.preferredTimeSlot !== 'stay'
+            );
+          } else if (worker === 'ai4_night') {
+            // 宵夜活動：夜市、酒吧、KTV
+            filtered = allSubcategories.filter(s => 
+              s.preferredTimeSlot === 'evening' || s.nameZh === '夜市' || s.nameZh === 'KTV' || s.nameZh === '酒吧'
+            );
+          }
+        }
+        
+        // Shuffle and return
+        return filtered.sort(() => Math.random() - 0.5);
       };
-
-      const anytimeSubcategories: typeof allSubcategories = [];
-
-      for (const subcat of allSubcategories) {
-        const slot = timeSlotMapping[subcat.preferredTimeSlot || 'anytime'];
-        if (slot === null) {
-          anytimeSubcategories.push(subcat);
-        } else {
-          subcategoriesBySlot[slot].push(subcat);
-        }
-      }
-
-      // Distribute 'anytime' subcategories proportionally across active slots
-      if (anytimeSubcategories.length > 0) {
-        anytimeSubcategories.sort(() => Math.random() - 0.5);
-        let slotIdx = 0;
-        for (const subcat of anytimeSubcategories) {
-          const targetSlot = activeSlots[slotIdx % activeSlots.length];
-          subcategoriesBySlot[targetSlot].push(subcat);
-          slotIdx++;
-        }
-      }
-
-      // Shuffle each slot's subcategories
-      for (const slot of activeSlots) {
-        subcategoriesBySlot[slot].sort(() => Math.random() - 0.5);
-      }
 
       const startTime = Date.now();
       let cacheHits = 0;
@@ -1480,88 +1531,74 @@ ${uncachedSkeleton.map((item, idx) => `  {
         }
       }
 
-      // Step 6: Generate items for each time slot in FULL PARALLEL
-      // Each time slot processes ALL its items in parallel (not sequential)
-      const generateForSlot = async (slot: TimeSlot, count: number): Promise<any[]> => {
-        let slotSubcategories = subcategoriesBySlot[slot];
+      // Step 6: Execute each AI worker in PARALLEL
+      // Each worker handles its assigned tasks (breakfast/lunch/dinner/activity/stay)
+      const executeAIWorker = async (aiTask: AITask): Promise<any[]> => {
+        const workerItems: any[] = [];
+        const usedSubcatIds = new Set<number>();
         
-        // For evening slot: limit accommodation to max 1, prioritize entertainment/nightlife
-        if (slot === 'evening') {
-          const staySubcats = slotSubcategories.filter(s => s.preferredTimeSlot === 'stay');
-          const nightlifeSubcats = slotSubcategories.filter(s => s.preferredTimeSlot === 'evening');
-          // Take nightlife first, then only 1 accommodation at the end
-          slotSubcategories = [
-            ...nightlifeSubcats.slice(0, count - 1),
-            ...staySubcats.slice(0, 1) // Max 1 accommodation
-          ];
-        }
-        
-        slotSubcategories = slotSubcategories.slice(0, count);
-        
-        // Generate ALL items for this slot in parallel
-        const itemPromises = slotSubcategories.map(async (subcatWithCategory) => {
-          const result = await generatePlaceForSubcategory(
-            districtNameZh, regionNameZh, countryNameZh,
-            subcatWithCategory.category, subcatWithCategory, language,
-            [] // No exclusion in parallel - we'll dedupe after
-          );
+        // Process all tasks for this worker
+        for (const task of aiTask.tasks) {
+          const subcategories = getSubcategoriesForTask(aiTask.worker, task.type);
+          let taskItemCount = 0;
+          
+          // Generate items for this task in parallel
+          const availableSubcats = subcategories.filter(s => !usedSubcatIds.has(s.id)).slice(0, task.count * 2);
+          
+          const taskPromises = availableSubcats.slice(0, task.count).map(async (subcatWithCategory) => {
+            const result = await generatePlaceForSubcategory(
+              districtNameZh, regionNameZh, countryNameZh,
+              subcatWithCategory.category, subcatWithCategory, language,
+              []
+            );
 
-          if (result && result.place?.name) {
-            const item = await buildItemWithPromo(result);
-            return {
-              ...item,
-              timeSlot: slot
-            };
-          }
-          return null;
-        });
+            if (result && result.place?.name) {
+              usedSubcatIds.add(subcatWithCategory.id);
+              const item = await buildItemWithPromo(result);
+              return {
+                ...item,
+                aiWorker: aiTask.worker,
+                taskType: task.type
+              };
+            }
+            return null;
+          });
 
-        const results = await Promise.all(itemPromises);
-        
-        // Filter out nulls and deduplicate by place name
-        const seenNames = new Set<string>();
-        const slotItems: any[] = [];
-        for (const item of results) {
-          if (item && item.place?.name && !seenNames.has(item.place.name)) {
-            seenNames.add(item.place.name);
-            slotItems.push(item);
-            if (slotItems.length >= count) break;
+          const taskResults = await Promise.all(taskPromises);
+          
+          // Filter nulls and add to worker items
+          for (const item of taskResults) {
+            if (item && taskItemCount < task.count) {
+              workerItems.push(item);
+              taskItemCount++;
+            }
           }
         }
-
-        return slotItems;
+        
+        return workerItems;
       };
 
-      // Run ALL time slots in parallel (4 AI workers)
-      const slotPromises = activeSlots.map(slot => 
-        generateForSlot(slot, distribution[slot])
-      );
+      // Run ALL AI workers in parallel
+      const workerPromises = aiDistribution.map(aiTask => executeAIWorker(aiTask));
+      const workerResults = await Promise.all(workerPromises);
 
-      const slotResults = await Promise.all(slotPromises);
-
-      // Merge results in time order: morning -> lunch -> dinner -> evening
-      const slotOrder: TimeSlot[] = ['morning', 'lunch', 'dinner', 'evening'];
+      // Merge results in order: ai1_morning -> ai2_afternoon -> ai3_evening -> ai4_night
       const items: any[] = [];
       const globalSeenNames = new Set<string>();
       
-      for (const slot of slotOrder) {
-        const slotIndex = activeSlots.indexOf(slot);
-        if (slotIndex !== -1) {
-          const slotItems = slotResults[slotIndex];
-          for (const item of slotItems) {
-            // Final global deduplication
-            if (!globalSeenNames.has(item.place?.name)) {
-              globalSeenNames.add(item.place?.name);
-              items.push(item);
-              if (item.source === 'cache') cacheHits++;
-              else aiGenerated++;
-            }
+      for (const workerItems of workerResults) {
+        for (const item of workerItems) {
+          if (!globalSeenNames.has(item.place?.name)) {
+            globalSeenNames.add(item.place?.name);
+            items.push(item);
+            if (item.source === 'cache') cacheHits++;
+            else aiGenerated++;
           }
         }
       }
 
       const duration = Date.now() - startTime;
-      console.log(`Generated ${items.length}/${itemCount} items in ${duration}ms (cache: ${cacheHits}, AI: ${aiGenerated}, slots: ${activeSlots.join(',')})`);
+      console.log(`Generated ${items.length}/${itemCount} items in ${duration}ms (cache: ${cacheHits}, AI: ${aiGenerated}, workers: ${aiDistribution.length})`);
 
       // Return the complete itinerary
       res.json({
