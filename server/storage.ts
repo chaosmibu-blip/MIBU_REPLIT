@@ -1,6 +1,6 @@
 import { 
   users, collections, merchants, coupons, placeCache, placeFeedback, merchantPlaceLinks,
-  countries, regions, districts, categories, subcategories,
+  countries, regions, districts, categories, subcategories, chatInvites,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -9,7 +9,8 @@ import {
   type PlaceFeedback, type InsertPlaceFeedback,
   type MerchantPlaceLink, type InsertMerchantPlaceLink,
   type Country, type Region, type District,
-  type Category, type Subcategory
+  type Category, type Subcategory,
+  type ChatInvite
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -69,6 +70,11 @@ export interface IStorage {
   createMerchantPlaceLink(link: InsertMerchantPlaceLink): Promise<MerchantPlaceLink>;
   updateMerchantPlaceLink(linkId: number, data: Partial<MerchantPlaceLink>): Promise<MerchantPlaceLink>;
   searchPlacesForClaim(query: string, district?: string, city?: string): Promise<PlaceCache[]>;
+
+  // Chat Invites
+  createChatInvite(invite: { conversationSid: string; inviterUserId: string; status: string; expiresAt: Date }, inviteCode: string): Promise<ChatInvite>;
+  getChatInviteByCode(inviteCode: string): Promise<ChatInvite | undefined>;
+  updateChatInvite(inviteId: number, data: { status?: string; usedByUserId?: string }): Promise<ChatInvite>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -495,6 +501,35 @@ export class DatabaseStorage implements IStorage {
       .from(placeCache)
       .where(and(...conditions))
       .limit(20);
+  }
+
+  // Chat Invites
+  async createChatInvite(invite: { conversationSid: string; inviterUserId: string; status: string; expiresAt: Date }, inviteCode: string): Promise<ChatInvite> {
+    const [created] = await db
+      .insert(chatInvites)
+      .values({
+        ...invite,
+        inviteCode,
+      })
+      .returning();
+    return created;
+  }
+
+  async getChatInviteByCode(inviteCode: string): Promise<ChatInvite | undefined> {
+    const [invite] = await db
+      .select()
+      .from(chatInvites)
+      .where(eq(chatInvites.inviteCode, inviteCode));
+    return invite;
+  }
+
+  async updateChatInvite(inviteId: number, data: { status?: string; usedByUserId?: string }): Promise<ChatInvite> {
+    const [updated] = await db
+      .update(chatInvites)
+      .set(data)
+      .where(eq(chatInvites.id, inviteId))
+      .returning();
+    return updated;
   }
 }
 

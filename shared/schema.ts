@@ -679,6 +679,21 @@ export const companionInvitesRelations = relations(companionInvites, ({ one }) =
   }),
 }));
 
+// Chat Invites - 聊天室邀請連結
+export const chatInvites = pgTable("chat_invites", {
+  id: serial("id").primaryKey(),
+  conversationSid: varchar("conversation_sid", { length: 100 }).notNull(),
+  inviterUserId: varchar("inviter_user_id").references(() => users.id).notNull(),
+  inviteCode: varchar("invite_code", { length: 50 }).notNull().unique(),
+  status: varchar("status", { length: 20 }).default('pending').notNull(),
+  usedByUserId: varchar("used_by_user_id").references(() => users.id),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_chat_invites_code").on(table.inviteCode),
+  index("IDX_chat_invites_conversation").on(table.conversationSid),
+]);
+
 // Insert schemas
 export const insertTravelCompanionSchema = createInsertSchema(travelCompanions).omit({
   id: true,
@@ -691,8 +706,16 @@ export const insertCompanionInviteSchema = createInsertSchema(companionInvites).
   createdAt: true,
 });
 
+export const insertChatInviteSchema = createInsertSchema(chatInvites).omit({
+  id: true,
+  inviteCode: true,
+  createdAt: true,
+});
+
 // Types
 export type TravelCompanion = typeof travelCompanions.$inferSelect;
 export type InsertTravelCompanion = z.infer<typeof insertTravelCompanionSchema>;
 export type CompanionInvite = typeof companionInvites.$inferSelect;
 export type InsertCompanionInvite = z.infer<typeof insertCompanionInviteSchema>;
+export type ChatInvite = typeof chatInvites.$inferSelect;
+export type InsertChatInvite = z.infer<typeof insertChatInviteSchema>;

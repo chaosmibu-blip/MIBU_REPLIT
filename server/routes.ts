@@ -2443,6 +2443,109 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // Generate invite link for a conversation
+  app.post("/api/chat/conversations/:conversationSid/invite-link", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { conversationSid } = req.params;
+      
+      // Generate unique invite code
+      const inviteCode = `chat_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+      // Store invite in database
+      await storage.createChatInvite({
+        conversationSid,
+        inviterUserId: userId,
+        status: 'pending',
+        expiresAt,
+      }, inviteCode);
+
+      const baseUrl = process.env.REPL_SLUG 
+        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER?.toLowerCase()}.repl.co`
+        : 'http://localhost:5000';
+      
+      const inviteLink = `${baseUrl}/chat/join/${inviteCode}`;
+
+      res.json({ 
+        inviteLink,
+        inviteCode,
+        expiresAt: expiresAt.toISOString()
+      });
+    } catch (error) {
+      console.error("Generate invite link error:", error);
+      res.status(500).json({ error: "Failed to generate invite link" });
+    }
+  });
+
+  // Accept chat invite
+  app.post("/api/chat/invites/:inviteCode/accept", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { inviteCode } = req.params;
+      
+      // Get invite from database
+      const invite = await storage.getChatInviteByCode(inviteCode);
+      if (!invite) {
+        return res.status(404).json({ error: "Invite not found" });
+      }
+
+      if (invite.status !== 'pending') {
+        return res.status(400).json({ error: "Invite already used or expired" });
+      }
+
+      if (new Date(invite.expiresAt) < new Date()) {
+        return res.status(400).json({ error: "Invite has expired" });
+      }
+
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const apiKeySid = process.env.TWILIO_API_KEY_SID;
+      const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+      const conversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
+
+      if (!accountSid || !apiKeySid || !apiKeySecret || !conversationsServiceSid) {
+        return res.status(500).json({ error: "Chat service not configured" });
+      }
+
+      const client = twilio(apiKeySid, apiKeySecret, { accountSid });
+
+      // Add user to conversation
+      try {
+        await client.conversations.v1
+          .services(conversationsServiceSid)
+          .conversations(invite.conversationSid)
+          .participants
+          .create({ identity: userId });
+      } catch (err: any) {
+        if (err.code !== 50433) { // Not already a participant
+          throw err;
+        }
+      }
+
+      // Mark invite as used
+      await storage.updateChatInvite(invite.id, {
+        status: 'accepted',
+        usedByUserId: userId,
+      });
+
+      res.json({ 
+        success: true,
+        conversationSid: invite.conversationSid
+      });
+    } catch (error) {
+      console.error("Accept invite error:", error);
+      res.status(500).json({ error: "Failed to accept invite" });
+    }
+  });
+
   // ============ Place Feedback Routes ============
   app.post("/api/feedback/exclude", isAuthenticated, async (req: any, res) => {
     try {
