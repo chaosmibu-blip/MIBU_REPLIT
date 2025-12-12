@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { GachaItem, Language, Category } from '../types';
 import { CATEGORY_COLORS, TRANSLATIONS } from '../constants';
-import { MapPin, BookOpen, ChevronDown, ChevronRight, Sparkles, Tag, FolderOpen, Star, Navigation } from 'lucide-react';
+import { MapPin, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface CollectionGridProps {
   items: GachaItem[];
@@ -27,277 +27,188 @@ const getPlaceName = (item: any, lang: Language): string => {
   return cleanPlaceName(getContent(name, lang));
 };
 
-interface AccordionSectionProps {
-  title: string;
-  count: number;
-  isOpen: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-  icon?: React.ReactNode;
-  color?: string;
-}
-
-const AccordionSection: React.FC<AccordionSectionProps> = ({ 
-  title, count, isOpen, onToggle, children, icon, color 
-}) => (
-  <div className="mb-2">
-    <button
-      onClick={onToggle}
-      className="w-full flex items-center justify-between p-3 bg-white rounded-xl shadow-sm border border-slate-100 hover:bg-slate-50 transition-colors"
-      data-testid={`accordion-${title}`}
-    >
-      <div className="flex items-center gap-2">
-        {isOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
-        {icon}
-        <span className="font-bold text-slate-700">{title}</span>
-      </div>
-      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-        {count}
-      </span>
-    </button>
-    {isOpen && (
-      <div className="mt-2 pl-2">
-        {children}
-      </div>
-    )}
-  </div>
-);
+const getCategoryLabel = (category: string, t: any): string => {
+  const labelMap: Record<string, string> = {
+    'Food': t.catFood || '美食',
+    'Stay': t.catStay || '住宿',
+    'Scenery': t.catScenery || '景點',
+    'Shopping': t.catShopping || '購物',
+    'Entertainment': t.catEntertainment || '娛樂',
+    'Education': t.catEducation || '生態文化',
+    'Activity': t.catActivity || '體驗',
+  };
+  return labelMap[category] || category;
+};
 
 export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language }) => {
   const t = TRANSLATIONS[language] as any;
-  const [openDistricts, setOpenDistricts] = useState<Set<string>>(new Set());
+  const [openRegions, setOpenRegions] = useState<Set<string>>(new Set());
   const [openCategories, setOpenCategories] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<'district' | 'category'>('district');
 
-  const toggleDistrict = (district: string) => {
-    setOpenDistricts(prev => {
-      const newSet = new Set(Array.from(prev));
-      if (newSet.has(district)) {
-        newSet.delete(district);
-      } else {
-        newSet.add(district);
-      }
+  const toggleRegion = (region: string) => {
+    setOpenRegions(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(region)) newSet.delete(region);
+      else newSet.add(region);
       return newSet;
     });
   };
 
-  const toggleCategory = (category: string) => {
+  const toggleCategory = (key: string) => {
     setOpenCategories(prev => {
-      const newSet = new Set(Array.from(prev));
-      if (newSet.has(category)) {
-        newSet.delete(category);
-      } else {
-        newSet.add(category);
-      }
+      const newSet = new Set(prev);
+      if (newSet.has(key)) newSet.delete(key);
+      else newSet.add(key);
       return newSet;
     });
   };
 
-  const groupedByDistrict = useMemo(() => {
-    const groups: Record<string, GachaItem[]> = {};
+  const groupedData = useMemo(() => {
+    const cityMap: Record<string, { items: GachaItem[], byCategory: Record<string, GachaItem[]> }> = {};
+    
     items.forEach(item => {
-      const district = item.district || item.city || t.unknown || 'Unknown';
-      if (!groups[district]) groups[district] = [];
-      groups[district].push(item);
-    });
-    return groups;
-  }, [items, t.unknown]);
-
-  const groupedByCategory = useMemo(() => {
-    const groups: Record<string, GachaItem[]> = {};
-    items.forEach(item => {
+      const city = item.city || t.unknown || 'Unknown';
       const category = item.category || 'Other';
-      if (!groups[category]) groups[category] = [];
-      groups[category].push(item);
+      
+      if (!cityMap[city]) {
+        cityMap[city] = { items: [], byCategory: {} };
+      }
+      cityMap[city].items.push(item);
+      
+      if (!cityMap[city].byCategory[category]) {
+        cityMap[city].byCategory[category] = [];
+      }
+      cityMap[city].byCategory[category].push(item);
     });
-    return groups;
-  }, [items]);
-
-  const sortedItems = (itemsToSort: GachaItem[]) => {
-    return [...itemsToSort].sort((a, b) => 
-      new Date(b.collectedAt || 0).getTime() - new Date(a.collectedAt || 0).getTime()
-    );
-  };
+    
+    return cityMap;
+  }, [items, t.unknown]);
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400 pt-16">
-        <BookOpen className="w-20 h-20 mb-4 opacity-20" />
+      <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
+        <MapPin className="w-16 h-16 mb-4 opacity-20" />
         <p className="font-bold text-lg">{t.noCollection}</p>
         <p className="text-sm">{t.startToCollect}</p>
       </div>
     );
   }
 
-  const getDescription = (item: any, lang: Language): string => {
-    const desc = item.description || item.ai_description || '';
-    return getContent(desc, lang);
-  };
-
-  const getAddress = (item: any): string => {
-    return item.address || item.verified_address || '';
-  };
-
-  const getRating = (item: any): string | null => {
-    return item.rating || item.google_rating?.toString() || null;
-  };
-
-  const renderItemCard = (item: GachaItem, idx: number) => {
-    const categoryColor = item.category ? CATEGORY_COLORS[item.category] || '#6366f1' : '#6366f1';
-    const description = getDescription(item, language);
-    const rating = getRating(item);
-    
-    return (
-      <div 
-        key={`${item.id}-${idx}`}
-        className="bg-white rounded-xl shadow-sm border border-slate-100/80 relative overflow-hidden hover:shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
-        data-testid={`card-collection-${item.id}`}
-      >
-        <div 
-          className="absolute left-0 top-0 bottom-0 w-1" 
-          style={{ backgroundColor: categoryColor }}
-        />
-        <div className="p-3 pl-3.5">
-          <div className="flex items-center justify-between mb-1.5">
-            {item.category && (
-              <span 
-                className="inline-flex items-center gap-0.5 text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md text-white"
-                style={{ backgroundColor: categoryColor }}
-                data-testid={`tag-category-collection-${item.id}`}
-              >
-                <Tag className="w-2 h-2" />
-                {t[`cat${item.category}`] || item.category}
-              </span>
-            )}
-            <div className="flex items-center gap-1">
-              {rating && (
-                <span className="flex items-center gap-0.5 text-[8px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md">
-                  <Star className="w-2 h-2 fill-amber-500 text-amber-500" />
-                  {rating}
-                </span>
-              )}
-              {item.is_coupon && (
-                <Sparkles className="w-3 h-3 text-amber-500" />
-              )}
-            </div>
-          </div>
-          <h4 className="font-bold text-[13px] text-slate-800 line-clamp-2 leading-snug mb-1.5">
-            {getPlaceName(item, language)}
-          </h4>
-          {description && (
-            <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed mb-2">
-              {description}
-            </p>
-          )}
-          <div className="flex items-center justify-between pt-1.5 border-t border-slate-50">
-            <div className="text-[9px] text-slate-400 font-medium">
-              {new Date(item.collectedAt || Date.now()).toLocaleDateString()}
-            </div>
-            {item.district && (
-              <div className="flex items-center gap-0.5 text-[9px] text-slate-400 font-medium">
-                <MapPin className="w-2.5 h-2.5" />
-                {item.district}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
+  const getRegionInitial = (region: string): string => {
+    return region.charAt(0);
   };
 
   return (
-    <div className="pb-32 max-w-md mx-auto pt-16">
-      <div className="px-4 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white sticky top-16 z-10">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <BookOpen className="w-5 h-5" />
-            <span className="font-black text-lg" data-testid="text-collection-title">{t.navCollection}</span>
-          </div>
-          <div className="bg-white/20 px-3 py-1 rounded-full text-sm font-bold" data-testid="text-collection-count">
-            {items.length} {language === 'zh-TW' ? '張' : language === 'ja' ? '枚' : ''}
-          </div>
-        </div>
-        
-        <div className="flex gap-2">
-          <button
-            onClick={() => setViewMode('district')}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-              viewMode === 'district' 
-                ? 'bg-white text-indigo-600' 
-                : 'bg-white/20 hover:bg-white/30'
-            }`}
-            data-testid="button-view-district"
-          >
-            <MapPin className="w-3.5 h-3.5" />
-            {language === 'zh-TW' ? '依行政區' : language === 'ja' ? '地区別' : language === 'ko' ? '지역별' : 'By District'}
-          </button>
-          <button
-            onClick={() => setViewMode('category')}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-              viewMode === 'category' 
-                ? 'bg-white text-indigo-600' 
-                : 'bg-white/20 hover:bg-white/30'
-            }`}
-            data-testid="button-view-category"
-          >
-            <FolderOpen className="w-3.5 h-3.5" />
-            {language === 'zh-TW' ? '依種類' : language === 'ja' ? 'カテゴリ別' : language === 'ko' ? '카테고리별' : 'By Category'}
-          </button>
-        </div>
+    <div className="pb-32 max-w-md mx-auto">
+      <div className="text-center py-8">
+        <h1 className="text-3xl font-black text-slate-800 mb-2" data-testid="text-collection-title">
+          {language === 'zh-TW' ? '我的足跡' : language === 'ja' ? '私の足跡' : 'My Footprints'}
+        </h1>
+        <span className="inline-block bg-slate-100 text-slate-600 text-sm font-bold px-4 py-1.5 rounded-full" data-testid="text-collection-count">
+          {items.length} {language === 'zh-TW' ? '個地點' : language === 'ja' ? '箇所' : 'places'}
+        </span>
       </div>
 
-      <div className="p-4">
-        {viewMode === 'district' && (
-          <div>
-            {Object.entries(groupedByDistrict)
-              .sort((a, b) => b[1].length - a[1].length)
-              .map(([district, districtItems]) => (
-                <AccordionSection
-                  key={district}
-                  title={district}
-                  count={districtItems.length}
-                  isOpen={openDistricts.has(district)}
-                  onToggle={() => toggleDistrict(district)}
-                  icon={<MapPin className="w-4 h-4 text-indigo-500" />}
+      <div className="px-4 space-y-4">
+        {Object.entries(groupedData)
+          .sort((a, b) => b[1].items.length - a[1].items.length)
+          .map(([region, data]) => {
+            const isRegionOpen = openRegions.has(region);
+            
+            return (
+              <div key={region} className="bg-white rounded-2xl border-2 border-slate-100 overflow-hidden">
+                <button
+                  onClick={() => toggleRegion(region)}
+                  className="w-full flex items-center justify-between p-4"
+                  data-testid={`accordion-region-${region}`}
                 >
-                  <div className="grid grid-cols-2 gap-2">
-                    {sortedItems(districtItems).map((item, idx) => renderItemCard(item, idx))}
-                  </div>
-                </AccordionSection>
-              ))}
-          </div>
-        )}
-
-        {viewMode === 'category' && (
-          <div>
-            {Object.entries(groupedByCategory)
-              .sort((a, b) => b[1].length - a[1].length)
-              .map(([category, categoryItems]) => {
-                const categoryColor = CATEGORY_COLORS[category as Category] || '#6366f1';
-                return (
-                  <AccordionSection
-                    key={category}
-                    title={t[`cat${category}`] || category}
-                    count={categoryItems.length}
-                    isOpen={openCategories.has(category)}
-                    onToggle={() => toggleCategory(category)}
-                    icon={
-                      <div 
-                        className="w-4 h-4 rounded-full flex items-center justify-center"
-                        style={{ backgroundColor: categoryColor }}
-                      >
-                        <Tag className="w-2.5 h-2.5 text-white" />
-                      </div>
-                    }
-                  >
-                    <div className="grid grid-cols-2 gap-2">
-                      {sortedItems(categoryItems).map((item, idx) => renderItemCard(item, idx))}
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-indigo-500 rounded-xl flex items-center justify-center text-white font-black text-lg">
+                      {getRegionInitial(region)}
                     </div>
-                  </AccordionSection>
-                );
-              })}
-          </div>
-        )}
+                    <div className="text-left">
+                      <p className="font-bold text-lg text-slate-800">{region}</p>
+                      <p className="text-sm text-slate-400">{data.items.length} {language === 'zh-TW' ? '個地點' : 'places'}</p>
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500">
+                    {isRegionOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                  </div>
+                </button>
+
+                {isRegionOpen && (
+                  <div className="px-4 pb-4 space-y-3">
+                    {Object.entries(data.byCategory)
+                      .sort((a, b) => b[1].length - a[1].length)
+                      .map(([category, categoryItems]) => {
+                        const categoryColor = CATEGORY_COLORS[category as Category] || '#6366f1';
+                        const categoryKey = `${region}-${category}`;
+                        const isCategoryOpen = openCategories.has(categoryKey);
+                        
+                        return (
+                          <div key={categoryKey}>
+                            <button
+                              onClick={() => toggleCategory(categoryKey)}
+                              className="w-full flex items-center justify-between p-4 bg-slate-50 rounded-xl"
+                              data-testid={`accordion-category-${categoryKey}`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div 
+                                  className="w-1.5 h-8 rounded-full"
+                                  style={{ backgroundColor: categoryColor }}
+                                />
+                                <span className="font-bold text-slate-700">
+                                  {getCategoryLabel(category, t)}
+                                </span>
+                                <span className="text-sm text-slate-400 bg-white px-2 py-0.5 rounded-full">
+                                  {categoryItems.length}
+                                </span>
+                              </div>
+                              <ChevronDown 
+                                className={`w-5 h-5 text-slate-400 transition-transform ${isCategoryOpen ? 'rotate-180' : ''}`} 
+                              />
+                            </button>
+                            
+                            {isCategoryOpen && (
+                              <div className="mt-2 space-y-2 pl-4">
+                                {categoryItems.map((item, idx) => (
+                                  <a
+                                    key={`${item.id}-${idx}`}
+                                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(getPlaceName(item, language))}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block p-3 bg-white rounded-xl border border-slate-100 hover:border-indigo-200 transition-colors"
+                                    data-testid={`card-collection-${item.id}`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <div 
+                                        className="w-1 h-6 rounded-full"
+                                        style={{ backgroundColor: categoryColor }}
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <p className="font-bold text-slate-800 text-sm truncate">
+                                          {getPlaceName(item, language)}
+                                        </p>
+                                        {item.district && (
+                                          <p className="text-xs text-slate-400 flex items-center gap-1">
+                                            <MapPin className="w-3 h-3" />
+                                            {item.district}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
       </div>
     </div>
   );

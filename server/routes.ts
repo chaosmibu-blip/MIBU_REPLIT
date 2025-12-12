@@ -1348,20 +1348,50 @@ ${uncachedSkeleton.map((item, idx) => `  {
 
       console.log(`\n=== Generating itinerary for ${regionNameZh}${districtNameZh} (${itemCount} items from ${allSubcategories.length} subcategories) ===`);
 
-      // Step 3: Generate places from random subcategories
+      // Step 3: Cache-first optimization - preload cached places for this district
+      const cachedPlacesForDistrict = await storage.getCachedPlaces(
+        districtNameZh,
+        regionNameZh,
+        countryNameZh
+      );
+      const cachedSubcategorySet = new Set(cachedPlacesForDistrict.map(p => p.subCategory));
+
+      // Sort subcategories: cached ones first, then shuffle
+      const sortedSubcategories = [...allSubcategories].sort((a, b) => {
+        const aHasCache = cachedSubcategorySet.has(a.nameZh) ? 0 : 1;
+        const bHasCache = cachedSubcategorySet.has(b.nameZh) ? 0 : 1;
+        if (aHasCache !== bHasCache) return aHasCache - bHasCache;
+        return Math.random() - 0.5;
+      });
+
       const items: any[] = [];
       let cacheHits = 0;
       let aiGenerated = 0;
       const usedPlaceNames: string[] = [];
       const usedSubcategoryIds: Set<number> = new Set();
 
-      // Shuffle subcategories and pick up to itemCount (without repeating subcategories)
-      const shuffledSubcategories = [...allSubcategories].sort(() => Math.random() - 0.5);
+      // Set a deadline for generation (20 seconds max)
+      const startTime = Date.now();
+      const DEADLINE_MS = 20000;
+      const MAX_AI_CALLS = Math.min(itemCount, 6); // Limit AI calls to prevent timeout
+      let aiCallCount = 0;
 
-      // Generate places sequentially to track used place names and avoid duplicates
-      for (const subcatWithCategory of shuffledSubcategories) {
+      // Process subcategories with timeout awareness
+      for (const subcatWithCategory of sortedSubcategories) {
         if (items.length >= itemCount) break;
         if (usedSubcategoryIds.has(subcatWithCategory.id)) continue;
+        
+        // Check deadline
+        if (Date.now() - startTime > DEADLINE_MS) {
+          console.log(`Deadline reached after ${items.length} items`);
+          break;
+        }
+
+        // Check if we should skip AI generation (limit reached)
+        const hasCacheForThis = cachedSubcategorySet.has(subcatWithCategory.nameZh);
+        if (!hasCacheForThis && aiCallCount >= MAX_AI_CALLS) {
+          continue; // Skip non-cached items if AI limit reached
+        }
         
         const result = await generatePlaceForSubcategory(
           districtNameZh,
@@ -1374,16 +1404,19 @@ ${uncachedSkeleton.map((item, idx) => `  {
         );
 
         if (result) {
-          // Track this place name and subcategory to avoid duplicates
           if (result.place?.name) {
             usedPlaceNames.push(result.place.name);
           }
           usedSubcategoryIds.add(subcatWithCategory.id);
           
-          if (result.source === 'cache') cacheHits++;
-          else aiGenerated++;
+          if (result.source === 'cache') {
+            cacheHits++;
+          } else {
+            aiGenerated++;
+            aiCallCount++;
+          }
 
-          // Check for merchant promotions for this place
+          // Check for merchant promotions
           let merchantPromo = null;
           if (result.place?.name) {
             const merchantLink = await storage.getPlaceLinkByPlace(
@@ -1423,7 +1456,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
         }
       }
 
-      console.log(`Generated ${items.length} items (cache: ${cacheHits}, AI: ${aiGenerated})`);
+      const duration = Date.now() - startTime;
+      console.log(`Generated ${items.length}/${itemCount} items in ${duration}ms (cache: ${cacheHits}, AI: ${aiGenerated})`);
 
       // Return the complete itinerary
       res.json({
