@@ -36,6 +36,11 @@ Mibu 旅行扭蛋是一個結合旅遊規劃與扭蛋遊戲化的漸進式網頁
 | `merchant_place_links` | 商家認領 | 商家認領的地點關聯 |
 | `coupons` | 優惠券 | 商家發放的優惠券 |
 | `trip_plans` | 行程規劃 | 使用者建立的行程計畫 |
+| `planners` | 策劃師 | 策劃師帳號資料（專業旅程規劃師）|
+| `service_plans` | 服務方案 | 策劃服務的價格和內容（輕旅諮詢、深度規劃、全程陪伴）|
+| `service_orders` | 服務訂單 | 使用者購買策劃服務的訂單紀錄 |
+| `travel_companions` | 旅伴 | 已加入行程的旅伴紀錄 |
+| `companion_invites` | 旅伴邀請 | 邀請旅伴加入聊天室的邀請碼 |
 
 ---
 
@@ -122,6 +127,16 @@ Mibu 旅行扭蛋是一個結合旅遊規劃與扭蛋遊戲化的漸進式網頁
   - 後端 Token API：`/api/chat/token`
   - 聊天室管理 API：`/api/chat/conversations`
   - 前端 ChatView 元件：在旅程策劃模組的「聊天」分頁
+- **旅程策劃服務系統**：
+  - 策劃師資料表（planners）和服務方案（service_plans）
+  - 訂單系統：購買服務 → 自動配對策劃師 → 建立聊天室
+  - 三種方案：輕旅諮詢（$299）、深度規劃（$799）、全程陪伴（$1,499）
+  - 雙金流準備：PAYUNi（台灣）+ Stripe（國際）
+- **多人旅伴系統**：
+  - 購買者可邀請旅伴加入聊天室
+  - 邀請連結機制：建立邀請碼 → 分享連結 → 旅伴接受邀請
+  - 接受邀請時自動加入 Twilio 聊天室
+  - API：`/api/planner/orders/:id/invite`、`/api/planner/invites/:code/accept`
 
 ### 2025-12-11 更動
 - **Google 類型整合**：在行程卡片上顯示 Google 地點類型標籤
