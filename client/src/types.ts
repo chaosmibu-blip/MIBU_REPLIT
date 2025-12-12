@@ -71,8 +71,10 @@ export interface GachaItem {
   search_query: string;
   color_hex: string;
   city?: string;
+  cityDisplay?: string;
   country?: string;
   district?: string;
+  districtDisplay?: string;
   collectedAt?: string;
   operating_status?: string;
   is_coupon: boolean;

@@ -56,7 +56,9 @@ const getLocation = (item: any): { lat: string; lng: string } | null => {
 };
 
 const getCity = (item: any): string => item.city || '';
+const getCityDisplay = (item: any): string => item.cityDisplay || item.city || '';
 const getDistrict = (item: any): string => item.district || '';
+const getDistrictDisplay = (item: any): string => item.districtDisplay || item.district || '';
 const getCategory = (item: any): string => (item.category || '').toLowerCase();
 const getCollectedAt = (item: any): string => item.collectedAt || item.collected_at || '';
 
@@ -112,7 +114,9 @@ const PlaceDetailModal: React.FC<{
   const categoryColor = getCategoryColor(category);
   const date = formatDate(getCollectedAt(item));
   const city = getCity(item);
+  const cityDisplay = getCityDisplay(item);
   const district = getDistrict(item);
+  const districtDisplay = getDistrictDisplay(item);
   
   const { data: promoData } = useQuery<{ promo: MerchantPromo | null }>({
     queryKey: ['placePromo', placeId, placeName, district, city],
@@ -135,13 +139,13 @@ const PlaceDetailModal: React.FC<{
     if (location) {
       url = `https://www.google.com/maps/dir/?api=1&destination=${location.lat},${location.lng}`;
     } else {
-      const query = [placeName, district, city].filter(Boolean).join(' ');
+      const query = [placeName, districtDisplay, cityDisplay].filter(Boolean).join(' ');
       url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`;
     }
     window.open(url, '_blank');
   };
 
-  const locationText = [district, city].filter(Boolean).join(' • ') || city;
+  const locationText = [districtDisplay, cityDisplay].filter(Boolean).join(' • ') || cityDisplay;
 
   return (
     <div 
@@ -246,14 +250,15 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
   };
 
   const groupedData = useMemo(() => {
-    const cityMap: Record<string, { items: any[], byCategory: Record<string, any[]> }> = {};
+    const cityMap: Record<string, { displayName: string, items: any[], byCategory: Record<string, any[]> }> = {};
     
     items.forEach(item => {
       const city = getCity(item) || t.unknown || 'Unknown';
+      const cityDisplay = getCityDisplay(item) || city;
       const category = getCategory(item) || 'other';
       
       if (!cityMap[city]) {
-        cityMap[city] = { items: [], byCategory: {} };
+        cityMap[city] = { displayName: cityDisplay, items: [], byCategory: {} };
       }
       cityMap[city].items.push(item);
       
@@ -276,29 +281,45 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
     );
   }
 
+  const myCollectionTitle = {
+    'zh-TW': '我的圖鑑',
+    'en': 'My Collection',
+    'ja': 'マイ図鑑',
+    'ko': '내 도감'
+  };
+
   return (
     <>
       <div className="pb-32 max-w-md mx-auto px-4 pt-4">
+        <h1 className="text-2xl font-black text-slate-800 mb-4" data-testid="text-collection-title">
+          {myCollectionTitle[language]}
+        </h1>
         <div className="space-y-3">
           {Object.entries(groupedData)
             .sort((a, b) => b[1].items.length - a[1].items.length)
-            .map(([region, data]) => {
-              const isRegionOpen = openRegions.has(region);
+            .map(([regionKey, data]) => {
+              const isRegionOpen = openRegions.has(regionKey);
+              const displayName = data.displayName || regionKey;
               
               return (
-                <div key={region} className="bg-white rounded-2xl border-2 border-slate-100 overflow-hidden">
+                <div key={regionKey} className="bg-white rounded-2xl border-2 border-slate-100 overflow-hidden">
                   <button
-                    onClick={() => toggleRegion(region)}
+                    onClick={() => toggleRegion(regionKey)}
                     className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
-                    data-testid={`accordion-region-${region}`}
+                    data-testid={`accordion-region-${regionKey}`}
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center text-white font-black text-sm">
-                        {region.charAt(0)}
+                        {displayName.charAt(0)}
                       </div>
                       <div className="text-left">
-                        <p className="font-bold text-slate-800">{region}</p>
-                        <p className="text-xs text-slate-400">{data.items.length} 個地點</p>
+                        <p className="font-bold text-slate-800">{displayName}</p>
+                        <p className="text-xs text-slate-400">
+                          {language === 'zh-TW' ? `${data.items.length} 個地點` : 
+                           language === 'ja' ? `${data.items.length} スポット` : 
+                           language === 'ko' ? `${data.items.length}개 장소` : 
+                           `${data.items.length} spots`}
+                        </p>
                       </div>
                     </div>
                     <ChevronDown 
@@ -312,7 +333,7 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
                         .sort((a, b) => b[1].length - a[1].length)
                         .map(([category, categoryItems]) => {
                           const categoryColor = getCategoryColor(category);
-                          const categoryKey = `${region}-${category}`;
+                          const categoryKey = `${regionKey}-${category}`;
                           const isCategoryOpen = openCategories.has(categoryKey);
                           
                           return (
@@ -349,7 +370,7 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
                                     const placeName = getPlaceName(item);
                                     const description = getDescription(item);
                                     const date = formatDate(getCollectedAt(item));
-                                    const district = getDistrict(item);
+                                    const districtForDisplay = getDistrictDisplay(item);
                                     const location = getLocation(item);
                                     
                                     const handleMapClick = (e: React.MouseEvent) => {
@@ -358,7 +379,7 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
                                       if (location) {
                                         url = `https://www.google.com/maps/dir/?api=1&destination=${location.lat},${location.lng}`;
                                       } else {
-                                        const query = [placeName, district, region].filter(Boolean).join(' ');
+                                        const query = [placeName, districtForDisplay, displayName].filter(Boolean).join(' ');
                                         url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`;
                                       }
                                       window.open(url, '_blank');

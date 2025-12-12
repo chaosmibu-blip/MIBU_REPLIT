@@ -340,6 +340,7 @@ const App: React.FC = () => {
       const { itinerary } = result;
       
       // Convert API response to GachaItem format and sort (stay/lodging last)
+      // Use nameZh as canonical key for grouping to avoid duplicates, but store localized name for display
       const rawItems: GachaItem[] = itinerary.items.map((item: any, index: number) => ({
         id: Date.now() + index,
         place_name: item.place?.name || `${itinerary.location.district.name} ${item.subcategory.name}`,
@@ -351,8 +352,10 @@ const App: React.FC = () => {
         search_query: '',
         color_hex: item.category.colorHex || '#6366f1',
         country: itinerary.location.country.name,
-        city: itinerary.location.region.name,
-        district: itinerary.location.district.name,  // ALL items share the SAME district
+        city: itinerary.location.region.nameZh || itinerary.location.region.name,
+        cityDisplay: itinerary.location.region.name,
+        district: itinerary.location.district.nameZh || itinerary.location.district.name,  // ALL items share the SAME district
+        districtDisplay: itinerary.location.district.name,
         collectedAt: new Date().toISOString(),
         is_coupon: false,
         coupon_data: null,
@@ -384,8 +387,8 @@ const App: React.FC = () => {
         meta: {
           date: new Date().toISOString().split('T')[0],
           country: itinerary.location.country.name,
-          city: itinerary.location.region.name,
-          locked_district: itinerary.location.district.name,  // Display locked district
+          city: itinerary.location.region.nameZh || itinerary.location.region.name,
+          locked_district: itinerary.location.district.nameZh || itinerary.location.district.name,  // Display locked district
           user_level: state.level
         },
         inventory: allItems
@@ -766,7 +769,10 @@ const App: React.FC = () => {
             />
             <GachaModuleNav 
               currentTab={gachaSubView} 
-              onChange={setGachaSubView} 
+              onChange={(tab) => {
+                setGachaSubView(tab);
+                setState(prev => ({ ...prev, view: 'gacha_module', result: null }));
+              }} 
               language={state.language} 
             />
             <ResultList data={state.result} language={state.language} onResearch={() => { setGachaSubView('gacha'); setState(prev => ({ ...prev, view: 'gacha_module', result: null })); }} isLoading={state.loading} />

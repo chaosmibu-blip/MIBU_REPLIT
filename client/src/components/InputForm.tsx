@@ -225,7 +225,7 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
           <div className="pt-2">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-bold text-slate-700">
-                {state.language === 'zh-TW' ? '行程豐富度' : 'Itinerary Length'}
+                {state.language === 'zh-TW' ? '行程節奏' : state.language === 'ja' ? '行程のペース' : state.language === 'ko' ? '일정 페이스' : 'Itinerary Pace'}
               </span>
               <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-sm font-bold" data-testid="text-level">
                 {getLevelLabel()}
@@ -253,8 +253,8 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
               />
             </div>
             <div className="flex justify-between mt-2 text-xs text-slate-400">
-              <span>{state.language === 'zh-TW' ? '惬意 (5點)' : 'Relaxed (5)'}</span>
-              <span>{state.language === 'zh-TW' ? '極限 (12點)' : 'Packed (12)'}</span>
+              <span>{state.language === 'zh-TW' ? '悠閒' : state.language === 'ja' ? 'ゆったり' : state.language === 'ko' ? '여유로운' : 'Relaxed'}</span>
+              <span>{state.language === 'zh-TW' ? '充實' : state.language === 'ja' ? '充実' : state.language === 'ko' ? '알찬' : 'Packed'}</span>
             </div>
           </div>
         )}
@@ -269,7 +269,7 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
           }`}
           data-testid="button-start-gacha"
         >
-          {state.language === 'zh-TW' ? '開始探索' : t.startGacha}
+          {state.language === 'zh-TW' ? '開始扭蛋' : state.language === 'ja' ? 'ガチャを回す' : state.language === 'ko' ? '가챠 시작' : 'START GACHA'}
         </button>
       </div>
     </div>
