@@ -128,6 +128,7 @@ export const collections = pgTable("collections", {
   rating: text("rating"),
   locationLat: text("location_lat"),
   locationLng: text("location_lng"),
+  googleTypes: text("google_types"),
   isCoupon: boolean("is_coupon").default(false),
   couponData: jsonb("coupon_data"),
   collectedAt: timestamp("collected_at").defaultNow().notNull(),

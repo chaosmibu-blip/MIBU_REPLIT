@@ -426,6 +426,7 @@ const App: React.FC = () => {
                   rating: item.google_rating?.toString() || null,
                   locationLat: item.location?.lat?.toString() || null,
                   locationLng: item.location?.lng?.toString() || null,
+                  googleTypes: Array.isArray(item.google_types) ? item.google_types.join(',') : null,
                   isCoupon: item.is_coupon || false,
                   couponData: item.coupon_data || null,
                 }),

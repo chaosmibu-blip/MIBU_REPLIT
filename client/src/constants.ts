@@ -493,3 +493,72 @@ export const DISTRICT_DATA: Record<string, Record<string, string[]>> = {
     hong_kong: ['中西區', '灣仔區', '東區', '南區', '油尖旺區', '深水埗區', '九龍城區', '黃大仙區', '觀塘區', '葵青區', '荃灣區', '屯門區', '元朗區', '北區', '大埔區', '沙田區', '西貢區', '離島區'],
   }
 };
+
+// Google Place Types translation to Chinese
+export const GOOGLE_TYPE_TRANSLATIONS: Record<string, string> = {
+  // Food & Drink
+  restaurant: '餐廳',
+  cafe: '咖啡廳',
+  bakery: '烘焙店',
+  bar: '酒吧',
+  meal_delivery: '外送餐廳',
+  meal_takeaway: '外帶餐廳',
+  night_club: '夜店',
+  // Shopping
+  department_store: '百貨公司',
+  shopping_mall: '購物中心',
+  store: '商店',
+  convenience_store: '便利商店',
+  supermarket: '超市',
+  clothing_store: '服飾店',
+  shoe_store: '鞋店',
+  jewelry_store: '珠寶店',
+  electronics_store: '電器行',
+  book_store: '書店',
+  gift_shop: '禮品店',
+  home_goods_store: '家飾店',
+  pet_store: '寵物店',
+  florist: '花店',
+  // Lodging
+  lodging: '住宿',
+  hotel: '飯店',
+  motel: '汽車旅館',
+  campground: '露營地',
+  rv_park: '露營車停車場',
+  // Tourism & Recreation
+  tourist_attraction: '觀光景點',
+  amusement_park: '遊樂園',
+  aquarium: '水族館',
+  zoo: '動物園',
+  museum: '博物館',
+  art_gallery: '美術館',
+  park: '公園',
+  stadium: '體育場',
+  gym: '健身房',
+  spa: '水療中心',
+  beauty_salon: '美容院',
+  hair_care: '美髮沙龍',
+  bowling_alley: '保齡球館',
+  movie_theater: '電影院',
+  casino: '賭場',
+  // Nature
+  natural_feature: '自然景觀',
+  beach: '海灘',
+  // Food places
+  food: '美食',
+  point_of_interest: '景點',
+  establishment: '場所',
+  // Culture
+  church: '教堂',
+  temple: '寺廟',
+  hindu_temple: '印度廟',
+  mosque: '清真寺',
+  synagogue: '猶太教堂',
+  place_of_worship: '宗教場所',
+  // Services
+  laundry: '洗衣店',
+  // Default
+  locality: '地方',
+  sublocality: '區域',
+  neighborhood: '社區',
+};

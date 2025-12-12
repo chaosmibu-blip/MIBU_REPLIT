@@ -24,8 +24,29 @@ interface PlaceSearchResult {
 }
 
 const EXCLUDED_BUSINESS_STATUS = ['CLOSED_PERMANENTLY', 'CLOSED_TEMPORARILY'];
-const EXCLUDED_PLACE_TYPES = ['travel_agency', 'insurance_agency', 'real_estate_agency', 'lawyer', 'accounting', 'bank', 'library'];
-const GENERIC_NAME_PATTERNS = ['探索', '旅行社', '旅遊', '服務中心', '遊客中心', '旅行', 'Travel', 'Explore', 'Tour'];
+// Exclude non-tourism Google Place types
+const EXCLUDED_PLACE_TYPES = [
+  'travel_agency', 'insurance_agency', 'real_estate_agency', 'lawyer', 'accounting', 
+  'bank', 'library', 'local_government_office', 'city_hall', 'courthouse', 'post_office',
+  'police', 'fire_station', 'hospital', 'doctor', 'dentist', 'pharmacy', 'veterinary_care',
+  'school', 'primary_school', 'secondary_school', 'university', 'car_dealer', 'car_rental',
+  'car_repair', 'car_wash', 'gas_station', 'parking', 'transit_station', 'bus_station',
+  'train_station', 'subway_station', 'taxi_stand', 'atm', 'funeral_home', 'cemetery',
+  'church', 'mosque', 'synagogue', 'hindu_temple', 'place_of_worship'
+];
+// Exclude non-tourism places by name patterns (Chinese and English)
+const GENERIC_NAME_PATTERNS = [
+  // Travel/tour related
+  '探索', '旅行社', '旅行', 'Travel', 'Explore', 'Tour',
+  // Government/public services
+  '農會', '公所', '區公所', '鄉公所', '鎮公所', '市公所', '縣政府', '市政府', '衛生所', '戶政事務所',
+  '警察局', '派出所', '消防隊', '消防局', '郵局', '稅務局', '地政事務所',
+  // Non-tourism services
+  '診所', '牙醫', '醫院', '藥局', '獸醫', '銀行', '加油站', '停車場', '汽車', '機車行',
+  '葬儀', '殯儀館', '靈骨塔', '納骨塔',
+  // Generic/placeholder names
+  '服務中心', '遊客中心'
+];
 
 function isPlaceValid(place: any): boolean {
   if (place.business_status && EXCLUDED_BUSINESS_STATUS.includes(place.business_status)) {
@@ -207,6 +228,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Fetch collections error:", error);
       res.status(500).json({ error: "Failed to fetch collections" });
+    }
+  });
+
+  // Get merchant promo for a specific place (by placeId or placeName+district+city)
+  app.get("/api/place/promo", async (req, res) => {
+    try {
+      const { placeId, placeName, district, city } = req.query;
+      
+      let merchantLink = null;
+      
+      // First try to find by Google Place ID (most accurate)
+      if (placeId && typeof placeId === 'string') {
+        merchantLink = await storage.getPlaceLinkByGooglePlaceId(placeId);
+      }
+      
+      // Fallback to placeName + district + city
+      if (!merchantLink && placeName && district && city) {
+        merchantLink = await storage.getPlaceLinkByPlace(
+          placeName as string,
+          district as string,
+          city as string
+        );
+      }
+      
+      if (!merchantLink || !merchantLink.isPromoActive) {
+        return res.json({ promo: null });
+      }
+      
+      res.json({
+        promo: {
+          title: merchantLink.promoTitle,
+          description: merchantLink.promoDescription,
+          imageUrl: merchantLink.promoImageUrl
+        }
+      });
+    } catch (error) {
+      console.error("Get place promo error:", error);
+      res.status(500).json({ error: "Failed to get place promo" });
     }
   });
 
