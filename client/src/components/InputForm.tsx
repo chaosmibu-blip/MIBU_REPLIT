@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppState, Language } from '../types';
 import { TRANSLATIONS } from '../constants';
-import { ChevronDown, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 interface Country {
   id: number;
@@ -173,24 +173,21 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
                 </button>
               </div>
             ) : (
-              <>
-                <select
-                  value={selectedCountryId || ''}
-                  onChange={(e) => handleCountryChange(e.target.value)}
-                  className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-200 appearance-none pr-12"
-                  data-testid="select-country"
-                >
-                  <option value="" disabled>
-                    {state.language === 'zh-TW' ? '請選擇國家' : t.selectDestination}
+              <select
+                value={selectedCountryId || ''}
+                onChange={(e) => handleCountryChange(e.target.value)}
+                className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                data-testid="select-country"
+              >
+                <option value="" disabled>
+                  {state.language === 'zh-TW' ? '請選擇國家' : t.selectDestination}
+                </option>
+                {countries.map(country => (
+                  <option key={country.id} value={country.id}>
+                    {getLocalizedName(country)}
                   </option>
-                  {countries.map(country => (
-                    <option key={country.id} value={country.id}>
-                      {getLocalizedName(country)}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
-              </>
+                ))}
+              </select>
             )}
           </div>
         </div>
@@ -202,29 +199,26 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
                 <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
               </div>
             ) : (
-              <>
-                <select
-                  value={selectedRegionId || ''}
-                  onChange={(e) => handleRegionChange(e.target.value ? parseInt(e.target.value) : null)}
-                  className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-200 appearance-none pr-12"
-                  data-testid="select-region"
-                >
-                  <option value="" disabled>
-                    {state.language === 'zh-TW' ? '請選擇城市/地區' : 'Select City/Region'}
+              <select
+                value={selectedRegionId || ''}
+                onChange={(e) => handleRegionChange(e.target.value ? parseInt(e.target.value) : null)}
+                className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                data-testid="select-region"
+              >
+                <option value="" disabled>
+                  {state.language === 'zh-TW' ? '請選擇城市/地區' : 'Select City/Region'}
+                </option>
+                {regions.map(region => (
+                  <option key={region.id} value={region.id}>
+                    {getLocalizedName(region)}
                   </option>
-                  {regions.map(region => (
-                    <option key={region.id} value={region.id}>
-                      {getLocalizedName(region)}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
-              </>
+                ))}
+              </select>
             )}
           </div>
         )}
 
-        {selectedCountryId && (
+        {selectedCountryId && selectedRegionId && (
           <div className="pt-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-bold text-slate-700">
@@ -264,11 +258,11 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
 
         <button
           onClick={onSubmit}
-          disabled={!selectedCountryId || districtCount === 0}
-          className={`w-full py-4 rounded-2xl font-bold text-base mt-4 transition-all ${
-            !selectedCountryId || districtCount === 0
+          disabled={!selectedCountryId || !selectedRegionId || districtCount === 0}
+          className={`w-full py-4 rounded-2xl font-bold text-base mt-6 transition-all ${
+            !selectedCountryId || !selectedRegionId || districtCount === 0
               ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              : 'bg-slate-200 text-slate-600 hover:bg-slate-300 active:scale-[0.98]'
+              : 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-[0.98]'
           }`}
           data-testid="button-start-gacha"
         >
