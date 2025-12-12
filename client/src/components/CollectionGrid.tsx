@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Language, GachaItem } from '../types';
-import { TRANSLATIONS, GOOGLE_TYPE_TRANSLATIONS } from '../constants';
-import { MapPin, X, Tag, Navigation } from 'lucide-react';
+import { TRANSLATIONS } from '../constants';
+import { MapPin, ChevronDown, X, Tag, Navigation } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
 interface CollectionGridProps {
@@ -55,21 +55,10 @@ const getLocation = (item: any): { lat: string; lng: string } | null => {
   return null;
 };
 
-const getCity = (item: any): string => {
-  return item.city || '';
-};
-
-const getDistrict = (item: any): string => {
-  return item.district || '';
-};
-
-const getCategory = (item: any): string => {
-  return (item.category || '').toLowerCase();
-};
-
-const getCollectedAt = (item: any): string => {
-  return item.collectedAt || item.collected_at || '';
-};
+const getCity = (item: any): string => item.city || '';
+const getDistrict = (item: any): string => item.district || '';
+const getCategory = (item: any): string => (item.category || '').toLowerCase();
+const getCollectedAt = (item: any): string => item.collectedAt || item.collected_at || '';
 
 const getCategoryColor = (category: string): string => {
   const colorMap: Record<string, string> = {
@@ -232,92 +221,50 @@ const PlaceDetailModal: React.FC<{
   );
 };
 
-const CollectionCard: React.FC<{
-  item: any;
-  language: Language;
-  isNew?: boolean;
-  onClick: () => void;
-}> = ({ item, language, isNew, onClick }) => {
-  const placeName = getPlaceName(item);
-  const description = getDescription(item);
-  const category = getCategory(item);
-  const categoryColor = getCategoryColor(category);
-  const date = formatDate(getCollectedAt(item));
-  const location = getLocation(item);
-  const city = getCity(item);
-  const district = getDistrict(item);
-
-  const handleMapClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    let url: string;
-    if (location) {
-      url = `https://www.google.com/maps/dir/?api=1&destination=${location.lat},${location.lng}`;
-    } else {
-      const query = [placeName, district, city].filter(Boolean).join(' ');
-      url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`;
-    }
-    window.open(url, '_blank');
-  };
-
-  return (
-    <div 
-      className="bg-white rounded-2xl border-2 border-slate-100 p-5 cursor-pointer transition-all hover:shadow-lg hover:border-slate-200 relative"
-      onClick={onClick}
-      data-testid={`card-collection-${item.id || placeName}`}
-    >
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm text-slate-400 font-medium">{date}</span>
-        <div className="relative">
-          <span 
-            className="inline-block px-3 py-1 rounded-full text-xs font-bold text-white"
-            style={{ backgroundColor: categoryColor }}
-          >
-            {getCategoryLabel(category, language)}
-          </span>
-          {isNew && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full" />
-          )}
-        </div>
-      </div>
-      
-      <h3 className="text-xl font-black text-slate-800 mb-2">
-        {placeName}
-      </h3>
-      
-      {description && (
-        <p className="text-slate-500 text-sm leading-relaxed line-clamp-3 mb-4">
-          {description}
-        </p>
-      )}
-      
-      <button
-        onClick={handleMapClick}
-        className="flex items-center gap-2 text-slate-500 hover:text-slate-700 transition-colors py-2"
-        data-testid={`button-map-${item.id || placeName}`}
-      >
-        <MapPin className="w-4 h-4" />
-        <span className="text-sm font-medium">在 Google 地圖中查看</span>
-      </button>
-    </div>
-  );
-};
-
 export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language }) => {
   const t = TRANSLATIONS[language] as any;
+  const [openRegions, setOpenRegions] = useState<Set<string>>(new Set());
+  const [openCategories, setOpenCategories] = useState<Set<string>>(new Set());
   const [selectedItem, setSelectedItem] = useState<any>(null);
 
-  const sortedItems = useMemo(() => {
-    return [...items].sort((a, b) => {
-      const dateA = new Date(getCollectedAt(a) || 0).getTime();
-      const dateB = new Date(getCollectedAt(b) || 0).getTime();
-      return dateB - dateA;
+  const toggleRegion = (region: string) => {
+    setOpenRegions(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(region)) newSet.delete(region);
+      else newSet.add(region);
+      return newSet;
     });
-  }, [items]);
+  };
 
-  const today = useMemo(() => {
-    const now = new Date();
-    return `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
-  }, []);
+  const toggleCategory = (key: string) => {
+    setOpenCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(key)) newSet.delete(key);
+      else newSet.add(key);
+      return newSet;
+    });
+  };
+
+  const groupedData = useMemo(() => {
+    const cityMap: Record<string, { items: any[], byCategory: Record<string, any[]> }> = {};
+    
+    items.forEach(item => {
+      const city = getCity(item) || t.unknown || 'Unknown';
+      const category = getCategory(item) || 'other';
+      
+      if (!cityMap[city]) {
+        cityMap[city] = { items: [], byCategory: {} };
+      }
+      cityMap[city].items.push(item);
+      
+      if (!cityMap[city].byCategory[category]) {
+        cityMap[city].byCategory[category] = [];
+      }
+      cityMap[city].byCategory[category].push(item);
+    });
+    
+    return cityMap;
+  }, [items, t.unknown]);
 
   if (items.length === 0) {
     return (
@@ -331,22 +278,149 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
 
   return (
     <>
-      <div className="pb-32 max-w-md mx-auto px-4">
-        <div className="space-y-4 pt-4">
-          {sortedItems.map((item, idx) => {
-            const itemDate = formatDate(getCollectedAt(item));
-            const isNew = itemDate === today;
-            
-            return (
-              <CollectionCard
-                key={item.id || idx}
-                item={item}
-                language={language}
-                isNew={isNew}
-                onClick={() => setSelectedItem(item)}
-              />
-            );
-          })}
+      <div className="pb-32 max-w-md mx-auto px-4 pt-4">
+        <div className="space-y-3">
+          {Object.entries(groupedData)
+            .sort((a, b) => b[1].items.length - a[1].items.length)
+            .map(([region, data]) => {
+              const isRegionOpen = openRegions.has(region);
+              
+              return (
+                <div key={region} className="bg-white rounded-2xl border-2 border-slate-100 overflow-hidden">
+                  <button
+                    onClick={() => toggleRegion(region)}
+                    className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+                    data-testid={`accordion-region-${region}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center text-white font-black text-sm">
+                        {region.charAt(0)}
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-slate-800">{region}</p>
+                        <p className="text-xs text-slate-400">{data.items.length} 個地點</p>
+                      </div>
+                    </div>
+                    <ChevronDown 
+                      className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${isRegionOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+
+                  {isRegionOpen && (
+                    <div className="px-4 pb-4 space-y-2">
+                      {Object.entries(data.byCategory)
+                        .sort((a, b) => b[1].length - a[1].length)
+                        .map(([category, categoryItems]) => {
+                          const categoryColor = getCategoryColor(category);
+                          const categoryKey = `${region}-${category}`;
+                          const isCategoryOpen = openCategories.has(categoryKey);
+                          
+                          return (
+                            <div key={categoryKey}>
+                              <button
+                                onClick={() => toggleCategory(categoryKey)}
+                                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors"
+                                style={{ backgroundColor: `${categoryColor}10` }}
+                                data-testid={`accordion-category-${categoryKey}`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div 
+                                    className="w-1.5 h-6 rounded-full"
+                                    style={{ backgroundColor: categoryColor }}
+                                  />
+                                  <span className="font-bold text-slate-700">
+                                    {getCategoryLabel(category, language)}
+                                  </span>
+                                  <span 
+                                    className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
+                                    style={{ backgroundColor: categoryColor }}
+                                  >
+                                    {categoryItems.length}
+                                  </span>
+                                </div>
+                                <ChevronDown 
+                                  className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isCategoryOpen ? 'rotate-180' : ''}`}
+                                />
+                              </button>
+                              
+                              {isCategoryOpen && (
+                                <div className="mt-2 space-y-2 pl-2">
+                                  {categoryItems.map((item: any, idx: number) => {
+                                    const placeName = getPlaceName(item);
+                                    const description = getDescription(item);
+                                    const date = formatDate(getCollectedAt(item));
+                                    const district = getDistrict(item);
+                                    const location = getLocation(item);
+                                    
+                                    const handleMapClick = (e: React.MouseEvent) => {
+                                      e.stopPropagation();
+                                      let url: string;
+                                      if (location) {
+                                        url = `https://www.google.com/maps/dir/?api=1&destination=${location.lat},${location.lng}`;
+                                      } else {
+                                        const query = [placeName, district, region].filter(Boolean).join(' ');
+                                        url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`;
+                                      }
+                                      window.open(url, '_blank');
+                                    };
+                                    
+                                    return (
+                                      <div
+                                        key={`${item.id || idx}-${idx}`}
+                                        onClick={() => setSelectedItem(item)}
+                                        className="bg-white rounded-2xl border-2 p-4 cursor-pointer transition-all hover:shadow-md relative overflow-hidden"
+                                        style={{ 
+                                          borderColor: `${categoryColor}40`,
+                                          background: `linear-gradient(135deg, ${categoryColor}08 0%, white 50%)`
+                                        }}
+                                        data-testid={`card-collection-${item.id || idx}`}
+                                      >
+                                        <div 
+                                          className="absolute top-0 left-0 right-0 h-1"
+                                          style={{ backgroundColor: categoryColor }}
+                                        />
+                                        
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="text-xs text-slate-400">{date}</span>
+                                          <span 
+                                            className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
+                                            style={{ backgroundColor: categoryColor }}
+                                          >
+                                            {getCategoryLabel(category, language)}
+                                          </span>
+                                        </div>
+                                        
+                                        <h3 className="font-black text-slate-800 mb-1">
+                                          {placeName}
+                                        </h3>
+                                        
+                                        {description && (
+                                          <p className="text-sm text-slate-500 line-clamp-2 mb-3">
+                                            {description}
+                                          </p>
+                                        )}
+                                        
+                                        <button
+                                          onClick={handleMapClick}
+                                          className="flex items-center gap-1.5 text-slate-500 hover:text-slate-700 transition-colors text-sm"
+                                          data-testid={`button-map-${item.id || idx}`}
+                                        >
+                                          <MapPin className="w-3.5 h-3.5" />
+                                          <span>在 Google 地圖中查看</span>
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
         </div>
       </div>
       
