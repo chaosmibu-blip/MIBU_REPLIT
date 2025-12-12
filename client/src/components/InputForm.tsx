@@ -235,21 +235,43 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit 
                 {state.language === 'ja' && '行程の長さ'}
                 {state.language === 'ko' && '행정 길이'}
               </label>
-              <span className="text-sm font-bold text-indigo-600" data-testid="text-level">{state.level}</span>
+              <motion.span 
+                key={state.level}
+                initial={{ scale: 1.3, color: '#4f46e5' }}
+                animate={{ scale: 1, color: '#4f46e5' }}
+                className="text-lg font-black text-indigo-600 tabular-nums" 
+                data-testid="text-level"
+              >
+                {state.level}
+              </motion.span>
             </div>
             <div className="space-y-3">
-              <input
-                type="range"
-                min="5"
-                max="12"
-                value={state.level}
-                onChange={(e) => onUpdate({ level: parseInt(e.target.value) })}
-                className="w-full h-2 bg-gradient-to-r from-blue-200 to-indigo-300 rounded-lg appearance-none cursor-pointer"
-                style={{
-                  background: `linear-gradient(to right, rgb(191, 219, 254) 0%, rgb(191, 219, 254) ${((state.level - 5) / 7) * 100}%, rgb(199, 210, 254) ${((state.level - 5) / 7) * 100}%, rgb(199, 210, 254) 100%)`
-                }}
-                data-testid="slider-level"
-              />
+              <div className="relative h-10 flex items-center">
+                <div className="absolute inset-x-0 h-3 bg-slate-200 rounded-full overflow-hidden">
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
+                    initial={false}
+                    animate={{ width: `${((state.level - 5) / 7) * 100}%` }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                  />
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="12"
+                  value={state.level}
+                  onChange={(e) => onUpdate({ level: parseInt(e.target.value) })}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  data-testid="slider-level"
+                />
+                <motion.div 
+                  className="absolute w-6 h-6 bg-white rounded-full shadow-lg border-2 border-indigo-500 pointer-events-none"
+                  initial={false}
+                  animate={{ left: `calc(${((state.level - 5) / 7) * 100}% - 12px)` }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                  whileTap={{ scale: 1.2 }}
+                />
+              </div>
               <div className="flex justify-between px-1">
                 <span className="text-xs font-bold text-slate-500">
                   {state.language === 'zh-TW' && '悠閒'}

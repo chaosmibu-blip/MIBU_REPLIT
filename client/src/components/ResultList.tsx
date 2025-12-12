@@ -207,7 +207,9 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, x: -100, height: 0, marginBottom: 0 }}
               transition={{ delay: idx * 0.03, duration: 0.2 }}
-              className="bg-white rounded-2xl shadow-sm border border-slate-100/80 relative overflow-hidden group hover:shadow-md transition-shadow"
+              className="bg-white rounded-2xl shadow-sm border border-slate-100/80 relative overflow-hidden group cursor-pointer"
+              whileHover={{ scale: 1.02, boxShadow: '0 10px 40px -10px rgba(99,102,241,0.25)' }}
+              whileTap={{ scale: 0.98 }}
               data-testid={`card-itinerary-${item.id}`}
             >
               <button
@@ -239,18 +241,14 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
                     <Tag className="w-2.5 h-2.5" />
                     {(t as any)[getCategoryTranslationKey(item.category as any)] || item.category}
                   </span>
-                  {(() => {
-                    const googleTypeLabel = getGoogleTypeLabel((item as any).google_types, language);
-                    return googleTypeLabel ? (
-                      <span 
-                        className="inline-flex items-center text-[10px] font-medium px-2 py-1 rounded-md bg-slate-100 text-slate-600"
-                        data-testid={`tag-google-type-${item.id}`}
-                      >
-                        {googleTypeLabel}
-                      </span>
-                    ) : null;
-                  })()}
-                  <span className="text-[10px] text-slate-400 font-medium">#{idx + 1}</span>
+                  {item.subcategory && (
+                    <span 
+                      className="inline-flex items-center text-[10px] font-medium px-2 py-1 rounded-md bg-slate-100 text-slate-600"
+                      data-testid={`tag-subcategory-${item.id}`}
+                    >
+                      {typeof item.subcategory === 'string' ? item.subcategory : (item.subcategory as any)[language] || (item.subcategory as any)['zh-TW']}
+                    </span>
+                  )}
                 </div>
 
                 <h3 className="text-lg font-bold text-slate-800 leading-snug mb-2 pr-8">

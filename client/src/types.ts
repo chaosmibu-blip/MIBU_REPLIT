@@ -65,6 +65,7 @@ export interface GachaItem {
   description: LocalizedContent;
   ai_description?: LocalizedContent;
   category: Category;
+  subcategory?: LocalizedContent;
   suggested_time: string;
   duration: string;
   search_query: string;
