@@ -23,6 +23,10 @@ Preferred communication style: Simple, everyday language.
 - **Language**: TypeScript with ES modules
 - **API Pattern**: RESTful endpoints under `/api/` prefix
 - **Authentication**: Replit Auth with OpenID Connect, session-based with PostgreSQL session store
+- **Role-Based Access Control (Added 2025-12-12)**:
+  - User roles: `consumer` (default), `merchant`, `admin`
+  - Middleware: `requireRole()`, `isMerchant`, `isAdmin` in `server/replitAuth.ts`
+  - API namespacing: `/api/consumer/*` for B2C, `/api/merchant/*` for B2B (planned)
 
 ### Data Storage
 - **Database**: PostgreSQL with Drizzle ORM
@@ -67,7 +71,7 @@ Preferred communication style: Simple, everyday language.
   - **Gacha Module Sub-Nav** (ModuleNav.tsx): 3 tabs - 扭蛋, 圖鑑, 道具箱 + back button to home
   - **Planner Module Sub-Nav**: 3 tabs - 定位, 行程, 聊天 + back button to home
   - **Settings Page**: 3 tabs - Mibu (language/profile), 行程扭蛋 (links to collection/itembox/merchant), 旅程策劃 (placeholder)
-  - **View Types**: mibu_home, gacha_module, planner_module, settings, result, merchant_login, merchant_dashboard
+  - **View Types**: login, mibu_home, gacha_module, planner_module, settings, result, merchant_login, merchant_dashboard
   - **Sub-View State**: gachaSubView (gacha/collection/itembox), plannerSubView (location/itinerary/chat)
   - Responsive design: right-rail (desktop md+) and bottom-bar (mobile) layouts
   - All labels translated in 4 languages (zh-TW, en, ja, ko)
