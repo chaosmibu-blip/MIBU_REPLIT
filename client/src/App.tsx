@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './hooks/useAuth';
-import { AppState, Language, GachaItem, GachaResponse, AppView, Merchant } from './types';
+import { AppState, Language, GachaItem, GachaResponse, AppView, Merchant, GachaSubView, PlannerSubView, SettingsTab } from './types';
 import { InputForm } from './components/InputForm';
 import { GachaScene } from './components/GachaScene';
 import { ResultList } from './components/ResultList';
 import { CollectionGrid } from './components/CollectionGrid';
 import { ItemBox } from './components/ItemBox';
 import { SideNav } from './components/SideNav';
+import { ModuleHeader, GachaModuleNav, PlannerModuleNav } from './components/ModuleNav';
 import { CouponCelebration } from './components/CouponCelebration';
 import { MerchantDashboard } from './components/MerchantDashboard';
 import { TripPlanner } from '../../modules/trip-planner/client';
@@ -27,13 +28,28 @@ const App: React.FC = () => {
   
   const [state, setState] = useState<AppState>({
     language: 'zh-TW', user: null, country: '', city: '', countryId: null, regionId: null, level: DEFAULT_LEVEL,
-    loading: false, result: null, error: null, groundingSources: [], view: 'home',
+    loading: false, result: null, error: null, groundingSources: [], view: 'mibu_home',
     collection: [], celebrationCoupons: [], 
     lastVisitCollection: new Date().toISOString(), lastVisitItemBox: new Date().toISOString(),
     merchantDb: {}, currentMerchant: null
   });
 
   const [showLangMenu, setShowLangMenu] = useState(false);
+  const [gachaSubView, setGachaSubViewRaw] = useState<GachaSubView>('gacha');
+  const [plannerSubView, setPlannerSubView] = useState<PlannerSubView>('itinerary');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('mibu');
+
+  const setGachaSubView = (subView: GachaSubView) => {
+    setGachaSubViewRaw(subView);
+    const now = new Date().toISOString();
+    if (subView === 'collection') {
+      localStorage.setItem(STORAGE_KEYS.LAST_COLLECTION_VISIT, now);
+      setState(prev => ({ ...prev, lastVisitCollection: now }));
+    } else if (subView === 'itembox') {
+      localStorage.setItem(STORAGE_KEYS.LAST_BOX_VISIT, now);
+      setState(prev => ({ ...prev, lastVisitItemBox: now }));
+    }
+  };
 
   const t = TRANSLATIONS[state.language] as any;
 
@@ -379,11 +395,17 @@ const App: React.FC = () => {
   };
 
   const handleViewChange = (newView: AppView) => {
-    const now = new Date().toISOString();
-    if (newView === 'collection') { localStorage.setItem(STORAGE_KEYS.LAST_COLLECTION_VISIT, now); setState(prev => ({ ...prev, view: newView, lastVisitCollection: now })); }
-    else if (newView === 'item_box') { localStorage.setItem(STORAGE_KEYS.LAST_BOX_VISIT, now); setState(prev => ({ ...prev, view: newView, lastVisitItemBox: now })); }
-    else { setState(prev => ({ ...prev, view: (newView === 'home' && prev.result) ? 'result' : newView })); }
+    if (newView === 'gacha_module') { setGachaSubViewRaw('gacha'); setState(prev => ({ ...prev, view: newView })); }
+    else if (newView === 'planner_module') { setPlannerSubView('itinerary'); setState(prev => ({ ...prev, view: newView })); }
+    else { setState(prev => ({ ...prev, view: newView })); }
   };
+
+  const handleBackToHome = () => {
+    setState(prev => ({ ...prev, view: 'mibu_home', result: null }));
+  };
+
+  const isInGachaModule = ['gacha_module', 'result', 'merchant_login', 'merchant_dashboard'].includes(state.view);
+  const isInPlannerModule = state.view === 'planner_module';
 
   const handleLanguageChange = (lang: Language) => {
     setState(prev => ({ ...prev, language: lang }));
@@ -459,25 +481,120 @@ const App: React.FC = () => {
       {state.loading && <GachaScene language={state.language} />}
 
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-4 md:mr-20 pb-24 md:pb-4">
-        {state.view === 'home' && !state.result && (
-          <InputForm 
-            state={state}
-            onUpdate={(updates) => setState(p => ({ ...p, ...updates }))}
-            onSubmit={handlePull}
-            userName={user?.firstName || user?.email?.split('@')[0]}
-          />
+        {/* Mibu Home */}
+        {state.view === 'mibu_home' && (
+          <div className="space-y-6">
+            <div className="text-center py-8">
+              <h1 className="text-3xl font-bold text-slate-800 mb-2">Mibu</h1>
+              <p className="text-slate-500">{t.appSubtitle || '探索台灣的最佳方式'}</p>
+            </div>
+            
+            <div className="grid gap-4">
+              <button
+                onClick={() => handleViewChange('gacha_module')}
+                className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white p-6 rounded-2xl text-left shadow-lg hover:shadow-xl transition-all"
+                data-testid="button-gacha-module"
+              >
+                <h2 className="text-xl font-bold mb-1">{t.navGachaModule || '行程扭蛋'}</h2>
+                <p className="text-white/80 text-sm">{t.appSubtitle || '今天去哪玩?老天說了算'}</p>
+              </button>
+              
+              <button
+                onClick={() => handleViewChange('planner_module')}
+                className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white p-6 rounded-2xl text-left shadow-lg hover:shadow-xl transition-all"
+                data-testid="button-planner-module"
+              >
+                <h2 className="text-xl font-bold mb-1">{t.navPlannerModule || '旅程策劃'}</h2>
+                <p className="text-white/80 text-sm">規劃你的完美旅程</p>
+              </button>
+            </div>
+          </div>
         )}
 
+        {/* Gacha Module */}
+        {state.view === 'gacha_module' && (
+          <div>
+            <ModuleHeader 
+              title={t.navGachaModule || '行程扭蛋'} 
+              onBack={handleBackToHome} 
+              language={state.language} 
+            />
+            <GachaModuleNav 
+              currentTab={gachaSubView} 
+              onChange={setGachaSubView} 
+              language={state.language} 
+            />
+            
+            {gachaSubView === 'gacha' && (
+              <InputForm 
+                state={state}
+                onUpdate={(updates) => setState(p => ({ ...p, ...updates }))}
+                onSubmit={handlePull}
+                userName={user?.firstName || user?.email?.split('@')[0]}
+              />
+            )}
+            
+            {gachaSubView === 'collection' && (
+              <CollectionGrid items={state.collection} language={state.language} />
+            )}
+            
+            {gachaSubView === 'itembox' && (
+              <ItemBox items={state.collection.filter(i => i.is_coupon)} language={state.language} />
+            )}
+          </div>
+        )}
+
+        {/* Planner Module */}
+        {state.view === 'planner_module' && (
+          <div>
+            <ModuleHeader 
+              title={t.navPlannerModule || '旅程策劃'} 
+              onBack={handleBackToHome} 
+              language={state.language} 
+            />
+            <PlannerModuleNav 
+              currentTab={plannerSubView} 
+              onChange={setPlannerSubView} 
+              language={state.language} 
+            />
+            
+            {plannerSubView === 'location' && (
+              <div className="text-center py-12 text-slate-500">
+                <p>定位功能開發中...</p>
+              </div>
+            )}
+            
+            {plannerSubView === 'itinerary' && (
+              <TripPlanner
+                userId={user?.id}
+                isAuthenticated={isAuthenticated}
+                onNavigateHome={handleBackToHome}
+              />
+            )}
+            
+            {plannerSubView === 'chat' && (
+              <div className="text-center py-12 text-slate-500">
+                <p>聊天功能開發中...</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Result view - stays in gacha module context */}
         {state.view === 'result' && state.result && (
-          <ResultList data={state.result} language={state.language} onResearch={() => setState(prev => ({ ...prev, view: 'home', result: null }))} isLoading={state.loading} />
-        )}
-
-        {state.view === 'collection' && (
-          <CollectionGrid items={state.collection} language={state.language} />
-        )}
-
-        {state.view === 'item_box' && (
-          <ItemBox items={state.collection.filter(i => i.is_coupon)} language={state.language} />
+          <div>
+            <ModuleHeader 
+              title={t.navGachaModule || '行程扭蛋'} 
+              onBack={handleBackToHome} 
+              language={state.language} 
+            />
+            <GachaModuleNav 
+              currentTab={gachaSubView} 
+              onChange={setGachaSubView} 
+              language={state.language} 
+            />
+            <ResultList data={state.result} language={state.language} onResearch={() => { setGachaSubView('gacha'); setState(prev => ({ ...prev, view: 'gacha_module', result: null })); }} isLoading={state.loading} />
+          </div>
         )}
 
         {state.view === 'merchant_login' && (
@@ -489,7 +606,7 @@ const App: React.FC = () => {
                     <input name="email" type="email" placeholder={t.merchantEmail} className="w-full px-4 py-3 rounded-xl border border-slate-200 mb-4 bg-white focus:ring-2 focus:ring-indigo-500 outline-none" required data-testid="input-merchant-email" />
                     <button type="submit" className="w-full bg-indigo-500 text-white font-bold py-3 rounded-xl hover:bg-indigo-600 transition-colors" data-testid="button-merchant-submit">{t.login}</button>
                  </form>
-                 <button onClick={() => setState(p => ({ ...p, view: 'home' }))} className="w-full mt-3 text-slate-500 text-sm hover:underline" data-testid="button-back-home">{t.backToHome}</button>
+                 <button onClick={() => { setGachaSubView('gacha'); setState(p => ({ ...p, view: 'gacha_module' })); }} className="w-full mt-3 text-slate-500 text-sm hover:underline" data-testid="button-back-home">{t.backToHome}</button>
               </div>
            </div>
         )}
@@ -504,97 +621,126 @@ const App: React.FC = () => {
           />
         )}
 
-        {state.view === 'trip_planner' && (
-          <TripPlanner
-            userId={user?.id}
-            isAuthenticated={isAuthenticated}
-            onNavigateHome={() => setState(prev => ({ ...prev, view: 'home' }))}
-          />
-        )}
-
         {state.view === 'settings' && (
           <div className="space-y-6">
             <h1 className="text-2xl font-bold text-slate-800">{t.navSettings}</h1>
             
+            <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+              {([
+                { id: 'mibu' as SettingsTab, label: 'Mibu' },
+                { id: 'gacha' as SettingsTab, label: t.navGachaModule || '行程扭蛋' },
+                { id: 'planner' as SettingsTab, label: t.navPlannerModule || '旅程策劃' },
+              ]).map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setSettingsTab(tab.id)}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                    settingsTab === tab.id
+                      ? 'bg-white text-indigo-600 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                  data-testid={`tab-settings-${tab.id}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-700 font-medium">{t.language || '語言'}</span>
-                <div className="flex gap-2">
-                  {(['zh-TW', 'en', 'ja', 'ko'] as Language[]).map(lang => (
-                    <button
-                      key={lang}
-                      onClick={() => setState(p => ({ ...p, language: lang }))}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                        state.language === lang 
-                          ? 'bg-indigo-500 text-white' 
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                      data-testid={`button-lang-${lang}`}
-                    >
-                      {lang === 'zh-TW' ? '繁中' : lang === 'en' ? 'EN' : lang === 'ja' ? '日本語' : '한국어'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {isAuthenticated && user && (
-                <div className="pt-4 border-t border-slate-100">
-                  <div className="flex items-center gap-3 mb-4">
-                    {user.profileImageUrl && (
-                      <img src={user.profileImageUrl} alt="" className="w-10 h-10 rounded-full" />
-                    )}
-                    <div>
-                      <p className="font-medium text-slate-800">{user.firstName || user.email}</p>
-                      <p className="text-sm text-slate-500">{user.email}</p>
+              {settingsTab === 'mibu' && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-700 font-medium">{t.language || '語言'}</span>
+                    <div className="flex gap-2">
+                      {(['zh-TW', 'en', 'ja', 'ko'] as Language[]).map(lang => (
+                        <button
+                          key={lang}
+                          onClick={() => setState(p => ({ ...p, language: lang }))}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                            state.language === lang 
+                              ? 'bg-indigo-500 text-white' 
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                          data-testid={`button-lang-${lang}`}
+                        >
+                          {lang === 'zh-TW' ? '繁中' : lang === 'en' ? 'EN' : lang === 'ja' ? '日本語' : '한국어'}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                  <a 
-                    href="/api/logout" 
-                    className="flex items-center gap-2 text-red-500 hover:text-red-600 text-sm font-medium"
-                    data-testid="button-logout"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    {t.logout || '登出'}
-                  </a>
+
+                  {isAuthenticated && user && (
+                    <div className="pt-4 border-t border-slate-100">
+                      <div className="flex items-center gap-3 mb-4">
+                        {user.profileImageUrl && (
+                          <img src={user.profileImageUrl} alt="" className="w-10 h-10 rounded-full" />
+                        )}
+                        <div>
+                          <p className="font-medium text-slate-800">{user.firstName || user.email}</p>
+                          <p className="text-sm text-slate-500">{user.email}</p>
+                        </div>
+                      </div>
+                      <a 
+                        href="/api/logout" 
+                        className="flex items-center gap-2 text-red-500 hover:text-red-600 text-sm font-medium"
+                        data-testid="button-logout"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        {t.logout || '登出'}
+                      </a>
+                    </div>
+                  )}
+
+                  {!isAuthenticated && (
+                    <div className="pt-4 border-t border-slate-100">
+                      <a 
+                        href="/api/login" 
+                        className="flex items-center gap-2 text-indigo-500 hover:text-indigo-600 font-medium"
+                        data-testid="button-login-settings"
+                      >
+                        <LogIn className="w-4 h-4" />
+                        {t.login}
+                      </a>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {settingsTab === 'gacha' && (
+                <div className="space-y-4">
+                  <h3 className="font-medium text-slate-800">{t.navGachaModule || '行程扭蛋'} 設定</h3>
+                  <div className="pt-4 border-t border-slate-100">
+                    <button
+                      onClick={() => { setGachaSubView('collection'); setState(p => ({ ...p, view: 'gacha_module' })); }}
+                      className="w-full text-left py-2 text-slate-700 hover:text-indigo-600"
+                      data-testid="link-collection"
+                    >
+                      📚 {t.navCollection}
+                    </button>
+                    <button
+                      onClick={() => { setGachaSubView('itembox'); setState(p => ({ ...p, view: 'gacha_module' })); }}
+                      className="w-full text-left py-2 text-slate-700 hover:text-indigo-600"
+                      data-testid="link-itembox"
+                    >
+                      📦 {t.navMyBox}
+                    </button>
+                    <button
+                      onClick={() => setState(p => ({ ...p, view: 'merchant_login' }))}
+                      className="w-full text-left py-2 text-slate-700 hover:text-indigo-600"
+                      data-testid="link-merchant"
+                    >
+                      🏪 {t.navStore}
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {!isAuthenticated && (
-                <div className="pt-4 border-t border-slate-100">
-                  <a 
-                    href="/api/login" 
-                    className="flex items-center gap-2 text-indigo-500 hover:text-indigo-600 font-medium"
-                    data-testid="button-login-settings"
-                  >
-                    <LogIn className="w-4 h-4" />
-                    {t.login}
-                  </a>
+              {settingsTab === 'planner' && (
+                <div className="space-y-4">
+                  <h3 className="font-medium text-slate-800">{t.navPlannerModule || '旅程策劃'} 設定</h3>
+                  <p className="text-slate-500 text-sm">旅程策劃偏好設定開發中...</p>
                 </div>
               )}
-
-              <div className="pt-4 border-t border-slate-100">
-                <button
-                  onClick={() => setState(p => ({ ...p, view: 'collection' }))}
-                  className="w-full text-left py-2 text-slate-700 hover:text-indigo-600"
-                  data-testid="link-collection"
-                >
-                  📚 {t.navCollection}
-                </button>
-                <button
-                  onClick={() => setState(p => ({ ...p, view: 'item_box' }))}
-                  className="w-full text-left py-2 text-slate-700 hover:text-indigo-600"
-                  data-testid="link-itembox"
-                >
-                  📦 {t.navMyBox}
-                </button>
-                <button
-                  onClick={() => setState(p => ({ ...p, view: 'merchant_login' }))}
-                  className="w-full text-left py-2 text-slate-700 hover:text-indigo-600"
-                  data-testid="link-merchant"
-                >
-                  🏪 {t.navStore}
-                </button>
-              </div>
             </div>
           </div>
         )}
