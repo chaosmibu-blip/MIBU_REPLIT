@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Clock, MapPin, Trash2, GripVertical } from 'lucide-react';
+import { ArrowLeft, Plus, Clock, MapPin, Trash2, GripVertical, Map as MapIcon } from 'lucide-react';
+import { MibuMap } from './MibuMap';
 
 interface TripActivity {
   id: number;
@@ -44,6 +45,8 @@ export const TripPlanEditor: React.FC<TripPlanEditorProps> = ({
   const [days, setDays] = useState<TripDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
+  const [showMap, setShowMap] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     fetchPlanDetails();
@@ -145,9 +148,43 @@ export const TripPlanEditor: React.FC<TripPlanEditorProps> = ({
               <h1 className="font-bold text-slate-800">{plan.title}</h1>
               <p className="text-sm text-slate-500">{plan.destination}</p>
             </div>
+            <button
+              onClick={() => setShowMap(!showMap)}
+              className={`p-2 rounded-lg transition-colors ${showMap ? 'bg-amber-100 text-amber-700' : 'hover:bg-slate-100 text-slate-600'}`}
+              data-testid="button-toggle-map"
+            >
+              <MapIcon className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </header>
+
+      {showMap && (
+        <div className="max-w-lg mx-auto px-4 pt-4">
+          <MibuMap
+            center={[121.5654, 25.0330]}
+            zoom={12}
+            markers={days.flatMap(day => 
+              day.activities
+                .filter(a => a.address)
+                .map(a => ({
+                  lng: 121.5654,
+                  lat: 25.0330,
+                  title: a.placeName,
+                  description: a.address,
+                }))
+            )}
+            onLocationUpdate={setUserLocation}
+            showUserLocation={true}
+            className="h-64 shadow-lg border-2 border-amber-200"
+          />
+          {userLocation && (
+            <p className="text-xs text-slate-500 mt-2 text-center">
+              📍 目前位置：{userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}
+            </p>
+          )}
+        </div>
+      )}
 
       <main className="max-w-lg mx-auto px-4 py-4 pb-24">
         <div className="space-y-3">
