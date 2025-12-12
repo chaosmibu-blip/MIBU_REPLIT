@@ -133,18 +133,13 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, x: -100, height: 0, marginBottom: 0 }}
               transition={{ delay: idx * 0.02, duration: 0.15 }}
-              className="rounded-2xl border-2 relative overflow-hidden"
+              className="rounded-2xl border-2 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
               style={{ 
                 borderColor: categoryColor + '50',
                 background: `linear-gradient(135deg, ${categoryColor}08 0%, white 50%)`
               }}
               data-testid={`card-itinerary-${item.id}`}
             >
-              <div 
-                className="absolute top-0 left-0 right-0 h-1"
-                style={{ background: `linear-gradient(90deg, ${categoryColor}, ${categoryColor}80)` }}
-              />
-              
               <button
                 onClick={() => handleExclude(item)}
                 disabled={isExcluding}
@@ -157,11 +152,6 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
                   <X className="w-3.5 h-3.5" />
                 )}
               </button>
-
-              <div 
-                className="absolute left-0 top-0 bottom-0 w-1" 
-                style={{ backgroundColor: categoryColor }} 
-              />
 
               <div className="p-4 pl-4 pt-4">
                 <div className="flex items-center justify-between mb-3">
