@@ -396,11 +396,6 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
                                         }}
                                         data-testid={`card-collection-${item.id || idx}`}
                                       >
-                                        <div 
-                                          className="absolute top-0 left-0 right-0 h-1"
-                                          style={{ backgroundColor: categoryColor }}
-                                        />
-                                        
                                         <div className="flex items-center justify-between mb-2">
                                           <span className="text-xs text-slate-400">{date}</span>
                                           <span 
