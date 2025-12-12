@@ -177,9 +177,17 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
                                     href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(getPlaceName(item, language))}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="block p-3 bg-white rounded-xl border border-slate-100 hover:border-indigo-200 transition-colors"
+                                    className="block p-3 rounded-xl border-2 transition-all hover:shadow-md relative overflow-hidden"
+                                    style={{ 
+                                      borderColor: categoryColor + '30',
+                                      background: `linear-gradient(135deg, ${categoryColor}10 0%, white 60%)`
+                                    }}
                                     data-testid={`card-collection-${item.id}`}
                                   >
+                                    <div 
+                                      className="absolute top-0 left-0 right-0 h-0.5"
+                                      style={{ backgroundColor: categoryColor }}
+                                    />
                                     <div className="flex items-center gap-2">
                                       <div 
                                         className="w-1 h-6 rounded-full"

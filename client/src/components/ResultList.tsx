@@ -115,14 +115,22 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, x: -100, height: 0, marginBottom: 0 }}
               transition={{ delay: idx * 0.02, duration: 0.15 }}
-              className="bg-white rounded-2xl border-2 relative overflow-hidden"
-              style={{ borderColor: categoryColor + '40' }}
+              className="rounded-2xl border-2 relative overflow-hidden shadow-sm"
+              style={{ 
+                borderColor: categoryColor + '50',
+                background: `linear-gradient(135deg, ${categoryColor}08 0%, white 50%)`
+              }}
               data-testid={`card-itinerary-${item.id}`}
             >
+              <div 
+                className="absolute top-0 left-0 right-0 h-1"
+                style={{ background: `linear-gradient(90deg, ${categoryColor}, ${categoryColor}80)` }}
+              />
+              
               <button
                 onClick={() => handleExclude(item)}
                 disabled={isExcluding}
-                className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center rounded-full bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-500 transition-colors z-10"
+                className="absolute top-4 right-3 w-6 h-6 flex items-center justify-center rounded-full bg-white/80 text-slate-400 hover:bg-red-100 hover:text-red-500 transition-colors z-10 backdrop-blur-sm"
                 data-testid={`button-exclude-${item.id}`}
               >
                 {isExcluding ? (
@@ -133,11 +141,11 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
               </button>
 
               <div 
-                className="absolute left-0 top-0 bottom-0 w-1.5" 
+                className="absolute left-0 top-0 bottom-0 w-1" 
                 style={{ backgroundColor: categoryColor }} 
               />
 
-              <div className="p-4 pl-5">
+              <div className="p-4 pl-4 pt-4">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs text-slate-400 font-medium px-2 py-1 bg-slate-50 rounded-full">
                     {duration}
