@@ -109,10 +109,16 @@ export async function setupAuth(app: Express) {
   });
 
   app.get("/api/callback", (req, res, next) => {
+    // Handle OAuth denial - when user clicks "Deny", error parameter is set
+    if (req.query.error) {
+      console.log("OAuth denied:", req.query.error, req.query.error_description);
+      return res.redirect("/");
+    }
+    
     ensureStrategy(req.hostname);
     passport.authenticate(`replitauth:${req.hostname}`, {
       successReturnToOrRedirect: "/",
-      failureRedirect: "/api/login",
+      failureRedirect: "/",
     })(req, res, next);
   });
 
