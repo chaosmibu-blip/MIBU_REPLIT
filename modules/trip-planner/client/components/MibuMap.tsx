@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
+import MapboxLanguage from '@mapbox/mapbox-gl-language';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { MapPin, Navigation, Loader2 } from 'lucide-react';
 
@@ -9,6 +10,13 @@ const MIBU_BRAND_COLORS = {
   secondary: '#C4A77D',
   background: '#F5F0E6',
   accent: '#5D4E37',
+};
+
+const LANGUAGE_MAP: Record<string, string> = {
+  'zh-TW': 'zh-Hant',
+  'en': 'en',
+  'ja': 'ja',
+  'ko': 'ko',
 };
 
 interface MibuMapProps {
@@ -24,7 +32,9 @@ interface MibuMapProps {
   onLocationUpdate?: (location: { lat: number; lng: number }) => void;
   showUserLocation?: boolean;
   trackLocation?: boolean;
+  language?: 'zh-TW' | 'en' | 'ja' | 'ko';
   className?: string;
+  fullscreen?: boolean;
 }
 
 export const MibuMap: React.FC<MibuMapProps> = ({
@@ -34,7 +44,9 @@ export const MibuMap: React.FC<MibuMapProps> = ({
   onLocationUpdate,
   showUserLocation = true,
   trackLocation = true,
+  language = 'zh-TW',
   className = '',
+  fullscreen = false,
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -224,8 +236,12 @@ export const MibuMap: React.FC<MibuMapProps> = ({
           center: initialCenter,
           zoom: initialZoom,
           attributionControl: false,
-          logoPosition: 'bottom-right',
         });
+
+        // Add language control
+        const mapboxLanguage = LANGUAGE_MAP[language] || 'zh-Hant';
+        const languageControl = new MapboxLanguage({ defaultLanguage: mapboxLanguage });
+        map.current.addControl(languageControl);
 
         map.current.on('load', () => {
           setMapLoaded(true);
@@ -312,8 +328,12 @@ export const MibuMap: React.FC<MibuMapProps> = ({
     });
   }, [markers, mapLoaded]);
 
+  const containerStyle = fullscreen 
+    ? { height: '100%', width: '100%' }
+    : { minHeight: '320px', height: '320px' };
+
   return (
-    <div className={`relative rounded-xl overflow-hidden ${className}`} style={{ minHeight: '320px', height: '320px' }}>
+    <div className={`relative overflow-hidden ${fullscreen ? '' : 'rounded-xl'} ${className}`} style={containerStyle}>
       <style>{`
         .mapboxgl-ctrl-logo,
         .mapboxgl-ctrl-attrib {
