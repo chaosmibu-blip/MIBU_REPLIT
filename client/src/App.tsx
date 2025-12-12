@@ -502,7 +502,16 @@ const App: React.FC = () => {
             </div>
 
             {isAuthenticated && user ? (
-                <a href="/api/logout" className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" data-testid="button-logout">
+                <button 
+                  onClick={() => {
+                    // Clear guest session if any
+                    localStorage.removeItem(STORAGE_KEYS.GUEST_ID);
+                    // Redirect to logout API, which will redirect back to home
+                    window.location.href = '/api/logout';
+                  }}
+                  className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" 
+                  data-testid="button-logout"
+                >
                   <img 
                     src={user.profileImageUrl || `https://ui-avatars.com/api/?name=${user.firstName || 'U'}`} 
                     className="w-8 h-8 rounded-full border border-white shadow-sm object-cover" 
@@ -510,17 +519,17 @@ const App: React.FC = () => {
                   />
                   <span className="text-xs font-bold text-slate-600 hidden sm:block">{user.firstName || user.email}</span>
                   <LogOut className="w-4 h-4 text-slate-400" />
-                </a>
-            ) : (
-                <a 
-                  href="/api/login"
+                </button>
+            ) : state.view !== 'login' ? (
+                <button 
+                  onClick={() => setState(prev => ({ ...prev, view: 'login', user: null }))}
                   className="flex items-center gap-2 text-xs font-bold bg-indigo-500 text-white px-4 py-2 rounded-full hover:bg-indigo-600 transition-colors"
                   data-testid="button-login"
                 >
                   <LogIn className="w-4 h-4" />
                   {t.login}
-                </a>
-            )}
+                </button>
+            ) : null}
          </div>
       </nav>
 
@@ -832,27 +841,30 @@ const App: React.FC = () => {
                           <p className="text-sm text-slate-500">{user.email}</p>
                         </div>
                       </div>
-                      <a 
-                        href="/api/logout" 
+                      <button 
+                        onClick={() => {
+                          localStorage.removeItem(STORAGE_KEYS.GUEST_ID);
+                          window.location.href = '/api/logout';
+                        }}
                         className="flex items-center gap-2 text-red-500 hover:text-red-600 text-sm font-medium"
-                        data-testid="button-logout"
+                        data-testid="button-logout-settings"
                       >
                         <LogOut className="w-4 h-4" />
                         {t.logout || '登出'}
-                      </a>
+                      </button>
                     </div>
                   )}
 
                   {!isAuthenticated && (
                     <div className="pt-4 border-t border-slate-100">
-                      <a 
-                        href="/api/login" 
+                      <button 
+                        onClick={() => setState(prev => ({ ...prev, view: 'login', user: null }))}
                         className="flex items-center gap-2 text-indigo-500 hover:text-indigo-600 font-medium"
                         data-testid="button-login-settings"
                       >
                         <LogIn className="w-4 h-4" />
                         {t.login}
-                      </a>
+                      </button>
                     </div>
                   )}
                 </>
