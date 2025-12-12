@@ -1357,19 +1357,16 @@ ${uncachedSkeleton.map((item, idx) => `  {
       // 10-12: 4 AI (morning, lunch, dinner, evening+stay)
       type TimeSlot = 'morning' | 'lunch' | 'dinner' | 'evening';
       const getTimeSlotDistribution = (count: number): Record<TimeSlot, number> => {
-        if (count <= 6) {
-          // 5: 2+3, 6: 3+3
-          return { morning: count === 5 ? 2 : 3, lunch: 3, dinner: 0, evening: 0 };
-        } else if (count <= 9) {
-          // 7: 2+3+2, 8: 3+3+2, 9: 3+3+3
-          const dinner = count === 7 ? 2 : (count === 8 ? 2 : 3);
-          const morning = count === 7 ? 2 : 3;
-          return { morning, lunch: 3, dinner, evening: 0 };
-        } else {
-          // 10: 2+3+3+2, 11: 3+3+3+2, 12: 3+3+3+3
-          const morning = count === 10 ? 2 : 3;
-          const evening = count === 12 ? 3 : 2;
-          return { morning, lunch: 3, dinner: 3, evening };
+        switch (count) {
+          case 5: return { morning: 2, lunch: 3, dinner: 0, evening: 0 };
+          case 6: return { morning: 3, lunch: 3, dinner: 0, evening: 0 };
+          case 7: return { morning: 2, lunch: 3, dinner: 2, evening: 0 };
+          case 8: return { morning: 3, lunch: 3, dinner: 2, evening: 0 };
+          case 9: return { morning: 3, lunch: 3, dinner: 3, evening: 0 };
+          case 10: return { morning: 2, lunch: 3, dinner: 3, evening: 2 };
+          case 11: return { morning: 3, lunch: 3, dinner: 3, evening: 2 };
+          case 12: return { morning: 3, lunch: 3, dinner: 3, evening: 3 };
+          default: return { morning: 3, lunch: 3, dinner: 0, evening: 0 };
         }
       };
 
@@ -1380,14 +1377,14 @@ ${uncachedSkeleton.map((item, idx) => `  {
       console.log(`Distribution: morning=${distribution.morning}, lunch=${distribution.lunch}, dinner=${distribution.dinner}, evening=${distribution.evening}`);
 
       // Step 4: Group subcategories by preferred time slot
-      const timeSlotMapping: Record<string, TimeSlot> = {
+      const timeSlotMapping: Record<string, TimeSlot | null> = {
         'morning': 'morning',
         'lunch': 'lunch',
         'afternoon': 'lunch', // afternoon activities go with lunch slot
         'dinner': 'dinner',
         'evening': 'evening',
         'stay': 'evening', // accommodation goes with evening slot
-        'anytime': 'lunch' // default to lunch
+        'anytime': null // will be distributed across active slots
       };
 
       const subcategoriesBySlot: Record<TimeSlot, typeof allSubcategories> = {
@@ -1397,9 +1394,26 @@ ${uncachedSkeleton.map((item, idx) => `  {
         evening: []
       };
 
+      const anytimeSubcategories: typeof allSubcategories = [];
+
       for (const subcat of allSubcategories) {
-        const slot = timeSlotMapping[subcat.preferredTimeSlot || 'anytime'] || 'lunch';
-        subcategoriesBySlot[slot].push(subcat);
+        const slot = timeSlotMapping[subcat.preferredTimeSlot || 'anytime'];
+        if (slot === null) {
+          anytimeSubcategories.push(subcat);
+        } else {
+          subcategoriesBySlot[slot].push(subcat);
+        }
+      }
+
+      // Distribute 'anytime' subcategories proportionally across active slots
+      if (anytimeSubcategories.length > 0) {
+        anytimeSubcategories.sort(() => Math.random() - 0.5);
+        let slotIdx = 0;
+        for (const subcat of anytimeSubcategories) {
+          const targetSlot = activeSlots[slotIdx % activeSlots.length];
+          subcategoriesBySlot[targetSlot].push(subcat);
+          slotIdx++;
+        }
       }
 
       // Shuffle each slot's subcategories
