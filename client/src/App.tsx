@@ -19,18 +19,30 @@ const STORAGE_KEYS = {
   LAST_BOX_VISIT: 'mibu_last_visit_itembox',
   MERCHANT_DB: 'mibu_merchant_db',
   MERCHANT_PROFILE: 'mibu_merchant_profile_v3', 
-  DAILY_LIMIT: 'mibu_daily_limit'
+  DAILY_LIMIT: 'mibu_daily_limit',
+  GUEST_ID: 'mibu_guest_id'
 };
+
+const generateGuestId = () => `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
 const App: React.FC = () => {
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   
-  const [state, setState] = useState<AppState>({
-    language: 'zh-TW', user: null, country: '', city: '', countryId: null, regionId: null, level: DEFAULT_LEVEL,
-    loading: false, result: null, error: null, groundingSources: [], view: 'mibu_home',
-    collection: [], celebrationCoupons: [], 
-    lastVisitCollection: new Date().toISOString(), lastVisitItemBox: new Date().toISOString(),
-    merchantDb: {}, currentMerchant: null
+  // Check if user has logged in before (Replit auth or guest)
+  const hasExistingSession = () => {
+    return isAuthenticated || localStorage.getItem(STORAGE_KEYS.GUEST_ID);
+  };
+  
+  const [state, setState] = useState<AppState>(() => {
+    const existingGuestId = localStorage.getItem(STORAGE_KEYS.GUEST_ID);
+    const initialView = (isAuthenticated || existingGuestId) ? 'mibu_home' : 'login';
+    return {
+      language: 'zh-TW', user: null, country: '', city: '', countryId: null, regionId: null, level: DEFAULT_LEVEL,
+      loading: false, result: null, error: null, groundingSources: [], view: initialView as any,
+      collection: [], celebrationCoupons: [], 
+      lastVisitCollection: new Date().toISOString(), lastVisitItemBox: new Date().toISOString(),
+      merchantDb: {}, currentMerchant: null
+    };
   });
 
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -52,11 +64,12 @@ const App: React.FC = () => {
 
   const t = TRANSLATIONS[state.language] as any;
 
-  // Sync Replit Auth user to state
+  // Sync Replit Auth user to state and redirect from login
   useEffect(() => {
     if (user) {
       setState(prev => ({
         ...prev,
+        view: prev.view === 'login' ? 'mibu_home' : prev.view,
         user: {
           id: user.id,
           name: user.firstName || user.email || 'User',
@@ -66,6 +79,24 @@ const App: React.FC = () => {
       }));
     }
   }, [user]);
+  
+  // Check for existing guest session on mount
+  useEffect(() => {
+    const guestId = localStorage.getItem(STORAGE_KEYS.GUEST_ID);
+    if (guestId && !isAuthenticated && state.view === 'login') {
+      setState(prev => ({
+        ...prev,
+        view: 'mibu_home',
+        user: {
+          id: guestId,
+          name: t.guest || '訪客',
+          email: null,
+          avatar: null,
+          provider: 'guest'
+        }
+      }));
+    }
+  }, [isAuthenticated]);
 
   // Load user collections when authenticated
   useEffect(() => {
@@ -480,6 +511,53 @@ const App: React.FC = () => {
       {state.loading && <GachaScene language={state.language} />}
 
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-4">
+        {/* Login Screen */}
+        {state.view === 'login' && (
+          <div className="flex flex-col items-center justify-center min-h-[80vh] space-y-8">
+            <div className="text-center">
+              <h1 className="text-4xl font-bold text-slate-800 mb-2">Mibu</h1>
+              <p className="text-slate-500">{t.appSubtitle || '探索台灣的最佳方式'}</p>
+            </div>
+            
+            <div className="w-full max-w-sm space-y-4">
+              <a
+                href="/api/login"
+                className="flex items-center justify-center gap-2 w-full bg-indigo-500 text-white font-bold py-4 rounded-2xl hover:bg-indigo-600 transition-colors shadow-lg"
+                data-testid="button-replit-login"
+              >
+                <LogIn className="w-5 h-5" />
+                {t.loginWithReplit || '使用 Replit 登入'}
+              </a>
+              
+              <button
+                onClick={() => {
+                  const guestId = generateGuestId();
+                  localStorage.setItem(STORAGE_KEYS.GUEST_ID, guestId);
+                  setState(prev => ({
+                    ...prev,
+                    view: 'mibu_home',
+                    user: {
+                      id: guestId,
+                      name: t.guest || '訪客',
+                      email: null,
+                      avatar: null,
+                      provider: 'guest'
+                    }
+                  }));
+                }}
+                className="w-full bg-slate-100 text-slate-700 font-medium py-4 rounded-2xl hover:bg-slate-200 transition-colors"
+                data-testid="button-guest-login"
+              >
+                {t.guestLogin || '訪客登入'}
+              </button>
+              
+              <p className="text-center text-xs text-slate-400 mt-4">
+                {t.guestLoginNote || '訪客模式的資料僅保存在此裝置，之後可綁定帳號保留'}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Mibu Home */}
         {state.view === 'mibu_home' && (
           <div className="space-y-6 pb-24">
@@ -522,7 +600,6 @@ const App: React.FC = () => {
         {state.view === 'gacha_module' && (
           <div className="pb-24">
             <ModuleHeader 
-              title={t.navGachaModule || '行程扭蛋'} 
               onBack={handleBackToHome} 
               language={state.language} 
             />
@@ -555,7 +632,6 @@ const App: React.FC = () => {
         {state.view === 'planner_module' && (
           <div className="pb-24">
             <ModuleHeader 
-              title={t.navPlannerModule || '旅程策劃'} 
               onBack={handleBackToHome} 
               language={state.language} 
             />
@@ -591,7 +667,6 @@ const App: React.FC = () => {
         {state.view === 'result' && state.result && (
           <div className="pb-24">
             <ModuleHeader 
-              title={t.navGachaModule || '行程扭蛋'} 
               onBack={handleBackToHome} 
               language={state.language} 
             />
@@ -631,7 +706,6 @@ const App: React.FC = () => {
         {state.view === 'settings' && (
           <div className="space-y-6 pb-24">
             <ModuleHeader 
-              title={t.navSettings || '設定'} 
               onBack={handleBackToHome} 
               language={state.language} 
             />

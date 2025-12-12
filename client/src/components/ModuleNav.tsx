@@ -4,16 +4,15 @@ import { Language, GachaSubView, PlannerSubView, AppView } from '../types';
 import { TRANSLATIONS } from '../constants';
 
 interface ModuleHeaderProps {
-  title: string;
   onBack: () => void;
   language: Language;
 }
 
-export const ModuleHeader: React.FC<ModuleHeaderProps> = ({ title, onBack, language }) => {
+export const ModuleHeader: React.FC<ModuleHeaderProps> = ({ onBack, language }) => {
   const t = TRANSLATIONS[language];
   
   return (
-    <div className="flex items-center gap-3 mb-4">
+    <div className="mb-4">
       <button
         onClick={onBack}
         className="w-10 h-10 rounded-xl bg-white/80 backdrop-blur-sm border border-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
@@ -22,7 +21,6 @@ export const ModuleHeader: React.FC<ModuleHeaderProps> = ({ title, onBack, langu
       >
         <ArrowLeft className="w-5 h-5" />
       </button>
-      <h1 className="text-xl font-bold text-slate-800">{title}</h1>
     </div>
   );
 };
