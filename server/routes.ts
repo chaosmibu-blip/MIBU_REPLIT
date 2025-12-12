@@ -1592,19 +1592,25 @@ ${uncachedSkeleton.map((item, idx) => `  {
         }
       }
       
-      // Step 7: Execute each AI worker in PARALLEL
+      // Step 7: Execute each AI worker in TRUE PARALLEL
       // Each worker handles its assigned tasks (breakfast/lunch/dinner/activity/stay)
+      // Tasks within each worker also run in parallel for maximum speed
       const executeAIWorker = async (aiTask: AITask): Promise<any[]> => {
-        const workerItems: any[] = [];
         const usedSubcatIds = new Set<number>();
         
-        // Process tasks for this worker
+        // Phase 1: Pre-select all subcategories for this worker (synchronous)
+        interface TaskItem {
+          taskType: string;
+          selectedSubcat: typeof allSubcategories[0];
+          cached: typeof cachedPlacesForDistrict[0] | null;
+          shouldUseCache: boolean;
+        }
+        const taskItems: TaskItem[] = [];
+        
         for (const task of aiTask.tasks) {
           for (let i = 0; i < task.count; i++) {
-            // Select subcategory using 1/8 + 1/N probability
             let selectedSubcat = selectSubcategoryForTask(aiTask.worker, task.type);
             
-            // Retry up to 3 times if we get a used subcategory
             let retries = 0;
             while (selectedSubcat && usedSubcatIds.has(selectedSubcat.id) && retries < 3) {
               selectedSubcat = selectSubcategoryForTask(aiTask.worker, task.type);
@@ -1614,42 +1620,30 @@ ${uncachedSkeleton.map((item, idx) => `  {
             if (!selectedSubcat || usedSubcatIds.has(selectedSubcat.id)) continue;
             usedSubcatIds.add(selectedSubcat.id);
             
-            // Check cache with 25% probability
             const shouldUseCache = Math.random() < CACHE_USE_PROBABILITY;
-            const cached = cacheBySubcategory.get(selectedSubcat.nameZh);
+            const cached = cacheBySubcategory.get(selectedSubcat.nameZh) || null;
             
-            // If using cache and cache exists
-            if (shouldUseCache && cached && cached.placeName) {
-              // Check if this is a collected item - 45% chance to skip
-              if (collectedPlaceNames.has(cached.placeName)) {
-                if (Math.random() < COLLECTED_REDUCTION_PROBABILITY) {
-                  // Skip this cached item, try AI instead
-                  console.log(`Skipping collected item: ${cached.placeName} (45% reduction)`);
-                } else {
-                  // Use the collected cached item
-                  const item = await buildItemWithPromo({
-                    category: selectedSubcat.category,
-                    subcategory: selectedSubcat,
-                    place: {
-                      name: cached.placeName,
-                      description: cached.description,
-                      place_id: cached.placeId,
-                      verified_name: cached.verifiedName,
-                      verified_address: cached.verifiedAddress,
-                      google_rating: cached.googleRating,
-                      lat: cached.locationLat,
-                      lng: cached.locationLng,
-                      google_types: cached.googleTypes,
-                      primary_type: cached.primaryType
-                    },
-                    isVerified: cached.isLocationVerified,
-                    source: 'cache'
-                  });
-                  workerItems.push({ ...item, aiWorker: aiTask.worker, taskType: task.type });
-                  continue;
-                }
+            taskItems.push({
+              taskType: task.type,
+              selectedSubcat,
+              cached,
+              shouldUseCache
+            });
+          }
+        }
+        
+        console.log(`[${aiTask.worker}] Processing ${taskItems.length} tasks in parallel`);
+        
+        // Phase 2: Execute all tasks in parallel
+        const taskPromises = taskItems.map(async (taskItem) => {
+          const { taskType, selectedSubcat, cached, shouldUseCache } = taskItem;
+          
+          // Try cache first
+          if (shouldUseCache && cached && cached.placeName) {
+            if (collectedPlaceNames.has(cached.placeName)) {
+              if (Math.random() < COLLECTED_REDUCTION_PROBABILITY) {
+                console.log(`[${aiTask.worker}] Skipping collected: ${cached.placeName}`);
               } else {
-                // Non-collected cached item - use directly
                 const item = await buildItemWithPromo({
                   category: selectedSubcat.category,
                   subcategory: selectedSubcat,
@@ -1668,39 +1662,81 @@ ${uncachedSkeleton.map((item, idx) => `  {
                   isVerified: cached.isLocationVerified,
                   source: 'cache'
                 });
-                workerItems.push({ ...item, aiWorker: aiTask.worker, taskType: task.type });
-                continue;
+                return { ...item, aiWorker: aiTask.worker, taskType };
+              }
+            } else {
+              const item = await buildItemWithPromo({
+                category: selectedSubcat.category,
+                subcategory: selectedSubcat,
+                place: {
+                  name: cached.placeName,
+                  description: cached.description,
+                  place_id: cached.placeId,
+                  verified_name: cached.verifiedName,
+                  verified_address: cached.verifiedAddress,
+                  google_rating: cached.googleRating,
+                  lat: cached.locationLat,
+                  lng: cached.locationLng,
+                  google_types: cached.googleTypes,
+                  primary_type: cached.primaryType
+                },
+                isVerified: cached.isLocationVerified,
+                source: 'cache'
+              });
+              return { ...item, aiWorker: aiTask.worker, taskType };
+            }
+          }
+          
+          // Generate with AI (runs in parallel with other tasks)
+          const result = await generatePlaceForSubcategory(
+            districtNameZh, regionNameZh, countryNameZh,
+            selectedSubcat.category, selectedSubcat, language,
+            []
+          );
+
+          if (result && result.place?.name) {
+            if (collectedPlaceNames.has(result.place.name)) {
+              if (Math.random() < COLLECTED_REDUCTION_PROBABILITY) {
+                console.log(`[${aiTask.worker}] Skipping collected AI: ${result.place.name}`);
+                return null;
               }
             }
             
-            // Generate with AI
-            const result = await generatePlaceForSubcategory(
-              districtNameZh, regionNameZh, countryNameZh,
-              selectedSubcat.category, selectedSubcat, language,
-              []
-            );
-
-            if (result && result.place?.name) {
-              // Check if AI result is in collected - 45% chance to skip
-              if (collectedPlaceNames.has(result.place.name)) {
-                if (Math.random() < COLLECTED_REDUCTION_PROBABILITY) {
-                  console.log(`Skipping collected AI result: ${result.place.name} (45% reduction)`);
-                  continue;
-                }
-              }
-              
-              const item = await buildItemWithPromo(result);
-              workerItems.push({ ...item, aiWorker: aiTask.worker, taskType: task.type });
-            }
+            const item = await buildItemWithPromo(result);
+            return { ...item, aiWorker: aiTask.worker, taskType };
           }
-        }
+          
+          return null;
+        });
         
-        return workerItems;
+        // Wait for all tasks to complete in parallel
+        const results = await Promise.all(taskPromises);
+        
+        // Filter out null results AND deduplicate by place name within this worker
+        const seenPlaceNames = new Set<string>();
+        return results.filter((item): item is NonNullable<typeof item> => {
+          if (item === null) return false;
+          const placeName = item.place?.name;
+          if (!placeName || seenPlaceNames.has(placeName)) return false;
+          seenPlaceNames.add(placeName);
+          return true;
+        });
       };
 
-      // Run ALL AI workers in parallel
-      const workerPromises = aiDistribution.map(aiTask => executeAIWorker(aiTask));
+      // Run ALL AI workers in TRUE PARALLEL (not sequential!)
+      console.log(`\n=== Starting ${aiDistribution.length} AI workers in PARALLEL ===`);
+      const parallelStartTime = Date.now();
+      
+      const workerPromises = aiDistribution.map(aiTask => {
+        const workerStart = Date.now();
+        return executeAIWorker(aiTask).then(result => {
+          console.log(`[${aiTask.worker}] Completed in ${Date.now() - workerStart}ms (${result.length} items)`);
+          return result;
+        });
+      });
+      
       const workerResults = await Promise.all(workerPromises);
+      console.log(`=== All workers completed in ${Date.now() - parallelStartTime}ms (parallel execution) ===\n`);
 
       // Merge results in order: ai1_morning -> ai2_afternoon -> ai3_evening -> ai4_night
       const items: any[] = [];
