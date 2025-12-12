@@ -82,6 +82,20 @@ const App: React.FC = () => {
     }
   }, [user]);
   
+  // Handle logout: redirect to login page when user logs out
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      const guestId = localStorage.getItem(STORAGE_KEYS.GUEST_ID);
+      if (!guestId && state.view !== 'login') {
+        setState(prev => ({
+          ...prev,
+          view: 'login',
+          user: null
+        }));
+      }
+    }
+  }, [authLoading, isAuthenticated, state.view]);
+  
   // Check for existing guest session on mount
   useEffect(() => {
     const guestId = localStorage.getItem(STORAGE_KEYS.GUEST_ID);
