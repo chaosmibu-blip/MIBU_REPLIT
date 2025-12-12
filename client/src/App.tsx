@@ -510,27 +510,6 @@ const App: React.FC = () => {
               </div>
             </div>
             
-            {/* 模組入口 */}
-            <div className="grid gap-4">
-              <button
-                onClick={() => handleViewChange('gacha_module')}
-                className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white p-6 rounded-2xl text-left shadow-lg hover:shadow-xl transition-all"
-                data-testid="button-gacha-module"
-              >
-                <h2 className="text-xl font-bold mb-1">{t.navGachaModule || '行程扭蛋'}</h2>
-                <p className="text-white/80 text-sm">{t.appSubtitle || '今天去哪玩?老天說了算'}</p>
-              </button>
-              
-              <button
-                onClick={() => handleViewChange('planner_module')}
-                className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white p-6 rounded-2xl text-left shadow-lg hover:shadow-xl transition-all"
-                data-testid="button-planner-module"
-              >
-                <h2 className="text-xl font-bold mb-1">{t.navPlannerModule || '旅程策劃'}</h2>
-                <p className="text-white/80 text-sm">規劃你的完美旅程</p>
-              </button>
-            </div>
-            
             <HomeNav 
               currentView={state.view}
               onChange={handleViewChange}
