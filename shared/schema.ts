@@ -495,3 +495,125 @@ export type TripDay = typeof tripDays.$inferSelect;
 export type InsertTripDay = z.infer<typeof insertTripDaySchema>;
 export type TripActivity = typeof tripActivities.$inferSelect;
 export type InsertTripActivity = z.infer<typeof insertTripActivitySchema>;
+
+// ============ Planner Service Tables ============
+
+// Planners - 旅程策劃師
+export const planners = pgTable("planners", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  displayName: text("display_name").notNull(),
+  bio: text("bio"),
+  profileImageUrl: text("profile_image_url"),
+  specialties: text("specialties").array(),
+  languages: text("languages").array(),
+  rating: integer("rating").default(0),
+  totalOrders: integer("total_orders").default(0),
+  isAvailable: boolean("is_available").default(true).notNull(),
+  isVerified: boolean("is_verified").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_planners_user").on(table.userId),
+  index("IDX_planners_available").on(table.isAvailable),
+]);
+
+// Service Plans - 服務方案
+export const servicePlans = pgTable("service_plans", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 50 }).notNull().unique(),
+  nameZh: text("name_zh").notNull(),
+  nameEn: text("name_en").notNull(),
+  description: text("description"),
+  features: text("features").array(),
+  priceNtd: integer("price_ntd").notNull(),
+  priceUsd: integer("price_usd"),
+  durationDays: integer("duration_days").default(7),
+  maxMessages: integer("max_messages"),
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Service Orders - 服務訂單
+export type OrderStatus = 'pending' | 'paid' | 'assigned' | 'in_progress' | 'completed' | 'cancelled' | 'refunded';
+export type PaymentMethod = 'stripe' | 'payuni' | 'manual';
+
+export const serviceOrders = pgTable("service_orders", {
+  id: serial("id").primaryKey(),
+  orderNumber: varchar("order_number", { length: 50 }).notNull().unique(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  servicePlanId: integer("service_plan_id").references(() => servicePlans.id).notNull(),
+  plannerId: integer("planner_id").references(() => planners.id),
+  status: varchar("status", { length: 20 }).default('pending').notNull(),
+  paymentMethod: varchar("payment_method", { length: 20 }),
+  paymentId: varchar("payment_id", { length: 100 }),
+  amountPaid: integer("amount_paid"),
+  currency: varchar("currency", { length: 10 }).default('TWD'),
+  conversationSid: varchar("conversation_sid", { length: 50 }),
+  notes: text("notes"),
+  paidAt: timestamp("paid_at"),
+  assignedAt: timestamp("assigned_at"),
+  completedAt: timestamp("completed_at"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_orders_user").on(table.userId),
+  index("IDX_orders_planner").on(table.plannerId),
+  index("IDX_orders_status").on(table.status),
+]);
+
+// Relations
+export const plannersRelations = relations(planners, ({ one, many }) => ({
+  user: one(users, {
+    fields: [planners.userId],
+    references: [users.id],
+  }),
+  orders: many(serviceOrders),
+}));
+
+export const servicePlansRelations = relations(servicePlans, ({ many }) => ({
+  orders: many(serviceOrders),
+}));
+
+export const serviceOrdersRelations = relations(serviceOrders, ({ one }) => ({
+  user: one(users, {
+    fields: [serviceOrders.userId],
+    references: [users.id],
+  }),
+  servicePlan: one(servicePlans, {
+    fields: [serviceOrders.servicePlanId],
+    references: [servicePlans.id],
+  }),
+  planner: one(planners, {
+    fields: [serviceOrders.plannerId],
+    references: [planners.id],
+  }),
+}));
+
+// Insert schemas
+export const insertPlannerSchema = createInsertSchema(planners).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertServicePlanSchema = createInsertSchema(servicePlans).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertServiceOrderSchema = createInsertSchema(serviceOrders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Types
+export type Planner = typeof planners.$inferSelect;
+export type InsertPlanner = z.infer<typeof insertPlannerSchema>;
+export type ServicePlan = typeof servicePlans.$inferSelect;
+export type InsertServicePlan = z.infer<typeof insertServicePlanSchema>;
+export type ServiceOrder = typeof serviceOrders.$inferSelect;
+export type InsertServiceOrder = z.infer<typeof insertServiceOrderSchema>;
