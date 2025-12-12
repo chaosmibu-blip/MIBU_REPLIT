@@ -1467,40 +1467,59 @@ ${uncachedSkeleton.map((item, idx) => `  {
         };
       };
 
-      // Step 5: Generate items for each time slot in PARALLEL
-      // Each time slot is processed by its own "AI worker"
+      // Step 5: Preload cache for this district
+      const cachedPlacesForDistrict = await storage.getCachedPlaces(
+        districtNameZh,
+        regionNameZh,
+        countryNameZh
+      );
+      const cacheBySubcategory = new Map<string, typeof cachedPlacesForDistrict[0]>();
+      for (const cached of cachedPlacesForDistrict) {
+        if (!cacheBySubcategory.has(cached.subCategory)) {
+          cacheBySubcategory.set(cached.subCategory, cached);
+        }
+      }
+
+      // Step 6: Generate items for each time slot in FULL PARALLEL
+      // Each time slot processes ALL its items in parallel (not sequential)
       const generateForSlot = async (slot: TimeSlot, count: number): Promise<any[]> => {
-        const slotSubcategories = subcategoriesBySlot[slot];
-        const slotItems: any[] = [];
-        const usedNames: string[] = [];
-        const usedIds: Set<number> = new Set();
-
-        // Process subcategories for this slot
-        for (let i = 0; i < slotSubcategories.length && slotItems.length < count; i++) {
-          const subcatWithCategory = slotSubcategories[i];
-          if (usedIds.has(subcatWithCategory.id)) continue;
-
+        const slotSubcategories = subcategoriesBySlot[slot].slice(0, count * 2); // Take extra for fallback
+        
+        // Generate ALL items for this slot in parallel
+        const itemPromises = slotSubcategories.slice(0, count).map(async (subcatWithCategory) => {
           const result = await generatePlaceForSubcategory(
             districtNameZh, regionNameZh, countryNameZh,
             subcatWithCategory.category, subcatWithCategory, language,
-            usedNames
+            [] // No exclusion in parallel - we'll dedupe after
           );
 
-          if (result && result.place?.name && !usedNames.includes(result.place.name)) {
-            usedNames.push(result.place.name);
-            usedIds.add(subcatWithCategory.id);
+          if (result && result.place?.name) {
             const item = await buildItemWithPromo(result);
-            slotItems.push({
+            return {
               ...item,
-              timeSlot: slot // Add time slot for ordering
-            });
+              timeSlot: slot
+            };
+          }
+          return null;
+        });
+
+        const results = await Promise.all(itemPromises);
+        
+        // Filter out nulls and deduplicate by place name
+        const seenNames = new Set<string>();
+        const slotItems: any[] = [];
+        for (const item of results) {
+          if (item && item.place?.name && !seenNames.has(item.place.name)) {
+            seenNames.add(item.place.name);
+            slotItems.push(item);
+            if (slotItems.length >= count) break;
           }
         }
 
         return slotItems;
       };
 
-      // Run all time slots in parallel
+      // Run ALL time slots in parallel (4 AI workers)
       const slotPromises = activeSlots.map(slot => 
         generateForSlot(slot, distribution[slot])
       );
@@ -1510,15 +1529,20 @@ ${uncachedSkeleton.map((item, idx) => `  {
       // Merge results in time order: morning -> lunch -> dinner -> evening
       const slotOrder: TimeSlot[] = ['morning', 'lunch', 'dinner', 'evening'];
       const items: any[] = [];
+      const globalSeenNames = new Set<string>();
       
       for (const slot of slotOrder) {
         const slotIndex = activeSlots.indexOf(slot);
         if (slotIndex !== -1) {
           const slotItems = slotResults[slotIndex];
           for (const item of slotItems) {
-            items.push(item);
-            if (item.source === 'cache') cacheHits++;
-            else aiGenerated++;
+            // Final global deduplication
+            if (!globalSeenNames.has(item.place?.name)) {
+              globalSeenNames.add(item.place?.name);
+              items.push(item);
+              if (item.source === 'cache') cacheHits++;
+              else aiGenerated++;
+            }
           }
         }
       }
