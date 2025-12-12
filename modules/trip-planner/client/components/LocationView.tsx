@@ -118,28 +118,6 @@ export const LocationView: React.FC<LocationViewProps> = ({ language }) => {
           </div>
         )}
 
-        {userLocation && (
-          <div className="mb-4 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
-            <div className="flex items-center gap-2 mb-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-              <span className="text-emerald-700 font-medium text-sm">{t.locationEnabled}</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs text-emerald-600">
-              {userLocation.accuracy && (
-                <div>
-                  <span className="opacity-70">{t.accuracy}: </span>
-                  <span className="font-medium">{Math.round(userLocation.accuracy)} {t.meters}</span>
-                </div>
-              )}
-              {userLocation.timestamp && (
-                <div>
-                  <span className="opacity-70">{t.lastUpdate}: </span>
-                  <span className="font-medium">{formatTime(userLocation.timestamp)}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         <div className="rounded-2xl overflow-hidden shadow-lg border-2 border-[#C4A77D]/30 mb-4">
           <MibuMap

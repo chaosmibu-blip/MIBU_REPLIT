@@ -23,6 +23,7 @@ interface MibuMapProps {
   }>;
   onLocationUpdate?: (location: { lat: number; lng: number }) => void;
   showUserLocation?: boolean;
+  trackLocation?: boolean;
   className?: string;
 }
 
@@ -32,12 +33,14 @@ export const MibuMap: React.FC<MibuMapProps> = ({
   markers = [],
   onLocationUpdate,
   showUserLocation = true,
+  trackLocation = true,
   className = '',
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const watchIdRef = useRef<number | null>(null);
   
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [isLocating, setIsLocating] = useState(false);
@@ -45,25 +48,26 @@ export const MibuMap: React.FC<MibuMapProps> = ({
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [isTracking, setIsTracking] = useState(false);
 
-  const updateUserMarker = (lng: number, lat: number, shouldFlyTo: boolean = true) => {
+  const updateUserMarker = (lng: number, lat: number, shouldFlyTo: boolean = false) => {
     if (!map.current) return;
 
     if (userMarkerRef.current) {
-      userMarkerRef.current.remove();
+      userMarkerRef.current.setLngLat([lng, lat]);
+    } else {
+      const el = document.createElement('div');
+      el.style.width = '16px';
+      el.style.height = '16px';
+      el.style.backgroundColor = '#3B82F6';
+      el.style.border = '3px solid white';
+      el.style.borderRadius = '50%';
+      el.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.3), 0 2px 8px rgba(0,0,0,0.3)';
+
+      userMarkerRef.current = new mapboxgl.Marker(el)
+        .setLngLat([lng, lat])
+        .addTo(map.current);
     }
-
-    const el = document.createElement('div');
-    el.style.width = '16px';
-    el.style.height = '16px';
-    el.style.backgroundColor = '#3B82F6';
-    el.style.border = '3px solid white';
-    el.style.borderRadius = '50%';
-    el.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.3), 0 2px 8px rgba(0,0,0,0.3)';
-
-    userMarkerRef.current = new mapboxgl.Marker(el)
-      .setLngLat([lng, lat])
-      .addTo(map.current);
 
     if (shouldFlyTo) {
       map.current.flyTo({
@@ -74,7 +78,57 @@ export const MibuMap: React.FC<MibuMapProps> = ({
     }
   };
 
-  const getCurrentLocation = (shouldFlyTo: boolean = true) => {
+  const startTracking = () => {
+    if (!navigator.geolocation || isTracking) return;
+
+    setIsTracking(true);
+    
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setUserLocation([longitude, latitude]);
+        setLocationError(null);
+        
+        if (map.current && mapLoaded) {
+          updateUserMarker(longitude, latitude, false);
+        }
+        
+        if (onLocationUpdate) {
+          onLocationUpdate({ lat: latitude, lng: longitude });
+        }
+      },
+      (error) => {
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            setLocationError('請允許存取您的位置');
+            break;
+          case error.POSITION_UNAVAILABLE:
+            setLocationError('無法取得位置資訊');
+            break;
+          case error.TIMEOUT:
+            setLocationError('定位逾時');
+            break;
+          default:
+            setLocationError('定位失敗');
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 5000,
+      }
+    );
+  };
+
+  const stopTracking = () => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setIsTracking(false);
+  };
+
+  const centerOnUser = () => {
     if (!navigator.geolocation) {
       setLocationError('您的瀏覽器不支援定位功能');
       return;
@@ -90,11 +144,15 @@ export const MibuMap: React.FC<MibuMapProps> = ({
         setIsLocating(false);
         
         if (map.current && mapLoaded) {
-          updateUserMarker(longitude, latitude, shouldFlyTo);
+          updateUserMarker(longitude, latitude, true);
         }
         
         if (onLocationUpdate) {
           onLocationUpdate({ lat: latitude, lng: longitude });
+        }
+
+        if (trackLocation && !isTracking) {
+          startTracking();
         }
       },
       (error) => {
@@ -140,7 +198,6 @@ export const MibuMap: React.FC<MibuMapProps> = ({
 
         mapboxgl.accessToken = config.accessToken;
 
-        // Try to get user location first
         let initialCenter = center;
         let initialZoom = zoom;
         
@@ -167,15 +224,19 @@ export const MibuMap: React.FC<MibuMapProps> = ({
           center: initialCenter,
           zoom: initialZoom,
           attributionControl: false,
+          logoPosition: 'bottom-right',
         });
 
         map.current.on('load', () => {
           setMapLoaded(true);
           setIsInitializing(false);
           
-          // Add user marker if we have location
           if (userLocation) {
             updateUserMarker(userLocation[0], userLocation[1], false);
+          }
+
+          if (trackLocation) {
+            startTracking();
           }
         });
 
@@ -197,6 +258,7 @@ export const MibuMap: React.FC<MibuMapProps> = ({
     initMap();
 
     return () => {
+      stopTracking();
       if (map.current) {
         map.current.remove();
         map.current = null;
@@ -204,12 +266,11 @@ export const MibuMap: React.FC<MibuMapProps> = ({
     };
   }, []);
 
-  // Add user marker when map loads and we have location
   useEffect(() => {
     if (mapLoaded && userLocation && map.current) {
       updateUserMarker(userLocation[0], userLocation[1], false);
     }
-  }, [mapLoaded, userLocation]);
+  }, [mapLoaded]);
 
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
@@ -253,6 +314,12 @@ export const MibuMap: React.FC<MibuMapProps> = ({
 
   return (
     <div className={`relative rounded-xl overflow-hidden ${className}`} style={{ minHeight: '320px', height: '320px' }}>
+      <style>{`
+        .mapboxgl-ctrl-logo,
+        .mapboxgl-ctrl-attrib {
+          display: none !important;
+        }
+      `}</style>
       <div 
         ref={mapContainer} 
         style={{ width: '100%', height: '100%' }}
@@ -285,16 +352,16 @@ export const MibuMap: React.FC<MibuMapProps> = ({
 
       {showUserLocation && mapLoaded && (
         <button
-          onClick={() => getCurrentLocation(true)}
+          onClick={centerOnUser}
           disabled={isLocating}
           className="absolute bottom-4 right-4 p-3 bg-white rounded-full shadow-lg hover:shadow-xl transition-all disabled:opacity-50 z-10"
-          style={{ border: `2px solid ${MIBU_BRAND_COLORS.primary}` }}
+          style={{ border: `2px solid ${isTracking ? '#3B82F6' : MIBU_BRAND_COLORS.primary}` }}
           data-testid="button-locate-me"
         >
           {isLocating ? (
             <Loader2 className="w-5 h-5 animate-spin" style={{ color: MIBU_BRAND_COLORS.primary }} />
           ) : (
-            <Navigation className="w-5 h-5" style={{ color: MIBU_BRAND_COLORS.primary }} />
+            <Navigation className="w-5 h-5" style={{ color: isTracking ? '#3B82F6' : MIBU_BRAND_COLORS.primary }} />
           )}
         </button>
       )}
