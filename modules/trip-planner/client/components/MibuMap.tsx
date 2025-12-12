@@ -1,18 +1,23 @@
 /// <reference types="vite/client" />
-import React, { useRef, useEffect, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import React, { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { MapPin, Navigation, Loader2 } from 'lucide-react';
+
+// Fix Leaflet default marker icon issue
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+});
 
 const MIBU_BRAND_COLORS = {
   primary: '#8B7355',
   secondary: '#C4A77D',
   background: '#F5F0E6',
   accent: '#5D4E37',
-  water: '#C4A77D',
-  land: '#F5F0E6',
-  building: '#D4C4A8',
-  road: '#E8E0D0',
 };
 
 interface MibuMapProps {
@@ -30,131 +35,66 @@ interface MibuMapProps {
   className?: string;
 }
 
+// Custom marker icon with brand colors
+const createCustomIcon = (color: string = MIBU_BRAND_COLORS.primary) => {
+  return L.divIcon({
+    className: 'custom-marker',
+    html: `<div style="
+      width: 24px;
+      height: 24px;
+      background-color: ${color};
+      border: 3px solid ${MIBU_BRAND_COLORS.background};
+      border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    "></div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+};
+
+const userLocationIcon = L.divIcon({
+  className: 'user-location-marker',
+  html: `<div style="
+    width: 16px;
+    height: 16px;
+    background-color: #3B82F6;
+    border: 3px solid white;
+    border-radius: 50%;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3), 0 2px 8px rgba(0,0,0,0.3);
+  "></div>`,
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
+// Component to update map center when user location changes
+function MapUpdater({ center }: { center: [number, number] | null }) {
+  const map = useMap();
+  
+  useEffect(() => {
+    if (center) {
+      map.flyTo(center, 15, { duration: 1 });
+    }
+  }, [center, map]);
+  
+  return null;
+}
+
 export const MibuMap: React.FC<MibuMapProps> = ({
-  center = [121.5654, 25.0330],
+  center = [25.0330, 121.5654], // Note: Leaflet uses [lat, lng]
   zoom = 12,
   markers = [],
   onLocationUpdate,
   showUserLocation = true,
   className = '',
 }) => {
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const userMarker = useRef<mapboxgl.Marker | null>(null);
-  const placeMarkers = useRef<mapboxgl.Marker[]>([]);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [mapLoaded, setMapLoaded] = useState(false);
-  const [mapError, setMapError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!mapContainer.current) return;
-    if (map.current) return;
-
-    const accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
-    console.log('Mapbox token exists:', !!accessToken);
-    console.log('Token prefix:', accessToken?.substring(0, 10));
-    if (!accessToken) {
-      setMapError('地圖服務未設定');
-      console.error('Mapbox access token not found');
-      return;
-    }
-
-    try {
-      mapboxgl.accessToken = accessToken;
-
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/light-v11',
-        center: center,
-        zoom: zoom,
-        attributionControl: false,
-      });
-
-      map.current.addControl(
-        new mapboxgl.AttributionControl({ compact: true }),
-        'bottom-left'
-      );
-
-      map.current.on('load', () => {
-        setMapLoaded(true);
-        console.log('Mapbox map loaded successfully');
-      });
-
-      map.current.on('error', (e: any) => {
-        const errorMessage = e?.error?.message || e?.message || '';
-        // Ignore layer styling errors - these are non-critical
-        if (errorMessage.includes('does not exist in the map') || errorMessage.includes('layer')) {
-          console.warn('Map styling warning:', errorMessage);
-          return;
-        }
-        console.error('Map error:', e);
-        setMapError('地圖載入失敗');
-      });
-    } catch (err) {
-      console.error('Failed to initialize map:', err);
-      setMapError('地圖初始化失敗');
-    }
-
-    return () => {
-      map.current?.remove();
-      map.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!map.current) return;
-
-    placeMarkers.current.forEach(m => m.remove());
-    placeMarkers.current = [];
-
-    markers.forEach((marker) => {
-      if (marker.lng == null || marker.lat == null || isNaN(marker.lng) || isNaN(marker.lat)) return;
-      
-      const el = document.createElement('div');
-      el.className = 'mibu-marker';
-      el.style.width = '32px';
-      el.style.height = '32px';
-      el.style.borderRadius = '50%';
-      el.style.backgroundColor = marker.color || MIBU_BRAND_COLORS.primary;
-      el.style.border = `3px solid ${MIBU_BRAND_COLORS.background}`;
-      el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
-      el.style.cursor = 'pointer';
-      el.style.display = 'flex';
-      el.style.alignItems = 'center';
-      el.style.justifyContent = 'center';
-
-      const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(
-        `<div style="padding: 8px;">
-          <strong style="color: ${MIBU_BRAND_COLORS.accent};">${marker.title || '景點'}</strong>
-          ${marker.description ? `<p style="margin: 4px 0 0; color: ${MIBU_BRAND_COLORS.primary}; font-size: 12px;">${marker.description}</p>` : ''}
-        </div>`
-      );
-
-      const newMarker = new mapboxgl.Marker(el)
-        .setLngLat([marker.lng, marker.lat])
-        .setPopup(popup)
-        .addTo(map.current!);
-      
-      placeMarkers.current.push(newMarker);
-    });
-    
-    if (markers.length > 0 && map.current) {
-      const validMarkers = markers.filter(m => m.lng != null && m.lat != null && !isNaN(m.lng) && !isNaN(m.lat));
-      if (validMarkers.length === 1) {
-        map.current.flyTo({ center: [validMarkers[0].lng, validMarkers[0].lat], zoom: 14 });
-      } else if (validMarkers.length > 1) {
-        const bounds = new mapboxgl.LngLatBounds();
-        validMarkers.forEach(m => bounds.extend([m.lng, m.lat]));
-        map.current.fitBounds(bounds, { padding: 50, maxZoom: 15 });
-      }
-    }
-  }, [markers]);
+  const [mapCenter, setMapCenter] = useState<[number, number]>(center);
 
   const getCurrentLocation = () => {
     if (!navigator.geolocation) {
-      setLocationError('你的瀏覽器不支援定位功能');
+      setLocationError('您的瀏覽器不支援定位功能');
       return;
     }
 
@@ -164,42 +104,20 @@ export const MibuMap: React.FC<MibuMapProps> = ({
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
-        const location = { lat: latitude, lng: longitude };
-        setUserLocation(location);
+        const newLocation: [number, number] = [latitude, longitude];
+        setUserLocation(newLocation);
+        setMapCenter(newLocation);
         setIsLocating(false);
-
-        if (map.current) {
-          map.current.flyTo({
-            center: [longitude, latitude],
-            zoom: 15,
-            duration: 1500,
-          });
-
-          if (userMarker.current) {
-            userMarker.current.remove();
-          }
-
-          const el = document.createElement('div');
-          el.className = 'user-location-marker';
-          el.style.width = '20px';
-          el.style.height = '20px';
-          el.style.borderRadius = '50%';
-          el.style.backgroundColor = '#4F46E5';
-          el.style.border = '3px solid white';
-          el.style.boxShadow = '0 0 0 2px #4F46E5, 0 2px 8px rgba(79, 70, 229, 0.4)';
-
-          userMarker.current = new mapboxgl.Marker(el)
-            .setLngLat([longitude, latitude])
-            .addTo(map.current);
+        
+        if (onLocationUpdate) {
+          onLocationUpdate({ lat: latitude, lng: longitude });
         }
-
-        onLocationUpdate?.(location);
       },
       (error) => {
         setIsLocating(false);
         switch (error.code) {
           case error.PERMISSION_DENIED:
-            setLocationError('請允許存取你的位置');
+            setLocationError('請允許存取您的位置');
             break;
           case error.POSITION_UNAVAILABLE:
             setLocationError('無法取得位置資訊');
@@ -214,42 +132,71 @@ export const MibuMap: React.FC<MibuMapProps> = ({
       {
         enableHighAccuracy: true,
         timeout: 10000,
-        maximumAge: 0,
+        maximumAge: 60000,
       }
     );
   };
 
   return (
-    <div className={`relative rounded-xl overflow-hidden ${className}`} style={{ minHeight: '320px' }}>
-      <div
-        ref={mapContainer}
-        className="absolute inset-0 w-full h-full"
-        style={{ backgroundColor: MIBU_BRAND_COLORS.background }}
-      />
+    <div className={`relative rounded-xl overflow-hidden ${className}`} style={{ minHeight: '320px', height: '320px' }}>
+      <MapContainer
+        center={mapCenter}
+        zoom={zoom}
+        style={{ height: '100%', width: '100%' }}
+        zoomControl={false}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        
+        <MapUpdater center={userLocation} />
+        
+        {/* User location marker */}
+        {userLocation && (
+          <Marker position={userLocation} icon={userLocationIcon}>
+            <Popup>
+              <div className="text-center">
+                <strong>您的位置</strong>
+                <br />
+                <span className="text-xs text-gray-500">
+                  {userLocation[0].toFixed(4)}, {userLocation[1].toFixed(4)}
+                </span>
+              </div>
+            </Popup>
+          </Marker>
+        )}
+        
+        {/* Place markers */}
+        {markers.map((marker, index) => {
+          if (marker.lat == null || marker.lng == null || isNaN(marker.lat) || isNaN(marker.lng)) {
+            return null;
+          }
+          return (
+            <Marker
+              key={index}
+              position={[marker.lat, marker.lng]}
+              icon={createCustomIcon(marker.color)}
+            >
+              {(marker.title || marker.description) && (
+                <Popup>
+                  <div className="p-1">
+                    {marker.title && <strong>{marker.title}</strong>}
+                    {marker.description && <p className="text-sm mt-1">{marker.description}</p>}
+                  </div>
+                </Popup>
+              )}
+            </Marker>
+          );
+        })}
+      </MapContainer>
 
-      {!mapLoaded && !mapError && (
-        <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: MIBU_BRAND_COLORS.background }}>
-          <div className="text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" style={{ color: MIBU_BRAND_COLORS.primary }} />
-            <p className="text-sm" style={{ color: MIBU_BRAND_COLORS.accent }}>載入地圖中...</p>
-          </div>
-        </div>
-      )}
-
-      {mapError && (
-        <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: MIBU_BRAND_COLORS.background }}>
-          <div className="text-center p-4">
-            <MapPin className="w-8 h-8 mx-auto mb-2" style={{ color: MIBU_BRAND_COLORS.primary }} />
-            <p className="text-sm font-medium" style={{ color: MIBU_BRAND_COLORS.accent }}>{mapError}</p>
-          </div>
-        </div>
-      )}
-
-      {showUserLocation && mapLoaded && (
+      {/* Locate button */}
+      {showUserLocation && (
         <button
           onClick={getCurrentLocation}
           disabled={isLocating}
-          className="absolute bottom-4 right-4 p-3 bg-white rounded-full shadow-lg hover:shadow-xl transition-all disabled:opacity-50 z-10"
+          className="absolute bottom-4 right-4 p-3 bg-white rounded-full shadow-lg hover:shadow-xl transition-all disabled:opacity-50 z-[1000]"
           style={{ border: `2px solid ${MIBU_BRAND_COLORS.primary}` }}
           data-testid="button-locate-me"
         >
@@ -261,9 +208,10 @@ export const MibuMap: React.FC<MibuMapProps> = ({
         </button>
       )}
 
+      {/* Location error message */}
       {locationError && (
         <div
-          className="absolute top-4 left-4 right-4 p-3 rounded-lg text-sm z-10"
+          className="absolute top-4 left-4 right-4 p-3 rounded-lg text-sm z-[1000]"
           style={{
             backgroundColor: MIBU_BRAND_COLORS.background,
             color: MIBU_BRAND_COLORS.accent,
@@ -274,9 +222,10 @@ export const MibuMap: React.FC<MibuMapProps> = ({
         </div>
       )}
 
-      {userLocation && mapLoaded && (
+      {/* User location display */}
+      {userLocation && (
         <div
-          className="absolute top-4 left-4 px-3 py-2 rounded-lg text-xs z-10"
+          className="absolute top-4 left-4 px-3 py-2 rounded-lg text-xs z-[1000]"
           style={{
             backgroundColor: MIBU_BRAND_COLORS.background,
             color: MIBU_BRAND_COLORS.accent,
@@ -284,7 +233,7 @@ export const MibuMap: React.FC<MibuMapProps> = ({
           }}
         >
           <MapPin className="w-3 h-3 inline mr-1" />
-          {userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}
+          {userLocation[0].toFixed(4)}, {userLocation[1].toFixed(4)}
         </div>
       )}
     </div>
