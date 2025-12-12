@@ -1522,24 +1522,34 @@ ${uncachedSkeleton.map((item, idx) => `  {
 
         // For specific task types, filter directly
         if (taskType === 'breakfast') {
+          // Prefer breakfast-appropriate food: 早午餐, 咖啡廳, 在地早餐
           const breakfastSubcats = allSubcategories.filter(s => 
-            s.nameZh === '早午餐' || s.nameZh === '咖啡廳' || s.preferredTimeSlot === 'morning'
+            s.category.code === 'food' && 
+            (s.nameZh.includes('早') || s.nameZh.includes('咖啡') || s.nameZh.includes('甜點'))
           );
-          return breakfastSubcats.length > 0 ? breakfastSubcats[Math.floor(Math.random() * breakfastSubcats.length)] : null;
+          // Fallback to any food if no breakfast-specific found
+          const fallback = allSubcategories.filter(s => s.category.code === 'food');
+          const options = breakfastSubcats.length > 0 ? breakfastSubcats : fallback;
+          return options.length > 0 ? options[Math.floor(Math.random() * options.length)] : null;
         } else if (taskType === 'lunch') {
+          // Any food subcategory for lunch, excluding late-night options
           const lunchSubcats = allSubcategories.filter(s => 
-            s.preferredTimeSlot === 'lunch' && s.category.code === 'food'
+            s.category.code === 'food' && 
+            !s.nameZh.includes('宵夜') && !s.nameZh.includes('酒')
           );
-          return lunchSubcats.length > 0 ? lunchSubcats[Math.floor(Math.random() * lunchSubcats.length)] : null;
+          const fallback = allSubcategories.filter(s => s.category.code === 'food');
+          const options = lunchSubcats.length > 0 ? lunchSubcats : fallback;
+          return options.length > 0 ? options[Math.floor(Math.random() * options.length)] : null;
         } else if (taskType === 'dinner') {
+          // Any food subcategory for dinner
           const dinnerSubcats = allSubcategories.filter(s => 
-            s.preferredTimeSlot === 'dinner' && s.category.code === 'food'
+            s.category.code === 'food' && !s.nameZh.includes('早')
           );
-          return dinnerSubcats.length > 0 ? dinnerSubcats[Math.floor(Math.random() * dinnerSubcats.length)] : null;
+          const fallback = allSubcategories.filter(s => s.category.code === 'food');
+          const options = dinnerSubcats.length > 0 ? dinnerSubcats : fallback;
+          return options.length > 0 ? options[Math.floor(Math.random() * options.length)] : null;
         } else if (taskType === 'stay') {
-          const staySubcats = allSubcategories.filter(s => 
-            s.preferredTimeSlot === 'stay' || s.category.code === 'stay'
-          );
+          const staySubcats = allSubcategories.filter(s => s.category.code === 'stay');
           return staySubcats.length > 0 ? staySubcats[Math.floor(Math.random() * staySubcats.length)] : null;
         }
         
