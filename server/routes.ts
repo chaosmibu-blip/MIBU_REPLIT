@@ -1375,98 +1375,120 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const usedPlaceNames: string[] = [];
       const usedSubcategoryIds: Set<number> = new Set();
 
-      // Set a deadline for generation (45 seconds max for larger requests)
       const startTime = Date.now();
-      const DEADLINE_MS = 45000;
-      const MAX_AI_CALLS = Math.min(itemCount, 12); // Allow up to 12 AI calls
-      let aiCallCount = 0;
+      const CONCURRENCY_LIMIT = 4; // Process 4 items in parallel
 
-      // Process subcategories with timeout awareness
-      for (const subcatWithCategory of sortedSubcategories) {
-        if (items.length >= itemCount) break;
-        if (usedSubcategoryIds.has(subcatWithCategory.id)) continue;
+      // Helper to build item with merchant promo
+      const buildItemWithPromo = async (result: any) => {
+        let merchantPromo = null;
+        let merchantLink = null;
         
-        // Check deadline
-        if (Date.now() - startTime > DEADLINE_MS) {
-          console.log(`Deadline reached after ${items.length} items`);
-          break;
+        if (result.place?.place_id) {
+          merchantLink = await storage.getPlaceLinkByGooglePlaceId(result.place.place_id);
         }
-
-        // Check if we should skip AI generation (limit reached)
-        const hasCacheForThis = cachedSubcategorySet.has(subcatWithCategory.nameZh);
-        if (!hasCacheForThis && aiCallCount >= MAX_AI_CALLS) {
-          continue; // Skip non-cached items if AI limit reached
+        if (!merchantLink && result.place?.name) {
+          merchantLink = await storage.getPlaceLinkByPlace(result.place.name, districtNameZh, regionNameZh);
         }
         
+        if (merchantLink && merchantLink.isPromoActive && merchantLink.promoTitle) {
+          merchantPromo = {
+            merchantId: merchantLink.merchantId,
+            title: merchantLink.promoTitle,
+            description: merchantLink.promoDescription,
+            imageUrl: merchantLink.promoImageUrl
+          };
+        }
+
+        return {
+          category: {
+            id: result.category.id,
+            code: result.category.code,
+            name: getLocalizedName(result.category, language),
+            colorHex: result.category.colorHex
+          },
+          subcategory: {
+            id: result.subcategory.id,
+            code: result.subcategory.code,
+            name: getLocalizedName(result.subcategory, language)
+          },
+          place: result.place,
+          isVerified: result.isVerified,
+          source: result.source,
+          is_promo_active: !!merchantPromo,
+          store_promo: merchantPromo?.title || null,
+          merchant_promo: merchantPromo
+        };
+      };
+
+      // Phase 1: Process cached items in parallel (fast)
+      const cachedSubcategories = sortedSubcategories.filter(s => 
+        cachedSubcategorySet.has(s.nameZh) && !usedSubcategoryIds.has(s.id)
+      ).slice(0, itemCount);
+
+      const cachedPromises = cachedSubcategories.map(async (subcatWithCategory) => {
         const result = await generatePlaceForSubcategory(
-          districtNameZh,
-          regionNameZh,
-          countryNameZh,
-          subcatWithCategory.category,
-          subcatWithCategory,
-          language,
-          usedPlaceNames
+          districtNameZh, regionNameZh, countryNameZh,
+          subcatWithCategory.category, subcatWithCategory, language, []
         );
-
         if (result) {
-          if (result.place?.name) {
-            usedPlaceNames.push(result.place.name);
-          }
           usedSubcategoryIds.add(subcatWithCategory.id);
-          
-          if (result.source === 'cache') {
-            cacheHits++;
-          } else {
-            aiGenerated++;
-            aiCallCount++;
-          }
+          return { result, subcatWithCategory };
+        }
+        return null;
+      });
 
-          // Check for merchant promotions - prefer Google Place ID matching
-          let merchantPromo = null;
-          let merchantLink = null;
-          
-          // First try matching by Google Place ID (more accurate)
-          if (result.place?.place_id) {
-            merchantLink = await storage.getPlaceLinkByGooglePlaceId(result.place.place_id);
+      const cachedResults = await Promise.all(cachedPromises);
+      for (const r of cachedResults) {
+        if (r && items.length < itemCount) {
+          if (r.result.place?.name && !usedPlaceNames.includes(r.result.place.name)) {
+            usedPlaceNames.push(r.result.place.name);
+            const item = await buildItemWithPromo(r.result);
+            items.push(item);
+            if (r.result.source === 'cache') cacheHits++;
+            else aiGenerated++;
           }
-          
-          // Fallback to name/district/city matching
-          if (!merchantLink && result.place?.name) {
-            merchantLink = await storage.getPlaceLinkByPlace(
-              result.place.name,
-              districtNameZh,
-              regionNameZh
-            );
-          }
-          
-          if (merchantLink && merchantLink.isPromoActive && merchantLink.promoTitle) {
-            merchantPromo = {
-              merchantId: merchantLink.merchantId,
-              title: merchantLink.promoTitle,
-              description: merchantLink.promoDescription,
-              imageUrl: merchantLink.promoImageUrl
-            };
-          }
+        }
+      }
 
-          items.push({
-            category: {
-              id: result.category.id,
-              code: result.category.code,
-              name: getLocalizedName(result.category, language),
-              colorHex: result.category.colorHex
-            },
-            subcategory: {
-              id: result.subcategory.id,
-              code: result.subcategory.code,
-              name: getLocalizedName(result.subcategory, language)
-            },
-            place: result.place,
-            isVerified: result.isVerified,
-            source: result.source,
-            is_promo_active: !!merchantPromo,
-            store_promo: merchantPromo?.title || null,
-            merchant_promo: merchantPromo
-          });
+      // Phase 2: Process remaining items with bounded concurrency
+      const remainingSubcategories = sortedSubcategories.filter(s => 
+        !usedSubcategoryIds.has(s.id)
+      );
+
+      // Process in batches of CONCURRENCY_LIMIT
+      for (let i = 0; i < remainingSubcategories.length && items.length < itemCount; i += CONCURRENCY_LIMIT) {
+        const batch = remainingSubcategories.slice(i, i + CONCURRENCY_LIMIT);
+        const needed = itemCount - items.length;
+        if (needed <= 0) break;
+
+        const batchPromises = batch.map(async (subcatWithCategory) => {
+          if (usedSubcategoryIds.has(subcatWithCategory.id)) return null;
+          
+          const result = await generatePlaceForSubcategory(
+            districtNameZh, regionNameZh, countryNameZh,
+            subcatWithCategory.category, subcatWithCategory, language,
+            [...usedPlaceNames] // Snapshot to avoid race conditions
+          );
+          
+          if (result) {
+            return { result, subcatWithCategory };
+          }
+          return null;
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        
+        for (const r of batchResults) {
+          if (r && items.length < itemCount) {
+            if (r.result.place?.name && !usedPlaceNames.includes(r.result.place.name)) {
+              usedPlaceNames.push(r.result.place.name);
+              usedSubcategoryIds.add(r.subcatWithCategory.id);
+              const item = await buildItemWithPromo(r.result);
+              items.push(item);
+              if (r.result.source === 'cache') cacheHits++;
+              else aiGenerated++;
+            }
+          }
         }
       }
 
