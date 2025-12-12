@@ -12,6 +12,7 @@ import { MerchantDashboard } from './components/MerchantDashboard';
 import { TripPlanner } from '../../modules/trip-planner/client';
 import { LocationView } from '../../modules/trip-planner/client/components/LocationView';
 import { ChatView } from '../../modules/trip-planner/client/components/ChatView';
+import { ServicePlans } from '../../modules/trip-planner/client/components/ServicePlans';
 import { DEFAULT_LEVEL, TRANSLATIONS, MAX_DAILY_GENERATIONS } from './constants';
 import { Globe, LogIn, LogOut } from 'lucide-react';
 
@@ -766,6 +767,16 @@ const App: React.FC = () => {
                 language={state.language} 
                 userId={user?.id} 
                 isAuthenticated={isAuthenticated} 
+              />
+            )}
+            
+            {plannerSubView === 'service' && (
+              <ServicePlans 
+                isAuthenticated={isAuthenticated}
+                onLoginRequired={() => window.location.href = '/api/login'}
+                onSelectPlan={(plan, method) => {
+                  console.log('Selected plan:', plan, 'Payment method:', method);
+                }}
               />
             )}
           </div>

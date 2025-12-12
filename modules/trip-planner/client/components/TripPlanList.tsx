@@ -70,26 +70,6 @@ export const TripPlanList: React.FC<TripPlanListProps> = ({
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
-      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-slate-200">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={onNavigateHome}
-            className="p-2 -ml-2 hover:bg-slate-100 rounded-lg transition-colors"
-            data-testid="button-back-home"
-          >
-            <ArrowLeft className="w-5 h-5 text-slate-600" />
-          </button>
-          <h1 className="text-lg font-bold text-slate-800">旅程策劃師</h1>
-          <button
-            onClick={onCreatePlan}
-            className="p-2 -mr-2 hover:bg-slate-100 rounded-lg transition-colors"
-            data-testid="button-create-trip"
-          >
-            <Plus className="w-5 h-5 text-indigo-600" />
-          </button>
-        </div>
-      </header>
-
       <main className="max-w-lg mx-auto px-4 py-6">
         {loading ? (
           <div className="flex items-center justify-center py-12">

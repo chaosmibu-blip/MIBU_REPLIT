@@ -125,6 +125,7 @@ export const TRANSLATIONS = {
     navLocation: '定位',
     navItinerary: '行程',
     navChat: '聊天',
+    navService: '服務',
     back: '返回',
     // Location Page
     locationTitle: '我的位置',
@@ -213,6 +214,7 @@ export const TRANSLATIONS = {
     navLocation: 'Location',
     navItinerary: 'Itinerary',
     navChat: 'Chat',
+    navService: 'Service',
     back: 'Back',
     // Location Page
     locationTitle: 'My Location',
@@ -301,6 +303,7 @@ export const TRANSLATIONS = {
     navLocation: '位置',
     navItinerary: '旅程',
     navChat: 'チャット',
+    navService: 'サービス',
     back: '戻る',
     // Location Page
     locationTitle: '現在地',
@@ -389,6 +392,7 @@ export const TRANSLATIONS = {
     navLocation: '위치',
     navItinerary: '일정',
     navChat: '채팅',
+    navService: '서비스',
     back: '뒤로',
     // Location Page
     locationTitle: '내 위치',

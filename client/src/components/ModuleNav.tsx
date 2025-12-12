@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Compass, BookOpen, Package, MapPin, Route, MessageCircle, Home, Map, Settings } from 'lucide-react';
+import { ArrowLeft, Compass, BookOpen, Package, MapPin, Route, MessageCircle, Home, Map, Settings, Sparkles } from 'lucide-react';
 import { Language, GachaSubView, PlannerSubView, AppView } from '../types';
 import { TRANSLATIONS } from '../constants';
 
@@ -80,6 +80,7 @@ export const PlannerModuleNav: React.FC<PlannerModuleNavProps> = ({ currentTab, 
     { id: 'location', label: t.navLocation || '定位', icon: MapPin },
     { id: 'itinerary', label: t.navItinerary || '行程', icon: Route },
     { id: 'chat', label: t.navChat || '聊天', icon: MessageCircle },
+    { id: 'service', label: t.navService || '服務', icon: Sparkles },
   ];
 
   return (
