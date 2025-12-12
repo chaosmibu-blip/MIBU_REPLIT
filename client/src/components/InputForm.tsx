@@ -192,7 +192,13 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
           </div>
         </div>
 
-        {selectedCountryId && regions.length > 0 && (
+        <div 
+          className={`overflow-hidden transition-all duration-300 ease-out ${
+            selectedCountryId && regions.length > 0 
+              ? 'max-h-20 opacity-100' 
+              : 'max-h-0 opacity-0'
+          }`}
+        >
           <div className="relative">
             {loadingRegions ? (
               <div className="w-full px-4 py-4 bg-slate-50 rounded-2xl flex items-center">
@@ -216,9 +222,15 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
               </select>
             )}
           </div>
-        )}
+        </div>
 
-        {selectedCountryId && selectedRegionId && (
+        <div 
+          className={`overflow-hidden transition-all duration-300 ease-out ${
+            selectedCountryId && selectedRegionId 
+              ? 'max-h-32 opacity-100' 
+              : 'max-h-0 opacity-0'
+          }`}
+        >
           <div className="pt-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-bold text-slate-700">
@@ -254,7 +266,7 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
               <span>{state.language === 'zh-TW' ? '極限 (12點)' : 'Packed (12)'}</span>
             </div>
           </div>
-        )}
+        </div>
 
         <button
           onClick={onSubmit}
