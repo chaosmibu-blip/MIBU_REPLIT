@@ -13,6 +13,8 @@ interface TripActivity {
   timeSlot: string;
   duration?: number;
   isFromGacha: boolean;
+  locationLat?: string | number | null;
+  locationLng?: string | number | null;
 }
 
 interface TripDay {
@@ -166,10 +168,10 @@ export const TripPlanEditor: React.FC<TripPlanEditorProps> = ({
             zoom={12}
             markers={days.flatMap(day => 
               day.activities
-                .filter(a => a.address)
+                .filter(a => a.locationLat != null && a.locationLng != null)
                 .map(a => ({
-                  lng: 121.5654,
-                  lat: 25.0330,
+                  lng: typeof a.locationLng === 'string' ? parseFloat(a.locationLng) : Number(a.locationLng),
+                  lat: typeof a.locationLat === 'string' ? parseFloat(a.locationLat) : Number(a.locationLat),
                   title: a.placeName,
                   description: a.address,
                 }))

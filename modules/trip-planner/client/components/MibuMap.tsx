@@ -41,6 +41,7 @@ export const MibuMap: React.FC<MibuMapProps> = ({
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const userMarker = useRef<mapboxgl.Marker | null>(null);
+  const placeMarkers = useRef<mapboxgl.Marker[]>([]);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -72,15 +73,28 @@ export const MibuMap: React.FC<MibuMapProps> = ({
     map.current.on('load', () => {
       if (!map.current) return;
 
-      map.current.setPaintProperty('water', 'fill-color', MIBU_BRAND_COLORS.water);
-      map.current.setPaintProperty('land', 'background-color', MIBU_BRAND_COLORS.land);
+      try {
+        map.current.setPaintProperty('water', 'fill-color', MIBU_BRAND_COLORS.water);
+      } catch (e) {}
+      
+      try {
+        map.current.setPaintProperty('background', 'background-color', MIBU_BRAND_COLORS.land);
+      } catch (e) {}
+      
+      try {
+        map.current.setPaintProperty('landuse', 'fill-color', MIBU_BRAND_COLORS.land);
+      } catch (e) {}
+      
+      try {
+        map.current.setPaintProperty('landcover', 'fill-color', MIBU_BRAND_COLORS.land);
+      } catch (e) {}
       
       try {
         map.current.setPaintProperty('building', 'fill-color', MIBU_BRAND_COLORS.building);
       } catch (e) {}
       
       try {
-        const roadLayers = ['road-primary', 'road-secondary', 'road-street', 'road-minor'];
+        const roadLayers = ['road-street', 'road-minor', 'road-primary', 'road-secondary-tertiary', 'road-motorway-trunk'];
         roadLayers.forEach(layer => {
           try {
             map.current?.setPaintProperty(layer, 'line-color', MIBU_BRAND_COLORS.road);
@@ -97,7 +111,12 @@ export const MibuMap: React.FC<MibuMapProps> = ({
   useEffect(() => {
     if (!map.current) return;
 
+    placeMarkers.current.forEach(m => m.remove());
+    placeMarkers.current = [];
+
     markers.forEach((marker) => {
+      if (marker.lng == null || marker.lat == null || isNaN(marker.lng) || isNaN(marker.lat)) return;
+      
       const el = document.createElement('div');
       el.className = 'mibu-marker';
       el.style.width = '32px';
@@ -118,11 +137,24 @@ export const MibuMap: React.FC<MibuMapProps> = ({
         </div>`
       );
 
-      new mapboxgl.Marker(el)
+      const newMarker = new mapboxgl.Marker(el)
         .setLngLat([marker.lng, marker.lat])
         .setPopup(popup)
         .addTo(map.current!);
+      
+      placeMarkers.current.push(newMarker);
     });
+    
+    if (markers.length > 0 && map.current) {
+      const validMarkers = markers.filter(m => m.lng != null && m.lat != null && !isNaN(m.lng) && !isNaN(m.lat));
+      if (validMarkers.length === 1) {
+        map.current.flyTo({ center: [validMarkers[0].lng, validMarkers[0].lat], zoom: 14 });
+      } else if (validMarkers.length > 1) {
+        const bounds = new mapboxgl.LngLatBounds();
+        validMarkers.forEach(m => bounds.extend([m.lng, m.lat]));
+        map.current.fitBounds(bounds, { padding: 50, maxZoom: 15 });
+      }
+    }
   }, [markers]);
 
   const getCurrentLocation = () => {
