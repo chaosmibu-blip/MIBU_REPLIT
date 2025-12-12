@@ -28,18 +28,23 @@ export const ServicePlans: React.FC<ServicePlansProps> = ({
 }) => {
   const [plans, setPlans] = useState<ServicePlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<ServicePlan | null>(null);
   const [showPaymentChoice, setShowPaymentChoice] = useState(false);
 
   useEffect(() => {
     fetch('/api/planner/service-plans')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('載入失敗');
+        return res.json();
+      })
       .then(data => {
         setPlans(data);
         setLoading(false);
       })
       .catch(err => {
         console.error('Error loading plans:', err);
+        setError('無法載入服務方案，請稍後再試');
         setLoading(false);
       });
   }, []);
@@ -83,6 +88,20 @@ export const ServicePlans: React.FC<ServicePlansProps> = ({
     return (
       <div className="flex items-center justify-center p-8">
         <Loader2 className="w-8 h-8 animate-spin text-amber-600" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 text-center">
+        <p className="text-red-500 mb-4">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+        >
+          重試
+        </button>
       </div>
     );
   }
@@ -182,14 +201,16 @@ export const ServicePlans: React.FC<ServicePlansProps> = ({
                 <div className="text-sm text-stone-500">NT${selectedPlan.priceNtd}</div>
               </button>
 
-              <button
-                onClick={() => handlePaymentSelect('stripe')}
-                className="w-full p-4 border-2 border-stone-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
-                data-testid="payment-stripe"
-              >
-                <div className="font-medium text-stone-800">國際信用卡 (Stripe)</div>
-                <div className="text-sm text-stone-500">${selectedPlan.priceUsd} USD</div>
-              </button>
+              {selectedPlan.priceUsd && (
+                <button
+                  onClick={() => handlePaymentSelect('stripe')}
+                  className="w-full p-4 border-2 border-stone-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
+                  data-testid="payment-stripe"
+                >
+                  <div className="font-medium text-stone-800">國際信用卡 (Stripe)</div>
+                  <div className="text-sm text-stone-500">${selectedPlan.priceUsd} USD</div>
+                </button>
+              )}
             </div>
 
             <button
