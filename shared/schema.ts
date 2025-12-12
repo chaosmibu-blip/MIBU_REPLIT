@@ -107,6 +107,7 @@ export const users = pgTable("users", {
   profileImageUrl: varchar("profile_image_url"),
   role: varchar("role", { length: 20 }).default('consumer').notNull(),
   provider: varchar("provider", { length: 20 }), // 'replit' | 'guest' | 'email'
+  stripeCustomerId: varchar("stripe_customer_id"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

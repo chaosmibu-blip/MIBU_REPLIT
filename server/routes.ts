@@ -6,6 +6,7 @@ import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema } from
 import { z } from "zod";
 import { createTripPlannerRoutes } from "../modules/trip-planner/server/routes";
 import { createPlannerServiceRoutes } from "../modules/trip-planner/server/planner-routes";
+import { registerStripeRoutes } from "./stripeRoutes";
 import twilio from "twilio";
 const { AccessToken } = twilio.jwt;
 const ChatGrant = AccessToken.ChatGrant;
@@ -2475,6 +2476,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
       res.status(500).json({ error: "Failed to exclude place" });
     }
   });
+
+  registerStripeRoutes(app);
 
   const httpServer = createServer(app);
   return httpServer;

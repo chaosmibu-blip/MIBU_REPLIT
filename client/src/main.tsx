@@ -1,7 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Router, Route, Switch } from 'wouter';
 import App from './App';
+import PaymentSuccess from './pages/PaymentSuccess';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -41,7 +43,12 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <Router>
+        <Switch>
+          <Route path="/payment/success" component={PaymentSuccess} />
+          <Route component={App} />
+        </Switch>
+      </Router>
     </QueryClientProvider>
   </React.StrictMode>
 );
