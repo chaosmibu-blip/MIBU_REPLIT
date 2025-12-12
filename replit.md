@@ -62,9 +62,14 @@ Preferred communication style: Simple, everyday language.
   - Client: TripPlanner component with TripPlanList, TripPlanEditor, CreateTripModal
   - Server: CRUD routes for trip plans (`/api/trips/*`)
   - Schema: `tripPlans` table with userId, name, destination, items JSON array
-- **Navigation**: Simplified to 3 main tabs: 行程扭蛋 (Gacha), 旅程策劃師 (Planner), 設定 (Settings)
+- **Navigation Architecture (Updated 2025-12-12)**: Two-tier nested navigation
+  - **Global Nav** (SideNav.tsx): 4 items - 首頁 (mibu_home), 行程扭蛋 (gacha_module), 旅程策劃 (planner_module), 設定 (settings)
+  - **Gacha Module Sub-Nav** (ModuleNav.tsx): 3 tabs - 扭蛋, 圖鑑, 道具箱 + back button to home
+  - **Planner Module Sub-Nav**: 3 tabs - 定位, 行程, 聊天 + back button to home
+  - **Settings Page**: 3 tabs - Mibu (language/profile), 行程扭蛋 (links to collection/itembox/merchant), 旅程策劃 (placeholder)
+  - **View Types**: mibu_home, gacha_module, planner_module, settings, result, merchant_login, merchant_dashboard
+  - **Sub-View State**: gachaSubView (gacha/collection/itembox), plannerSubView (location/itinerary/chat)
   - Responsive design: right-rail (desktop md+) and bottom-bar (mobile) layouts
-  - Settings page includes: language selector, user profile/login, links to Collection/ItemBox/Merchant
   - All labels translated in 4 languages (zh-TW, en, ja, ko)
 - **Module Registry**: `modules/registry.ts` for scalable feature mounting
 - **Integration**: App.tsx renders modules based on `state.view` matching module identifier
