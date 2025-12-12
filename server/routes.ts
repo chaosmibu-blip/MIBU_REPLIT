@@ -188,6 +188,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth
   await setupAuth(app);
 
+  // ============ Public Config Routes ============
+  // Mapbox access token (public tokens are designed to be exposed to clients)
+  // Security is managed via URL restrictions in Mapbox dashboard
+  app.get('/api/config/mapbox', (req, res) => {
+    const token = process.env.VITE_MAPBOX_ACCESS_TOKEN || '';
+    if (!token) {
+      return res.status(503).json({ error: 'Mapbox token not configured' });
+    }
+    res.json({ accessToken: token });
+  });
+
   // ============ Module Routes ============
   // Trip Planner Module
   app.use('/api/planner', createTripPlannerRoutes());
