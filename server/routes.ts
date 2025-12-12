@@ -1307,7 +1307,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
     };
   }
 
-  // New endpoint: Generate a complete itinerary for a single district with multiple categories
+  // New endpoint: Generate a complete itinerary using parallel time-slot AI architecture
   app.post("/api/gacha/itinerary", async (req, res) => {
     try {
       const { countryId, regionId, language = 'zh-TW', itemCount = 8 } = req.body;
@@ -1316,7 +1316,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
         return res.status(400).json({ error: "countryId is required" });
       }
 
-      // Step 1: Random district selection (one district for the entire itinerary)
+      // Step 1: Random district selection
       let district;
       if (regionId) {
         district = await storage.getRandomDistrictByRegion(regionId);
@@ -1351,32 +1351,65 @@ ${uncachedSkeleton.map((item, idx) => `  {
         return res.status(404).json({ error: "No subcategories found" });
       }
 
-      console.log(`\n=== Generating itinerary for ${regionNameZh}${districtNameZh} (${itemCount} items from ${allSubcategories.length} subcategories) ===`);
+      // Step 3: Define time slot distribution based on itemCount
+      // 5-6: 2 AI (morning, lunch)
+      // 7-9: 3 AI (morning, lunch, dinner)
+      // 10-12: 4 AI (morning, lunch, dinner, evening+stay)
+      type TimeSlot = 'morning' | 'lunch' | 'dinner' | 'evening';
+      const getTimeSlotDistribution = (count: number): Record<TimeSlot, number> => {
+        if (count <= 6) {
+          // 5: 2+3, 6: 3+3
+          return { morning: count === 5 ? 2 : 3, lunch: 3, dinner: 0, evening: 0 };
+        } else if (count <= 9) {
+          // 7: 2+3+2, 8: 3+3+2, 9: 3+3+3
+          const dinner = count === 7 ? 2 : (count === 8 ? 2 : 3);
+          const morning = count === 7 ? 2 : 3;
+          return { morning, lunch: 3, dinner, evening: 0 };
+        } else {
+          // 10: 2+3+3+2, 11: 3+3+3+2, 12: 3+3+3+3
+          const morning = count === 10 ? 2 : 3;
+          const evening = count === 12 ? 3 : 2;
+          return { morning, lunch: 3, dinner: 3, evening };
+        }
+      };
 
-      // Step 3: Cache-first optimization - preload cached places for this district
-      const cachedPlacesForDistrict = await storage.getCachedPlaces(
-        districtNameZh,
-        regionNameZh,
-        countryNameZh
-      );
-      const cachedSubcategorySet = new Set(cachedPlacesForDistrict.map(p => p.subCategory));
+      const distribution = getTimeSlotDistribution(itemCount);
+      const activeSlots = (Object.keys(distribution) as TimeSlot[]).filter(slot => distribution[slot] > 0);
+      
+      console.log(`\n=== Generating itinerary for ${regionNameZh}${districtNameZh} (${itemCount} items, ${activeSlots.length} time slots) ===`);
+      console.log(`Distribution: morning=${distribution.morning}, lunch=${distribution.lunch}, dinner=${distribution.dinner}, evening=${distribution.evening}`);
 
-      // Sort subcategories: cached ones first, then shuffle
-      const sortedSubcategories = [...allSubcategories].sort((a, b) => {
-        const aHasCache = cachedSubcategorySet.has(a.nameZh) ? 0 : 1;
-        const bHasCache = cachedSubcategorySet.has(b.nameZh) ? 0 : 1;
-        if (aHasCache !== bHasCache) return aHasCache - bHasCache;
-        return Math.random() - 0.5;
-      });
+      // Step 4: Group subcategories by preferred time slot
+      const timeSlotMapping: Record<string, TimeSlot> = {
+        'morning': 'morning',
+        'lunch': 'lunch',
+        'afternoon': 'lunch', // afternoon activities go with lunch slot
+        'dinner': 'dinner',
+        'evening': 'evening',
+        'stay': 'evening', // accommodation goes with evening slot
+        'anytime': 'lunch' // default to lunch
+      };
 
-      const items: any[] = [];
-      let cacheHits = 0;
-      let aiGenerated = 0;
-      const usedPlaceNames: string[] = [];
-      const usedSubcategoryIds: Set<number> = new Set();
+      const subcategoriesBySlot: Record<TimeSlot, typeof allSubcategories> = {
+        morning: [],
+        lunch: [],
+        dinner: [],
+        evening: []
+      };
+
+      for (const subcat of allSubcategories) {
+        const slot = timeSlotMapping[subcat.preferredTimeSlot || 'anytime'] || 'lunch';
+        subcategoriesBySlot[slot].push(subcat);
+      }
+
+      // Shuffle each slot's subcategories
+      for (const slot of activeSlots) {
+        subcategoriesBySlot[slot].sort(() => Math.random() - 0.5);
+      }
 
       const startTime = Date.now();
-      const CONCURRENCY_LIMIT = 4; // Process 4 items in parallel
+      let cacheHits = 0;
+      let aiGenerated = 0;
 
       // Helper to build item with merchant promo
       const buildItemWithPromo = async (result: any) => {
@@ -1420,80 +1453,64 @@ ${uncachedSkeleton.map((item, idx) => `  {
         };
       };
 
-      // Phase 1: Process cached items in parallel (fast)
-      const cachedSubcategories = sortedSubcategories.filter(s => 
-        cachedSubcategorySet.has(s.nameZh) && !usedSubcategoryIds.has(s.id)
-      ).slice(0, itemCount);
+      // Step 5: Generate items for each time slot in PARALLEL
+      // Each time slot is processed by its own "AI worker"
+      const generateForSlot = async (slot: TimeSlot, count: number): Promise<any[]> => {
+        const slotSubcategories = subcategoriesBySlot[slot];
+        const slotItems: any[] = [];
+        const usedNames: string[] = [];
+        const usedIds: Set<number> = new Set();
 
-      const cachedPromises = cachedSubcategories.map(async (subcatWithCategory) => {
-        const result = await generatePlaceForSubcategory(
-          districtNameZh, regionNameZh, countryNameZh,
-          subcatWithCategory.category, subcatWithCategory, language, []
-        );
-        if (result) {
-          usedSubcategoryIds.add(subcatWithCategory.id);
-          return { result, subcatWithCategory };
+        // Process subcategories for this slot
+        for (let i = 0; i < slotSubcategories.length && slotItems.length < count; i++) {
+          const subcatWithCategory = slotSubcategories[i];
+          if (usedIds.has(subcatWithCategory.id)) continue;
+
+          const result = await generatePlaceForSubcategory(
+            districtNameZh, regionNameZh, countryNameZh,
+            subcatWithCategory.category, subcatWithCategory, language,
+            usedNames
+          );
+
+          if (result && result.place?.name && !usedNames.includes(result.place.name)) {
+            usedNames.push(result.place.name);
+            usedIds.add(subcatWithCategory.id);
+            const item = await buildItemWithPromo(result);
+            slotItems.push({
+              ...item,
+              timeSlot: slot // Add time slot for ordering
+            });
+          }
         }
-        return null;
-      });
 
-      const cachedResults = await Promise.all(cachedPromises);
-      for (const r of cachedResults) {
-        if (r && items.length < itemCount) {
-          if (r.result.place?.name && !usedPlaceNames.includes(r.result.place.name)) {
-            usedPlaceNames.push(r.result.place.name);
-            const item = await buildItemWithPromo(r.result);
+        return slotItems;
+      };
+
+      // Run all time slots in parallel
+      const slotPromises = activeSlots.map(slot => 
+        generateForSlot(slot, distribution[slot])
+      );
+
+      const slotResults = await Promise.all(slotPromises);
+
+      // Merge results in time order: morning -> lunch -> dinner -> evening
+      const slotOrder: TimeSlot[] = ['morning', 'lunch', 'dinner', 'evening'];
+      const items: any[] = [];
+      
+      for (const slot of slotOrder) {
+        const slotIndex = activeSlots.indexOf(slot);
+        if (slotIndex !== -1) {
+          const slotItems = slotResults[slotIndex];
+          for (const item of slotItems) {
             items.push(item);
-            if (r.result.source === 'cache') cacheHits++;
+            if (item.source === 'cache') cacheHits++;
             else aiGenerated++;
           }
         }
       }
 
-      // Phase 2: Process remaining items with bounded concurrency
-      const remainingSubcategories = sortedSubcategories.filter(s => 
-        !usedSubcategoryIds.has(s.id)
-      );
-
-      // Process in batches of CONCURRENCY_LIMIT
-      for (let i = 0; i < remainingSubcategories.length && items.length < itemCount; i += CONCURRENCY_LIMIT) {
-        const batch = remainingSubcategories.slice(i, i + CONCURRENCY_LIMIT);
-        const needed = itemCount - items.length;
-        if (needed <= 0) break;
-
-        const batchPromises = batch.map(async (subcatWithCategory) => {
-          if (usedSubcategoryIds.has(subcatWithCategory.id)) return null;
-          
-          const result = await generatePlaceForSubcategory(
-            districtNameZh, regionNameZh, countryNameZh,
-            subcatWithCategory.category, subcatWithCategory, language,
-            [...usedPlaceNames] // Snapshot to avoid race conditions
-          );
-          
-          if (result) {
-            return { result, subcatWithCategory };
-          }
-          return null;
-        });
-
-        const batchResults = await Promise.all(batchPromises);
-        
-        for (const r of batchResults) {
-          if (r && items.length < itemCount) {
-            if (r.result.place?.name && !usedPlaceNames.includes(r.result.place.name)) {
-              usedPlaceNames.push(r.result.place.name);
-              usedSubcategoryIds.add(r.subcatWithCategory.id);
-              const item = await buildItemWithPromo(r.result);
-              items.push(item);
-              if (r.result.source === 'cache') cacheHits++;
-              else aiGenerated++;
-            }
-          }
-        }
-      }
-
       const duration = Date.now() - startTime;
-      console.log(`Generated ${items.length}/${itemCount} items in ${duration}ms (cache: ${cacheHits}, AI: ${aiGenerated})`);
+      console.log(`Generated ${items.length}/${itemCount} items in ${duration}ms (cache: ${cacheHits}, AI: ${aiGenerated}, slots: ${activeSlots.join(',')})`);
 
       // Return the complete itinerary
       res.json({
