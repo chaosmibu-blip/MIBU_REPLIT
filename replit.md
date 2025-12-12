@@ -62,7 +62,10 @@ Preferred communication style: Simple, everyday language.
   - Client: TripPlanner component with TripPlanList, TripPlanEditor, CreateTripModal
   - Server: CRUD routes for trip plans (`/api/trips/*`)
   - Schema: `tripPlans` table with userId, name, destination, items JSON array
-- **Navigation**: Responsive SideNav with right-rail (desktop md+) and bottom-bar (mobile) layouts, includes Planner tab with Map icon, translated in all 4 languages (策劃師/Planner/プランナー/플래너)
+- **Navigation**: Simplified to 3 main tabs: 行程扭蛋 (Gacha), 旅程策劃師 (Planner), 設定 (Settings)
+  - Responsive design: right-rail (desktop md+) and bottom-bar (mobile) layouts
+  - Settings page includes: language selector, user profile/login, links to Collection/ItemBox/Merchant
+  - All labels translated in 4 languages (zh-TW, en, ja, ko)
 - **Module Registry**: `modules/registry.ts` for scalable feature mounting
 - **Integration**: App.tsx renders modules based on `state.view` matching module identifier
 
