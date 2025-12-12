@@ -77,36 +77,7 @@ export const MibuMap: React.FC<MibuMapProps> = ({
 
       map.current.on('load', () => {
         setMapLoaded(true);
-        if (!map.current) return;
-
-        try {
-          map.current.setPaintProperty('water', 'fill-color', MIBU_BRAND_COLORS.water);
-        } catch (e) {}
-        
-        try {
-          map.current.setPaintProperty('background', 'background-color', MIBU_BRAND_COLORS.land);
-        } catch (e) {}
-        
-        try {
-          map.current.setPaintProperty('landuse', 'fill-color', MIBU_BRAND_COLORS.land);
-        } catch (e) {}
-        
-        try {
-          map.current.setPaintProperty('landcover', 'fill-color', MIBU_BRAND_COLORS.land);
-        } catch (e) {}
-        
-        try {
-          map.current.setPaintProperty('building', 'fill-color', MIBU_BRAND_COLORS.building);
-        } catch (e) {}
-        
-        try {
-          const roadLayers = ['road-street', 'road-minor', 'road-primary', 'road-secondary-tertiary', 'road-motorway-trunk'];
-          roadLayers.forEach(layer => {
-            try {
-              map.current?.setPaintProperty(layer, 'line-color', MIBU_BRAND_COLORS.road);
-            } catch (e) {}
-          });
-        } catch (e) {}
+        console.log('Mapbox map loaded successfully');
       });
 
       map.current.on('error', (e: any) => {
