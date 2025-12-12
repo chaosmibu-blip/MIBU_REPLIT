@@ -1415,61 +1415,87 @@ ${uncachedSkeleton.map((item, idx) => `  {
       console.log(`\n=== Generating itinerary for ${regionNameZh}${districtNameZh} (${itemCount} items, ${aiDistribution.length} AI workers) ===`);
       console.log(`AI Distribution:`, aiDistribution.map(a => `${a.worker}: ${a.tasks.map(t => `${t.type}×${t.count}`).join('+')}`).join(' | '));
 
-      // Step 4: Group subcategories by task type for each AI worker
-      const getSubcategoriesForTask = (worker: AIWorker, taskType: string): typeof allSubcategories => {
-        let filtered: typeof allSubcategories = [];
-        
+      // === HARDCODED PROBABILITY CONSTANTS ===
+      const CACHE_USE_PROBABILITY = 0.25; // 25% chance to use cache
+      const COLLECTED_REDUCTION_PROBABILITY = 0.45; // 45% reduction for collected items
+      
+      // Step 4: Select subcategory using 1/8 category probability, then 1/N subcategory probability
+      // with time-appropriate filtering to avoid awkward combinations
+      const selectSubcategoryForTask = (worker: AIWorker, taskType: string): typeof allSubcategories[0] | null => {
+        // Define excluded categories/subcategories per worker to avoid awkward combinations
+        const excludedByWorker: Record<AIWorker, { categories: string[]; subcategories: string[] }> = {
+          'ai1_morning': { 
+            categories: [], 
+            subcategories: ['酒吧', 'KTV', '夜市'] // No nightlife in morning
+          },
+          'ai2_afternoon': { 
+            categories: [], 
+            subcategories: ['早午餐'] // No breakfast in afternoon
+          },
+          'ai3_evening': { 
+            categories: [], 
+            subcategories: ['早午餐', '咖啡廳'] // No breakfast/cafe at dinner
+          },
+          'ai4_night': { 
+            categories: [], 
+            subcategories: ['早午餐', '咖啡廳'] // No breakfast at night
+          }
+        };
+
+        // For specific task types, filter directly
         if (taskType === 'breakfast') {
-          // 早餐類：早午餐、咖啡廳
-          filtered = allSubcategories.filter(s => 
+          const breakfastSubcats = allSubcategories.filter(s => 
             s.nameZh === '早午餐' || s.nameZh === '咖啡廳' || s.preferredTimeSlot === 'morning'
           );
+          return breakfastSubcats.length > 0 ? breakfastSubcats[Math.floor(Math.random() * breakfastSubcats.length)] : null;
         } else if (taskType === 'lunch') {
-          // 午餐類：各種正餐（非晚餐時段）
-          filtered = allSubcategories.filter(s => 
+          const lunchSubcats = allSubcategories.filter(s => 
             s.preferredTimeSlot === 'lunch' && s.category.code === 'food'
           );
+          return lunchSubcats.length > 0 ? lunchSubcats[Math.floor(Math.random() * lunchSubcats.length)] : null;
         } else if (taskType === 'dinner') {
-          // 晚餐類：火鍋、鐵板燒、燒烤等
-          filtered = allSubcategories.filter(s => 
+          const dinnerSubcats = allSubcategories.filter(s => 
             s.preferredTimeSlot === 'dinner' && s.category.code === 'food'
           );
+          return dinnerSubcats.length > 0 ? dinnerSubcats[Math.floor(Math.random() * dinnerSubcats.length)] : null;
         } else if (taskType === 'stay') {
-          // 住宿類
-          filtered = allSubcategories.filter(s => 
+          const staySubcats = allSubcategories.filter(s => 
             s.preferredTimeSlot === 'stay' || s.category.code === 'stay'
           );
-        } else if (taskType === 'activity') {
-          // 活動類：根據 AI worker 決定適合的時段
-          if (worker === 'ai1_morning') {
-            // 早上活動：景點、生態文化、輕量體驗
-            filtered = allSubcategories.filter(s => 
-              (s.category.code === 'scenery' || s.category.code === 'education' || s.category.code === 'experience') &&
-              s.preferredTimeSlot !== 'evening' && s.preferredTimeSlot !== 'stay'
-            );
-          } else if (worker === 'ai2_afternoon') {
-            // 下午活動：購物、體驗、娛樂、景點
-            filtered = allSubcategories.filter(s => 
-              (s.category.code === 'shopping' || s.category.code === 'entertainment' || 
-               s.category.code === 'experience' || s.category.code === 'scenery') &&
-              s.preferredTimeSlot !== 'evening' && s.preferredTimeSlot !== 'stay'
-            );
-          } else if (worker === 'ai3_evening') {
-            // 晚上活動：娛樂、活動
-            filtered = allSubcategories.filter(s => 
-              (s.category.code === 'entertainment' || s.category.code === 'activity') &&
-              s.preferredTimeSlot !== 'stay'
-            );
-          } else if (worker === 'ai4_night') {
-            // 宵夜活動：夜市、酒吧、KTV
-            filtered = allSubcategories.filter(s => 
-              s.preferredTimeSlot === 'evening' || s.nameZh === '夜市' || s.nameZh === 'KTV' || s.nameZh === '酒吧'
-            );
-          }
+          return staySubcats.length > 0 ? staySubcats[Math.floor(Math.random() * staySubcats.length)] : null;
         }
         
-        // Shuffle and return
-        return filtered.sort(() => Math.random() - 0.5);
+        // For 'activity' task type: use 1/8 category probability, then 1/N subcategory probability
+        // Step A: Get all 8 categories (excluding food and stay for activities)
+        const allCategorySet = new Set<string>();
+        allSubcategories.forEach(s => allCategorySet.add(s.category.code));
+        const allCategories = Array.from(allCategorySet);
+        const activityCategories = allCategories.filter(code => 
+          code !== 'food' && code !== 'stay'
+        );
+        
+        if (activityCategories.length === 0) return null;
+        
+        // Step B: Apply worker-specific exclusions
+        const exclusions = excludedByWorker[worker];
+        const validCategories = activityCategories.filter(code => !exclusions.categories.includes(code));
+        
+        if (validCategories.length === 0) return null;
+        
+        // Step C: Pick random category with 1/N probability (equal chance)
+        const selectedCategoryCode = validCategories[Math.floor(Math.random() * validCategories.length)];
+        
+        // Step D: Get subcategories for this category, excluding awkward ones
+        const categorySubcats = allSubcategories.filter(s => 
+          s.category.code === selectedCategoryCode &&
+          !exclusions.subcategories.includes(s.nameZh) &&
+          s.preferredTimeSlot !== 'stay'
+        );
+        
+        if (categorySubcats.length === 0) return null;
+        
+        // Step E: Pick random subcategory with 1/N probability (equal chance)
+        return categorySubcats[Math.floor(Math.random() * categorySubcats.length)];
       };
 
       const startTime = Date.now();
@@ -1531,46 +1557,121 @@ ${uncachedSkeleton.map((item, idx) => `  {
         }
       }
 
-      // Step 6: Execute each AI worker in PARALLEL
+      // Step 6: Get user's collected place names for probability reduction
+      const userId = (req as any).user?.id;
+      let collectedPlaceNames: Set<string> = new Set();
+      if (userId) {
+        try {
+          const userCollections = await storage.getUserCollection(userId);
+          for (const collection of userCollections) {
+            if (collection.placeName) {
+              collectedPlaceNames.add(collection.placeName);
+            }
+          }
+        } catch (e) {
+          console.log("Could not fetch user collections for probability adjustment");
+        }
+      }
+      
+      // Step 7: Execute each AI worker in PARALLEL
       // Each worker handles its assigned tasks (breakfast/lunch/dinner/activity/stay)
       const executeAIWorker = async (aiTask: AITask): Promise<any[]> => {
         const workerItems: any[] = [];
         const usedSubcatIds = new Set<number>();
         
-        // Process all tasks for this worker
+        // Process tasks for this worker
         for (const task of aiTask.tasks) {
-          const subcategories = getSubcategoriesForTask(aiTask.worker, task.type);
-          let taskItemCount = 0;
-          
-          // Generate items for this task in parallel
-          const availableSubcats = subcategories.filter(s => !usedSubcatIds.has(s.id)).slice(0, task.count * 2);
-          
-          const taskPromises = availableSubcats.slice(0, task.count).map(async (subcatWithCategory) => {
+          for (let i = 0; i < task.count; i++) {
+            // Select subcategory using 1/8 + 1/N probability
+            let selectedSubcat = selectSubcategoryForTask(aiTask.worker, task.type);
+            
+            // Retry up to 3 times if we get a used subcategory
+            let retries = 0;
+            while (selectedSubcat && usedSubcatIds.has(selectedSubcat.id) && retries < 3) {
+              selectedSubcat = selectSubcategoryForTask(aiTask.worker, task.type);
+              retries++;
+            }
+            
+            if (!selectedSubcat || usedSubcatIds.has(selectedSubcat.id)) continue;
+            usedSubcatIds.add(selectedSubcat.id);
+            
+            // Check cache with 25% probability
+            const shouldUseCache = Math.random() < CACHE_USE_PROBABILITY;
+            const cached = cacheBySubcategory.get(selectedSubcat.nameZh);
+            
+            // If using cache and cache exists
+            if (shouldUseCache && cached && cached.placeName) {
+              // Check if this is a collected item - 45% chance to skip
+              if (collectedPlaceNames.has(cached.placeName)) {
+                if (Math.random() < COLLECTED_REDUCTION_PROBABILITY) {
+                  // Skip this cached item, try AI instead
+                  console.log(`Skipping collected item: ${cached.placeName} (45% reduction)`);
+                } else {
+                  // Use the collected cached item
+                  const item = await buildItemWithPromo({
+                    category: selectedSubcat.category,
+                    subcategory: selectedSubcat,
+                    place: {
+                      name: cached.placeName,
+                      description: cached.description,
+                      place_id: cached.placeId,
+                      verified_name: cached.verifiedName,
+                      verified_address: cached.verifiedAddress,
+                      google_rating: cached.googleRating,
+                      lat: cached.locationLat,
+                      lng: cached.locationLng,
+                      google_types: cached.googleTypes,
+                      primary_type: cached.primaryType
+                    },
+                    isVerified: cached.isLocationVerified,
+                    source: 'cache'
+                  });
+                  workerItems.push({ ...item, aiWorker: aiTask.worker, taskType: task.type });
+                  continue;
+                }
+              } else {
+                // Non-collected cached item - use directly
+                const item = await buildItemWithPromo({
+                  category: selectedSubcat.category,
+                  subcategory: selectedSubcat,
+                  place: {
+                    name: cached.placeName,
+                    description: cached.description,
+                    place_id: cached.placeId,
+                    verified_name: cached.verifiedName,
+                    verified_address: cached.verifiedAddress,
+                    google_rating: cached.googleRating,
+                    lat: cached.locationLat,
+                    lng: cached.locationLng,
+                    google_types: cached.googleTypes,
+                    primary_type: cached.primaryType
+                  },
+                  isVerified: cached.isLocationVerified,
+                  source: 'cache'
+                });
+                workerItems.push({ ...item, aiWorker: aiTask.worker, taskType: task.type });
+                continue;
+              }
+            }
+            
+            // Generate with AI
             const result = await generatePlaceForSubcategory(
               districtNameZh, regionNameZh, countryNameZh,
-              subcatWithCategory.category, subcatWithCategory, language,
+              selectedSubcat.category, selectedSubcat, language,
               []
             );
 
             if (result && result.place?.name) {
-              usedSubcatIds.add(subcatWithCategory.id);
+              // Check if AI result is in collected - 45% chance to skip
+              if (collectedPlaceNames.has(result.place.name)) {
+                if (Math.random() < COLLECTED_REDUCTION_PROBABILITY) {
+                  console.log(`Skipping collected AI result: ${result.place.name} (45% reduction)`);
+                  continue;
+                }
+              }
+              
               const item = await buildItemWithPromo(result);
-              return {
-                ...item,
-                aiWorker: aiTask.worker,
-                taskType: task.type
-              };
-            }
-            return null;
-          });
-
-          const taskResults = await Promise.all(taskPromises);
-          
-          // Filter nulls and add to worker items
-          for (const item of taskResults) {
-            if (item && taskItemCount < task.count) {
-              workerItems.push(item);
-              taskItemCount++;
+              workerItems.push({ ...item, aiWorker: aiTask.worker, taskType: task.type });
             }
           }
         }
