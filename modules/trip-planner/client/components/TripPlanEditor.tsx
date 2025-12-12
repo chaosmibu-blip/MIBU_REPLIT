@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Clock, MapPin, Trash2, GripVertical, Map as MapIcon } from 'lucide-react';
+import { ArrowLeft, Plus, Clock, MapPin, Trash2, GripVertical, Map as MapIcon, Download, CheckCircle2, Loader2 } from 'lucide-react';
 import { MibuMap } from './MibuMap';
+import { saveItineraryOffline, isItinerarySavedOffline, getOfflineItinerary, type OfflineItinerary } from '../../../../client/src/lib/offlineStorage';
 
 interface TripActivity {
   id: number;
@@ -49,10 +50,41 @@ export const TripPlanEditor: React.FC<TripPlanEditorProps> = ({
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [isSavingOffline, setIsSavingOffline] = useState(false);
+  const [isOfflineSaved, setIsOfflineSaved] = useState(false);
 
   useEffect(() => {
     fetchPlanDetails();
+    checkOfflineStatus();
   }, [planId]);
+
+  const checkOfflineStatus = async () => {
+    const saved = await isItinerarySavedOffline(String(planId));
+    setIsOfflineSaved(saved);
+  };
+
+  const handleSaveOffline = async () => {
+    if (!plan || isSavingOffline) return;
+    setIsSavingOffline(true);
+    try {
+      await saveItineraryOffline({
+        id: String(planId),
+        name: plan.title,
+        country: 'Taiwan',
+        city: plan.destination,
+        district: '',
+        items: days.flatMap(day => day.activities),
+        createdAt: plan.startDate,
+        savedAt: new Date().toISOString(),
+        isMapCached: false,
+      });
+      setIsOfflineSaved(true);
+    } catch (error) {
+      console.error('Failed to save offline:', error);
+    } finally {
+      setIsSavingOffline(false);
+    }
+  };
 
   const fetchPlanDetails = async () => {
     try {
@@ -64,11 +96,35 @@ export const TripPlanEditor: React.FC<TripPlanEditorProps> = ({
         if (data.plan.days?.length > 0) {
           setExpandedDay(data.plan.days[0].id);
         }
+      } else {
+        await loadFromOffline();
       }
     } catch (error) {
-      console.error('Failed to fetch plan details:', error);
+      console.error('Failed to fetch plan details, trying offline:', error);
+      await loadFromOffline();
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadFromOffline = async () => {
+    const offlineData = await getOfflineItinerary(String(planId));
+    if (offlineData) {
+      setPlan({
+        id: parseInt(offlineData.id),
+        title: offlineData.name,
+        destination: offlineData.city,
+        startDate: offlineData.createdAt,
+        endDate: offlineData.createdAt,
+        status: 'offline',
+      });
+      setDays([{
+        id: 1,
+        dayNumber: 1,
+        date: offlineData.createdAt,
+        activities: offlineData.items,
+      }]);
+      setIsOfflineSaved(true);
     }
   };
 
@@ -151,6 +207,21 @@ export const TripPlanEditor: React.FC<TripPlanEditorProps> = ({
               <p className="text-sm text-slate-500">{plan.destination}</p>
             </div>
             <button
+              onClick={handleSaveOffline}
+              disabled={isSavingOffline || isOfflineSaved}
+              className={`p-2 rounded-lg transition-colors ${isOfflineSaved ? 'bg-green-100 text-green-700' : 'hover:bg-slate-100 text-slate-600'}`}
+              data-testid="button-save-offline"
+              title={isOfflineSaved ? '已儲存離線' : '儲存離線'}
+            >
+              {isSavingOffline ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : isOfflineSaved ? (
+                <CheckCircle2 className="w-5 h-5" />
+              ) : (
+                <Download className="w-5 h-5" />
+              )}
+            </button>
+            <button
               onClick={() => setShowMap(!showMap)}
               className={`p-2 rounded-lg transition-colors ${showMap ? 'bg-amber-100 text-amber-700' : 'hover:bg-slate-100 text-slate-600'}`}
               data-testid="button-toggle-map"
@@ -178,6 +249,23 @@ export const TripPlanEditor: React.FC<TripPlanEditorProps> = ({
             )}
             onLocationUpdate={setUserLocation}
             showUserLocation={true}
+            showOfflineDownload={true}
+            onOfflineDownloadComplete={async (bounds) => {
+              if (plan) {
+                await saveItineraryOffline({
+                  id: String(planId),
+                  name: plan.title,
+                  country: 'Taiwan',
+                  city: plan.destination,
+                  district: '',
+                  items: days.flatMap(day => day.activities),
+                  createdAt: plan.startDate,
+                  savedAt: new Date().toISOString(),
+                  mapBounds: bounds,
+                  isMapCached: true,
+                });
+              }
+            }}
             className="h-64 shadow-lg border-2 border-amber-200"
           />
           {userLocation && (

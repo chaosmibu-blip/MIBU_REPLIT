@@ -13,6 +13,7 @@ import { TripPlanner } from '../../modules/trip-planner/client';
 import { LocationView } from '../../modules/trip-planner/client/components/LocationView';
 import { ChatView } from '../../modules/trip-planner/client/components/ChatView';
 import { ServicePlans } from '../../modules/trip-planner/client/components/ServicePlans';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { DEFAULT_LEVEL, TRANSLATIONS, MAX_DAILY_GENERATIONS } from './constants';
 import { Globe, LogIn, LogOut } from 'lucide-react';
 
@@ -504,6 +505,8 @@ const App: React.FC = () => {
       <div className="fixed top-0 left-0 w-full h-96 bg-gradient-to-b from-indigo-50 to-transparent pointer-events-none -z-10"></div>
       
       {state.celebrationCoupons.length > 0 && <CouponCelebration items={state.celebrationCoupons} language={state.language} onClose={() => setState(p => ({ ...p, celebrationCoupons: [] }))} />}
+      
+      <OfflineIndicator />
 
       <nav className="sticky top-0 z-[999] px-6 pt-safe-top pb-4 flex justify-between items-center w-full glass-nav transition-all">
          <div className="flex items-center gap-2">

@@ -1,9 +1,10 @@
 /// <reference types="vite/client" />
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import MapboxLanguage from '@mapbox/mapbox-gl-language';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { MapPin, Navigation, Loader2 } from 'lucide-react';
+import { MapPin, Navigation, Loader2, Download, CheckCircle2 } from 'lucide-react';
+import { cacheMapTilesForBounds } from '../../../../client/src/lib/offlineStorage';
 
 const MIBU_BRAND_COLORS = {
   primary: '#8B7355',
@@ -35,6 +36,8 @@ interface MibuMapProps {
   language?: 'zh-TW' | 'en' | 'ja' | 'ko';
   className?: string;
   fullscreen?: boolean;
+  showOfflineDownload?: boolean;
+  onOfflineDownloadComplete?: (bounds: { north: number; south: number; east: number; west: number }) => void;
 }
 
 export const MibuMap: React.FC<MibuMapProps> = ({
@@ -47,6 +50,8 @@ export const MibuMap: React.FC<MibuMapProps> = ({
   language = 'zh-TW',
   className = '',
   fullscreen = false,
+  showOfflineDownload = false,
+  onOfflineDownloadComplete,
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -61,6 +66,8 @@ export const MibuMap: React.FC<MibuMapProps> = ({
   const [mapError, setMapError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isTracking, setIsTracking] = useState(false);
+  const [isDownloadingOffline, setIsDownloadingOffline] = useState(false);
+  const [offlineDownloaded, setOfflineDownloaded] = useState(false);
 
   const updateUserMarker = (lng: number, lat: number, shouldFlyTo: boolean = false) => {
     if (!map.current) return;
@@ -382,6 +389,46 @@ export const MibuMap: React.FC<MibuMapProps> = ({
             <Loader2 className="w-5 h-5 animate-spin" style={{ color: MIBU_BRAND_COLORS.primary }} />
           ) : (
             <Navigation className="w-5 h-5" style={{ color: isTracking ? '#3B82F6' : MIBU_BRAND_COLORS.primary }} />
+          )}
+        </button>
+      )}
+
+      {showOfflineDownload && mapLoaded && (
+        <button
+          onClick={async () => {
+            if (!map.current || isDownloadingOffline || offlineDownloaded) return;
+            setIsDownloadingOffline(true);
+            try {
+              const bounds = map.current.getBounds();
+              const mapBounds = {
+                north: bounds.getNorth(),
+                south: bounds.getSouth(),
+                east: bounds.getEast(),
+                west: bounds.getWest(),
+              };
+              const accessToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
+              const result = await cacheMapTilesForBounds(mapBounds, Math.round(map.current.getZoom()), accessToken);
+              if (result.success) {
+                setOfflineDownloaded(true);
+                onOfflineDownloadComplete?.(mapBounds);
+              }
+            } catch (error) {
+              console.error('Failed to cache map:', error);
+            } finally {
+              setIsDownloadingOffline(false);
+            }
+          }}
+          disabled={isDownloadingOffline || offlineDownloaded}
+          className="absolute bottom-4 left-4 p-3 bg-white rounded-full shadow-lg hover:shadow-xl transition-all disabled:opacity-50 z-10"
+          style={{ border: `2px solid ${offlineDownloaded ? '#22C55E' : MIBU_BRAND_COLORS.primary}` }}
+          data-testid="button-download-offline-map"
+        >
+          {isDownloadingOffline ? (
+            <Loader2 className="w-5 h-5 animate-spin" style={{ color: MIBU_BRAND_COLORS.primary }} />
+          ) : offlineDownloaded ? (
+            <CheckCircle2 className="w-5 h-5 text-green-500" />
+          ) : (
+            <Download className="w-5 h-5" style={{ color: MIBU_BRAND_COLORS.primary }} />
           )}
         </button>
       )}

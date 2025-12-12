@@ -115,6 +115,18 @@ Mibu 旅行扭蛋是一個結合旅遊規劃與扭蛋遊戲化的漸進式網頁
   - **策劃模組子導航**: 3 個分頁 - 定位、行程、聊天
   - 響應式設計：電腦版在右邊，手機版在底部
 
+### 離線存取系統（Offline Access System）(2025-12-12 新增)
+- **PWA 架構**：使用 Service Worker + IndexedDB 實現離線功能
+- **快取策略**：
+  - 靜態資源：Stale-While-Revalidate（先用快取，背景更新）
+  - API 回應：Network First（先嘗試網路，失敗用快取）
+  - 地圖圖磚：Cache First（優先用快取，減少流量）
+- **關鍵檔案**：
+  - `client/public/service-worker.js` - Service Worker 邏輯
+  - `client/src/lib/offlineStorage.ts` - IndexedDB 操作
+  - `client/src/components/OfflineIndicator.tsx` - 離線狀態 UI
+- **使用方式**：在行程編輯器中點擊下載按鈕，儲存行程和地圖供離線使用
+
 ---
 
 ## 最近更動
@@ -123,6 +135,13 @@ Mibu 旅行扭蛋是一個結合旅遊規劃與扭蛋遊戲化的漸進式網頁
 - 更新子分類資料，共 67 個子分類
 - 新增「遊程體驗」分類的子分類：手作體驗、一日遊、導覽遊程
 - **地點不足回補機制**：當區域地點不足時，自動嘗試其他子分類/分類，仍不足則顯示提醒
+- **離線存取功能 (PWA Offline Access)**：
+  - Service Worker：快取靜態資源、API 回應、Mapbox 地圖圖磚
+  - IndexedDB：儲存行程資料供離線使用
+  - 離線指示器：當網路斷線時顯示「離線模式」提示
+  - 地圖離線下載：在行程編輯器中可下載當前區域地圖供離線使用
+  - 行程離線儲存：點擊下載按鈕將行程儲存到本地
+  - 離線回退：網路失敗時自動從 IndexedDB 讀取已儲存的行程
 - **Twilio 聊天系統**：整合 Twilio Conversations API
   - 後端 Token API：`/api/chat/token`
   - 聊天室管理 API：`/api/chat/conversations`
