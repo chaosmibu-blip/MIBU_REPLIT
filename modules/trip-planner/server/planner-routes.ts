@@ -327,4 +327,203 @@ export function createPlannerServiceRoutes(app: Express) {
       res.status(500).json({ error: "Failed to create service plan" });
     }
   });
+
+  // ============ Travel Companions API ============
+
+  app.get("/api/planner/orders/:id/companions", isAuthenticated, async (req, res) => {
+    try {
+      const orderId = parseInt(req.params.id);
+      const userId = (req.user as any).claims.sub;
+
+      const order = await plannerServiceStorage.getOrder(orderId);
+      if (!order) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+
+      const isOwner = order.userId === userId;
+      const isCompanion = await plannerServiceStorage.isUserCompanionOfOrder(orderId, userId);
+      
+      if (!isOwner && !isCompanion) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const companions = await plannerServiceStorage.getOrderCompanions(orderId);
+      const invites = isOwner ? await plannerServiceStorage.getOrderInvites(orderId) : [];
+
+      res.json({ companions, invites });
+    } catch (error) {
+      console.error("Error fetching companions:", error);
+      res.status(500).json({ error: "Failed to fetch companions" });
+    }
+  });
+
+  app.post("/api/planner/orders/:id/invite", isAuthenticated, async (req, res) => {
+    const inviteSchema = z.object({
+      email: z.string().email().optional(),
+    });
+
+    try {
+      const orderId = parseInt(req.params.id);
+      const userId = (req.user as any).claims.sub;
+      const validated = inviteSchema.parse(req.body);
+
+      const order = await plannerServiceStorage.getOrder(orderId);
+      if (!order) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+
+      if (order.userId !== userId) {
+        return res.status(403).json({ error: "Only order owner can invite companions" });
+      }
+
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+
+      const invite = await plannerServiceStorage.createInvite({
+        orderId,
+        inviterUserId: userId,
+        inviteeEmail: validated.email || null,
+        status: 'pending',
+        expiresAt,
+      });
+
+      res.json({ 
+        invite,
+        inviteLink: `/join/${invite.inviteCode}`,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error creating invite:", error);
+      res.status(500).json({ error: "Failed to create invite" });
+    }
+  });
+
+  app.post("/api/planner/invites/:code/accept", isAuthenticated, async (req, res) => {
+    try {
+      const inviteCode = req.params.code;
+      const userId = (req.user as any).claims.sub;
+
+      const result = await plannerServiceStorage.acceptInvite(inviteCode, userId);
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      const order = await plannerServiceStorage.getOrder(result.orderId!);
+      
+      if (order?.conversationSid) {
+        try {
+          const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+          const twilioApiKeySid = process.env.TWILIO_API_KEY_SID;
+          const twilioApiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+          const twilioConversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
+
+          if (twilioAccountSid && twilioApiKeySid && twilioApiKeySecret && twilioConversationsServiceSid) {
+            const twilioClient = twilio(twilioApiKeySid, twilioApiKeySecret, { accountSid: twilioAccountSid });
+            
+            await twilioClient.conversations.v1
+              .services(twilioConversationsServiceSid)
+              .conversations(order.conversationSid)
+              .participants.create({ identity: userId });
+          }
+        } catch (twilioError: any) {
+          if (twilioError.code !== 50433) {
+            console.error("Error adding participant to conversation:", twilioError);
+          }
+        }
+      }
+
+      res.json({ 
+        success: true, 
+        orderId: result.orderId,
+        message: '成功加入行程！您現在可以參與策劃討論了。'
+      });
+    } catch (error) {
+      console.error("Error accepting invite:", error);
+      res.status(500).json({ error: "Failed to accept invite" });
+    }
+  });
+
+  app.delete("/api/planner/invites/:id", isAuthenticated, async (req, res) => {
+    try {
+      const inviteId = parseInt(req.params.id);
+      const userId = (req.user as any).claims.sub;
+
+      const success = await plannerServiceStorage.revokeInvite(inviteId, userId);
+      
+      if (!success) {
+        return res.status(403).json({ error: "Cannot revoke this invite" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error revoking invite:", error);
+      res.status(500).json({ error: "Failed to revoke invite" });
+    }
+  });
+
+  app.delete("/api/planner/orders/:orderId/companions/:companionId", isAuthenticated, async (req, res) => {
+    try {
+      const orderId = parseInt(req.params.orderId);
+      const companionId = parseInt(req.params.companionId);
+      const userId = (req.user as any).claims.sub;
+
+      const order = await plannerServiceStorage.getOrder(orderId);
+      if (!order) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+
+      if (order.userId !== userId) {
+        return res.status(403).json({ error: "Only order owner can remove companions" });
+      }
+
+      const companions = await plannerServiceStorage.getOrderCompanions(orderId);
+      const companion = companions.find(c => c.id === companionId);
+      
+      if (!companion) {
+        return res.status(404).json({ error: "Companion not found" });
+      }
+
+      await plannerServiceStorage.removeCompanion(companionId);
+
+      if (order.conversationSid) {
+        try {
+          const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+          const twilioApiKeySid = process.env.TWILIO_API_KEY_SID;
+          const twilioApiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+          const twilioConversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
+
+          if (twilioAccountSid && twilioApiKeySid && twilioApiKeySecret && twilioConversationsServiceSid) {
+            const twilioClient = twilio(twilioApiKeySid, twilioApiKeySecret, { accountSid: twilioAccountSid });
+            
+            await twilioClient.conversations.v1
+              .services(twilioConversationsServiceSid)
+              .conversations(order.conversationSid)
+              .participants(companion.userId)
+              .remove();
+          }
+        } catch (twilioError) {
+          console.error("Error removing participant from conversation:", twilioError);
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing companion:", error);
+      res.status(500).json({ error: "Failed to remove companion" });
+    }
+  });
+
+  app.get("/api/planner/accessible-orders", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const orders = await plannerServiceStorage.getUserAccessibleOrders(userId);
+      res.json(orders);
+    } catch (error) {
+      console.error("Error fetching accessible orders:", error);
+      res.status(500).json({ error: "Failed to fetch orders" });
+    }
+  });
 }

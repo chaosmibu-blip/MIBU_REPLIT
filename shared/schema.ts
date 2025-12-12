@@ -618,3 +618,80 @@ export type ServicePlan = typeof servicePlans.$inferSelect;
 export type InsertServicePlan = z.infer<typeof insertServicePlanSchema>;
 export type ServiceOrder = typeof serviceOrders.$inferSelect;
 export type InsertServiceOrder = z.infer<typeof insertServiceOrderSchema>;
+
+// ============ Travel Companions Tables ============
+
+// Travel Companions - 已確認的旅伴
+export type CompanionRole = 'owner' | 'companion';
+export type CompanionStatus = 'active' | 'removed';
+
+export const travelCompanions = pgTable("travel_companions", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").references(() => serviceOrders.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  role: varchar("role", { length: 20 }).default('companion').notNull(),
+  status: varchar("status", { length: 20 }).default('active').notNull(),
+  joinedAt: timestamp("joined_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_companions_order").on(table.orderId),
+  index("IDX_companions_user").on(table.userId),
+]);
+
+// Companion Invites - 待確認的邀請
+export type InviteStatus = 'pending' | 'accepted' | 'declined' | 'expired' | 'revoked';
+
+export const companionInvites = pgTable("companion_invites", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").references(() => serviceOrders.id).notNull(),
+  inviterUserId: varchar("inviter_user_id").references(() => users.id).notNull(),
+  inviteeEmail: varchar("invitee_email", { length: 255 }),
+  inviteeUserId: varchar("invitee_user_id").references(() => users.id),
+  inviteCode: varchar("invite_code", { length: 50 }).notNull().unique(),
+  status: varchar("status", { length: 20 }).default('pending').notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_invites_order").on(table.orderId),
+  index("IDX_invites_code").on(table.inviteCode),
+]);
+
+// Relations
+export const travelCompanionsRelations = relations(travelCompanions, ({ one }) => ({
+  order: one(serviceOrders, {
+    fields: [travelCompanions.orderId],
+    references: [serviceOrders.id],
+  }),
+  user: one(users, {
+    fields: [travelCompanions.userId],
+    references: [users.id],
+  }),
+}));
+
+export const companionInvitesRelations = relations(companionInvites, ({ one }) => ({
+  order: one(serviceOrders, {
+    fields: [companionInvites.orderId],
+    references: [serviceOrders.id],
+  }),
+  inviter: one(users, {
+    fields: [companionInvites.inviterUserId],
+    references: [users.id],
+  }),
+}));
+
+// Insert schemas
+export const insertTravelCompanionSchema = createInsertSchema(travelCompanions).omit({
+  id: true,
+  joinedAt: true,
+});
+
+export const insertCompanionInviteSchema = createInsertSchema(companionInvites).omit({
+  id: true,
+  inviteCode: true,
+  createdAt: true,
+});
+
+// Types
+export type TravelCompanion = typeof travelCompanions.$inferSelect;
+export type InsertTravelCompanion = z.infer<typeof insertTravelCompanionSchema>;
+export type CompanionInvite = typeof companionInvites.$inferSelect;
+export type InsertCompanionInvite = z.infer<typeof insertCompanionInviteSchema>;

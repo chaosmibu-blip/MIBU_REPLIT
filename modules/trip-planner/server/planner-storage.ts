@@ -1,9 +1,9 @@
 import { db } from "../../../server/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { 
-  planners, servicePlans, serviceOrders,
-  InsertPlanner, InsertServicePlan, InsertServiceOrder,
-  Planner, ServicePlan, ServiceOrder
+  planners, servicePlans, serviceOrders, travelCompanions, companionInvites,
+  InsertPlanner, InsertServicePlan, InsertServiceOrder, InsertTravelCompanion, InsertCompanionInvite,
+  Planner, ServicePlan, ServiceOrder, TravelCompanion, CompanionInvite
 } from "../../../shared/schema";
 
 class PlannerServiceStorage {
@@ -163,6 +163,165 @@ class PlannerServiceStorage {
         updatedAt: new Date() 
       })
       .where(eq(planners.id, plannerId));
+  }
+
+  // ============ Travel Companions Methods ============
+
+  async getOrderCompanions(orderId: number): Promise<TravelCompanion[]> {
+    return db
+      .select()
+      .from(travelCompanions)
+      .where(and(eq(travelCompanions.orderId, orderId), eq(travelCompanions.status, 'active')));
+  }
+
+  async addCompanion(data: InsertTravelCompanion): Promise<TravelCompanion> {
+    const [companion] = await db
+      .insert(travelCompanions)
+      .values(data)
+      .returning();
+    return companion;
+  }
+
+  async removeCompanion(companionId: number): Promise<void> {
+    await db
+      .update(travelCompanions)
+      .set({ status: 'removed' })
+      .where(eq(travelCompanions.id, companionId));
+  }
+
+  async isUserCompanionOfOrder(orderId: number, userId: string): Promise<boolean> {
+    const [companion] = await db
+      .select()
+      .from(travelCompanions)
+      .where(and(
+        eq(travelCompanions.orderId, orderId),
+        eq(travelCompanions.userId, userId),
+        eq(travelCompanions.status, 'active')
+      ));
+    return !!companion;
+  }
+
+  async getUserAccessibleOrders(userId: string): Promise<ServiceOrder[]> {
+    const ownOrders = await this.getUserOrders(userId);
+    
+    const companionOrders = await db
+      .select({ order: serviceOrders })
+      .from(travelCompanions)
+      .innerJoin(serviceOrders, eq(travelCompanions.orderId, serviceOrders.id))
+      .where(and(
+        eq(travelCompanions.userId, userId),
+        eq(travelCompanions.status, 'active')
+      ));
+    
+    const companionOrdersList = companionOrders.map(r => r.order);
+    const allOrders = [...ownOrders, ...companionOrdersList];
+    
+    const uniqueOrders = allOrders.filter((order, index, self) => 
+      index === self.findIndex(o => o.id === order.id)
+    );
+    
+    return uniqueOrders.sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
+
+  // ============ Companion Invites Methods ============
+
+  generateInviteCode(): string {
+    return Math.random().toString(36).substring(2, 10).toUpperCase();
+  }
+
+  async createInvite(data: Omit<InsertCompanionInvite, 'inviteCode'>): Promise<CompanionInvite> {
+    const inviteCode = this.generateInviteCode();
+    const [invite] = await db
+      .insert(companionInvites)
+      .values({ ...data, inviteCode })
+      .returning();
+    return invite;
+  }
+
+  async getInviteByCode(inviteCode: string): Promise<CompanionInvite | undefined> {
+    const [invite] = await db
+      .select()
+      .from(companionInvites)
+      .where(eq(companionInvites.inviteCode, inviteCode));
+    return invite;
+  }
+
+  async getOrderInvites(orderId: number): Promise<CompanionInvite[]> {
+    return db
+      .select()
+      .from(companionInvites)
+      .where(eq(companionInvites.orderId, orderId))
+      .orderBy(desc(companionInvites.createdAt));
+  }
+
+  async updateInvite(inviteId: number, data: Partial<CompanionInvite>): Promise<CompanionInvite | undefined> {
+    const [updated] = await db
+      .update(companionInvites)
+      .set(data)
+      .where(eq(companionInvites.id, inviteId))
+      .returning();
+    return updated;
+  }
+
+  async acceptInvite(inviteCode: string, userId: string): Promise<{ success: boolean; error?: string; orderId?: number }> {
+    const invite = await this.getInviteByCode(inviteCode);
+    
+    if (!invite) {
+      return { success: false, error: '邀請碼無效' };
+    }
+    
+    if (invite.status !== 'pending') {
+      return { success: false, error: '邀請已被使用或已取消' };
+    }
+    
+    if (new Date() > invite.expiresAt) {
+      await this.updateInvite(invite.id, { status: 'expired' });
+      return { success: false, error: '邀請已過期' };
+    }
+
+    const isAlreadyCompanion = await this.isUserCompanionOfOrder(invite.orderId, userId);
+    if (isAlreadyCompanion) {
+      return { success: false, error: '您已經是這個行程的旅伴了' };
+    }
+
+    const order = await this.getOrder(invite.orderId);
+    if (!order) {
+      return { success: false, error: '訂單不存在' };
+    }
+    
+    if (order.userId === userId) {
+      return { success: false, error: '您是這個行程的購買者，不需要接受邀請' };
+    }
+
+    await this.addCompanion({
+      orderId: invite.orderId,
+      userId,
+      role: 'companion',
+      status: 'active',
+    });
+
+    await this.updateInvite(invite.id, { 
+      status: 'accepted',
+      inviteeUserId: userId,
+    });
+
+    return { success: true, orderId: invite.orderId };
+  }
+
+  async revokeInvite(inviteId: number, userId: string): Promise<boolean> {
+    const [invite] = await db
+      .select()
+      .from(companionInvites)
+      .where(eq(companionInvites.id, inviteId));
+    
+    if (!invite || invite.inviterUserId !== userId) {
+      return false;
+    }
+
+    await this.updateInvite(inviteId, { status: 'revoked' });
+    return true;
   }
 }
 
