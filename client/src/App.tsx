@@ -463,6 +463,7 @@ const App: React.FC = () => {
             state={state}
             onUpdate={(updates) => setState(p => ({ ...p, ...updates }))}
             onSubmit={handlePull}
+            userName={user?.firstName || user?.email?.split('@')[0]}
           />
         )}
 
