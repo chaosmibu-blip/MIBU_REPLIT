@@ -46,6 +46,8 @@ const App: React.FC = () => {
   });
 
   const [showLangMenu, setShowLangMenu] = useState(false);
+  const [showRoleMenu, setShowRoleMenu] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<'consumer' | 'merchant' | 'admin'>('consumer');
   const [gachaSubView, setGachaSubViewRaw] = useState<GachaSubView>('gacha');
   const [plannerSubView, setPlannerSubView] = useState<PlannerSubView>('itinerary');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('mibu');
@@ -514,55 +516,96 @@ const App: React.FC = () => {
         {/* Login Screen */}
         {state.view === 'login' && (
           <div className="flex flex-col items-center justify-center min-h-[80vh] space-y-8 relative">
-            {/* 右上角企業端入口 */}
+            {/* 右上角切換用戶別 */}
             <button
-              onClick={() => setState(prev => ({ ...prev, view: 'merchant_login' }))}
-              className="absolute top-0 right-0 text-xs text-slate-400 hover:text-emerald-600 transition-colors flex items-center gap-1"
-              data-testid="button-merchant-login-entry"
+              onClick={() => setShowRoleMenu(!showRoleMenu)}
+              className="absolute top-0 right-0 text-xs text-slate-400 hover:text-indigo-600 transition-colors flex items-center gap-1"
+              data-testid="button-switch-role"
             >
-              🏪 {t.merchantLogin || '商家登入'}
+              👤 {t.switchRole || '切換用戶別'}
             </button>
+            
+            {/* 角色選擇下拉選單 */}
+            {showRoleMenu && (
+              <div className="absolute top-8 right-0 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden w-40 py-1 z-50">
+                <button
+                  onClick={() => { setSelectedRole('consumer'); setShowRoleMenu(false); }}
+                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium flex items-center gap-2 ${selectedRole === 'consumer' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-700'}`}
+                  data-testid="role-consumer"
+                >
+                  🎒 {t.roleConsumer || '旅客'}
+                </button>
+                <button
+                  onClick={() => { setSelectedRole('merchant'); setShowRoleMenu(false); }}
+                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium flex items-center gap-2 ${selectedRole === 'merchant' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-700'}`}
+                  data-testid="role-merchant"
+                >
+                  🏪 {t.roleMerchant || '企業端'}
+                </button>
+                <button
+                  onClick={() => { setSelectedRole('admin'); setShowRoleMenu(false); }}
+                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium flex items-center gap-2 ${selectedRole === 'admin' ? 'text-amber-600 bg-amber-50' : 'text-slate-700'}`}
+                  data-testid="role-admin"
+                >
+                  ⚙️ {t.roleAdmin || '管理端'}
+                </button>
+              </div>
+            )}
             
             <div className="text-center">
               <h1 className="text-4xl font-bold text-slate-800 mb-2">Mibu</h1>
               <p className="text-slate-500">{t.appSubtitle || '探索台灣的最佳方式'}</p>
+              {/* 顯示當前選擇的角色 */}
+              <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-full text-sm text-slate-600">
+                {selectedRole === 'consumer' && <span>🎒 {t.roleConsumer || '旅客'}</span>}
+                {selectedRole === 'merchant' && <span>🏪 {t.roleMerchant || '企業端'}</span>}
+                {selectedRole === 'admin' && <span>⚙️ {t.roleAdmin || '管理端'}</span>}
+              </div>
             </div>
             
-            {/* 消費者登入區塊 */}
+            {/* 登入區塊 */}
             <div className="w-full max-w-sm space-y-4">
               <a
                 href="/api/login"
-                className="flex items-center justify-center gap-2 w-full bg-indigo-500 text-white font-bold py-4 rounded-2xl hover:bg-indigo-600 transition-colors shadow-lg"
-                data-testid="button-replit-login"
+                className={`flex items-center justify-center gap-2 w-full font-bold py-4 rounded-2xl transition-colors shadow-lg ${
+                  selectedRole === 'consumer' ? 'bg-indigo-500 hover:bg-indigo-600 text-white' :
+                  selectedRole === 'merchant' ? 'bg-emerald-500 hover:bg-emerald-600 text-white' :
+                  'bg-amber-500 hover:bg-amber-600 text-white'
+                }`}
+                data-testid="button-google-login"
               >
                 <LogIn className="w-5 h-5" />
-                {t.loginWithReplit || '使用 Replit 登入'}
+                {t.loginWithGoogle || 'Google 登入'}
               </a>
               
-              <button
-                onClick={() => {
-                  const guestId = generateGuestId();
-                  localStorage.setItem(STORAGE_KEYS.GUEST_ID, guestId);
-                  setState(prev => ({
-                    ...prev,
-                    view: 'mibu_home',
-                    user: {
-                      id: guestId,
-                      name: t.guest || '訪客',
-                      email: null,
-                      avatar: null,
-                      provider: 'guest'
-                    }
-                  }));
-                }}
-                className="w-full bg-slate-100 text-slate-700 font-medium py-4 rounded-2xl hover:bg-slate-200 transition-colors"
-                data-testid="button-guest-login"
-              >
-                {t.guestLogin || '訪客登入'}
-              </button>
+              {selectedRole === 'consumer' && (
+                <button
+                  onClick={() => {
+                    const guestId = generateGuestId();
+                    localStorage.setItem(STORAGE_KEYS.GUEST_ID, guestId);
+                    setState(prev => ({
+                      ...prev,
+                      view: 'mibu_home',
+                      user: {
+                        id: guestId,
+                        name: t.guest || '訪客',
+                        email: null,
+                        avatar: null,
+                        provider: 'guest'
+                      }
+                    }));
+                  }}
+                  className="w-full bg-slate-100 text-slate-700 font-medium py-4 rounded-2xl hover:bg-slate-200 transition-colors"
+                  data-testid="button-guest-login"
+                >
+                  {t.guestLogin || '訪客登入'}
+                </button>
+              )}
               
               <p className="text-center text-xs text-slate-400">
-                {t.guestLoginNote || '訪客模式的資料僅保存在此裝置，之後可綁定帳號保留'}
+                {selectedRole === 'consumer' && (t.guestLoginNote || '訪客模式的資料僅保存在此裝置')}
+                {selectedRole === 'merchant' && (t.merchantLoginNote || '景點業者、餐廳、住宿等企業合作夥伴')}
+                {selectedRole === 'admin' && (t.adminLoginNote || '系統管理員專用入口')}
               </p>
             </div>
           </div>
