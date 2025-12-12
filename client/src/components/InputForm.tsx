@@ -140,6 +140,8 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
     return `${state.level} Stops`;
   };
 
+  const canSubmit = selectedCountryId && selectedRegionId && districtCount > 0;
+
   return (
     <div className="w-full max-w-md mx-auto px-5 pt-8 pb-4">
       <div className="text-center mb-8">
@@ -156,50 +158,45 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
           <label className="block text-sm font-bold text-slate-700 mb-2">
             {state.language === 'zh-TW' ? '選擇探索國家' : t.destination}
           </label>
-          <div className="relative">
-            {loadingCountries ? (
-              <div className="w-full px-4 py-4 bg-slate-50 rounded-2xl flex items-center">
-                <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-                <span className="ml-2 text-slate-400">{t.loading}</span>
-              </div>
-            ) : fetchError ? (
-              <div className="w-full px-4 py-4 bg-red-50 rounded-2xl flex items-center justify-between">
-                <span className="text-red-500 text-sm">{fetchError}</span>
-                <button 
-                  onClick={() => window.location.reload()} 
-                  className="text-xs bg-red-100 text-red-600 px-3 py-1 rounded-lg"
-                >
-                  重試
-                </button>
-              </div>
-            ) : (
-              <select
-                value={selectedCountryId || ''}
-                onChange={(e) => handleCountryChange(e.target.value)}
-                className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                data-testid="select-country"
+          {loadingCountries ? (
+            <div className="w-full px-4 py-4 bg-slate-50 rounded-2xl flex items-center">
+              <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+              <span className="ml-2 text-slate-400">{t.loading}</span>
+            </div>
+          ) : fetchError ? (
+            <div className="w-full px-4 py-4 bg-red-50 rounded-2xl flex items-center justify-between">
+              <span className="text-red-500 text-sm">{fetchError}</span>
+              <button 
+                onClick={() => window.location.reload()} 
+                className="text-xs bg-red-100 text-red-600 px-3 py-1 rounded-lg"
               >
-                <option value="" disabled>
-                  {state.language === 'zh-TW' ? '請選擇國家' : t.selectDestination}
+                重試
+              </button>
+            </div>
+          ) : (
+            <select
+              value={selectedCountryId || ''}
+              onChange={(e) => handleCountryChange(e.target.value)}
+              className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-200"
+              data-testid="select-country"
+            >
+              <option value="" disabled>
+                {state.language === 'zh-TW' ? '請選擇國家' : t.selectDestination}
+              </option>
+              {countries.map(country => (
+                <option key={country.id} value={country.id}>
+                  {getLocalizedName(country)}
                 </option>
-                {countries.map(country => (
-                  <option key={country.id} value={country.id}>
-                    {getLocalizedName(country)}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
+              ))}
+            </select>
+          )}
         </div>
 
-        <div 
-          className={`overflow-hidden transition-all duration-300 ease-out ${
-            selectedCountryId && regions.length > 0 
-              ? 'max-h-20 opacity-100' 
-              : 'max-h-0 opacity-0'
-          }`}
-        >
-          <div className="relative">
+        {selectedCountryId && (
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              {state.language === 'zh-TW' ? '選擇城市/地區' : 'Select City/Region'}
+            </label>
             {loadingRegions ? (
               <div className="w-full px-4 py-4 bg-slate-50 rounded-2xl flex items-center">
                 <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
@@ -222,16 +219,10 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
               </select>
             )}
           </div>
-        </div>
+        )}
 
-        <div 
-          className={`overflow-hidden transition-all duration-300 ease-out ${
-            selectedCountryId && selectedRegionId 
-              ? 'max-h-32 opacity-100' 
-              : 'max-h-0 opacity-0'
-          }`}
-        >
-          <div className="pt-4">
+        {selectedRegionId && (
+          <div className="pt-2">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-bold text-slate-700">
                 {state.language === 'zh-TW' ? '行程豐富度' : 'Itinerary Length'}
@@ -266,15 +257,15 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
               <span>{state.language === 'zh-TW' ? '極限 (12點)' : 'Packed (12)'}</span>
             </div>
           </div>
-        </div>
+        )}
 
         <button
           onClick={onSubmit}
-          disabled={!selectedCountryId || !selectedRegionId || districtCount === 0}
-          className={`w-full py-4 rounded-2xl font-bold text-base mt-6 transition-all ${
-            !selectedCountryId || !selectedRegionId || districtCount === 0
-              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              : 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-[0.98]'
+          disabled={!canSubmit}
+          className={`w-full py-4 rounded-2xl font-bold text-base mt-4 transition-all ${
+            canSubmit
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-[0.98]'
+              : 'bg-slate-100 text-slate-400 cursor-not-allowed'
           }`}
           data-testid="button-start-gacha"
         >
