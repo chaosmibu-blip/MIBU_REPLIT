@@ -6,7 +6,7 @@ import { GachaScene } from './components/GachaScene';
 import { ResultList } from './components/ResultList';
 import { CollectionGrid } from './components/CollectionGrid';
 import { ItemBox } from './components/ItemBox';
-import { ModuleHeader, GachaModuleNav, PlannerModuleNav } from './components/ModuleNav';
+import { ModuleHeader, GachaModuleNav, PlannerModuleNav, HomeNav } from './components/ModuleNav';
 import { CouponCelebration } from './components/CouponCelebration';
 import { MerchantDashboard } from './components/MerchantDashboard';
 import { TripPlanner } from '../../modules/trip-planner/client';
@@ -482,12 +482,35 @@ const App: React.FC = () => {
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-4">
         {/* Mibu Home */}
         {state.view === 'mibu_home' && (
-          <div className="space-y-6">
-            <div className="text-center py-8">
+          <div className="space-y-6 pb-24">
+            <div className="text-center py-4">
               <h1 className="text-3xl font-bold text-slate-800 mb-2">Mibu</h1>
               <p className="text-slate-500">{t.appSubtitle || '探索台灣的最佳方式'}</p>
             </div>
+
+            {/* 公告欄 */}
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4" data-testid="section-announcements">
+              <h3 className="text-sm font-bold text-amber-800 mb-2 flex items-center gap-2">
+                📢 {t.announcements || '公告'}
+              </h3>
+              <div className="space-y-2 text-sm text-amber-700">
+                <p>• 歡迎使用 Mibu 旅遊扭蛋！探索台灣各地的精彩景點</p>
+                <p>• 新功能：旅程策劃模組已上線，規劃你的完美行程</p>
+              </div>
+            </div>
+
+            {/* 快閃活動通知 */}
+            <div className="bg-gradient-to-r from-rose-500 to-pink-500 text-white rounded-2xl p-4 shadow-lg" data-testid="section-flash-events">
+              <h3 className="text-sm font-bold mb-2 flex items-center gap-2">
+                ⚡ {t.flashEvents || '快閃活動'}
+              </h3>
+              <div className="space-y-2 text-sm text-white/90">
+                <p>🎁 冬季限定：宜蘭礁溪溫泉季 - 收集溫泉景點獲得特別優惠！</p>
+                <p>🌟 本週熱門：台北信義區聖誕市集巡禮</p>
+              </div>
+            </div>
             
+            {/* 模組入口 */}
             <div className="grid gap-4">
               <button
                 onClick={() => handleViewChange('gacha_module')}
@@ -506,15 +529,13 @@ const App: React.FC = () => {
                 <h2 className="text-xl font-bold mb-1">{t.navPlannerModule || '旅程策劃'}</h2>
                 <p className="text-white/80 text-sm">規劃你的完美旅程</p>
               </button>
-              
-              <button
-                onClick={() => handleViewChange('settings')}
-                className="bg-slate-100 text-slate-700 p-4 rounded-2xl text-left hover:bg-slate-200 transition-all"
-                data-testid="button-settings"
-              >
-                <h2 className="text-lg font-medium">{t.navSettings || '設定'}</h2>
-              </button>
             </div>
+            
+            <HomeNav 
+              currentView={state.view}
+              onChange={handleViewChange}
+              language={state.language}
+            />
           </div>
         )}
 
@@ -629,7 +650,7 @@ const App: React.FC = () => {
         )}
 
         {state.view === 'settings' && (
-          <div className="space-y-6">
+          <div className="space-y-6 pb-24">
             <ModuleHeader 
               title={t.navSettings || '設定'} 
               onBack={handleBackToHome} 
@@ -753,6 +774,12 @@ const App: React.FC = () => {
                 </div>
               )}
             </div>
+            
+            <HomeNav 
+              currentView={state.view}
+              onChange={handleViewChange}
+              language={state.language}
+            />
           </div>
         )}
       </main>
