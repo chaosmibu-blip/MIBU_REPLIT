@@ -1416,22 +1416,31 @@ ${uncachedSkeleton.map((item, idx) => `  {
             aiCallCount++;
           }
 
-          // Check for merchant promotions
+          // Check for merchant promotions - prefer Google Place ID matching
           let merchantPromo = null;
-          if (result.place?.name) {
-            const merchantLink = await storage.getPlaceLinkByPlace(
+          let merchantLink = null;
+          
+          // First try matching by Google Place ID (more accurate)
+          if (result.place?.placeId) {
+            merchantLink = await storage.getPlaceLinkByGooglePlaceId(result.place.placeId);
+          }
+          
+          // Fallback to name/district/city matching
+          if (!merchantLink && result.place?.name) {
+            merchantLink = await storage.getPlaceLinkByPlace(
               result.place.name,
               districtNameZh,
               regionNameZh
             );
-            if (merchantLink && merchantLink.isPromoActive && merchantLink.promoTitle) {
-              merchantPromo = {
-                merchantId: merchantLink.merchantId,
-                title: merchantLink.promoTitle,
-                description: merchantLink.promoDescription,
-                imageUrl: merchantLink.promoImageUrl
-              };
-            }
+          }
+          
+          if (merchantLink && merchantLink.isPromoActive && merchantLink.promoTitle) {
+            merchantPromo = {
+              merchantId: merchantLink.merchantId,
+              title: merchantLink.promoTitle,
+              description: merchantLink.promoDescription,
+              imageUrl: merchantLink.promoImageUrl
+            };
           }
 
           items.push({
@@ -1694,13 +1703,20 @@ ${uncachedSkeleton.map((item, idx) => `  {
         return res.status(403).json({ error: "You must be a registered merchant to claim places" });
       }
 
-      const { placeName, district, city, country, placeCacheId } = req.body;
+      const { placeName, district, city, country, placeCacheId, googlePlaceId } = req.body;
       if (!placeName || !district || !city || !country) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      // Check if place is already claimed
-      const existingLink = await storage.getPlaceLinkByPlace(placeName, district, city);
+      // Check if place is already claimed - prefer Google Place ID check
+      let existingLink = null;
+      if (googlePlaceId) {
+        existingLink = await storage.getPlaceLinkByGooglePlaceId(googlePlaceId);
+      }
+      if (!existingLink) {
+        existingLink = await storage.getPlaceLinkByPlace(placeName, district, city);
+      }
+      
       if (existingLink) {
         return res.status(409).json({ error: "This place is already claimed by another merchant" });
       }
@@ -1708,6 +1724,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const link = await storage.createMerchantPlaceLink({
         merchantId: merchant.id,
         placeCacheId: placeCacheId || null,
+        googlePlaceId: googlePlaceId || null,
         placeName,
         district,
         city,

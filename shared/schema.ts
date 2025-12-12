@@ -190,6 +190,7 @@ export const merchantPlaceLinks = pgTable("merchant_place_links", {
   id: serial("id").primaryKey(),
   merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
   placeCacheId: integer("place_cache_id").references(() => placeCache.id),
+  googlePlaceId: text("google_place_id"), // Google Places API place_id for accurate matching
   placeName: text("place_name").notNull(),
   district: text("district").notNull(),
   city: text("city").notNull(),
@@ -204,6 +205,7 @@ export const merchantPlaceLinks = pgTable("merchant_place_links", {
 }, (table) => [
   index("IDX_merchant_place_links_lookup").on(table.placeName, table.district, table.city),
   index("IDX_merchant_place_links_merchant").on(table.merchantId),
+  index("IDX_merchant_place_links_google_place_id").on(table.googlePlaceId),
 ]);
 
 // Merchant coupons

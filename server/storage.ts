@@ -64,6 +64,7 @@ export interface IStorage {
   // Merchant Place Links (ownership/claim)
   getMerchantPlaceLinks(merchantId: number): Promise<MerchantPlaceLink[]>;
   getPlaceLinkByPlace(placeName: string, district: string, city: string): Promise<MerchantPlaceLink | undefined>;
+  getPlaceLinkByGooglePlaceId(googlePlaceId: string): Promise<MerchantPlaceLink | undefined>;
   createMerchantPlaceLink(link: InsertMerchantPlaceLink): Promise<MerchantPlaceLink>;
   updateMerchantPlaceLink(linkId: number, data: Partial<MerchantPlaceLink>): Promise<MerchantPlaceLink>;
   searchPlacesForClaim(query: string, district?: string, city?: string): Promise<PlaceCache[]>;
@@ -436,6 +437,17 @@ export class DatabaseStorage implements IStorage {
         eq(merchantPlaceLinks.placeName, placeName),
         eq(merchantPlaceLinks.district, district),
         eq(merchantPlaceLinks.city, city),
+        eq(merchantPlaceLinks.status, 'approved')
+      ));
+    return link;
+  }
+
+  async getPlaceLinkByGooglePlaceId(googlePlaceId: string): Promise<MerchantPlaceLink | undefined> {
+    const [link] = await db
+      .select()
+      .from(merchantPlaceLinks)
+      .where(and(
+        eq(merchantPlaceLinks.googlePlaceId, googlePlaceId),
         eq(merchantPlaceLinks.status, 'approved')
       ));
     return link;
