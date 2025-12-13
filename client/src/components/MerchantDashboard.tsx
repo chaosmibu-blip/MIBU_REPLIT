@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Merchant, AppState } from '../types';
 import { SUBSCRIPTION_PLANS, TRANSLATIONS } from '../constants';
-import { Store, CheckCircle, Plus, ShieldCheck, Crown, Sparkles, Search, MapPin, Tag, X, Edit3, Check, Loader2 } from 'lucide-react';
+import { Store, CheckCircle, Plus, ShieldCheck, Crown, Sparkles, Search, MapPin, Tag, X, Edit3, Check, Loader2, Package, Trash2 } from 'lucide-react';
 
 interface PlaceCache {
   id: number;
@@ -32,6 +32,17 @@ interface MerchantPlaceLink {
   createdAt: string;
 }
 
+interface Product {
+  id: number;
+  name: string;
+  description?: string;
+  price: number;
+  category?: string;
+  imageUrl?: string;
+  isActive: boolean;
+  stock?: number;
+}
+
 interface MerchantDashboardProps {
   state: AppState;
   onLogin: (name: string, email: string) => void;
@@ -44,10 +55,18 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
   const [name, setName] = useState('');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-  const [activeTab, setActiveTab] = useState<'places' | 'coupons'>('places');
+  const [activeTab, setActiveTab] = useState<'places' | 'products' | 'coupons'>('places');
   
   const [claimedPlaces, setClaimedPlaces] = useState<MerchantPlaceLink[]>([]);
   const [isLoadingPlaces, setIsLoadingPlaces] = useState(false);
+  
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [productForm, setProductForm] = useState({ name: '', description: '', price: '', category: '', imageUrl: '' });
+  const [editingProductId, setEditingProductId] = useState<number | null>(null);
+  const [savingProduct, setSavingProduct] = useState(false);
+  const [deletingProductId, setDeletingProductId] = useState<number | null>(null);
   
   const [editingPromo, setEditingPromo] = useState<number | null>(null);
   const [promoForm, setPromoForm] = useState({ title: '', description: '' });
@@ -106,8 +125,9 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
         }
       }
       
-      // Then load claimed places
+      // Then load claimed places and products
       loadClaimedPlaces();
+      loadProducts();
     } catch (error) {
       console.error('Failed to register merchant:', error);
     }
@@ -126,6 +146,151 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
     } finally {
       setIsLoadingPlaces(false);
     }
+  };
+
+  const loadProducts = async () => {
+    setIsLoadingProducts(true);
+    try {
+      const response = await fetch('/api/merchant/products', { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        setProducts(data.products || []);
+      }
+    } catch (error) {
+      console.error('Failed to load products:', error);
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  };
+
+  const handleAddProduct = async () => {
+    if (!productForm.name || !productForm.price) {
+      alert('請填寫商品名稱和價格');
+      return;
+    }
+    
+    setSavingProduct(true);
+    try {
+      const response = await fetch('/api/merchant/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: productForm.name,
+          description: productForm.description || null,
+          price: parseFloat(productForm.price),
+          category: productForm.category || null,
+          imageUrl: productForm.imageUrl || null,
+          isActive: true
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setProducts(prev => [data.product, ...prev]);
+        setProductForm({ name: '', description: '', price: '', category: '', imageUrl: '' });
+        setShowAddProduct(false);
+      } else {
+        const error = await response.json();
+        alert(error.error || '新增失敗');
+      }
+    } catch (error) {
+      console.error('Add product error:', error);
+      alert('新增失敗，請稍後再試');
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
+  const handleUpdateProduct = async (productId: number) => {
+    if (!productForm.name || !productForm.price) {
+      alert('請填寫商品名稱和價格');
+      return;
+    }
+    
+    setSavingProduct(true);
+    try {
+      const response = await fetch(`/api/merchant/products/${productId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: productForm.name,
+          description: productForm.description || null,
+          price: parseFloat(productForm.price),
+          category: productForm.category || null,
+          imageUrl: productForm.imageUrl || null
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setProducts(prev => prev.map(p => p.id === productId ? data.product : p));
+        setProductForm({ name: '', description: '', price: '', category: '', imageUrl: '' });
+        setEditingProductId(null);
+      } else {
+        const error = await response.json();
+        alert(error.error || '更新失敗');
+      }
+    } catch (error) {
+      console.error('Update product error:', error);
+      alert('更新失敗，請稍後再試');
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
+  const handleDeleteProduct = async (productId: number) => {
+    if (!confirm('確定要刪除這個商品嗎？')) return;
+    
+    setDeletingProductId(productId);
+    try {
+      const response = await fetch(`/api/merchant/products/${productId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        setProducts(prev => prev.filter(p => p.id !== productId));
+      } else {
+        const error = await response.json();
+        alert(error.error || '刪除失敗');
+      }
+    } catch (error) {
+      console.error('Delete product error:', error);
+      alert('刪除失敗，請稍後再試');
+    } finally {
+      setDeletingProductId(null);
+    }
+  };
+
+  const handleToggleProductActive = async (product: Product) => {
+    try {
+      const response = await fetch(`/api/merchant/products/${product.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ isActive: !product.isActive })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setProducts(prev => prev.map(p => p.id === product.id ? data.product : p));
+      }
+    } catch (error) {
+      console.error('Toggle product error:', error);
+    }
+  };
+
+  const startEditProduct = (product: Product) => {
+    setEditingProductId(product.id);
+    setProductForm({
+      name: product.name,
+      description: product.description || '',
+      price: product.price.toString(),
+      category: product.category || '',
+      imageUrl: product.imageUrl || ''
+    });
   };
 
   const handleEditPromo = (link: MerchantPlaceLink) => {
@@ -406,18 +571,26 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
       <div className="flex gap-2 mb-4">
         <button
           onClick={() => setActiveTab('places')}
-          className={`flex-1 py-3 rounded-xl font-bold transition-colors ${activeTab === 'places' ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600'}`}
+          className={`flex-1 py-2 rounded-xl font-bold transition-colors text-sm ${activeTab === 'places' ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600'}`}
           data-testid="tab-places"
         >
-          <MapPin className="w-4 h-4 inline mr-2" />
-          地點管理
+          <MapPin className="w-4 h-4 inline mr-1" />
+          地點
+        </button>
+        <button
+          onClick={() => { setActiveTab('products'); loadProducts(); }}
+          className={`flex-1 py-2 rounded-xl font-bold transition-colors text-sm ${activeTab === 'products' ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600'}`}
+          data-testid="tab-products"
+        >
+          <Package className="w-4 h-4 inline mr-1" />
+          商品
         </button>
         <button
           onClick={() => setActiveTab('coupons')}
-          className={`flex-1 py-3 rounded-xl font-bold transition-colors ${activeTab === 'coupons' ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600'}`}
+          className={`flex-1 py-2 rounded-xl font-bold transition-colors text-sm ${activeTab === 'coupons' ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600'}`}
           data-testid="tab-coupons"
         >
-          <Tag className="w-4 h-4 inline mr-2" />
+          <Tag className="w-4 h-4 inline mr-1" />
           優惠券
         </button>
       </div>
@@ -718,6 +891,182 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({ state, onL
                         )}
                       </>
                     )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'products' && (
+        <div className="space-y-4">
+          {!showAddProduct && editingProductId === null ? (
+            <button
+              onClick={() => setShowAddProduct(true)}
+              className="w-full py-4 border-2 border-dashed border-emerald-300 rounded-2xl text-emerald-500 font-bold flex items-center justify-center gap-2 hover:bg-emerald-50 hover:border-emerald-400 transition-colors"
+              data-testid="button-add-product"
+            >
+              <Plus className="w-5 h-5" />
+              新增商品
+            </button>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-3 flex items-center justify-between">
+                <h3 className="font-bold text-white flex items-center gap-2">
+                  <Package className="w-4 h-4" />
+                  {editingProductId ? '編輯商品' : '新增商品'}
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowAddProduct(false);
+                    setEditingProductId(null);
+                    setProductForm({ name: '', description: '', price: '', category: '', imageUrl: '' });
+                  }}
+                  className="text-white/70 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-3">
+                <div>
+                  <label className="block text-sm font-bold text-slate-600 mb-1">商品名稱 *</label>
+                  <input
+                    type="text"
+                    placeholder="例如：招牌滷肉飯"
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    value={productForm.name}
+                    onChange={e => setProductForm(p => ({ ...p, name: e.target.value }))}
+                    data-testid="input-product-name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-600 mb-1">價格 (NT$) *</label>
+                  <input
+                    type="number"
+                    placeholder="例如：120"
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    value={productForm.price}
+                    onChange={e => setProductForm(p => ({ ...p, price: e.target.value }))}
+                    data-testid="input-product-price"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-600 mb-1">商品說明（選填）</label>
+                  <textarea
+                    placeholder="描述您的商品特色..."
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                    rows={2}
+                    value={productForm.description}
+                    onChange={e => setProductForm(p => ({ ...p, description: e.target.value }))}
+                    data-testid="input-product-description"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-600 mb-1">分類（選填）</label>
+                  <input
+                    type="text"
+                    placeholder="例如：主食、飲料、甜點"
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    value={productForm.category}
+                    onChange={e => setProductForm(p => ({ ...p, category: e.target.value }))}
+                    data-testid="input-product-category"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-600 mb-1">圖片網址（選填）</label>
+                  <input
+                    type="text"
+                    placeholder="https://..."
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    value={productForm.imageUrl}
+                    onChange={e => setProductForm(p => ({ ...p, imageUrl: e.target.value }))}
+                    data-testid="input-product-image"
+                  />
+                </div>
+                <button
+                  onClick={() => editingProductId ? handleUpdateProduct(editingProductId) : handleAddProduct()}
+                  disabled={savingProduct || !productForm.name || !productForm.price}
+                  className="w-full py-3 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                  data-testid="button-save-product"
+                >
+                  {savingProduct ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+                  {editingProductId ? '更新商品' : '新增商品'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+            <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+              <Package className="w-4 h-4 text-emerald-500" />
+              我的商品 ({products.length})
+            </h3>
+            
+            {isLoadingProducts ? (
+              <div className="py-8 text-center">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto text-slate-400" />
+              </div>
+            ) : products.length === 0 ? (
+              <div className="py-8 text-center text-slate-400">
+                <Package className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">尚未新增任何商品</p>
+                <p className="text-xs">點擊上方按鈕新增您的第一個商品</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {products.map(product => (
+                  <div key={product.id} className="p-4 bg-slate-50 rounded-xl">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="font-bold text-slate-800 truncate">{product.name}</div>
+                          <div className={`px-2 py-0.5 rounded text-xs font-bold ${product.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
+                            {product.isActive ? '上架中' : '已下架'}
+                          </div>
+                        </div>
+                        <div className="text-lg font-black text-emerald-600 mt-1">NT${product.price}</div>
+                        {product.description && (
+                          <div className="text-xs text-slate-500 mt-1 line-clamp-2">{product.description}</div>
+                        )}
+                        {product.category && (
+                          <div className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 bg-slate-200 rounded text-xs text-slate-600">
+                            <Tag className="w-3 h-3" />
+                            {product.category}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 ml-2">
+                        <button
+                          onClick={() => handleToggleProductActive(product)}
+                          className={`p-2 rounded-lg text-xs font-bold transition-colors ${product.isActive ? 'bg-slate-200 text-slate-600 hover:bg-slate-300' : 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200'}`}
+                          data-testid={`button-toggle-product-${product.id}`}
+                          title={product.isActive ? '下架' : '上架'}
+                        >
+                          {product.isActive ? '下架' : '上架'}
+                        </button>
+                        <button
+                          onClick={() => startEditProduct(product)}
+                          className="p-2 text-slate-500 hover:bg-slate-200 rounded-lg"
+                          data-testid={`button-edit-product-${product.id}`}
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteProduct(product.id)}
+                          disabled={deletingProductId === product.id}
+                          className="p-2 text-red-500 hover:bg-red-100 rounded-lg disabled:opacity-50"
+                          data-testid={`button-delete-product-${product.id}`}
+                        >
+                          {deletingProductId === product.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>

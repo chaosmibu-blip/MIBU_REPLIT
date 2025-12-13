@@ -87,7 +87,9 @@ export interface IStorage {
   getProductById(productId: number): Promise<PlaceProduct | undefined>;
   createProduct(product: InsertPlaceProduct): Promise<PlaceProduct>;
   updateProduct(productId: number, data: Partial<PlaceProduct>): Promise<PlaceProduct>;
+  deleteProduct(productId: number): Promise<void>;
   searchPlacesByName(query: string): Promise<PlaceCache[]>;
+  getMerchantProducts(merchantId: number): Promise<PlaceProduct[]>;
 
   // Commerce - Cart
   getCartItems(userId: string): Promise<Array<CartItem & { product: PlaceProduct }>>;
@@ -608,8 +610,16 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async deleteProduct(productId: number): Promise<void> {
+    await db.delete(placeProducts).where(eq(placeProducts.id, productId));
+  }
+
   async searchPlacesByName(query: string): Promise<PlaceCache[]> {
     return db.select().from(placeCache).where(ilike(placeCache.placeName, `%${query}%`)).limit(10);
+  }
+
+  async getMerchantProducts(merchantId: number): Promise<PlaceProduct[]> {
+    return db.select().from(placeProducts).where(eq(placeProducts.merchantId, merchantId)).orderBy(desc(placeProducts.createdAt));
   }
 
   // Commerce - Cart

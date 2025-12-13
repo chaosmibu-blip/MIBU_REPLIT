@@ -2283,6 +2283,125 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // ============ Merchant Products Routes ============
+  app.get("/api/merchant/products", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant account required" });
+      }
+
+      const products = await storage.getMerchantProducts(merchant.id);
+      res.json({ products });
+    } catch (error) {
+      console.error("Get merchant products error:", error);
+      res.status(500).json({ error: "Failed to get products" });
+    }
+  });
+
+  app.post("/api/merchant/products", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant account required" });
+      }
+
+      const { name, description, price, category, imageUrl, stock } = req.body;
+      if (!name || price === undefined) {
+        return res.status(400).json({ error: "Name and price are required" });
+      }
+
+      const product = await storage.createProduct({
+        merchantId: merchant.id,
+        name,
+        description: description || null,
+        price: parseInt(price),
+        currency: 'TWD',
+        category: category || null,
+        imageUrl: imageUrl || null,
+        isActive: true,
+        stock: stock ? parseInt(stock) : null
+      });
+
+      res.json({ success: true, product });
+    } catch (error) {
+      console.error("Create product error:", error);
+      res.status(500).json({ error: "Failed to create product" });
+    }
+  });
+
+  app.put("/api/merchant/products/:productId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant account required" });
+      }
+
+      const productId = parseInt(req.params.productId);
+      const existing = await storage.getProductById(productId);
+      if (!existing || existing.merchantId !== merchant.id) {
+        return res.status(404).json({ error: "Product not found" });
+      }
+
+      const { name, description, price, category, imageUrl, isActive, stock } = req.body;
+      const updated = await storage.updateProduct(productId, {
+        name,
+        description,
+        price: price !== undefined ? parseInt(price) : undefined,
+        category,
+        imageUrl,
+        isActive,
+        stock: stock !== undefined ? parseInt(stock) : undefined
+      });
+
+      res.json({ success: true, product: updated });
+    } catch (error) {
+      console.error("Update product error:", error);
+      res.status(500).json({ error: "Failed to update product" });
+    }
+  });
+
+  app.delete("/api/merchant/products/:productId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant account required" });
+      }
+
+      const productId = parseInt(req.params.productId);
+      const existing = await storage.getProductById(productId);
+      if (!existing || existing.merchantId !== merchant.id) {
+        return res.status(404).json({ error: "Product not found" });
+      }
+
+      await storage.deleteProduct(productId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete product error:", error);
+      res.status(500).json({ error: "Failed to delete product" });
+    }
+  });
+
   // ============ Twilio Chat Routes ============
   app.post("/api/chat/token", isAuthenticated, async (req: any, res) => {
     try {
