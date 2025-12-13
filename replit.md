@@ -216,3 +216,78 @@ Mibu 旅行扭蛋是一個結合旅遊規劃與扭蛋遊戲化的漸進式網頁
 | `TWILIO_API_KEY_SID` | Twilio API Key SID（SK 開頭） |
 | `TWILIO_API_KEY_SECRET` | Twilio API Key 密鑰 |
 | `TWILIO_CONVERSATIONS_SERVICE_SID` | Twilio 聊天服務 SID（IS 開頭） |
+
+
+ Mibu 後端主要職責
+1. 使用者認證與授權
+Replit OAuth 登入 - 處理使用者登入流程
+JWT Token 發放 - 為 Expo App 等外部應用發放認證 token
+Session 管理 - 維護登入狀態
+角色權限控制 - consumer、merchant、admin 不同權限
+相關 API：
+
+GET /api/auth/login - 登入（支援 redirect_uri）
+GET /api/auth/verify - 驗證 token
+POST /api/auth/refresh-token - 更新 token
+GET /api/auth/user - 取得當前用戶資料
+2. AI 行程生成
+呼叫 Gemini AI - 產生旅遊景點推薦
+Google Places 驗證 - 驗證景點是否真實存在
+地點快取 - 減少重複的 AI 呼叫
+相關 API：
+
+POST /api/gacha/itinerary - 扭蛋生成行程
+POST /api/generate-itinerary - 生成行程
+3. 地區資料管理
+提供國家、縣市、鄉鎮區的階層資料
+多語系名稱（中、英、日、韓）
+相關 API：
+
+GET /api/locations/countries
+GET /api/locations/regions/:countryId
+GET /api/locations/districts/:regionId
+4. 收藏與回饋系統
+使用者收藏的景點管理
+排除不喜歡的地點
+相關 API：
+
+GET /api/collections - 取得收藏
+POST /api/collections - 新增收藏
+POST /api/feedback/exclude - 排除地點
+5. 商家系統
+商家註冊與認領地點
+優惠券管理
+訂閱方案處理
+相關 API：
+
+POST /api/merchant/register
+商家相關 CRUD
+6. 旅程策劃服務
+策劃師配對
+服務訂單管理
+旅伴邀請系統
+相關 API：
+
+/api/planner/* 系列
+7. 即時聊天
+Twilio Conversations 整合
+發放聊天 token
+管理聊天室
+相關 API：
+
+GET /api/chat/token
+/api/chat/conversations
+8. 金流處理
+Stripe 國際付款
+Webhook 處理
+資料庫結構
+後端使用 PostgreSQL 資料庫，主要資料表包括：
+
+users - 使用者
+countries/regions/districts - 地區
+categories/subcategories - 分類
+place_cache - 地點快取
+collections - 收藏
+merchants/coupons - 商家與優惠券
+trip_plans - 行程
+planners/service_orders - 策劃服務
