@@ -2665,6 +2665,62 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // ============ Klook Detection Routes ============
+  
+  // Detect Klook products in a message
+  app.post("/api/klook/detect", isAuthenticated, async (req: any, res) => {
+    try {
+      const { messageText, conversationSid, messageSid } = req.body;
+      
+      if (!messageText || !conversationSid || !messageSid) {
+        return res.status(400).json({ 
+          error: "Missing required fields: messageText, conversationSid, messageSid" 
+        });
+      }
+
+      const { detectKlookProducts } = await import("./klookService");
+      const result = await detectKlookProducts(messageText, conversationSid, messageSid);
+      
+      res.json({ 
+        success: true,
+        products: result.products
+      });
+    } catch (error) {
+      console.error("Klook detection error:", error);
+      res.status(500).json({ error: "Failed to detect products" });
+    }
+  });
+
+  // Get highlights for a specific message
+  app.get("/api/klook/highlights/:conversationSid/:messageSid", isAuthenticated, async (req: any, res) => {
+    try {
+      const { conversationSid, messageSid } = req.params;
+      
+      const { getMessageHighlights } = await import("./klookService");
+      const highlights = await getMessageHighlights(conversationSid, messageSid);
+      
+      res.json({ highlights });
+    } catch (error) {
+      console.error("Get highlights error:", error);
+      res.status(500).json({ error: "Failed to get highlights" });
+    }
+  });
+
+  // Get all highlights for a conversation
+  app.get("/api/klook/highlights/:conversationSid", isAuthenticated, async (req: any, res) => {
+    try {
+      const { conversationSid } = req.params;
+      
+      const { getConversationHighlights } = await import("./klookService");
+      const highlights = await getConversationHighlights(conversationSid);
+      
+      res.json({ highlights });
+    } catch (error) {
+      console.error("Get conversation highlights error:", error);
+      res.status(500).json({ error: "Failed to get highlights" });
+    }
+  });
+
   // ============ Place Feedback Routes ============
   app.post("/api/feedback/exclude", isAuthenticated, async (req: any, res) => {
     try {
