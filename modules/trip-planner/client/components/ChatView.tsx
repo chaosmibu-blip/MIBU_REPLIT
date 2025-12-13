@@ -42,6 +42,16 @@ interface Conversation {
   lastMessageTime?: Date;
 }
 
+interface KlookHighlight {
+  id: number;
+  conversationSid: string;
+  messageSid: string;
+  productName: string;
+  productUrl: string;
+  startIndex: number;
+  endIndex: number;
+}
+
 interface ChatViewProps {
   language: string;
   userId?: string;
@@ -80,6 +90,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
   const [uploadingImage, setUploadingImage] = useState(false);
   const [sharingLocation, setSharingLocation] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [klookHighlights, setKlookHighlights] = useState<Map<string, KlookHighlight[]>>(new Map());
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -212,34 +223,70 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
     }
   };
 
-  const parseMessageWithPlaces = useCallback((text: string): React.ReactNode[] => {
-    if (placeNames.length === 0) return [text];
+  const parseMessageWithPlaces = useCallback((text: string, messageSid?: string): React.ReactNode[] => {
+    const highlights = messageSid ? klookHighlights.get(messageSid) || [] : [];
     
-    const sortedNames = [...placeNames].sort((a, b) => b.length - a.length);
-    const escapedNames = sortedNames.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    if (placeNames.length === 0 && highlights.length === 0) return [text];
+    
+    const allKeywords: { keyword: string; type: 'place' | 'klook'; url?: string }[] = [];
+    
+    placeNames.forEach(name => {
+      allKeywords.push({ keyword: name, type: 'place' });
+    });
+    
+    highlights.forEach(h => {
+      if (!allKeywords.find(k => k.keyword === h.productName)) {
+        allKeywords.push({ keyword: h.productName, type: 'klook', url: h.productUrl });
+      }
+    });
+    
+    if (allKeywords.length === 0) return [text];
+    
+    const sortedKeywords = allKeywords.sort((a, b) => b.keyword.length - a.keyword.length);
+    const escapedNames = sortedKeywords.map(k => k.keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     const pattern = new RegExp(`(${escapedNames.join('|')})`, 'g');
     
     const parts = text.split(pattern);
     return parts.map((part, idx) => {
-      if (placeNames.includes(part)) {
-        return (
-          <span key={idx} className="inline-flex items-center gap-0.5">
-            <span className="text-blue-600 font-medium underline cursor-pointer hover:text-blue-800" onClick={() => loadProductsForPlace(part)}>
-              {part}
+      const matchedKeyword = sortedKeywords.find(k => k.keyword === part);
+      
+      if (matchedKeyword) {
+        if (matchedKeyword.type === 'klook') {
+          return (
+            <span key={idx} className="inline-flex items-center gap-0.5">
+              <span className="text-orange-600 font-medium">{part}</span>
+              <a
+                href={matchedKeyword.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center justify-center w-5 h-5 bg-orange-500 text-white rounded-full text-xs hover:bg-orange-600 transition-colors ml-0.5"
+                data-testid={`button-klook-${part}`}
+              >
+                <Plus className="w-3 h-3" />
+              </a>
             </span>
-            <button
-              onClick={(e) => { e.stopPropagation(); loadProductsForPlace(part); }}
-              className="inline-flex items-center justify-center w-5 h-5 bg-[#06C755] text-white rounded-full text-xs hover:bg-[#05B04A] transition-colors ml-0.5"
-              data-testid={`button-add-product-${part}`}
-            >
-              <Plus className="w-3 h-3" />
-            </button>
-          </span>
-        );
+          );
+        } else {
+          return (
+            <span key={idx} className="inline-flex items-center gap-0.5">
+              <span className="text-blue-600 font-medium underline cursor-pointer hover:text-blue-800" onClick={() => loadProductsForPlace(part)}>
+                {part}
+              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); loadProductsForPlace(part); }}
+                className="inline-flex items-center justify-center w-5 h-5 bg-[#06C755] text-white rounded-full text-xs hover:bg-[#05B04A] transition-colors ml-0.5"
+                data-testid={`button-add-product-${part}`}
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </span>
+          );
+        }
       }
       return part;
     });
-  }, [placeNames]);
+  }, [placeNames, klookHighlights]);
 
   const cartTotal = useMemo(() => {
     return cartItems.reduce((sum, item) => {
@@ -321,12 +368,66 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
     };
   }, [initializeTwilioClient]);
 
+  const detectKlookProducts = async (messageText: string, conversationSid: string, messageSid: string) => {
+    try {
+      const res = await fetch('/api/klook/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ messageText, conversationSid, messageSid })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.products && data.products.length > 0) {
+          setKlookHighlights(prev => {
+            const updated = new Map(prev);
+            updated.set(messageSid, data.products.map((p: any) => ({
+              id: Date.now(),
+              conversationSid,
+              messageSid,
+              productName: p.keyword,
+              productUrl: p.klookUrl,
+              startIndex: p.startIndex,
+              endIndex: p.endIndex
+            })));
+            return updated;
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Klook detection error:', err);
+    }
+  };
+
+  const loadConversationHighlights = async (conversationSid: string) => {
+    try {
+      const res = await fetch(`/api/klook/highlights/${conversationSid}`, {
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.highlights && data.highlights.length > 0) {
+          const highlightMap = new Map<string, KlookHighlight[]>();
+          data.highlights.forEach((h: KlookHighlight) => {
+            const existing = highlightMap.get(h.messageSid) || [];
+            existing.push(h);
+            highlightMap.set(h.messageSid, existing);
+          });
+          setKlookHighlights(highlightMap);
+        }
+      }
+    } catch (err) {
+      console.error('Load highlights error:', err);
+    }
+  };
+
   const joinConversation = async (conversationSid: string) => {
     if (!twilioClient) return;
 
     try {
       setLoading(true);
       setSelectedConversation(conversationSid);
+      setKlookHighlights(new Map());
 
       const conversation = await twilioClient.getConversationBySid(conversationSid);
       setActiveConversation(conversation);
@@ -341,14 +442,21 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
       }));
       setMessages(loadedMessages);
 
+      await loadConversationHighlights(conversationSid);
+
       conversation.on('messageAdded', (msg: any) => {
-        setMessages(prev => [...prev, {
+        const newMsg = {
           sid: msg.sid,
           author: msg.author,
           body: msg.body,
           dateCreated: msg.dateCreated,
           index: msg.index
-        }]);
+        };
+        setMessages(prev => [...prev, newMsg]);
+        
+        if (msg.body && msg.body.length > 10) {
+          detectKlookProducts(msg.body, conversationSid, msg.sid);
+        }
       });
 
     } catch (err) {
@@ -830,7 +938,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
                             : 'bg-white text-slate-800 rounded-2xl rounded-bl-sm shadow-sm'
                         }`}
                       >
-                        <p className="whitespace-pre-wrap break-words text-[15px]">{parseMessageWithPlaces(msg.body)}</p>
+                        <p className="whitespace-pre-wrap break-words text-[15px]">{parseMessageWithPlaces(msg.body, msg.sid)}</p>
                       </div>
                       {!isMe && (
                         <span className="text-[10px] text-white/60 mb-1">
