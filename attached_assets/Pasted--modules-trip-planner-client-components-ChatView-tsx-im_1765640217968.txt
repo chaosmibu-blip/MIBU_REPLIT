@@ -1,0 +1,331 @@
+// modules/trip-planner/client/components/ChatView.tsx
+
+import React, { useEffect, useState, useRef } from "react";
+import { Send, MapPin, ShoppingBag, Plus, Image as ImageIcon, Loader2, MoreVertical } from "lucide-react";
+import { format } from "date-fns";
+
+// UI Components (Shadcn & Tailwind)
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useToast } from "@/hooks/use-toast"; // Assuming standard toast hook
+import { cn } from "@/lib/utils";
+
+// --- Types (Ensure these match your existing types) ---
+interface ChatMessage {
+  sid: string;
+  author: string;
+  body: string;
+  dateCreated: Date;
+  attributes?: any; // To store potential Klook/Product metadata
+}
+
+interface Product {
+  id: string;
+  title: string;
+  price: string;
+  image: string;
+  rating?: number;
+}
+
+// --- Mibu Brand Colors (Reference) ---
+// Primary Green: #06C755
+// Accent Gold: #C4A77D
+// Background: Slate-50
+
+export default function ChatView() {
+  // --- 1. STATE & LOGIC SECTION (Preserve your existing logic here) ---
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputText, setInputText] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isTwilioReady, setIsTwilioReady] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
+
+  // Mock Identity for UI demo (Replace with your actual auth/Twilio identity)
+  const myIdentity = "user_me"; 
+
+  // --- MOCK LOGIC: Replace this useEffect with your real Twilio connection ---
+  useEffect(() => {
+    // Simulate loading Twilio
+    setIsTwilioReady(true);
+    
+    // Simulate initial messages
+    setMessages([
+      {
+        sid: "1",
+        author: "other_user",
+        body: "Hey! Should we book the Universal Studios pass?",
+        dateCreated: new Date(Date.now() - 100000),
+      },
+      {
+        sid: "2",
+        author: "user_me",
+        body: "Yes, I found a good deal on Klook.",
+        dateCreated: new Date(Date.now() - 50000),
+      },
+      // Example of a Rich Media / Product Message
+      {
+        sid: "3",
+        author: "user_me",
+        body: JSON.stringify({
+          type: "product",
+          data: {
+            id: "klook_123",
+            title: "Universal Studios Japan Studio Pass",
+            price: "¥ 8,400",
+            image: "https://res.klook.com/image/upload/fl_lossy.progressive,q_85/f_auto/v1679034298/blog/yebz5e0j0lqj0qj0qj0q.jpg", // Placeholder
+            rating: 4.8
+          }
+        }),
+        dateCreated: new Date(),
+      }
+    ]);
+  }, []);
+
+  // Handle Send
+  const handleSendMessage = async () => {
+    if (!inputText.trim()) return;
+    
+    // Logic: channel.sendMessage(inputText)...
+    const tempMsg: ChatMessage = {
+      sid: Date.now().toString(),
+      author: myIdentity,
+      body: inputText,
+      dateCreated: new Date(),
+    };
+    
+    setMessages((prev) => [...prev, tempMsg]);
+    setInputText("");
+    scrollToBottom();
+  };
+
+  // Logic: Add to Cart (Mock)
+  const handleAddToCart = (product: Product) => {
+    toast({
+      title: "Added to Cart",
+      description: `${product.title} has been added to your trip cart.`,
+      className: "bg-[#06C755] text-white border-none"
+    });
+  };
+
+  // Helper: Scroll to bottom
+  const scrollToBottom = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+
+  // --- 2. RENDER HELPERS ---
+
+  /**
+   * Parse message body to detect if it's a Rich Product Card or plain text.
+   * This preserves your logic requirements for "Parsed Content".
+   */
+  const renderMessageContent = (body: string, isMe: boolean) => {
+    try {
+      // Attempt to parse JSON (assuming your backend sends products as JSON strings)
+      // If your logic uses 'attributes', change this to check msg.attributes
+      if (body.startsWith("{") && body.includes("product")) {
+        const parsed = JSON.parse(body);
+        if (parsed.type === "product" && parsed.data) {
+          return <ProductBubble product={parsed.data} isMe={isMe} onAdd={() => handleAddToCart(parsed.data)} />;
+        }
+      }
+    } catch (e) {
+      // Fallback to plain text if parse fails
+    }
+    return <p className="text-sm leading-relaxed whitespace-pre-wrap">{body}</p>;
+  };
+
+  return (
+    <div className="flex h-full flex-col bg-slate-50 relative overflow-hidden font-sans">
+      
+      {/* --- HEADER --- */}
+      <header className="flex items-center justify-between px-6 py-4 bg-white/80 backdrop-blur-md border-b border-gray-100 z-10 sticky top-0 shadow-sm">
+        <div className="flex items-center gap-3">
+          <Avatar className="h-10 w-10 ring-2 ring-offset-2 ring-[#06C755]/20">
+            <AvatarImage src="https://github.com/shadcn.png" />
+            <AvatarFallback>TP</AvatarFallback>
+          </Avatar>
+          <div>
+            <h2 className="text-base font-bold text-gray-800">Osaka Trip Group</h2>
+            <div className="flex items-center gap-1.5">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#06C755]"></span>
+              </span>
+              <span className="text-xs text-gray-500 font-medium">Online</span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Header Actions */}
+        <div className="flex items-center gap-2">
+           <Button variant="ghost" size="icon" className="text-gray-400 hover:text-[#06C755]">
+             <ShoppingBag className="h-5 w-5" />
+           </Button>
+           <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-600">
+             <MoreVertical className="h-5 w-5" />
+           </Button>
+        </div>
+      </header>
+
+      {/* --- MESSAGE LIST --- */}
+      <ScrollArea className="flex-1 px-4 py-6 bg-slate-50/50">
+        <div className="flex flex-col gap-6 max-w-3xl mx-auto pb-4">
+          {messages.map((msg, index) => {
+            const isMe = msg.author === myIdentity;
+            const showAvatar = !isMe && (index === 0 || messages[index - 1].author !== msg.author);
+
+            return (
+              <div
+                key={msg.sid}
+                className={cn(
+                  "flex w-full gap-3",
+                  isMe ? "justify-end" : "justify-start"
+                )}
+              >
+                {/* Avatar for Others */}
+                {!isMe && (
+                  <div className="flex-shrink-0 w-8 pt-1">
+                     {showAvatar ? (
+                       <Avatar className="h-8 w-8">
+                         <AvatarFallback className="bg-gray-200 text-xs text-gray-600">
+                           {msg.author.slice(0, 2).toUpperCase()}
+                         </AvatarFallback>
+                       </Avatar>
+                     ) : <div className="w-8" />}
+                  </div>
+                )}
+
+                {/* Message Bubble Container */}
+                <div className={cn("flex flex-col max-w-[75%]", isMe ? "items-end" : "items-start")}>
+                  
+                  {/* The Bubble */}
+                  <div
+                    className={cn(
+                      "relative px-4 py-3 shadow-sm",
+                      isMe 
+                        ? "bg-[#06C755] text-white rounded-2xl rounded-tr-sm" // My Bubble
+                        : "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm" // Other Bubble
+                    )}
+                  >
+                    {renderMessageContent(msg.body, isMe)}
+                  </div>
+
+                  {/* Timestamp */}
+                  <span className="text-[10px] text-gray-400 mt-1 px-1">
+                    {format(new Date(msg.dateCreated), "h:mm a")}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={scrollRef} />
+        </div>
+      </ScrollArea>
+
+      {/* --- INPUT FOOTER --- */}
+      <div className="p-4 bg-white border-t border-gray-100 z-10">
+        <div className="max-w-3xl mx-auto flex items-center gap-2">
+          
+          {/* Attachment Popover */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-gray-400 hover:text-[#06C755] hover:bg-green-50 rounded-full h-10 w-10">
+                <Plus className="h-6 w-6" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="start" className="w-48 p-2">
+              <div className="grid gap-1">
+                <Button variant="ghost" className="justify-start gap-2 text-sm font-normal">
+                  <ImageIcon className="h-4 w-4 text-[#06C755]" /> Photos
+                </Button>
+                <Button variant="ghost" className="justify-start gap-2 text-sm font-normal">
+                  <MapPin className="h-4 w-4 text-[#C4A77D]" /> Location
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Text Input */}
+          <div className="flex-1 relative">
+            <Input
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+              placeholder="Type your message..."
+              className="pr-10 rounded-full border-gray-200 bg-slate-50 focus-visible:ring-[#06C755] focus-visible:ring-offset-0 h-11"
+            />
+          </div>
+
+          {/* Send Button */}
+          <Button 
+            onClick={handleSendMessage} 
+            disabled={!inputText.trim()}
+            className={cn(
+              "rounded-full h-11 w-11 p-0 transition-all",
+              inputText.trim() 
+                ? "bg-[#06C755] hover:bg-[#05a346] shadow-md shadow-green-200" 
+                : "bg-gray-200 text-gray-400"
+            )}
+          >
+             {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5 ml-0.5" />}
+          </Button>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- SUB-COMPONENT: PRODUCT CARD BUBBLE ---
+function ProductBubble({ product, isMe, onAdd }: { product: Product; isMe: boolean; onAdd: () => void }) {
+  return (
+    <Card className={cn(
+      "w-60 overflow-hidden border-none shadow-none mt-1 mb-1",
+      isMe ? "bg-white/10 text-white" : "bg-slate-50"
+    )}>
+      {/* Product Image */}
+      <div className="h-32 w-full bg-gray-200 relative">
+        <img src={product.image || "/placeholder-travel.jpg"} alt={product.title} className="w-full h-full object-cover" />
+        <div className="absolute top-2 right-2 bg-black/50 text-white text-[10px] px-2 py-0.5 rounded-full backdrop-blur-sm">
+          Klook
+        </div>
+      </div>
+      
+      {/* Content */}
+      <CardContent className="p-3">
+        <h4 className={cn("font-bold text-sm leading-tight mb-1 line-clamp-2", isMe ? "text-white" : "text-gray-800")}>
+          {product.title}
+        </h4>
+        <div className="flex items-center justify-between mt-2">
+          <span className={cn("font-bold text-sm", isMe ? "text-green-100" : "text-[#06C755]")}>
+            {product.price}
+          </span>
+          <Button 
+            size="sm" 
+            onClick={onAdd}
+            className={cn(
+              "h-7 px-3 text-xs rounded-full",
+              isMe 
+               ? "bg-white text-[#06C755] hover:bg-gray-100" 
+               : "bg-[#06C755] text-white hover:bg-[#05a346]"
+            )}
+          >
+            Add +
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
