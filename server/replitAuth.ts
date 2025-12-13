@@ -22,11 +22,16 @@ const ALLOWED_REDIRECT_ORIGINS = [
 
 function isAllowedRedirectUri(uri: string): boolean {
   try {
+    // Allow Expo and custom app deep links
+    if (uri.startsWith('exp://') || uri.startsWith('myapp://') || uri.startsWith('mibu://')) {
+      return true;
+    }
+    
     const url = new URL(uri);
     return ALLOWED_REDIRECT_ORIGINS.some(allowed => {
       const allowedUrl = new URL(allowed);
       return url.origin === allowedUrl.origin;
-    }) || uri.startsWith('exp://') || uri.startsWith('myapp://');
+    });
   } catch {
     return false;
   }
