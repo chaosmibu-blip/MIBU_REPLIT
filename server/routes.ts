@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema } from "@shared/schema";
+import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema } from "@shared/schema";
 import { z } from "zod";
 import { createTripPlannerRoutes } from "../modules/trip-planner/server/routes";
 import { createPlannerServiceRoutes } from "../modules/trip-planner/server/planner-routes";
@@ -2582,6 +2582,220 @@ ${uncachedSkeleton.map((item, idx) => `  {
     } catch (error) {
       console.error("Feedback exclusion error:", error);
       res.status(500).json({ error: "Failed to exclude place" });
+    }
+  });
+
+  // ============ Commerce Routes (In-Chat Shopping) ============
+  
+  // Search places by name (for commerce matching)
+  app.get("/api/commerce/places/search", async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      if (!query || query.length < 2) {
+        return res.json([]);
+      }
+      const places = await storage.searchPlacesByName(query);
+      res.json(places);
+    } catch (error) {
+      console.error("Place search error:", error);
+      res.status(500).json({ error: "Failed to search places" });
+    }
+  });
+
+  // Get products by place ID
+  app.get("/api/commerce/products/place/:placeId", async (req, res) => {
+    try {
+      const placeId = parseInt(req.params.placeId);
+      const products = await storage.getProductsByPlaceId(placeId);
+      res.json(products);
+    } catch (error) {
+      console.error("Get products error:", error);
+      res.status(500).json({ error: "Failed to get products" });
+    }
+  });
+
+  // Get products by place name (for chat matching)
+  app.get("/api/commerce/products/by-name", async (req, res) => {
+    try {
+      const placeName = req.query.name as string;
+      if (!placeName) {
+        return res.json([]);
+      }
+      const products = await storage.getProductsByPlaceName(placeName);
+      res.json(products);
+    } catch (error) {
+      console.error("Get products by name error:", error);
+      res.status(500).json({ error: "Failed to get products" });
+    }
+  });
+
+  // Get cart items
+  app.get("/api/commerce/cart", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const items = await storage.getCartItems(userId);
+      res.json(items);
+    } catch (error) {
+      console.error("Get cart error:", error);
+      res.status(500).json({ error: "Failed to get cart" });
+    }
+  });
+
+  // Add to cart
+  app.post("/api/commerce/cart", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const parsed = insertCartItemSchema.safeParse({ ...req.body, userId });
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid cart item data" });
+      }
+      const item = await storage.addToCart(parsed.data);
+      res.json(item);
+    } catch (error) {
+      console.error("Add to cart error:", error);
+      res.status(500).json({ error: "Failed to add to cart" });
+    }
+  });
+
+  // Update cart item quantity
+  app.patch("/api/commerce/cart/:itemId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const itemId = parseInt(req.params.itemId);
+      const { quantity } = req.body;
+      if (typeof quantity !== 'number' || quantity < 1) {
+        return res.status(400).json({ error: "Invalid quantity" });
+      }
+      const item = await storage.updateCartItemQuantity(itemId, quantity);
+      res.json(item);
+    } catch (error) {
+      console.error("Update cart item error:", error);
+      res.status(500).json({ error: "Failed to update cart item" });
+    }
+  });
+
+  // Remove from cart
+  app.delete("/api/commerce/cart/:itemId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const itemId = parseInt(req.params.itemId);
+      await storage.removeFromCart(itemId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Remove from cart error:", error);
+      res.status(500).json({ error: "Failed to remove from cart" });
+    }
+  });
+
+  // Clear cart
+  app.delete("/api/commerce/cart", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      await storage.clearCart(userId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Clear cart error:", error);
+      res.status(500).json({ error: "Failed to clear cart" });
+    }
+  });
+
+  // Checkout - Create Stripe session
+  app.post("/api/commerce/checkout", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const cartItems = await storage.getCartItems(userId);
+      if (cartItems.length === 0) {
+        return res.status(400).json({ error: "Cart is empty" });
+      }
+
+      const stripe = (await import('stripe')).default;
+      const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY!);
+
+      const lineItems = cartItems.map(item => ({
+        price_data: {
+          currency: item.product.currency.toLowerCase(),
+          product_data: {
+            name: item.product.name,
+            description: item.product.description || undefined,
+          },
+          unit_amount: item.product.price,
+        },
+        quantity: item.quantity,
+      }));
+
+      const totalAmount = cartItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+
+      // Create order first
+      const order = await storage.createOrder({
+        userId,
+        status: 'pending',
+        totalAmount,
+        currency: 'TWD',
+        items: cartItems.map(item => ({
+          productId: item.productId,
+          name: item.product.name,
+          price: item.product.price,
+          quantity: item.quantity,
+        })),
+      });
+
+      const session = await stripeClient.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: lineItems,
+        mode: 'payment',
+        success_url: `${req.headers.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${req.headers.origin}/checkout/cancel`,
+        metadata: {
+          orderId: order.id.toString(),
+          userId,
+        },
+      });
+
+      // Update order with session ID
+      await storage.updateOrderStatus(order.id, 'pending', undefined);
+      await storage.createOrder({
+        ...order,
+        stripeSessionId: session.id,
+      }).catch(() => {});
+
+      res.json({ sessionId: session.id, url: session.url });
+    } catch (error) {
+      console.error("Checkout error:", error);
+      res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  });
+
+  // Get user orders
+  app.get("/api/commerce/orders", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const orders = await storage.getUserOrders(userId);
+      res.json(orders);
+    } catch (error) {
+      console.error("Get orders error:", error);
+      res.status(500).json({ error: "Failed to get orders" });
     }
   });
 
