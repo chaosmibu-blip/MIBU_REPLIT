@@ -799,3 +799,56 @@ export type CartItem = typeof cartItems.$inferSelect;
 export type InsertCartItem = z.infer<typeof insertCartItemSchema>;
 export type CommerceOrder = typeof commerceOrders.$inferSelect;
 export type InsertCommerceOrder = z.infer<typeof insertCommerceOrderSchema>;
+
+// =====================================================
+// KLOOK INTEGRATION TABLES
+// =====================================================
+
+// Klook Products Cache - Klook 商品快取
+export const klookProducts = pgTable("klook_products", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  nameNormalized: text("name_normalized").notNull(),
+  klookUrl: text("klook_url").notNull(),
+  category: text("category"),
+  region: text("region"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_klook_products_name").on(table.nameNormalized),
+  index("IDX_klook_products_region").on(table.region),
+]);
+
+// Message Highlights - 訊息中的 Klook 商品標記
+export const messageHighlights = pgTable("message_highlights", {
+  id: serial("id").primaryKey(),
+  conversationSid: varchar("conversation_sid", { length: 100 }).notNull(),
+  messageSid: varchar("message_sid", { length: 100 }).notNull(),
+  productName: text("product_name").notNull(),
+  productUrl: text("product_url").notNull(),
+  startIndex: integer("start_index").notNull(),
+  endIndex: integer("end_index").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_message_highlights_conversation").on(table.conversationSid),
+  index("IDX_message_highlights_message").on(table.messageSid),
+]);
+
+// Klook insert schemas
+export const insertKlookProductSchema = createInsertSchema(klookProducts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertMessageHighlightSchema = createInsertSchema(messageHighlights).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Klook types
+export type KlookProduct = typeof klookProducts.$inferSelect;
+export type InsertKlookProduct = z.infer<typeof insertKlookProductSchema>;
+export type MessageHighlight = typeof messageHighlights.$inferSelect;
+export type InsertMessageHighlight = z.infer<typeof insertMessageHighlightSchema>;

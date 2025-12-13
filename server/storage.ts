@@ -1,7 +1,7 @@
 import { 
   users, collections, merchants, coupons, placeCache, placeFeedback, merchantPlaceLinks,
   countries, regions, districts, categories, subcategories, chatInvites,
-  placeProducts, cartItems, commerceOrders,
+  placeProducts, cartItems, commerceOrders, klookProducts, messageHighlights,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -14,7 +14,9 @@ import {
   type ChatInvite,
   type PlaceProduct, type InsertPlaceProduct,
   type CartItem, type InsertCartItem,
-  type CommerceOrder, type InsertCommerceOrder
+  type CommerceOrder, type InsertCommerceOrder,
+  type KlookProduct, type InsertKlookProduct,
+  type MessageHighlight, type InsertMessageHighlight
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -104,6 +106,16 @@ export interface IStorage {
   getOrderBySessionId(sessionId: string): Promise<CommerceOrder | undefined>;
   updateOrderStatus(orderId: number, status: string, paymentIntentId?: string): Promise<CommerceOrder>;
   getUserOrders(userId: string): Promise<CommerceOrder[]>;
+
+  // Klook Products
+  searchKlookProducts(query: string): Promise<KlookProduct[]>;
+  getKlookProductByName(normalizedName: string): Promise<KlookProduct | undefined>;
+  createKlookProduct(product: InsertKlookProduct): Promise<KlookProduct>;
+
+  // Message Highlights
+  getMessageHighlights(conversationSid: string, messageSid: string): Promise<MessageHighlight[]>;
+  createMessageHighlight(highlight: InsertMessageHighlight): Promise<MessageHighlight>;
+  getConversationHighlights(conversationSid: string): Promise<MessageHighlight[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -688,6 +700,47 @@ export class DatabaseStorage implements IStorage {
 
   async getUserOrders(userId: string): Promise<CommerceOrder[]> {
     return db.select().from(commerceOrders).where(eq(commerceOrders.userId, userId)).orderBy(desc(commerceOrders.createdAt));
+  }
+
+  // Klook Products
+  async searchKlookProducts(query: string): Promise<KlookProduct[]> {
+    const normalized = query.toLowerCase().replace(/\s+/g, '');
+    return db.select().from(klookProducts)
+      .where(and(
+        ilike(klookProducts.nameNormalized, `%${normalized}%`),
+        eq(klookProducts.isActive, true)
+      ))
+      .limit(10);
+  }
+
+  async getKlookProductByName(normalizedName: string): Promise<KlookProduct | undefined> {
+    const [product] = await db.select().from(klookProducts)
+      .where(eq(klookProducts.nameNormalized, normalizedName));
+    return product;
+  }
+
+  async createKlookProduct(product: InsertKlookProduct): Promise<KlookProduct> {
+    const [created] = await db.insert(klookProducts).values(product).returning();
+    return created;
+  }
+
+  // Message Highlights
+  async getMessageHighlights(conversationSid: string, messageSid: string): Promise<MessageHighlight[]> {
+    return db.select().from(messageHighlights)
+      .where(and(
+        eq(messageHighlights.conversationSid, conversationSid),
+        eq(messageHighlights.messageSid, messageSid)
+      ));
+  }
+
+  async createMessageHighlight(highlight: InsertMessageHighlight): Promise<MessageHighlight> {
+    const [created] = await db.insert(messageHighlights).values(highlight).returning();
+    return created;
+  }
+
+  async getConversationHighlights(conversationSid: string): Promise<MessageHighlight[]> {
+    return db.select().from(messageHighlights)
+      .where(eq(messageHighlights.conversationSid, conversationSid));
   }
 }
 
