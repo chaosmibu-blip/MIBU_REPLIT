@@ -903,7 +903,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
               <React.Fragment key={msg.sid}>
                 {showDate && (
                   <div className="text-center my-4">
-                    <span className="px-3 py-1 bg-black/20 text-white text-xs rounded-full">
+                    <span className="px-3 py-1.5 bg-slate-600/70 text-white text-xs font-medium rounded-full shadow-sm">
                       {new Date(msg.dateCreated).toLocaleDateString('zh-TW', { 
                         year: 'numeric', 
                         month: 'long', 
@@ -913,38 +913,37 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
                     </span>
                   </div>
                 )}
-                <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} items-end gap-2`}>
+                <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} items-end gap-2 mb-1`}>
                   {!isMe && (
-                    <div className="w-8 h-8 bg-slate-300 rounded-full flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs text-white font-medium">
-                        {msg.author.slice(0, 1).toUpperCase()}
+                    <div 
+                      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm"
+                      style={{ backgroundColor: '#7C8DB5' }}
+                    >
+                      <span className="text-sm text-white font-bold">
+                        {msg.author?.slice(0, 1).toUpperCase() || '?'}
                       </span>
                     </div>
                   )}
-                  <div className="flex flex-col max-w-[70%]">
+                  <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[75%]`}>
                     {!isMe && (
-                      <span className="text-xs text-white/70 mb-1 ml-1">{msg.author.slice(0, 8)}</span>
+                      <span className="text-xs text-slate-500 mb-1 ml-2 font-medium">{msg.author?.slice(0, 8) || '用戶'}</span>
                     )}
-                    <div className="flex items-end gap-1">
-                      {isMe && (
-                        <span className="text-[10px] text-white/60 mb-1">
-                          {new Date(msg.dateCreated).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      )}
+                    <div className={`flex items-end gap-1.5 ${isMe ? 'flex-row' : 'flex-row-reverse'}`}>
+                      <span className="text-[10px] text-slate-400 mb-1.5 flex-shrink-0">
+                        {new Date(msg.dateCreated).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
                       <div
-                        className={`px-4 py-2.5 ${
-                          isMe
-                            ? 'bg-[#06C755] text-white rounded-2xl rounded-br-sm'
-                            : 'bg-white text-slate-800 rounded-2xl rounded-bl-sm shadow-sm'
-                        }`}
+                        className="px-4 py-2.5 shadow-md"
+                        style={{
+                          backgroundColor: isMe ? '#06C755' : '#FFFFFF',
+                          color: isMe ? '#FFFFFF' : '#1E293B',
+                          borderRadius: isMe ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
+                          maxWidth: '100%',
+                          wordBreak: 'break-word'
+                        }}
                       >
-                        <p className="whitespace-pre-wrap break-words text-[15px]">{parseMessageWithPlaces(msg.body, msg.sid)}</p>
+                        <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{parseMessageWithPlaces(msg.body, msg.sid)}</p>
                       </div>
-                      {!isMe && (
-                        <span className="text-[10px] text-white/60 mb-1">
-                          {new Date(msg.dateCreated).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>
