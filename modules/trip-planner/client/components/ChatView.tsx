@@ -672,9 +672,14 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
       if (res.ok) {
         const data = await res.json();
         if (data.callUrl) {
-          window.open(data.callUrl, '_blank');
-        } else {
-          await activeConversation?.sendMessage('📞 已發起通話邀請');
+          const link = document.createElement('a');
+          link.href = data.callUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          await activeConversation?.sendMessage(`📞 已發起通話\n${data.callUrl}`);
         }
       } else {
         const data = await res.json();
@@ -761,10 +766,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
             <h2 className="text-xl font-bold text-slate-800">聊天</h2>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="p-2 bg-slate-600 text-white rounded-full hover:bg-slate-700 transition-colors shadow-md"
+              className="p-3 bg-[#C4A77D] text-white rounded-full hover:bg-[#B39A70] transition-colors shadow-md"
               data-testid="button-create-chat"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-6 h-6" />
             </button>
           </div>
         </div>
@@ -778,7 +783,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
             <p className="text-slate-500 mb-6">建立聊天室，邀請旅伴一起規劃旅程</p>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="px-6 py-3 bg-slate-600 text-white rounded-full font-medium hover:bg-slate-700 transition-colors shadow-md"
+              className="px-6 py-3 bg-[#C4A77D] text-white rounded-full font-medium hover:bg-[#B39A70] transition-colors shadow-md"
               data-testid="button-create-first-chat"
             >
               建立聊天室
@@ -857,7 +862,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
                 <button
                   onClick={createConversation}
                   disabled={!newChatName.trim() || loading}
-                  className="flex-1 py-4 rounded-xl bg-slate-600 text-white font-bold hover:bg-slate-700 disabled:opacity-50"
+                  className="flex-1 py-4 rounded-xl bg-[#C4A77D] text-white font-bold hover:bg-[#B39A70] disabled:opacity-50"
                   data-testid="button-confirm-create"
                 >
                   {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : '建立'}
