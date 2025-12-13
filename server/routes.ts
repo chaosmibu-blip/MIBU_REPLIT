@@ -194,6 +194,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth
   await setupAuth(app);
 
+  // ============ Health Check ============
+  app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', message: 'Server is running correctly!', timestamp: new Date().toISOString() });
+  });
+
   // ============ Public Config Routes ============
   // Mapbox access token (public tokens are designed to be exposed to clients)
   // Security is managed via URL restrictions in Mapbox dashboard
