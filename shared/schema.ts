@@ -852,3 +852,124 @@ export type KlookProduct = typeof klookProducts.$inferSelect;
 export type InsertKlookProduct = z.infer<typeof insertKlookProductSchema>;
 export type MessageHighlight = typeof messageHighlights.$inferSelect;
 export type InsertMessageHighlight = z.infer<typeof insertMessageHighlightSchema>;
+
+// =====================================================
+// 商家地點申請系統 (Place Application System)
+// =====================================================
+
+// Place Drafts - 草稿地點（待審核）
+export type PlaceDraftStatus = 'pending' | 'approved' | 'rejected';
+
+export const placeDrafts = pgTable("place_drafts", {
+  id: serial("id").primaryKey(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  placeName: text("place_name").notNull(),
+  categoryId: integer("category_id").references(() => categories.id).notNull(),
+  subcategoryId: integer("subcategory_id").references(() => subcategories.id).notNull(),
+  description: text("description"),
+  districtId: integer("district_id").references(() => districts.id).notNull(),
+  regionId: integer("region_id").references(() => regions.id).notNull(),
+  countryId: integer("country_id").references(() => countries.id).notNull(),
+  address: text("address"),
+  googlePlaceId: text("google_place_id"),
+  locationLat: text("location_lat"),
+  locationLng: text("location_lng"),
+  status: varchar("status", { length: 20 }).default('pending').notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_place_drafts_merchant").on(table.merchantId),
+  index("IDX_place_drafts_status").on(table.status),
+  index("IDX_place_drafts_district").on(table.districtId),
+]);
+
+// Place Applications - 申請紀錄（審核流程）
+export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
+
+export const placeApplications = pgTable("place_applications", {
+  id: serial("id").primaryKey(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  placeDraftId: integer("place_draft_id").references(() => placeDrafts.id).notNull(),
+  status: varchar("status", { length: 20 }).default('pending').notNull(),
+  reviewedBy: varchar("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewNotes: text("review_notes"),
+  placeCacheId: integer("place_cache_id").references(() => placeCache.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_place_applications_merchant").on(table.merchantId),
+  index("IDX_place_applications_status").on(table.status),
+  index("IDX_place_applications_draft").on(table.placeDraftId),
+]);
+
+// Relations for Place Application System
+export const placeDraftsRelations = relations(placeDrafts, ({ one, many }) => ({
+  merchant: one(merchants, {
+    fields: [placeDrafts.merchantId],
+    references: [merchants.id],
+  }),
+  category: one(categories, {
+    fields: [placeDrafts.categoryId],
+    references: [categories.id],
+  }),
+  subcategory: one(subcategories, {
+    fields: [placeDrafts.subcategoryId],
+    references: [subcategories.id],
+  }),
+  district: one(districts, {
+    fields: [placeDrafts.districtId],
+    references: [districts.id],
+  }),
+  region: one(regions, {
+    fields: [placeDrafts.regionId],
+    references: [regions.id],
+  }),
+  country: one(countries, {
+    fields: [placeDrafts.countryId],
+    references: [countries.id],
+  }),
+  applications: many(placeApplications),
+}));
+
+export const placeApplicationsRelations = relations(placeApplications, ({ one }) => ({
+  merchant: one(merchants, {
+    fields: [placeApplications.merchantId],
+    references: [merchants.id],
+  }),
+  placeDraft: one(placeDrafts, {
+    fields: [placeApplications.placeDraftId],
+    references: [placeDrafts.id],
+  }),
+  reviewer: one(users, {
+    fields: [placeApplications.reviewedBy],
+    references: [users.id],
+  }),
+  placeCache: one(placeCache, {
+    fields: [placeApplications.placeCacheId],
+    references: [placeCache.id],
+  }),
+}));
+
+// Insert schemas for Place Application System
+export const insertPlaceDraftSchema = createInsertSchema(placeDrafts).omit({
+  id: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPlaceApplicationSchema = createInsertSchema(placeApplications).omit({
+  id: true,
+  status: true,
+  reviewedBy: true,
+  reviewedAt: true,
+  reviewNotes: true,
+  placeCacheId: true,
+  createdAt: true,
+});
+
+// Types for Place Application System
+export type PlaceDraft = typeof placeDrafts.$inferSelect;
+export type InsertPlaceDraft = z.infer<typeof insertPlaceDraftSchema>;
+export type PlaceApplication = typeof placeApplications.$inferSelect;
+export type InsertPlaceApplication = z.infer<typeof insertPlaceApplicationSchema>;

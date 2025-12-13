@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema } from "@shared/schema";
+import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema, insertPlaceDraftSchema, insertPlaceApplicationSchema } from "@shared/schema";
 import { z } from "zod";
 import { createTripPlannerRoutes } from "../modules/trip-planner/server/routes";
 import { createPlannerServiceRoutes } from "../modules/trip-planner/server/planner-routes";
@@ -3109,6 +3109,165 @@ ${uncachedSkeleton.map((item, idx) => `  {
     } catch (error) {
       console.error("Get orders error:", error);
       res.status(500).json({ error: "Failed to get orders" });
+    }
+  });
+
+  // ============ Place Application Routes (商家地點申請) ============
+
+  // 商家建立草稿地點
+  app.post("/api/merchant/place-drafts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) return res.status(403).json({ error: "Merchant account required" });
+
+      const validated = insertPlaceDraftSchema.parse({ ...req.body, merchantId: merchant.id });
+      const draft = await storage.createPlaceDraft(validated);
+      
+      // 自動建立申請紀錄
+      const application = await storage.createPlaceApplication({
+        merchantId: merchant.id,
+        placeDraftId: draft.id,
+      });
+
+      res.json({ draft, application });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      console.error("Create place draft error:", error);
+      res.status(500).json({ error: "Failed to create place draft" });
+    }
+  });
+
+  // 取得商家的草稿地點
+  app.get("/api/merchant/place-drafts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) return res.status(403).json({ error: "Merchant account required" });
+
+      const drafts = await storage.getPlaceDraftsByMerchant(merchant.id);
+      res.json({ drafts });
+    } catch (error) {
+      console.error("Get place drafts error:", error);
+      res.status(500).json({ error: "Failed to get place drafts" });
+    }
+  });
+
+  // 取得商家的申請紀錄
+  app.get("/api/merchant/applications", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) return res.status(403).json({ error: "Merchant account required" });
+
+      const applications = await storage.getPlaceApplicationsByMerchant(merchant.id);
+      res.json({ applications });
+    } catch (error) {
+      console.error("Get applications error:", error);
+      res.status(500).json({ error: "Failed to get applications" });
+    }
+  });
+
+  // 管理員：取得待審核申請
+  app.get("/api/admin/applications/pending", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const applications = await storage.getPendingApplications();
+      res.json({ applications });
+    } catch (error) {
+      console.error("Get pending applications error:", error);
+      res.status(500).json({ error: "Failed to get pending applications" });
+    }
+  });
+
+  // 管理員：審核申請（通過/退回）
+  app.patch("/api/admin/applications/:id/review", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const applicationId = parseInt(req.params.id);
+      const { status, reviewNotes } = req.body;
+
+      if (!['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: "Status must be 'approved' or 'rejected'" });
+      }
+
+      const application = await storage.getPlaceApplicationById(applicationId);
+      if (!application) return res.status(404).json({ error: "Application not found" });
+
+      // 更新申請狀態
+      const updated = await storage.updatePlaceApplication(applicationId, {
+        status,
+        reviewedBy: userId,
+        reviewedAt: new Date(),
+        reviewNotes,
+      });
+
+      // 同時更新草稿狀態
+      await storage.updatePlaceDraft(application.placeDraftId, { status });
+
+      // 如果通過，將地點發布到 place_cache
+      if (status === 'approved') {
+        const draft = await storage.getPlaceDraftById(application.placeDraftId);
+        if (draft) {
+          const districtInfo = await storage.getDistrictWithParents(draft.districtId);
+          if (districtInfo) {
+            const categories = await storage.getCategories();
+            const category = categories.find(c => c.id === draft.categoryId);
+            const subcategories = await storage.getSubcategoriesByCategory(draft.categoryId);
+            const subcategory = subcategories.find(s => s.id === draft.subcategoryId);
+
+            const newPlace = await storage.savePlaceToCache({
+              placeName: draft.placeName,
+              description: draft.description || '',
+              category: category?.nameZh || '',
+              subCategory: subcategory?.nameZh || '',
+              district: districtInfo.district.nameZh,
+              city: districtInfo.region.nameZh,
+              country: districtInfo.country.nameZh,
+              placeId: draft.googlePlaceId || undefined,
+              locationLat: draft.locationLat || undefined,
+              locationLng: draft.locationLng || undefined,
+              verifiedAddress: draft.address || undefined,
+            });
+
+            // 更新申請紀錄的 placeCacheId
+            await storage.updatePlaceApplication(applicationId, { placeCacheId: newPlace.id });
+
+            // 自動建立商家認領連結
+            await storage.createMerchantPlaceLink({
+              merchantId: application.merchantId,
+              placeCacheId: newPlace.id,
+              googlePlaceId: draft.googlePlaceId || undefined,
+              placeName: draft.placeName,
+              district: districtInfo.district.nameZh,
+              city: districtInfo.region.nameZh,
+              country: districtInfo.country.nameZh,
+              status: 'approved',
+            });
+          }
+        }
+      }
+
+      res.json({ application: updated });
+    } catch (error) {
+      console.error("Review application error:", error);
+      res.status(500).json({ error: "Failed to review application" });
     }
   });
 

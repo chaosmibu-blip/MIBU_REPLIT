@@ -2,6 +2,7 @@ import {
   users, collections, merchants, coupons, placeCache, placeFeedback, merchantPlaceLinks,
   countries, regions, districts, categories, subcategories, chatInvites,
   placeProducts, cartItems, commerceOrders, klookProducts, messageHighlights,
+  placeDrafts, placeApplications,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -16,7 +17,9 @@ import {
   type CartItem, type InsertCartItem,
   type CommerceOrder, type InsertCommerceOrder,
   type KlookProduct, type InsertKlookProduct,
-  type MessageHighlight, type InsertMessageHighlight
+  type MessageHighlight, type InsertMessageHighlight,
+  type PlaceDraft, type InsertPlaceDraft,
+  type PlaceApplication, type InsertPlaceApplication
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -116,6 +119,20 @@ export interface IStorage {
   getMessageHighlights(conversationSid: string, messageSid: string): Promise<MessageHighlight[]>;
   createMessageHighlight(highlight: InsertMessageHighlight): Promise<MessageHighlight>;
   getConversationHighlights(conversationSid: string): Promise<MessageHighlight[]>;
+
+  // Place Drafts (商家草稿地點)
+  createPlaceDraft(draft: InsertPlaceDraft): Promise<PlaceDraft>;
+  getPlaceDraftById(id: number): Promise<PlaceDraft | undefined>;
+  getPlaceDraftsByMerchant(merchantId: number): Promise<PlaceDraft[]>;
+  updatePlaceDraft(id: number, data: Partial<PlaceDraft>): Promise<PlaceDraft>;
+  deletePlaceDraft(id: number): Promise<void>;
+
+  // Place Applications (地點申請紀錄)
+  createPlaceApplication(application: InsertPlaceApplication): Promise<PlaceApplication>;
+  getPlaceApplicationById(id: number): Promise<PlaceApplication | undefined>;
+  getPlaceApplicationsByMerchant(merchantId: number): Promise<PlaceApplication[]>;
+  getPendingApplications(): Promise<PlaceApplication[]>;
+  updatePlaceApplication(id: number, data: Partial<PlaceApplication>): Promise<PlaceApplication>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -741,6 +758,66 @@ export class DatabaseStorage implements IStorage {
   async getConversationHighlights(conversationSid: string): Promise<MessageHighlight[]> {
     return db.select().from(messageHighlights)
       .where(eq(messageHighlights.conversationSid, conversationSid));
+  }
+
+  // Place Drafts (商家草稿地點)
+  async createPlaceDraft(draft: InsertPlaceDraft): Promise<PlaceDraft> {
+    const [created] = await db.insert(placeDrafts).values(draft).returning();
+    return created;
+  }
+
+  async getPlaceDraftById(id: number): Promise<PlaceDraft | undefined> {
+    const [draft] = await db.select().from(placeDrafts).where(eq(placeDrafts.id, id));
+    return draft;
+  }
+
+  async getPlaceDraftsByMerchant(merchantId: number): Promise<PlaceDraft[]> {
+    return db.select().from(placeDrafts)
+      .where(eq(placeDrafts.merchantId, merchantId))
+      .orderBy(desc(placeDrafts.createdAt));
+  }
+
+  async updatePlaceDraft(id: number, data: Partial<PlaceDraft>): Promise<PlaceDraft> {
+    const [updated] = await db.update(placeDrafts)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(placeDrafts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deletePlaceDraft(id: number): Promise<void> {
+    await db.delete(placeDrafts).where(eq(placeDrafts.id, id));
+  }
+
+  // Place Applications (地點申請紀錄)
+  async createPlaceApplication(application: InsertPlaceApplication): Promise<PlaceApplication> {
+    const [created] = await db.insert(placeApplications).values(application).returning();
+    return created;
+  }
+
+  async getPlaceApplicationById(id: number): Promise<PlaceApplication | undefined> {
+    const [application] = await db.select().from(placeApplications).where(eq(placeApplications.id, id));
+    return application;
+  }
+
+  async getPlaceApplicationsByMerchant(merchantId: number): Promise<PlaceApplication[]> {
+    return db.select().from(placeApplications)
+      .where(eq(placeApplications.merchantId, merchantId))
+      .orderBy(desc(placeApplications.createdAt));
+  }
+
+  async getPendingApplications(): Promise<PlaceApplication[]> {
+    return db.select().from(placeApplications)
+      .where(eq(placeApplications.status, 'pending'))
+      .orderBy(placeApplications.createdAt);
+  }
+
+  async updatePlaceApplication(id: number, data: Partial<PlaceApplication>): Promise<PlaceApplication> {
+    const [updated] = await db.update(placeApplications)
+      .set(data)
+      .where(eq(placeApplications.id, id))
+      .returning();
+    return updated;
   }
 }
 
