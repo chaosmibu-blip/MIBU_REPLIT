@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
 import MapboxLanguage from '@mapbox/mapbox-gl-language';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -20,16 +20,41 @@ const LANGUAGE_MAP: Record<string, string> = {
   'ko': 'ko',
 };
 
+let cachedMapboxToken: string | null = null;
+
+async function getMapboxToken(): Promise<string | null> {
+  if (cachedMapboxToken) {
+    return cachedMapboxToken;
+  }
+  try {
+    const response = await fetch('/api/config/mapbox');
+    if (!response.ok) {
+      throw new Error('Failed to fetch Mapbox config');
+    }
+    const config = await response.json();
+    if (config.accessToken) {
+      cachedMapboxToken = config.accessToken;
+      return cachedMapboxToken;
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to get Mapbox token:', error);
+    return null;
+  }
+}
+
+interface MarkerData {
+  lng: number;
+  lat: number;
+  title?: string;
+  description?: string;
+  color?: string;
+}
+
 interface MibuMapProps {
   center?: [number, number];
   zoom?: number;
-  markers?: Array<{
-    lng: number;
-    lat: number;
-    title?: string;
-    description?: string;
-    color?: string;
-  }>;
+  markers?: MarkerData[];
   onLocationUpdate?: (location: { lat: number; lng: number }) => void;
   showUserLocation?: boolean;
   trackLocation?: boolean;
@@ -38,6 +63,10 @@ interface MibuMapProps {
   fullscreen?: boolean;
   showOfflineDownload?: boolean;
   onOfflineDownloadComplete?: (bounds: { north: number; south: number; east: number; west: number }) => void;
+}
+
+function createMarkerKey(m: MarkerData): string {
+  return `${m.lng.toFixed(6)},${m.lat.toFixed(6)}`;
 }
 
 export const MibuMap: React.FC<MibuMapProps> = ({
@@ -55,9 +84,11 @@ export const MibuMap: React.FC<MibuMapProps> = ({
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const markersMapRef = useRef<Map<string, { marker: mapboxgl.Marker; data: MarkerData }>>(new Map());
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const watchIdRef = useRef<number | null>(null);
+  const hasInitialLocationRef = useRef(false);
+  const mapLoadedRef = useRef(false);
   
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [isLocating, setIsLocating] = useState(false);
@@ -108,7 +139,7 @@ export const MibuMap: React.FC<MibuMapProps> = ({
         setUserLocation([longitude, latitude]);
         setLocationError(null);
         
-        if (map.current && mapLoaded) {
+        if (map.current && mapLoadedRef.current) {
           updateUserMarker(longitude, latitude, false);
         }
         
@@ -203,60 +234,32 @@ export const MibuMap: React.FC<MibuMapProps> = ({
 
     const initMap = async () => {
       try {
-        const response = await fetch('/api/config/mapbox');
-        if (!response.ok) {
-          throw new Error('Failed to fetch Mapbox config');
-        }
-        const config = await response.json();
+        const accessToken = await getMapboxToken();
         
-        if (!config.accessToken) {
+        if (!accessToken) {
           setMapError('地圖金鑰未設定');
           setIsInitializing(false);
           return;
         }
 
-        mapboxgl.accessToken = config.accessToken;
-
-        let initialCenter = center;
-        let initialZoom = zoom;
-        
-        if (navigator.geolocation) {
-          try {
-            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-              navigator.geolocation.getCurrentPosition(resolve, reject, {
-                enableHighAccuracy: true,
-                timeout: 5000,
-                maximumAge: 60000,
-              });
-            });
-            initialCenter = [position.coords.longitude, position.coords.latitude];
-            initialZoom = 15;
-            setUserLocation(initialCenter);
-          } catch (e) {
-            // Use default center if geolocation fails
-          }
-        }
+        mapboxgl.accessToken = accessToken;
 
         map.current = new mapboxgl.Map({
           container: mapContainer.current!,
           style: 'mapbox://styles/mapbox/streets-v12',
-          center: initialCenter,
-          zoom: initialZoom,
+          center: center,
+          zoom: zoom,
           attributionControl: false,
         });
 
-        // Add language control
         const mapboxLanguage = LANGUAGE_MAP[language] || 'zh-Hant';
         const languageControl = new MapboxLanguage({ defaultLanguage: mapboxLanguage });
         map.current.addControl(languageControl);
 
         map.current.on('load', () => {
+          mapLoadedRef.current = true;
           setMapLoaded(true);
           setIsInitializing(false);
-          
-          if (userLocation) {
-            updateUserMarker(userLocation[0], userLocation[1], false);
-          }
 
           if (trackLocation) {
             startTracking();
@@ -290,21 +293,48 @@ export const MibuMap: React.FC<MibuMapProps> = ({
   }, []);
 
   useEffect(() => {
-    if (mapLoaded && userLocation && map.current) {
-      updateUserMarker(userLocation[0], userLocation[1], false);
+    if (mapLoaded && userLocation && map.current && !hasInitialLocationRef.current) {
+      hasInitialLocationRef.current = true;
+      updateUserMarker(userLocation[0], userLocation[1], true);
     }
-  }, [mapLoaded]);
+  }, [mapLoaded, userLocation]);
 
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
-    markersRef.current.forEach(marker => marker.remove());
-    markersRef.current = [];
+    const currentKeys = new Set(markers.map(createMarkerKey));
+    const existingKeys = Array.from(markersMapRef.current.keys());
 
-    markers.forEach((markerData) => {
+    existingKeys.forEach((key) => {
+      if (!currentKeys.has(key)) {
+        const item = markersMapRef.current.get(key);
+        if (item) {
+          item.marker.remove();
+          markersMapRef.current.delete(key);
+        }
+      }
+    });
+
+    for (const markerData of markers) {
       if (markerData.lat == null || markerData.lng == null || 
           isNaN(markerData.lat) || isNaN(markerData.lng)) {
-        return;
+        continue;
+      }
+
+      const key = createMarkerKey(markerData);
+      const existing = markersMapRef.current.get(key);
+
+      if (existing) {
+        const needsUpdate = existing.data.color !== markerData.color ||
+                           existing.data.title !== markerData.title ||
+                           existing.data.description !== markerData.description;
+        
+        if (needsUpdate) {
+          existing.marker.remove();
+          markersMapRef.current.delete(key);
+        } else {
+          continue;
+        }
       }
 
       const el = document.createElement('div');
@@ -331,8 +361,8 @@ export const MibuMap: React.FC<MibuMapProps> = ({
         marker.setPopup(popup);
       }
 
-      markersRef.current.push(marker);
-    });
+      markersMapRef.current.set(key, { marker, data: markerData });
+    }
   }, [markers, mapLoaded]);
 
   const containerStyle = fullscreen 
