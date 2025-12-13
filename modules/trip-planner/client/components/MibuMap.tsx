@@ -400,6 +400,7 @@ export const MibuMap: React.FC<MibuMapProps> = ({
             setIsDownloadingOffline(true);
             try {
               const bounds = map.current.getBounds();
+              if (!bounds) return;
               const mapBounds = {
                 north: bounds.getNorth(),
                 south: bounds.getSouth(),
