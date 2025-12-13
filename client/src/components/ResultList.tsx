@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GachaResponse, GachaItem, Language } from '../types';
-import { Ticket, RefreshCw, MapPin, X } from 'lucide-react';
+import { Ticket, RefreshCw, MapPin, X, ExternalLink } from 'lucide-react';
 import { CATEGORY_COLORS, TRANSLATIONS } from '../constants';
 
 interface ResultListProps {
@@ -187,6 +187,29 @@ export const ResultList: React.FC<ResultListProps> = ({ data, language, onResear
                     {language === 'zh-TW' ? '在 Google 地圖中查看' : 'View on Google Maps'}
                   </a>
                 )}
+
+                <div className="flex gap-2 mt-3">
+                  <a
+                    href={`https://www.kkday.com/zh-tw/product/productlist?keyword=${encodeURIComponent(cleanPlaceName(getContent(item.place_name, language)))}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-[#FF5722] text-white rounded-lg text-xs font-bold hover:bg-[#E64A19] transition-colors"
+                    data-testid={`button-kkday-${item.id}`}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    KKday 預訂
+                  </a>
+                  <a
+                    href={`https://www.klook.com/zh-TW/search/?query=${encodeURIComponent(cleanPlaceName(getContent(item.place_name, language)))}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-[#FF6B00] text-white rounded-lg text-xs font-bold hover:bg-[#E55D00] transition-colors"
+                    data-testid={`button-klook-${item.id}`}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Klook 預訂
+                  </a>
+                </div>
 
                 {(item.is_coupon || item.is_promo_active) && (
                   <div className="mt-4 bg-indigo-50 rounded-xl p-3 border border-indigo-100 border-dashed flex items-center gap-3">
