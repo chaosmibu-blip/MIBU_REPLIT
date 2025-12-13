@@ -719,3 +719,83 @@ export type CompanionInvite = typeof companionInvites.$inferSelect;
 export type InsertCompanionInvite = z.infer<typeof insertCompanionInviteSchema>;
 export type ChatInvite = typeof chatInvites.$inferSelect;
 export type InsertChatInvite = z.infer<typeof insertChatInviteSchema>;
+
+// =====================================================
+// 聊天商務系統 (In-Chat Commerce)
+// =====================================================
+
+// Place Products - 商家商品/服務
+export const placeProducts = pgTable("place_products", {
+  id: serial("id").primaryKey(),
+  placeCacheId: integer("place_cache_id").references(() => placeCache.id),
+  merchantId: integer("merchant_id").references(() => merchants.id),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  price: integer("price").notNull(),
+  currency: varchar("currency", { length: 10 }).default('TWD').notNull(),
+  category: varchar("category", { length: 50 }),
+  imageUrl: text("image_url"),
+  stripeProductId: varchar("stripe_product_id", { length: 100 }),
+  stripePriceId: varchar("stripe_price_id", { length: 100 }),
+  isActive: boolean("is_active").default(true).notNull(),
+  stock: integer("stock"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_place_products_place").on(table.placeCacheId),
+  index("IDX_place_products_merchant").on(table.merchantId),
+]);
+
+// Cart Items - 購物車項目
+export const cartItems = pgTable("cart_items", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  productId: integer("product_id").references(() => placeProducts.id).notNull(),
+  quantity: integer("quantity").default(1).notNull(),
+  addedAt: timestamp("added_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_cart_items_user").on(table.userId),
+]);
+
+// Commerce Orders - 商務訂單
+export const commerceOrders = pgTable("commerce_orders", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  stripeSessionId: varchar("stripe_session_id", { length: 200 }),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 200 }),
+  status: varchar("status", { length: 30 }).default('pending').notNull(),
+  totalAmount: integer("total_amount").notNull(),
+  currency: varchar("currency", { length: 10 }).default('TWD').notNull(),
+  items: jsonb("items").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_commerce_orders_user").on(table.userId),
+  index("IDX_commerce_orders_session").on(table.stripeSessionId),
+]);
+
+// Insert schemas for commerce
+export const insertPlaceProductSchema = createInsertSchema(placeProducts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCartItemSchema = createInsertSchema(cartItems).omit({
+  id: true,
+  addedAt: true,
+});
+
+export const insertCommerceOrderSchema = createInsertSchema(commerceOrders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Commerce types
+export type PlaceProduct = typeof placeProducts.$inferSelect;
+export type InsertPlaceProduct = z.infer<typeof insertPlaceProductSchema>;
+export type CartItem = typeof cartItems.$inferSelect;
+export type InsertCartItem = z.infer<typeof insertCartItemSchema>;
+export type CommerceOrder = typeof commerceOrders.$inferSelect;
+export type InsertCommerceOrder = z.infer<typeof insertCommerceOrderSchema>;
