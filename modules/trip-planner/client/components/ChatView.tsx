@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, Plus, MessageCircle, Users, Loader2, RefreshCw, UserPlus, Copy, Check, ChevronLeft, MoreVertical, Image, Camera, Bookmark, ShoppingCart, X, Minus, Store, MapPin } from 'lucide-react';
+import { ArrowRight, Plus, MessageCircle, Users, Loader2, RefreshCw, UserPlus, Copy, Check, ChevronLeft, MoreVertical, Image, Camera, Bookmark, ShoppingCart, X, Minus, Store, MapPin, Trash2 } from 'lucide-react';
 
 interface Message {
   sid: string;
@@ -512,6 +512,33 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
     }
   };
 
+  const deleteConversation = async (conversationSid: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('確定要刪除這個聊天室嗎？')) return;
+
+    try {
+      const res = await fetch(`/api/chat/conversations/${conversationSid}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (res.ok) {
+        setConversations(prev => prev.filter(c => c.conversationSid !== conversationSid));
+        if (selectedConversation === conversationSid) {
+          setSelectedConversation(null);
+          setMessages([]);
+          setActiveConversation(null);
+        }
+      } else {
+        const data = await res.json();
+        setError(data.error || '刪除聊天室失敗');
+      }
+    } catch (err) {
+      console.error('Delete conversation error:', err);
+      setError('刪除聊天室失敗');
+    }
+  };
+
   const inviteToConversation = async () => {
     if (!selectedConversation || !inviteEmail.trim()) return;
 
@@ -738,7 +765,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
             <h2 className="text-xl font-bold text-slate-800">聊天</h2>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="p-2 bg-[#06C755] text-white rounded-full hover:bg-[#05B04A] transition-colors shadow-md"
+              className="p-2 bg-slate-600 text-white rounded-full hover:bg-slate-700 transition-colors shadow-md"
               data-testid="button-create-chat"
             >
               <Plus className="w-5 h-5" />
@@ -755,7 +782,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
             <p className="text-slate-500 mb-6">建立聊天室，邀請旅伴一起規劃旅程</p>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="px-6 py-3 bg-[#06C755] text-white rounded-full font-medium hover:bg-[#05B04A] transition-colors shadow-md"
+              className="px-6 py-3 bg-slate-600 text-white rounded-full font-medium hover:bg-slate-700 transition-colors shadow-md"
               data-testid="button-create-first-chat"
             >
               建立聊天室
@@ -764,36 +791,48 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
         ) : (
           <div className="divide-y divide-slate-100">
             {conversations.map(conv => (
-              <button
+              <div
                 key={conv.conversationSid}
-                onClick={() => joinConversation(conv.conversationSid)}
-                className="w-full p-4 text-left hover:bg-slate-50 transition-colors flex items-center gap-3"
-                data-testid={`chat-room-${conv.conversationSid}`}
+                className="w-full p-4 hover:bg-slate-50 transition-colors flex items-center gap-3"
               >
-                <div className="w-14 h-14 bg-[#06C755] rounded-full flex items-center justify-center flex-shrink-0">
-                  <MessageCircle className="w-7 h-7 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-slate-800 truncate">{conv.friendlyName || '聊天室'}</h3>
-                    {conv.lastMessageTime && (
-                      <span className="text-xs text-slate-400 ml-2 flex-shrink-0">
-                        {formatMessageDate(conv.lastMessageTime)}
-                      </span>
-                    )}
+                <button
+                  onClick={() => joinConversation(conv.conversationSid)}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                  data-testid={`chat-room-${conv.conversationSid}`}
+                >
+                  <div className="w-14 h-14 bg-[#C4A77D] rounded-full flex items-center justify-center flex-shrink-0">
+                    <MessageCircle className="w-7 h-7 text-white" />
                   </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <p className="text-sm text-slate-500 truncate">
-                      {conv.lastMessage || '點擊開始對話'}
-                    </p>
-                    {conv.unreadMessagesCount > 0 && (
-                      <span className="ml-2 min-w-[20px] h-5 px-1.5 bg-[#06C755] text-white text-xs font-bold rounded-full flex items-center justify-center flex-shrink-0">
-                        {conv.unreadMessagesCount > 99 ? '99+' : conv.unreadMessagesCount}
-                      </span>
-                    )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-slate-800 truncate">{conv.friendlyName || '聊天室'}</h3>
+                      {conv.lastMessageTime && (
+                        <span className="text-xs text-slate-400 ml-2 flex-shrink-0">
+                          {formatMessageDate(conv.lastMessageTime)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-sm text-slate-500 truncate">
+                        {conv.lastMessage || '點擊開始對話'}
+                      </p>
+                      {conv.unreadMessagesCount > 0 && (
+                        <span className="ml-2 min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center flex-shrink-0">
+                          {conv.unreadMessagesCount > 99 ? '99+' : conv.unreadMessagesCount}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+                <button
+                  onClick={(e) => deleteConversation(conv.conversationSid, e)}
+                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors flex-shrink-0"
+                  data-testid={`button-delete-chat-${conv.conversationSid}`}
+                  title="刪除聊天室"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
             ))}
           </div>
         )}
@@ -822,7 +861,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
                 <button
                   onClick={createConversation}
                   disabled={!newChatName.trim() || loading}
-                  className="flex-1 py-4 rounded-xl bg-[#06C755] text-white font-bold hover:bg-[#05B04A] disabled:opacity-50"
+                  className="flex-1 py-4 rounded-xl bg-slate-600 text-white font-bold hover:bg-slate-700 disabled:opacity-50"
                   data-testid="button-confirm-create"
                 >
                   {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : '建立'}
@@ -1015,13 +1054,16 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
           <button
             onClick={sendMessage}
             disabled={!newMessage.trim() || sendingMessage}
-            className="p-3 bg-[#06C755] text-white rounded-full hover:bg-[#05B04A] disabled:opacity-50 disabled:bg-slate-300 transition-colors"
+            className="p-3 rounded-full transition-colors disabled:opacity-50"
+            style={{
+              backgroundColor: !newMessage.trim() || sendingMessage ? '#CBD5E1' : '#C4A77D',
+            }}
             data-testid="button-send-message"
           >
             {sendingMessage ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <Loader2 className="w-5 h-5 animate-spin text-white" />
             ) : (
-              <Send className="w-5 h-5" />
+              <ArrowRight className="w-5 h-5 text-white" />
             )}
           </button>
         </div>

@@ -2562,6 +2562,38 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // Delete a conversation
+  app.delete("/api/chat/conversations/:conversationSid", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { conversationSid } = req.params;
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const apiKeySid = process.env.TWILIO_API_KEY_SID;
+      const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+      const conversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
+
+      if (!accountSid || !apiKeySid || !apiKeySecret || !conversationsServiceSid) {
+        return res.status(500).json({ error: "Chat service not configured" });
+      }
+
+      const client = twilio(apiKeySid, apiKeySecret, { accountSid });
+
+      await client.conversations.v1
+        .services(conversationsServiceSid)
+        .conversations(conversationSid)
+        .remove();
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete conversation error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete conversation" });
+    }
+  });
+
   // Generate invite link for a conversation
   app.post("/api/chat/conversations/:conversationSid/invite-link", isAuthenticated, async (req: any, res) => {
     try {
