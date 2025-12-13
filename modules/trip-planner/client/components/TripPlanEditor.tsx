@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Clock, MapPin, Trash2, GripVertical, Map as MapIcon, Download, CheckCircle2, Loader2 } from 'lucide-react';
-import { MibuMap } from './MibuMap';
+import { GlobalMapView } from './GlobalMapView';
 import { saveItineraryOffline, isItinerarySavedOffline, getOfflineItinerary, type OfflineItinerary } from '../../../../client/src/lib/offlineStorage';
 
 interface TripActivity {
@@ -234,7 +234,7 @@ export const TripPlanEditor: React.FC<TripPlanEditorProps> = ({
 
       {showMap && (
         <div className="max-w-lg mx-auto px-4 pt-4">
-          <MibuMap
+          <GlobalMapView
             center={[121.5654, 25.0330]}
             zoom={12}
             markers={days.flatMap(day => 
@@ -247,7 +247,6 @@ export const TripPlanEditor: React.FC<TripPlanEditorProps> = ({
                   description: a.address,
                 }))
             )}
-            onLocationUpdate={setUserLocation}
             showUserLocation={true}
             showOfflineDownload={true}
             onOfflineDownloadComplete={async (bounds) => {
