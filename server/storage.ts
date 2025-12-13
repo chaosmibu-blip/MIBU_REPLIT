@@ -1,6 +1,7 @@
 import { 
   users, collections, merchants, coupons, placeCache, placeFeedback, merchantPlaceLinks,
   countries, regions, districts, categories, subcategories, chatInvites,
+  placeProducts, cartItems, commerceOrders,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -10,7 +11,10 @@ import {
   type MerchantPlaceLink, type InsertMerchantPlaceLink,
   type Country, type Region, type District,
   type Category, type Subcategory,
-  type ChatInvite
+  type ChatInvite,
+  type PlaceProduct, type InsertPlaceProduct,
+  type CartItem, type InsertCartItem,
+  type CommerceOrder, type InsertCommerceOrder
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -75,6 +79,28 @@ export interface IStorage {
   createChatInvite(invite: { conversationSid: string; inviterUserId: string; status: string; expiresAt: Date }, inviteCode: string): Promise<ChatInvite>;
   getChatInviteByCode(inviteCode: string): Promise<ChatInvite | undefined>;
   updateChatInvite(inviteId: number, data: { status?: string; usedByUserId?: string }): Promise<ChatInvite>;
+
+  // Commerce - Products
+  getProductsByPlaceId(placeCacheId: number): Promise<PlaceProduct[]>;
+  getProductsByPlaceName(placeName: string): Promise<PlaceProduct[]>;
+  getProductById(productId: number): Promise<PlaceProduct | undefined>;
+  createProduct(product: InsertPlaceProduct): Promise<PlaceProduct>;
+  updateProduct(productId: number, data: Partial<PlaceProduct>): Promise<PlaceProduct>;
+  searchPlacesByName(query: string): Promise<PlaceCache[]>;
+
+  // Commerce - Cart
+  getCartItems(userId: string): Promise<Array<CartItem & { product: PlaceProduct }>>;
+  addToCart(item: InsertCartItem): Promise<CartItem>;
+  updateCartItemQuantity(cartItemId: number, quantity: number): Promise<CartItem>;
+  removeFromCart(cartItemId: number): Promise<void>;
+  clearCart(userId: string): Promise<void>;
+
+  // Commerce - Orders
+  createOrder(order: InsertCommerceOrder): Promise<CommerceOrder>;
+  getOrderById(orderId: number): Promise<CommerceOrder | undefined>;
+  getOrderBySessionId(sessionId: string): Promise<CommerceOrder | undefined>;
+  updateOrderStatus(orderId: number, status: string, paymentIntentId?: string): Promise<CommerceOrder>;
+  getUserOrders(userId: string): Promise<CommerceOrder[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -530,6 +556,109 @@ export class DatabaseStorage implements IStorage {
       .where(eq(chatInvites.id, inviteId))
       .returning();
     return updated;
+  }
+
+  // Commerce - Products
+  async getProductsByPlaceId(placeCacheId: number): Promise<PlaceProduct[]> {
+    return db.select().from(placeProducts).where(
+      and(eq(placeProducts.placeCacheId, placeCacheId), eq(placeProducts.isActive, true))
+    );
+  }
+
+  async getProductsByPlaceName(placeName: string): Promise<PlaceProduct[]> {
+    const places = await db.select().from(placeCache).where(ilike(placeCache.placeName, `%${placeName}%`)).limit(5);
+    if (places.length === 0) return [];
+    const placeIds = places.map(p => p.id);
+    return db.select().from(placeProducts).where(
+      and(sql`${placeProducts.placeCacheId} = ANY(${placeIds})`, eq(placeProducts.isActive, true))
+    );
+  }
+
+  async getProductById(productId: number): Promise<PlaceProduct | undefined> {
+    const [product] = await db.select().from(placeProducts).where(eq(placeProducts.id, productId));
+    return product;
+  }
+
+  async createProduct(product: InsertPlaceProduct): Promise<PlaceProduct> {
+    const [created] = await db.insert(placeProducts).values(product).returning();
+    return created;
+  }
+
+  async updateProduct(productId: number, data: Partial<PlaceProduct>): Promise<PlaceProduct> {
+    const [updated] = await db.update(placeProducts).set({ ...data, updatedAt: new Date() }).where(eq(placeProducts.id, productId)).returning();
+    return updated;
+  }
+
+  async searchPlacesByName(query: string): Promise<PlaceCache[]> {
+    return db.select().from(placeCache).where(ilike(placeCache.placeName, `%${query}%`)).limit(10);
+  }
+
+  // Commerce - Cart
+  async getCartItems(userId: string): Promise<Array<CartItem & { product: PlaceProduct }>> {
+    const items = await db.select().from(cartItems).where(eq(cartItems.userId, userId));
+    const result: Array<CartItem & { product: PlaceProduct }> = [];
+    for (const item of items) {
+      const [product] = await db.select().from(placeProducts).where(eq(placeProducts.id, item.productId));
+      if (product) {
+        result.push({ ...item, product });
+      }
+    }
+    return result;
+  }
+
+  async addToCart(item: InsertCartItem): Promise<CartItem> {
+    const existing = await db.select().from(cartItems).where(
+      and(eq(cartItems.userId, item.userId), eq(cartItems.productId, item.productId))
+    );
+    if (existing.length > 0) {
+      const [updated] = await db.update(cartItems)
+        .set({ quantity: existing[0].quantity + (item.quantity || 1) })
+        .where(eq(cartItems.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(cartItems).values(item).returning();
+    return created;
+  }
+
+  async updateCartItemQuantity(cartItemId: number, quantity: number): Promise<CartItem> {
+    const [updated] = await db.update(cartItems).set({ quantity }).where(eq(cartItems.id, cartItemId)).returning();
+    return updated;
+  }
+
+  async removeFromCart(cartItemId: number): Promise<void> {
+    await db.delete(cartItems).where(eq(cartItems.id, cartItemId));
+  }
+
+  async clearCart(userId: string): Promise<void> {
+    await db.delete(cartItems).where(eq(cartItems.userId, userId));
+  }
+
+  // Commerce - Orders
+  async createOrder(order: InsertCommerceOrder): Promise<CommerceOrder> {
+    const [created] = await db.insert(commerceOrders).values(order).returning();
+    return created;
+  }
+
+  async getOrderById(orderId: number): Promise<CommerceOrder | undefined> {
+    const [order] = await db.select().from(commerceOrders).where(eq(commerceOrders.id, orderId));
+    return order;
+  }
+
+  async getOrderBySessionId(sessionId: string): Promise<CommerceOrder | undefined> {
+    const [order] = await db.select().from(commerceOrders).where(eq(commerceOrders.stripeSessionId, sessionId));
+    return order;
+  }
+
+  async updateOrderStatus(orderId: number, status: string, paymentIntentId?: string): Promise<CommerceOrder> {
+    const updateData: Partial<CommerceOrder> = { status, updatedAt: new Date() };
+    if (paymentIntentId) updateData.stripePaymentIntentId = paymentIntentId;
+    const [updated] = await db.update(commerceOrders).set(updateData).where(eq(commerceOrders.id, orderId)).returning();
+    return updated;
+  }
+
+  async getUserOrders(userId: string): Promise<CommerceOrder[]> {
+    return db.select().from(commerceOrders).where(eq(commerceOrders.userId, userId)).orderBy(desc(commerceOrders.createdAt));
   }
 }
 
