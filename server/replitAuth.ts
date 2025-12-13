@@ -196,12 +196,72 @@ export async function setupAuth(app: Express) {
       res.clearCookie('app_redirect_uri');
     };
     
+    // Helper to check if redirect is to a custom app scheme (exp://, mibu://, etc.)
+    const isCustomScheme = (uri: string) => {
+      return uri.startsWith('exp://') || uri.startsWith('mibu://') || uri.startsWith('myapp://');
+    };
+    
+    // Helper to redirect using HTML bounce page (for iOS Safari compatibility)
+    const redirectWithBouncePage = (targetUrl: string, message: string) => {
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登入成功</title>
+  <style>
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      height: 100vh; 
+      margin: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      text-align: center;
+    }
+    .container { padding: 20px; }
+    h1 { font-size: 24px; margin-bottom: 10px; }
+    p { font-size: 16px; opacity: 0.9; }
+    .spinner { 
+      width: 40px; 
+      height: 40px; 
+      border: 3px solid rgba(255,255,255,0.3); 
+      border-top-color: white; 
+      border-radius: 50%; 
+      animation: spin 1s linear infinite; 
+      margin: 20px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>${message}</h1>
+    <div class="spinner"></div>
+    <p>正在跳轉回 APP...</p>
+  </div>
+  <script>
+    window.location.href = "${targetUrl}";
+  </script>
+</body>
+</html>`;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(html);
+    };
+    
     if (req.query.error) {
       console.log("OAuth denied:", req.query.error, req.query.error_description);
       const externalRedirectUri = getExternalRedirectUri();
       if (externalRedirectUri) {
         clearExternalRedirectUri();
-        return res.redirect(`${externalRedirectUri}?error=access_denied`);
+        const targetUrl = `${externalRedirectUri}?error=access_denied`;
+        if (isCustomScheme(externalRedirectUri)) {
+          return redirectWithBouncePage(targetUrl, '登入已取消');
+        }
+        return res.redirect(targetUrl);
       }
       return res.redirect("/");
     }
@@ -212,7 +272,11 @@ export async function setupAuth(app: Express) {
         const externalRedirectUri = getExternalRedirectUri();
         if (externalRedirectUri) {
           clearExternalRedirectUri();
-          return res.redirect(`${externalRedirectUri}?error=auth_failed`);
+          const targetUrl = `${externalRedirectUri}?error=auth_failed`;
+          if (isCustomScheme(externalRedirectUri)) {
+            return redirectWithBouncePage(targetUrl, '登入失敗');
+          }
+          return res.redirect(targetUrl);
         }
         return res.redirect("/");
       }
@@ -228,8 +292,13 @@ export async function setupAuth(app: Express) {
           clearExternalRedirectUri();
           const token = generateJwtToken(user);
           const separator = externalRedirectUri.includes('?') ? '&' : '?';
+          const targetUrl = `${externalRedirectUri}${separator}token=${token}`;
           console.log(`Redirecting to app: ${externalRedirectUri}`);
-          return res.redirect(`${externalRedirectUri}${separator}token=${token}`);
+          
+          if (isCustomScheme(externalRedirectUri)) {
+            return redirectWithBouncePage(targetUrl, '登入成功！');
+          }
+          return res.redirect(targetUrl);
         }
         
         return res.redirect("/");
