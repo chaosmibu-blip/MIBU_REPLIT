@@ -1,45 +1,111 @@
-// modules/trip-planner/client/components/ChatView.tsx
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import { ArrowRight, Plus, MessageCircle, Users, Loader2, RefreshCw, UserPlus, Copy, Check, ChevronLeft, MoreVertical, Image, Camera, Bookmark, ShoppingCart, X, Minus, Store, Trash2, Phone } from 'lucide-react';
 
-import React, { useEffect, useState, useRef } from "react";
-import { 
-  Send, 
-  Phone, 
-  Image as ImageIcon, 
-  Plus, 
-  MoreVertical, 
-  UserPlus, 
-  Video,
-  ArrowLeft
-} from "lucide-react";
-import { format, isSameDay, isToday, isYesterday } from "date-fns";
+const MessageBubble = memo<{
+  message: Message;
+  isMe: boolean;
+  showDate: boolean;
+  parseContent: (text: string, sid?: string) => React.ReactNode[];
+}>(({ message, isMe, showDate, parseContent }) => (
+  <React.Fragment>
+    {showDate && (
+      <div className="text-center my-4">
+        <span className="px-3 py-1.5 bg-slate-600/70 text-white text-xs font-medium rounded-full shadow-sm">
+          {new Date(message.dateCreated).toLocaleDateString('zh-TW', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric',
+            weekday: 'short'
+          })}
+        </span>
+      </div>
+    )}
+    <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} items-end gap-2 mb-1`}>
+      {!isMe && (
+        <div 
+          className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm"
+          style={{ backgroundColor: '#7C8DB5' }}
+        >
+          <span className="text-sm text-white font-bold">
+            {message.author?.slice(0, 1).toUpperCase() || '?'}
+          </span>
+        </div>
+      )}
+      <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[75%]`}>
+        {!isMe && (
+          <span className="text-xs text-slate-500 mb-1 ml-2 font-medium">{message.author?.slice(0, 8) || '用戶'}</span>
+        )}
+        <div className={`flex items-end gap-1.5 ${isMe ? 'flex-row' : 'flex-row-reverse'}`}>
+          <span className="text-[10px] text-slate-400 mb-1.5 flex-shrink-0">
+            {new Date(message.dateCreated).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+          <div
+            className="px-4 py-2.5 shadow-md"
+            style={{
+              backgroundColor: isMe ? '#06C755' : '#FFFFFF',
+              color: isMe ? '#FFFFFF' : '#1E293B',
+              borderRadius: isMe ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
+              maxWidth: '100%',
+              wordBreak: 'break-word'
+            }}
+          >
+            <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{parseContent(message.body, message.sid)}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </React.Fragment>
+));
 
-// UI Components (Shadcn & Tailwind)
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
-} from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
-
-// --- Types ---
-interface ChatMessage {
+interface Message {
   sid: string;
   author: string;
   body: string;
   dateCreated: Date;
-  type?: 'text' | 'image' | 'system';
-  mediaUrl?: string;
+  index: number;
 }
 
-interface Participant {
-  identity: string;
-  status: 'online' | 'offline';
-  lastRead?: Date;
+interface PlaceProduct {
+  id: number;
+  placeCacheId: number | null;
+  merchantId: number | null;
+  name: string;
+  description: string | null;
+  price: number;
+  currency: string;
+  category: string | null;
+  imageUrl: string | null;
+  stripeProductId: string | null;
+  stripePriceId: string | null;
+  isActive: boolean;
+  stock: number | null;
+}
+
+interface CartItem {
+  id: number;
+  productId: number;
+  quantity: number;
+  product?: PlaceProduct;
+}
+
+interface Conversation {
+  conversationSid: string;
+  friendlyName: string;
+  state: string;
+  unreadMessagesCount: number;
+  participantsCount?: number;
+  lastMessage?: string;
+  lastMessageTime?: Date;
+}
+
+interface KlookHighlight {
+  id: number;
+  conversationSid: string;
+  messageSid: string;
+  productName: string;
+  productUrl: string;
+  startIndex: number;
+  endIndex: number;
 }
 
 interface ChatViewProps {
@@ -48,316 +114,1326 @@ interface ChatViewProps {
   isAuthenticated: boolean;
 }
 
-// --- Mibu Brand Colors ---
-// Primary Green: #06C755
-// Accent Gold: #C4A77D
-// Background: #F0F4F8
-
 export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenticated }) => {
-  // --- STATE ---
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputText, setInputText] = useState("");
-  const [isTwilioReady, setIsTwilioReady] = useState(false);
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [twilioClient, setTwilioClient] = useState<any>(null);
+  const [activeConversation, setActiveConversation] = useState<any>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showMenuModal, setShowMenuModal] = useState(false);
+  const [newChatName, setNewChatName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Mock Identity (Replace with real Auth/Twilio identity)
-  const myIdentity = "user_me"; 
+  const [placeNames, setPlaceNames] = useState<string[]>([]);
+  const [selectedPlace, setSelectedPlace] = useState<string | null>(null);
+  const [placeProducts, setPlaceProducts] = useState<PlaceProduct[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [showProductPopover, setShowProductPopover] = useState(false);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [showCart, setShowCart] = useState(false);
+  const [addingToCart, setAddingToCart] = useState<number | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [calling, setCalling] = useState(false);
+  const [showCallDialog, setShowCallDialog] = useState(false);
+  const [callUrl, setCallUrl] = useState<string | null>(null);
+  const [callLinkCopied, setCallLinkCopied] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [klookHighlights, setKlookHighlights] = useState<Map<string, KlookHighlight[]>>(new Map());
 
-  // --- TWILIO LOGIC PLACEHOLDER ---
-  // Keep your existing Twilio connection logic here.
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   useEffect(() => {
-    console.log("Initializing Twilio Chat...");
-    setIsTwilioReady(true);
-
-    // MOCK DATA for Visual Verification
-    const mockMessages: ChatMessage[] = [
-      {
-        sid: "1",
-        author: "system",
-        body: "Welcome to the Osaka Trip Group!",
-        dateCreated: new Date(Date.now() - 86400000 * 2), // 2 days ago
-        type: 'system'
-      },
-      {
-        sid: "2",
-        author: "alice",
-        body: "Has everyone bought their flight tickets yet?",
-        dateCreated: new Date(Date.now() - 86400000), // Yesterday
-        type: 'text'
-      },
-      {
-        sid: "3",
-        author: "user_me",
-        body: "Yes! I'm arriving at KIX at 10 AM.",
-        dateCreated: new Date(Date.now() - 3600000), // 1 hour ago
-        type: 'text'
-      },
-      {
-        sid: "4",
-        author: "bob",
-        body: "Nice. I'll be there around noon. Let's meet at the hotel?",
-        dateCreated: new Date(Date.now() - 1800000), // 30 mins ago
-        type: 'text'
-      }
-    ];
-    setMessages(mockMessages);
-
-    setParticipants([
-      { identity: "alice", status: "online" },
-      { identity: "bob", status: "offline" },
-      { identity: "user_me", status: "online" }
-    ]);
-
-    // Cleanup logic
-    return () => {
-      console.log("Disconnecting Twilio...");
-    };
-  }, []);
-
-  // Scroll to bottom on new message
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: "smooth" });
-    }
+    scrollToBottom();
   }, [messages]);
 
-  // --- HANDLERS ---
-
-  const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
-
-    // TODO: Connect this to Twilio channel.sendMessage(inputText)
-    const tempMsg: ChatMessage = {
-      sid: Date.now().toString(),
-      author: myIdentity,
-      body: inputText,
-      dateCreated: new Date(),
-      type: 'text'
+  useEffect(() => {
+    const loadPlaceNames = async () => {
+      try {
+        const res = await fetch('/api/commerce/places/names', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          setPlaceNames(data.names || []);
+        }
+      } catch (err) {
+        console.error('Load place names error:', err);
+      }
     };
+    loadPlaceNames();
+  }, []);
 
-    setMessages(prev => [...prev, tempMsg]);
-    setInputText("");
+  useEffect(() => {
+    const loadCart = async () => {
+      if (!isAuthenticated) return;
+      try {
+        const res = await fetch('/api/commerce/cart', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          setCartItems(data.items || []);
+        }
+      } catch (err) {
+        console.error('Load cart error:', err);
+      }
+    };
+    loadCart();
+  }, [isAuthenticated]);
+
+  const loadProductsForPlace = async (placeName: string) => {
+    setLoadingProducts(true);
+    setSelectedPlace(placeName);
+    setShowProductPopover(true);
+    try {
+      const res = await fetch(`/api/commerce/products/by-name?name=${encodeURIComponent(placeName)}`, {
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPlaceProducts(data.products || []);
+      }
+    } catch (err) {
+      console.error('Load products error:', err);
+    } finally {
+      setLoadingProducts(false);
+    }
   };
 
-  const handleImageUpload = () => {
-    // TODO: Implement file picker and Twilio media message logic
-    console.log("Trigger Image Upload");
-    alert("Image Upload Logic to be implemented here (Keep existing logic)");
+  const addToCart = async (productId: number) => {
+    if (!isAuthenticated) return;
+    setAddingToCart(productId);
+    try {
+      const res = await fetch('/api/commerce/cart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ productId, quantity: 1 })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCartItems(prev => {
+          const existing = prev.find(item => item.productId === productId);
+          if (existing) {
+            return prev.map(item => 
+              item.productId === productId ? { ...item, quantity: item.quantity + 1 } : item
+            );
+          }
+          return [...prev, data.item];
+        });
+      }
+    } catch (err) {
+      console.error('Add to cart error:', err);
+    } finally {
+      setAddingToCart(null);
+    }
   };
 
-  const handleCall = (video: boolean = false) => {
-    // TODO: Connect to Twilio Voice/Video
-    console.log(`Starting ${video ? 'Video' : 'Voice'} Call...`);
+  const updateCartQuantity = async (itemId: number, quantity: number) => {
+    try {
+      if (quantity <= 0) {
+        await fetch(`/api/commerce/cart/${itemId}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        setCartItems(prev => prev.filter(item => item.id !== itemId));
+      } else {
+        const res = await fetch(`/api/commerce/cart/${itemId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ quantity })
+        });
+        if (res.ok) {
+          setCartItems(prev => prev.map(item => 
+            item.id === itemId ? { ...item, quantity } : item
+          ));
+        }
+      }
+    } catch (err) {
+      console.error('Update cart error:', err);
+    }
   };
 
-  const handleInvite = () => {
-    console.log("Open Invite Modal");
+  const checkout = async () => {
+    try {
+      const res = await fetch('/api/commerce/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) {
+          window.location.href = data.url;
+        }
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+    }
   };
 
-  // --- RENDER HELPERS ---
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+
+  const copyUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedUrl(url);
+      setTimeout(() => setCopiedUrl(null), 2000);
+    } catch (err) {
+      console.error('Copy URL failed:', err);
+    }
+  };
+
+  const parseMessageWithPlaces = useCallback((text: string, messageSid?: string): React.ReactNode[] => {
+    const highlights = messageSid ? klookHighlights.get(messageSid) || [] : [];
+    
+    const urlPattern = /(https?:\/\/[^\s]+)/g;
+    const urlMatches = text.match(urlPattern) || [];
+    
+    const allKeywords: { keyword: string; type: 'place' | 'klook' | 'url'; url?: string }[] = [];
+    
+    urlMatches.forEach(url => {
+      allKeywords.push({ keyword: url, type: 'url', url });
+    });
+    
+    placeNames.forEach(name => {
+      if (!allKeywords.find(k => k.keyword === name)) {
+        allKeywords.push({ keyword: name, type: 'place' });
+      }
+    });
+    
+    highlights.forEach(h => {
+      if (!allKeywords.find(k => k.keyword === h.productName)) {
+        allKeywords.push({ keyword: h.productName, type: 'klook', url: h.productUrl });
+      }
+    });
+    
+    if (allKeywords.length === 0) return [text];
+    
+    const sortedKeywords = allKeywords.sort((a, b) => b.keyword.length - a.keyword.length);
+    const escapedNames = sortedKeywords.map(k => k.keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const pattern = new RegExp(`(${escapedNames.join('|')})`, 'g');
+    
+    const parts = text.split(pattern);
+    return parts.map((part, idx) => {
+      const matchedKeyword = sortedKeywords.find(k => k.keyword === part);
+      
+      if (matchedKeyword) {
+        if (matchedKeyword.type === 'url') {
+          return (
+            <span key={idx} className="inline-flex items-center gap-1 flex-wrap">
+              <a
+                href={matchedKeyword.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="text-blue-500 underline break-all hover:text-blue-700"
+                data-testid={`link-url-${idx}`}
+              >
+                {part.length > 40 ? part.slice(0, 40) + '...' : part}
+              </a>
+              <button
+                onClick={(e) => { e.stopPropagation(); copyUrl(matchedKeyword.url!); }}
+                className="inline-flex items-center justify-center w-6 h-6 bg-slate-200 text-slate-600 rounded-full text-xs hover:bg-slate-300 transition-colors flex-shrink-0"
+                data-testid={`button-copy-url-${idx}`}
+                title="複製連結"
+              >
+                {copiedUrl === matchedKeyword.url ? (
+                  <Check className="w-3.5 h-3.5 text-green-600" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </span>
+          );
+        } else if (matchedKeyword.type === 'klook') {
+          return (
+            <span key={idx} className="inline-flex items-center gap-0.5">
+              <span className="text-orange-600 font-medium">{part}</span>
+              <a
+                href={matchedKeyword.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center justify-center w-5 h-5 bg-orange-500 text-white rounded-full text-xs hover:bg-orange-600 transition-colors ml-0.5"
+                data-testid={`button-klook-${part}`}
+              >
+                <Plus className="w-3 h-3" />
+              </a>
+            </span>
+          );
+        } else {
+          return (
+            <span key={idx} className="inline-flex items-center gap-0.5">
+              <span className="text-blue-600 font-medium underline cursor-pointer hover:text-blue-800" onClick={() => loadProductsForPlace(part)}>
+                {part}
+              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); loadProductsForPlace(part); }}
+                className="inline-flex items-center justify-center w-5 h-5 bg-[#06C755] text-white rounded-full text-xs hover:bg-[#05B04A] transition-colors ml-0.5"
+                data-testid={`button-add-product-${part}`}
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </span>
+          );
+        }
+      }
+      return part;
+    });
+  }, [placeNames, klookHighlights, copiedUrl]);
+
+  const cartTotal = useMemo(() => {
+    return cartItems.reduce((sum, item) => {
+      const price = item.product?.price || 0;
+      return sum + (price * item.quantity);
+    }, 0);
+  }, [cartItems]);
+
+  const initializeTwilioClient = useCallback(async () => {
+    if (!isAuthenticated) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const tokenRes = await fetch('/api/chat/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+
+      if (!tokenRes.ok) {
+        throw new Error('無法取得聊天授權');
+      }
+
+      const { token } = await tokenRes.json();
+
+      const { Client } = await import('@twilio/conversations');
+      const client = await Client.create(token);
+      
+      console.log('Twilio client initialized');
+      setTwilioClient(client);
+      await loadConversations();
+
+      client.on('tokenAboutToExpire', async () => {
+        try {
+          const res = await fetch('/api/chat/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+          });
+          if (res.ok) {
+            const { token: newToken } = await res.json();
+            await client.updateToken(newToken);
+          }
+        } catch (err) {
+          console.error('Token refresh error:', err);
+        }
+      });
+
+    } catch (err: any) {
+      console.error('Twilio init error:', err);
+      setError(err.message || '聊天服務初始化失敗');
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated]);
+
+  const loadConversations = async () => {
+    try {
+      const res = await fetch('/api/chat/conversations', {
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setConversations(data.conversations || []);
+      }
+    } catch (err) {
+      console.error('Load conversations error:', err);
+    }
+  };
+
+  useEffect(() => {
+    initializeTwilioClient();
+    return () => {
+      if (twilioClient) {
+        twilioClient.shutdown();
+      }
+    };
+  }, [initializeTwilioClient]);
+
+  const detectKlookProducts = async (messageText: string, conversationSid: string, messageSid: string) => {
+    try {
+      const res = await fetch('/api/klook/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ messageText, conversationSid, messageSid })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.products && data.products.length > 0) {
+          setKlookHighlights(prev => {
+            const updated = new Map(prev);
+            updated.set(messageSid, data.products.map((p: any) => ({
+              id: Date.now(),
+              conversationSid,
+              messageSid,
+              productName: p.keyword,
+              productUrl: p.klookUrl,
+              startIndex: p.startIndex,
+              endIndex: p.endIndex
+            })));
+            return updated;
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Klook detection error:', err);
+    }
+  };
+
+  const loadConversationHighlights = async (conversationSid: string) => {
+    try {
+      const res = await fetch(`/api/klook/highlights/${conversationSid}`, {
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.highlights && data.highlights.length > 0) {
+          const highlightMap = new Map<string, KlookHighlight[]>();
+          data.highlights.forEach((h: KlookHighlight) => {
+            const existing = highlightMap.get(h.messageSid) || [];
+            existing.push(h);
+            highlightMap.set(h.messageSid, existing);
+          });
+          setKlookHighlights(highlightMap);
+        }
+      }
+    } catch (err) {
+      console.error('Load highlights error:', err);
+    }
+  };
+
+  const joinConversation = async (conversationSid: string) => {
+    if (!twilioClient) return;
+
+    try {
+      setLoading(true);
+      setSelectedConversation(conversationSid);
+      setKlookHighlights(new Map());
+
+      const conversation = await twilioClient.getConversationBySid(conversationSid);
+      setActiveConversation(conversation);
+
+      const messagePaginator = await conversation.getMessages();
+      const loadedMessages = messagePaginator.items.map((msg: any) => ({
+        sid: msg.sid,
+        author: msg.author,
+        body: msg.body,
+        dateCreated: msg.dateCreated,
+        index: msg.index
+      }));
+      setMessages(loadedMessages);
+
+      await loadConversationHighlights(conversationSid);
+
+      conversation.on('messageAdded', (msg: any) => {
+        const newMsg = {
+          sid: msg.sid,
+          author: msg.author,
+          body: msg.body,
+          dateCreated: msg.dateCreated,
+          index: msg.index
+        };
+        setMessages(prev => [...prev, newMsg]);
+        
+        if (msg.body && msg.body.length > 10) {
+          detectKlookProducts(msg.body, conversationSid, msg.sid);
+        }
+      });
+
+    } catch (err) {
+      console.error('Join conversation error:', err);
+      setError('無法加入聊天室');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!activeConversation || !newMessage.trim()) return;
+
+    try {
+      setSendingMessage(true);
+      await activeConversation.sendMessage(newMessage.trim());
+      setNewMessage('');
+    } catch (err) {
+      console.error('Send message error:', err);
+      setError('訊息發送失敗');
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  const createConversation = async () => {
+    if (!newChatName.trim()) return;
+
+    try {
+      setLoading(true);
+      const res = await fetch('/api/chat/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ friendlyName: newChatName.trim() })
+      });
+
+      if (res.ok) {
+        const { conversationSid } = await res.json();
+        await loadConversations();
+        setShowCreateModal(false);
+        setNewChatName('');
+        joinConversation(conversationSid);
+      } else {
+        const data = await res.json();
+        setError(data.error || '建立聊天室失敗');
+      }
+    } catch (err) {
+      console.error('Create conversation error:', err);
+      setError('建立聊天室失敗');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteConversation = async (conversationSid: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('確定要刪除這個聊天室嗎？')) return;
+
+    try {
+      const res = await fetch(`/api/chat/conversations/${conversationSid}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (res.ok) {
+        setConversations(prev => prev.filter(c => c.conversationSid !== conversationSid));
+        if (selectedConversation === conversationSid) {
+          setSelectedConversation(null);
+          setMessages([]);
+          setActiveConversation(null);
+        }
+      } else {
+        const data = await res.json();
+        setError(data.error || '刪除聊天室失敗');
+      }
+    } catch (err) {
+      console.error('Delete conversation error:', err);
+      setError('刪除聊天室失敗');
+    }
+  };
+
+  const inviteToConversation = async () => {
+    if (!selectedConversation || !inviteEmail.trim()) return;
+
+    try {
+      setInviting(true);
+      const res = await fetch(`/api/chat/conversations/${selectedConversation}/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: inviteEmail.trim() })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.inviteLink) {
+          setInviteLink(data.inviteLink);
+        } else {
+          setInviteEmail('');
+          setShowInviteModal(false);
+          setError(null);
+        }
+      } else {
+        const data = await res.json();
+        setError(data.error || '邀請失敗');
+      }
+    } catch (err) {
+      console.error('Invite error:', err);
+      setError('邀請失敗');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const copyInviteLink = async () => {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (err) {
+      console.error('Copy failed:', err);
+    }
+  };
+
+  const generateInviteLink = async () => {
+    if (!selectedConversation) return;
+
+    try {
+      setInviting(true);
+      const res = await fetch(`/api/chat/conversations/${selectedConversation}/invite-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setInviteLink(data.inviteLink);
+      } else {
+        const data = await res.json();
+        setError(data.error || '產生邀請連結失敗');
+      }
+    } catch (err) {
+      console.error('Generate invite link error:', err);
+      setError('產生邀請連結失敗');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeConversation) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('請選擇圖片檔案');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('圖片大小不能超過 5MB');
+      return;
+    }
+
+    setUploadingImage(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/chat/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      });
+
+      if (res.ok) {
+        const { url } = await res.json();
+        await activeConversation.sendMessage(`📷 [圖片]\n${url}`);
+      } else {
+        setError('圖片上傳失敗');
+      }
+    } catch (err) {
+      console.error('Image upload error:', err);
+      setError('圖片上傳失敗');
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const startCall = async () => {
+    if (!selectedConversation) return;
+    
+    setCalling(true);
+    try {
+      const res = await fetch(`/api/chat/conversations/${selectedConversation}/call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        if (data.callUrl) {
+          setCallUrl(data.callUrl);
+          setShowCallDialog(true);
+          await activeConversation?.sendMessage(`📞 已發起通話\n${data.callUrl}`);
+        }
+      } else {
+        const data = await res.json();
+        setError(data.error || '發起通話失敗');
+      }
+    } catch (err) {
+      console.error('Start call error:', err);
+      setError('發起通話失敗');
+    } finally {
+      setCalling(false);
+    }
+  };
+
+  const joinCall = () => {
+    if (callUrl) {
+      window.open(callUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const copyCallLink = async () => {
+    if (!callUrl) return;
+    try {
+      await navigator.clipboard.writeText(callUrl);
+      setCallLinkCopied(true);
+      setTimeout(() => setCallLinkCopied(false), 2000);
+    } catch (err) {
+      console.error('Copy call link failed:', err);
+    }
+  };
+
+  const closeCallDialog = () => {
+    setShowCallDialog(false);
+    setCallUrl(null);
+    setCallLinkCopied(false);
+  };
 
   const formatMessageDate = (date: Date) => {
-    if (isToday(date)) return "Today";
-    if (isYesterday(date)) return "Yesterday";
-    return format(date, "MMMM d, yyyy");
-  };
-
-  const renderDateSeparator = (currentMsg: ChatMessage, prevMsg: ChatMessage | null) => {
-    if (!prevMsg || !isSameDay(currentMsg.dateCreated, prevMsg.dateCreated)) {
-      return (
-        <div className="flex justify-center my-4">
-          <span className="bg-gray-200/60 text-gray-500 text-[10px] font-medium px-3 py-1 rounded-full">
-            {formatMessageDate(currentMsg.dateCreated)}
-          </span>
-        </div>
-      );
+    const now = new Date();
+    const messageDate = new Date(date);
+    const diffDays = Math.floor((now.getTime() - messageDate.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+      return messageDate.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+    } else if (diffDays === 1) {
+      return '昨天';
+    } else if (diffDays < 7) {
+      const days = ['日', '一', '二', '三', '四', '五', '六'];
+      return `週${days[messageDate.getDay()]}`;
+    } else {
+      return messageDate.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' });
     }
-    return null;
   };
 
-  return (
-    <div className="flex flex-col h-full bg-[#F0F4F8] relative overflow-hidden font-sans">
-      
-      {/* --- HEADER --- */}
-      <header className="bg-white px-4 py-3 border-b border-gray-200 flex items-center justify-between shadow-sm z-20">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" className="md:hidden -ml-2 text-gray-500">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          
-          {/* Group Avatar / Icon */}
-          <div className="relative">
-            <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
-              <AvatarImage src="/placeholder-group.jpg" />
-              <AvatarFallback className="bg-[#06C755] text-white">TR</AvatarFallback>
-            </Avatar>
-            {/* Online Indicator */}
-            <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-[#06C755] border-2 border-white"></span>
-          </div>
+  if (!isAuthenticated) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center bg-gradient-to-b from-[#06C755]/10 to-white">
+        <div className="w-24 h-24 bg-[#06C755] rounded-full flex items-center justify-center mb-6 shadow-lg">
+          <MessageCircle className="w-12 h-12 text-white" />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-800 mb-3">歡迎使用聊天功能</h2>
+        <p className="text-slate-500 mb-8">登入後即可與旅伴即時通訊</p>
+        <a
+          href="/api/login"
+          className="px-8 py-4 bg-[#06C755] text-white rounded-full font-bold text-lg hover:bg-[#05B04A] transition-colors shadow-lg"
+          data-testid="button-login-chat"
+        >
+          登入開始聊天
+        </a>
+      </div>
+    );
+  }
 
-          <div className="flex flex-col">
-            <h2 className="text-sm font-bold text-gray-800 leading-tight">Osaka Trip Group</h2>
-            <span className="text-xs text-gray-500 font-medium">
-              {participants.length} participants
-            </span>
+  if (loading && !twilioClient) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] bg-white">
+        <Loader2 className="w-10 h-10 text-[#06C755] animate-spin mb-4" />
+        <p className="text-slate-500">正在連接聊天服務...</p>
+      </div>
+    );
+  }
+
+  if (error && !twilioClient) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center bg-white">
+        <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-4">
+          <MessageCircle className="w-10 h-10 text-red-500" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-800 mb-2">連接失敗</h2>
+        <p className="text-slate-500 mb-6">{error}</p>
+        <button
+          onClick={initializeTwilioClient}
+          className="px-6 py-3 bg-[#06C755] text-white rounded-full font-medium hover:bg-[#05B04A] transition-colors flex items-center gap-2"
+          data-testid="button-retry-chat"
+        >
+          <RefreshCw className="w-4 h-4" />
+          重試
+        </button>
+      </div>
+    );
+  }
+
+  if (!selectedConversation) {
+    return (
+      <div className="min-h-[60vh] bg-white">
+        <div className="sticky top-0 z-10 bg-white border-b border-slate-100">
+          <div className="flex items-center justify-between px-4 py-4">
+            <h2 className="text-xl font-bold text-slate-800">聊天</h2>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="p-3 bg-[#C4A77D] text-white rounded-full hover:bg-[#B39A70] transition-colors shadow-md"
+              data-testid="button-create-chat"
+            >
+              <Plus className="w-6 h-6" />
+            </button>
           </div>
         </div>
 
-        {/* Header Actions */}
-        <div className="flex items-center gap-1">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => handleCall(false)} 
-            className="text-gray-400 hover:text-[#06C755] hover:bg-green-50 hidden sm:flex"
-          >
-            <Phone className="h-5 w-5" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={handleInvite} 
-            className="text-gray-400 hover:text-[#06C755] hover:bg-green-50"
-          >
-            <UserPlus className="h-5 w-5" />
-          </Button>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-600">
-                <MoreVertical className="h-5 w-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleCall(true)}>
-                <Video className="mr-2 h-4 w-4" /> Video Call
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-red-500">
-                Leave Group
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
-
-      {/* --- MESSAGE LIST --- */}
-      <ScrollArea className="flex-1 px-4 py-4">
-        <div className="max-w-3xl mx-auto flex flex-col justify-end min-h-full pb-2">
-          {messages.map((msg, index) => {
-            const isMe = msg.author === myIdentity;
-            const prevMsg = index > 0 ? messages[index - 1] : null;
-            const showAvatar = !isMe && (!prevMsg || prevMsg.author !== msg.author);
-            
-            // System Message Handling
-            if (msg.type === 'system') {
-              return (
-                <div key={msg.sid} className="flex justify-center my-4">
-                  <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
-                    {msg.body}
-                  </span>
-                </div>
-              );
-            }
-
-            return (
-              <React.Fragment key={msg.sid}>
-                {renderDateSeparator(msg, prevMsg)}
-                
-                <div className={cn(
-                  "flex w-full gap-2 mb-1", 
-                  isMe ? "justify-end" : "justify-start"
-                )}>
-                  
-                  {/* Avatar (Left) */}
-                  {!isMe && (
-                    <div className="flex-shrink-0 w-8 flex flex-col justify-end">
-                      {showAvatar ? (
-                        <Avatar className="h-8 w-8 mb-1">
-                          <AvatarFallback className="bg-[#C4A77D] text-white text-[10px]">
-                            {msg.author.slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      ) : <div className="w-8" />}
+        {conversations.length === 0 ? (
+          <div className="text-center py-16 px-6">
+            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Users className="w-10 h-10 text-slate-400" />
+            </div>
+            <h3 className="text-lg font-medium text-slate-800 mb-2">還沒有聊天室</h3>
+            <p className="text-slate-500 mb-6">建立聊天室，邀請旅伴一起規劃旅程</p>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-6 py-3 bg-[#C4A77D] text-white rounded-full font-medium hover:bg-[#B39A70] transition-colors shadow-md"
+              data-testid="button-create-first-chat"
+            >
+              建立聊天室
+            </button>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {conversations.map(conv => (
+              <div
+                key={conv.conversationSid}
+                className="w-full p-4 hover:bg-slate-50 transition-colors flex items-center gap-3"
+              >
+                <button
+                  onClick={() => joinConversation(conv.conversationSid)}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                  data-testid={`chat-room-${conv.conversationSid}`}
+                >
+                  <div className="w-14 h-14 bg-[#C4A77D] rounded-full flex items-center justify-center flex-shrink-0">
+                    <MessageCircle className="w-7 h-7 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-slate-800 truncate">{conv.friendlyName || '聊天室'}</h3>
+                      {conv.lastMessageTime && (
+                        <span className="text-xs text-slate-400 ml-2 flex-shrink-0">
+                          {formatMessageDate(conv.lastMessageTime)}
+                        </span>
+                      )}
                     </div>
-                  )}
-
-                  {/* Bubble */}
-                  <div className={cn(
-                    "relative max-w-[70%] px-4 py-2 shadow-sm text-sm",
-                    isMe 
-                      ? "bg-[#06C755] text-white rounded-2xl rounded-tr-none"
-                      : "bg-white text-gray-800 rounded-2xl rounded-tl-none"
-                  )}>
-                    <p className="whitespace-pre-wrap leading-relaxed">
-                      {msg.body}
-                    </p>
-                    
-                    {/* Timestamp */}
-                    <div className={cn(
-                      "text-[9px] mt-1 text-right",
-                      isMe ? "text-green-100" : "text-gray-400"
-                    )}>
-                      {format(msg.dateCreated, "h:mm a")}
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-sm text-slate-500 truncate">
+                        {conv.lastMessage || '點擊開始對話'}
+                      </p>
+                      {conv.unreadMessagesCount > 0 && (
+                        <span className="ml-2 min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center flex-shrink-0">
+                          {conv.unreadMessagesCount > 99 ? '99+' : conv.unreadMessagesCount}
+                        </span>
+                      )}
                     </div>
                   </div>
-
-                </div>
-              </React.Fragment>
-            );
-          })}
-          <div ref={scrollRef} />
-        </div>
-      </ScrollArea>
-
-      {/* --- INPUT AREA --- */}
-      <div className="bg-white p-3 border-t border-gray-100">
-        <div className="max-w-3xl mx-auto flex items-center gap-2">
-          
-          {/* Attach Button */}
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={handleImageUpload}
-            className="text-gray-400 hover:text-[#06C755] hover:bg-green-50 rounded-full h-10 w-10 flex-shrink-0"
-          >
-            <ImageIcon className="h-5 w-5" />
-          </Button>
-
-          {/* Main Input */}
-          <div className="flex-1 relative">
-            <Input
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-              placeholder="Type a message..."
-              className="pr-10 rounded-full border-gray-200 bg-[#F0F4F8] focus-visible:ring-[#06C755] focus-visible:ring-offset-0 h-10"
-            />
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="absolute right-1 top-1 h-8 w-8 text-gray-400 hover:text-[#06C755] rounded-full"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
+                </button>
+                <button
+                  onClick={(e) => deleteConversation(conv.conversationSid, e)}
+                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors flex-shrink-0"
+                  data-testid={`button-delete-chat-${conv.conversationSid}`}
+                  title="刪除聊天室"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+            ))}
           </div>
+        )}
 
-          {/* Send Button */}
-          <Button 
-            onClick={handleSendMessage} 
-            disabled={!inputText.trim()}
-            className={cn(
-              "rounded-full h-10 w-10 p-0 transition-all flex-shrink-0",
-              inputText.trim() 
-                ? "bg-[#06C755] hover:bg-[#05a346] text-white shadow-md shadow-green-200" 
-                : "bg-gray-100 text-gray-300"
-            )}
+        {showCreateModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
+            <div className="bg-white rounded-t-3xl sm:rounded-2xl p-6 w-full sm:max-w-sm sm:mx-4 animate-slide-up">
+              <h3 className="text-lg font-bold text-slate-800 mb-4">建立新聊天室</h3>
+              <input
+                type="text"
+                value={newChatName}
+                onChange={(e) => setNewChatName(e.target.value)}
+                placeholder="輸入聊天室名稱"
+                className="w-full px-4 py-4 rounded-xl border border-slate-200 mb-4 focus:ring-2 focus:ring-[#06C755] outline-none text-lg"
+                data-testid="input-chat-name"
+                autoFocus
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowCreateModal(false); setNewChatName(''); }}
+                  className="flex-1 py-4 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50"
+                  data-testid="button-cancel-create"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={createConversation}
+                  disabled={!newChatName.trim() || loading}
+                  className="flex-1 py-4 rounded-xl bg-[#C4A77D] text-white font-bold hover:bg-[#B39A70] disabled:opacity-50"
+                  data-testid="button-confirm-create"
+                >
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : '建立'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const currentConv = conversations.find(c => c.conversationSid === selectedConversation);
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-180px)] bg-[#8CABD9]">
+      <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => { setSelectedConversation(null); setMessages([]); setActiveConversation(null); }}
+            className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"
+            data-testid="button-back-chat-list"
           >
-            <Send className="h-4 w-4 ml-0.5" />
-          </Button>
-
+            <ChevronLeft className="w-6 h-6 text-slate-600" />
+          </button>
+          <div>
+            <h3 className="font-semibold text-slate-800">{currentConv?.friendlyName || '聊天室'}</h3>
+            <p className="text-xs text-slate-500">{currentConv?.participantsCount || 2} 位成員</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {cartItems.length > 0 && (
+            <button
+              onClick={() => setShowCart(true)}
+              className="p-2 hover:bg-slate-100 rounded-full transition-colors relative"
+              data-testid="button-open-cart"
+              title="購物車"
+            >
+              <ShoppingCart className="w-5 h-5 text-slate-600" />
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                {cartItems.reduce((sum, item) => sum + item.quantity, 0)}
+              </span>
+            </button>
+          )}
+          <button
+            onClick={startCall}
+            disabled={calling}
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+            data-testid="button-start-call"
+            title="語音通話"
+          >
+            {calling ? (
+              <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
+            ) : (
+              <Phone className="w-5 h-5 text-slate-600" />
+            )}
+          </button>
+          <button
+            onClick={() => setShowInviteModal(true)}
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+            data-testid="button-invite-user"
+            title="邀請成員"
+          >
+            <UserPlus className="w-5 h-5 text-slate-600" />
+          </button>
+          <button
+            onClick={() => setShowMenuModal(true)}
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+            data-testid="button-chat-menu"
+          >
+            <MoreVertical className="w-5 h-5 text-slate-600" />
+          </button>
         </div>
       </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-white/50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <MessageCircle className="w-8 h-8 text-white/80" />
+            </div>
+            <p className="text-white/80">開始對話吧！</p>
+          </div>
+        ) : (
+          messages.map((msg, idx) => {
+            const isMe = msg.author === userId;
+            const showDate = idx === 0 || 
+              new Date(messages[idx - 1].dateCreated).toDateString() !== new Date(msg.dateCreated).toDateString();
+            
+            return (
+              <MessageBubble
+                key={msg.sid}
+                message={msg}
+                isMe={isMe}
+                showDate={showDate}
+                parseContent={parseMessageWithPlaces}
+              />
+            );
+          })
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div className="p-3 bg-white border-t border-slate-200">
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleImageUpload}
+          accept="image/*"
+          className="hidden"
+          data-testid="input-file-upload"
+        />
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingImage}
+            className="p-2 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-50" 
+            data-testid="button-upload-image"
+          >
+            {uploadingImage ? (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            ) : (
+              <Image className="w-6 h-6" />
+            )}
+          </button>
+          <input
+            type="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="輸入訊息"
+            className="flex-1 px-4 py-3 rounded-full border border-slate-200 focus:ring-2 focus:ring-[#06C755] outline-none bg-slate-50"
+            data-testid="input-message"
+          />
+          <button
+            onClick={sendMessage}
+            disabled={!newMessage.trim() || sendingMessage}
+            className="p-3 rounded-full transition-colors disabled:opacity-50"
+            style={{
+              backgroundColor: !newMessage.trim() || sendingMessage ? '#CBD5E1' : '#C4A77D',
+            }}
+            data-testid="button-send-message"
+          >
+            {sendingMessage ? (
+              <Loader2 className="w-5 h-5 animate-spin text-white" />
+            ) : (
+              <ArrowRight className="w-5 h-5 text-white" />
+            )}
+          </button>
+        </div>
+      </div>
+
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl p-6 w-full sm:max-w-sm sm:mx-4 animate-slide-up">
+            <h3 className="text-lg font-bold text-slate-800 mb-2">邀請成員</h3>
+            <p className="text-sm text-slate-500 mb-4">分享連結邀請朋友加入聊天室</p>
+            
+            {inviteLink ? (
+              <div className="space-y-4">
+                <div className="p-3 bg-slate-100 rounded-xl break-all text-sm text-slate-600">
+                  {inviteLink}
+                </div>
+                <button
+                  onClick={copyInviteLink}
+                  className="w-full py-4 rounded-xl bg-[#06C755] text-white font-bold hover:bg-[#05B04A] flex items-center justify-center gap-2"
+                  data-testid="button-copy-invite-link"
+                >
+                  {linkCopied ? (
+                    <>
+                      <Check className="w-5 h-5" />
+                      已複製
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-5 h-5" />
+                      複製連結
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={generateInviteLink}
+                disabled={inviting}
+                className="w-full py-4 rounded-xl bg-[#06C755] text-white font-bold hover:bg-[#05B04A] disabled:opacity-50 flex items-center justify-center gap-2"
+                data-testid="button-generate-invite-link"
+              >
+                {inviting ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <UserPlus className="w-5 h-5" />
+                    產生邀請連結
+                  </>
+                )}
+              </button>
+            )}
+            
+            <button
+              onClick={() => { setShowInviteModal(false); setInviteLink(null); setLinkCopied(false); }}
+              className="w-full mt-3 py-4 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50"
+              data-testid="button-close-invite"
+            >
+              關閉
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showMenuModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={() => setShowMenuModal(false)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm sm:mx-4 animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-100">
+              <h3 className="text-lg font-bold text-slate-800 text-center">{currentConv?.friendlyName}</h3>
+            </div>
+            <div className="p-2">
+              <button className="w-full p-4 text-left hover:bg-slate-50 rounded-xl flex items-center gap-3" data-testid="button-chat-members">
+                <Users className="w-5 h-5 text-slate-500" />
+                <span className="text-slate-800">查看成員</span>
+              </button>
+              <button className="w-full p-4 text-left hover:bg-slate-50 rounded-xl flex items-center gap-3" data-testid="button-chat-bookmark">
+                <Bookmark className="w-5 h-5 text-slate-500" />
+                <span className="text-slate-800">收藏訊息</span>
+              </button>
+            </div>
+            <div className="p-4 border-t border-slate-100">
+              <button
+                onClick={() => setShowMenuModal(false)}
+                className="w-full py-4 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50"
+                data-testid="button-close-menu"
+              >
+                關閉
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showProductPopover && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={() => setShowProductPopover(false)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md sm:mx-4 max-h-[80vh] animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Store className="w-5 h-5 text-[#06C755]" />
+                <h3 className="text-lg font-bold text-slate-800">{selectedPlace}</h3>
+              </div>
+              <button
+                onClick={() => setShowProductPopover(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-full"
+                data-testid="button-close-products"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[60vh]">
+              {loadingProducts ? (
+                <div className="text-center py-8">
+                  <Loader2 className="w-8 h-8 text-[#06C755] animate-spin mx-auto mb-2" />
+                  <p className="text-slate-500">載入商品中...</p>
+                </div>
+              ) : placeProducts.length === 0 ? (
+                <div className="text-center py-8">
+                  <Store className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-500">此店家尚未上架商品</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {placeProducts.map(product => (
+                    <div key={product.id} className="bg-slate-50 rounded-xl p-3 flex gap-3" data-testid={`product-card-${product.id}`}>
+                      {product.imageUrl ? (
+                        <img src={product.imageUrl} alt={product.name} className="w-20 h-20 object-cover rounded-lg flex-shrink-0" />
+                      ) : (
+                        <div className="w-20 h-20 bg-slate-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Store className="w-8 h-8 text-slate-400" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-slate-800 truncate">{product.name}</h4>
+                        {product.description && (
+                          <p className="text-sm text-slate-500 line-clamp-2 mt-0.5">{product.description}</p>
+                        )}
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-[#06C755] font-bold">NT$ {product.price.toLocaleString()}</span>
+                          <button
+                            onClick={() => addToCart(product.id)}
+                            disabled={addingToCart === product.id || !product.isActive}
+                            className="px-3 py-1.5 bg-[#06C755] text-white text-sm rounded-full hover:bg-[#05B04A] disabled:opacity-50 flex items-center gap-1"
+                            data-testid={`button-add-to-cart-${product.id}`}
+                          >
+                            {addingToCart === product.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <>
+                                <Plus className="w-4 h-4" />
+                                加入
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCart && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={() => setShowCart(false)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md sm:mx-4 max-h-[85vh] animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5 text-[#06C755]" />
+                <h3 className="text-lg font-bold text-slate-800">購物車</h3>
+                <span className="text-sm text-slate-500">({cartItems.reduce((sum, item) => sum + item.quantity, 0)} 項)</span>
+              </div>
+              <button
+                onClick={() => setShowCart(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-full"
+                data-testid="button-close-cart"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[50vh]">
+              {cartItems.length === 0 ? (
+                <div className="text-center py-8">
+                  <ShoppingCart className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-500">購物車是空的</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {cartItems.map(item => (
+                    <div key={item.id} className="bg-slate-50 rounded-xl p-3 flex gap-3" data-testid={`cart-item-${item.id}`}>
+                      {item.product?.imageUrl ? (
+                        <img src={item.product.imageUrl} alt={item.product.name} className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />
+                      ) : (
+                        <div className="w-16 h-16 bg-slate-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Store className="w-6 h-6 text-slate-400" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-slate-800 truncate">{item.product?.name}</h4>
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-[#06C755] font-bold">NT$ {((item.product?.price || 0) * item.quantity).toLocaleString()}</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => updateCartQuantity(item.id, item.quantity - 1)}
+                              className="w-7 h-7 bg-slate-200 rounded-full flex items-center justify-center hover:bg-slate-300"
+                              data-testid={`button-decrease-${item.id}`}
+                            >
+                              <Minus className="w-4 h-4 text-slate-600" />
+                            </button>
+                            <span className="w-6 text-center font-medium">{item.quantity}</span>
+                            <button
+                              onClick={() => updateCartQuantity(item.id, item.quantity + 1)}
+                              className="w-7 h-7 bg-[#06C755] rounded-full flex items-center justify-center hover:bg-[#05B04A]"
+                              data-testid={`button-increase-${item.id}`}
+                            >
+                              <Plus className="w-4 h-4 text-white" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {cartItems.length > 0 && (
+              <div className="p-4 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-slate-600">總計</span>
+                  <span className="text-xl font-bold text-[#06C755]">NT$ {cartTotal.toLocaleString()}</span>
+                </div>
+                <button
+                  onClick={checkout}
+                  className="w-full py-4 rounded-xl bg-[#06C755] text-white font-bold hover:bg-[#05B04A] flex items-center justify-center gap-2"
+                  data-testid="button-checkout"
+                >
+                  <ShoppingCart className="w-5 h-5" />
+                  前往結帳
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showCallDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={closeCallDialog}>
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm sm:mx-4 animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-center">
+              <div className="w-20 h-20 bg-[#06C755] rounded-full flex items-center justify-center mx-auto mb-4">
+                <Phone className="w-10 h-10 text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">通話已準備好</h3>
+              <p className="text-slate-500 mb-6">選擇加入通話或複製連結分享給其他人</p>
+              
+              {callUrl && (
+                <div className="p-3 bg-slate-100 rounded-xl break-all text-sm text-slate-600 mb-4 text-left">
+                  {callUrl}
+                </div>
+              )}
+              
+              <div className="space-y-3">
+                <button
+                  onClick={joinCall}
+                  className="w-full py-4 rounded-xl bg-[#06C755] text-white font-bold hover:bg-[#05B04A] flex items-center justify-center gap-2"
+                  data-testid="button-join-call"
+                >
+                  <Phone className="w-5 h-5" />
+                  立即加入通話
+                </button>
+                <button
+                  onClick={copyCallLink}
+                  className="w-full py-4 rounded-xl bg-[#C4A77D] text-white font-bold hover:bg-[#B39A70] flex items-center justify-center gap-2"
+                  data-testid="button-copy-call-link"
+                >
+                  {callLinkCopied ? (
+                    <>
+                      <Check className="w-5 h-5" />
+                      已複製連結
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-5 h-5" />
+                      複製通話連結
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={closeCallDialog}
+                  className="w-full py-4 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50"
+                  data-testid="button-close-call-dialog"
+                >
+                  關閉
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default ChatView;
