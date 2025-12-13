@@ -1,0 +1,89 @@
+I need to implement a robust Twilio integration for my Node.js + Express + TypeScript app.
+Please follow these steps to implement the backend logic for Chat and Voice features:
+
+### Step 1: Install Dependencies
+Install the `twilio` package if it is not already installed.
+
+### Step 2: Update Database Schema
+In my Drizzle schema file (`schema.ts` or similar), add a new column to the `trips` table (or whichever table connects users and planners) to store the conversation ID:
+- Column name: `twilioConversationSid`
+- Type: text
+
+### Step 3: Create Twilio Routes
+Create a new route file (or add to existing routes) to handle Twilio Token generation and Voice Webhook.
+I need two endpoints:
+
+**Endpoint 1: GET /api/token**
+This endpoint generates a Unified Access Token for both Chat and Voice.
+- Use `req.user` (from Replit Auth) to get the user's ID and use it as the Twilio `identity`.
+- Create a `ChatGrant` using `process.env.TWILIO_SERVICE_SID`.
+- Create a `VoiceGrant` using `process.env.TWILIO_TWIML_APP_SID` and set `incomingAllow: true`.
+- Return the token and identity as JSON.
+
+**Endpoint 2: POST /api/voice/connect**
+This is the Webhook for the TwiML App. It handles the logic when a user makes a call.
+- Extract `To` from `req.body`.
+- If `To` is present, use `voiceResponse.dial().client(To)` to connect the call to the target user (Planner).
+- If `To` is missing, return a warning message.
+- Return the response as XML (`text/xml`).
+
+### Reference Code for Logic
+Here is the logic reference for the routes. Please adapt it to fit my current project structure (imports, router setup, etc.):
+
+```typescript
+import { Router, Request, Response } from 'express';
+import twilio from 'twilio';
+
+const router = Router();
+const AccessToken = twilio.jwt.AccessToken;
+const ChatGrant = AccessToken.ChatGrant;
+const VoiceGrant = AccessToken.VoiceGrant;
+
+// GET /api/token
+router.get('/api/token', (req: Request, res: Response) => {
+  // Ensure user is authenticated via Replit Auth
+  const user = req.user as any; 
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
+  const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+  const twilioApiKey = process.env.TWILIO_API_KEY;
+  const twilioApiSecret = process.env.TWILIO_API_SECRET;
+  const serviceSid = process.env.TWILIO_SERVICE_SID;
+
+  const identity = user.id.toString(); 
+
+  const token = new AccessToken(
+    twilioAccountSid, 
+    twilioApiKey, 
+    twilioApiSecret, 
+    { identity: identity }
+  );
+
+  const chatGrant = new ChatGrant({ serviceSid: serviceSid });
+  token.addGrant(chatGrant);
+
+  const voiceGrant = new VoiceGrant({
+    outgoingApplicationSid: process.env.TWILIO_TWIML_APP_SID,
+    incomingAllow: true, 
+  });
+  token.addGrant(voiceGrant);
+
+  res.json({ token: token.toJwt(), identity: identity });
+});
+
+// POST /api/voice/connect
+router.post('/api/voice/connect', (req: Request, res: Response) => {
+  const { To } = req.body;
+  const voiceResponse = new twilio.twiml.VoiceResponse();
+
+  if (To) {
+    // Connect to the specific client (App user)
+    const dial = voiceResponse.dial({ callerId: process.env.TWILIO_CALLER_ID });
+    dial.client(To);
+  } else {
+    voiceResponse.say("Invalid connection target.");
+  }
+
+  res.type('text/xml');
+  res.send(voiceResponse.toString());
+});

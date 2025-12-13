@@ -10,6 +10,7 @@ import { registerStripeRoutes } from "./stripeRoutes";
 import twilio from "twilio";
 const { AccessToken } = twilio.jwt;
 const ChatGrant = AccessToken.ChatGrant;
+const VoiceGrant = AccessToken.VoiceGrant;
 
 const RECUR_API_URL = "https://api.recur.tw/v1";
 const RECUR_PREMIUM_PLAN_ID = "adkwbl9dya0wc6b53parl9yk";
@@ -2617,6 +2618,74 @@ ${uncachedSkeleton.map((item, idx) => `  {
       console.error("Start call error:", error);
       res.status(500).json({ error: error.message || "Failed to start call" });
     }
+  });
+
+  // ============ Twilio Unified Token (Chat + Voice) ============
+  app.get("/api/token", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const apiKeySid = process.env.TWILIO_API_KEY_SID;
+      const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+      const conversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
+      const twimlAppSid = process.env.TWILIO_TWIML_APP_SID;
+
+      if (!accountSid || !apiKeySid || !apiKeySecret) {
+        console.error("Missing Twilio credentials");
+        return res.status(500).json({ error: "Twilio not configured" });
+      }
+
+      const identity = userId;
+
+      const token = new AccessToken(accountSid, apiKeySid, apiKeySecret, {
+        identity: identity,
+        ttl: 3600
+      });
+
+      if (conversationsServiceSid) {
+        const chatGrant = new ChatGrant({
+          serviceSid: conversationsServiceSid
+        });
+        token.addGrant(chatGrant);
+      }
+
+      if (twimlAppSid) {
+        const voiceGrant = new VoiceGrant({
+          outgoingApplicationSid: twimlAppSid,
+          incomingAllow: true
+        });
+        token.addGrant(voiceGrant);
+      }
+
+      res.json({ 
+        token: token.toJwt(),
+        identity: identity
+      });
+    } catch (error) {
+      console.error("Twilio unified token error:", error);
+      res.status(500).json({ error: "Failed to generate token" });
+    }
+  });
+
+  // ============ Twilio Voice Webhook ============
+  app.post("/api/voice/connect", (req, res) => {
+    const { To } = req.body;
+    const voiceResponse = new twilio.twiml.VoiceResponse();
+
+    if (To) {
+      const callerId = process.env.TWILIO_CALLER_ID;
+      const dial = voiceResponse.dial({ callerId: callerId || undefined });
+      dial.client(To);
+    } else {
+      voiceResponse.say("Invalid connection target.");
+    }
+
+    res.type('text/xml');
+    res.send(voiceResponse.toString());
   });
 
   // Generate invite link for a conversation
