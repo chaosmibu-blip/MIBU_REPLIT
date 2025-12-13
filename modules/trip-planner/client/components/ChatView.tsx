@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, Plus, MessageCircle, Users, Loader2, RefreshCw, UserPlus, Copy, Check, ChevronLeft, MoreVertical, Image, Camera, Bookmark, ShoppingCart, X, Minus, Store } from 'lucide-react';
+import { Send, Plus, MessageCircle, Users, Loader2, RefreshCw, UserPlus, Copy, Check, ChevronLeft, MoreVertical, Image, Camera, Bookmark, ShoppingCart, X, Minus, Store, MapPin } from 'lucide-react';
 
 interface Message {
   sid: string;
@@ -76,6 +76,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
   const [addingToCart, setAddingToCart] = useState<number | null>(null);
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [sharingLocation, setSharingLocation] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -477,6 +481,82 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
     }
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeConversation) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('請選擇圖片檔案');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('圖片大小不能超過 5MB');
+      return;
+    }
+
+    setUploadingImage(true);
+    setShowAttachmentMenu(false);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/chat/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      });
+
+      if (res.ok) {
+        const { url } = await res.json();
+        await activeConversation.sendMessage(`📷 [圖片]\n${url}`);
+      } else {
+        setError('圖片上傳失敗');
+      }
+    } catch (err) {
+      console.error('Image upload error:', err);
+      setError('圖片上傳失敗');
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const shareLocation = async () => {
+    if (!activeConversation) return;
+
+    setSharingLocation(true);
+    setShowAttachmentMenu(false);
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        });
+      });
+
+      const { latitude, longitude } = position.coords;
+      const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
+      const locationMessage = `📍 我的位置\n${mapsUrl}`;
+      
+      await activeConversation.sendMessage(locationMessage);
+    } catch (err: any) {
+      console.error('Location sharing error:', err);
+      if (err.code === err.PERMISSION_DENIED) {
+        setError('請允許存取您的位置');
+      } else {
+        setError('無法取得位置資訊');
+      }
+    } finally {
+      setSharingLocation(false);
+    }
+  };
+
   const formatMessageDate = (date: Date) => {
     const now = new Date();
     const messageDate = new Date(date);
@@ -768,10 +848,49 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
       </div>
 
       <div className="p-3 bg-white border-t border-slate-200">
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleImageUpload}
+          accept="image/*"
+          className="hidden"
+          data-testid="input-file-upload"
+        />
         <div className="flex items-center gap-2">
-          <button className="p-2 text-slate-400 hover:text-slate-600 transition-colors" data-testid="button-add-image">
-            <Plus className="w-6 h-6" />
-          </button>
+          <div className="relative">
+            <button 
+              onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+              disabled={uploadingImage || sharingLocation}
+              className="p-2 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-50" 
+              data-testid="button-attachment-menu"
+            >
+              {uploadingImage || sharingLocation ? (
+                <Loader2 className="w-6 h-6 animate-spin" />
+              ) : (
+                <Plus className="w-6 h-6" />
+              )}
+            </button>
+            {showAttachmentMenu && (
+              <div className="absolute bottom-12 left-0 bg-white rounded-xl shadow-lg border border-slate-200 py-2 w-40 z-20">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center gap-3 text-sm"
+                  data-testid="button-upload-image"
+                >
+                  <Image className="w-5 h-5 text-blue-500" />
+                  <span>傳送圖片</span>
+                </button>
+                <button
+                  onClick={shareLocation}
+                  className="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center gap-3 text-sm"
+                  data-testid="button-share-location"
+                >
+                  <MapPin className="w-5 h-5 text-green-500" />
+                  <span>分享位置</span>
+                </button>
+              </div>
+            )}
+          </div>
           <div className="flex-1 relative">
             <input
               type="text"
