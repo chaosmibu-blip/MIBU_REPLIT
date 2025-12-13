@@ -293,7 +293,6 @@ export async function setupAuth(app: Express) {
           const token = generateJwtToken(user);
           const separator = externalRedirectUri.includes('?') ? '&' : '?';
           const targetUrl = `${externalRedirectUri}${separator}token=${token}`;
-          console.log(`Redirecting to app: ${externalRedirectUri}`);
           
           if (isCustomScheme(externalRedirectUri)) {
             return redirectWithBouncePage(targetUrl, '登入成功！');
