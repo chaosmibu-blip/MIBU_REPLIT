@@ -1,40 +1,46 @@
 // modules/trip-planner/client/components/ChatView.tsx
 
 import React, { useEffect, useState, useRef } from "react";
-import { Send, MapPin, ShoppingBag, Plus, Image as ImageIcon, Loader2, MoreVertical } from "lucide-react";
-import { format } from "date-fns";
+import { 
+  Send, 
+  Phone, 
+  Image as ImageIcon, 
+  Plus, 
+  MoreVertical, 
+  UserPlus, 
+  Video,
+  ArrowLeft
+} from "lucide-react";
+import { format, isSameDay, isToday, isYesterday } from "date-fns";
 
 // UI Components (Shadcn & Tailwind)
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useToast } from "@/hooks/use-toast"; // Assuming standard toast hook
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
-// --- Types (Ensure these match your existing types) ---
+// --- Types ---
 interface ChatMessage {
   sid: string;
   author: string;
   body: string;
   dateCreated: Date;
-  attributes?: any; // To store potential Klook/Product metadata
+  type?: 'text' | 'image' | 'system';
+  mediaUrl?: string;
 }
 
-interface Product {
-  id: string;
-  title: string;
-  price: string;
-  image: string;
-  rating?: number;
+interface Participant {
+  identity: string;
+  status: 'online' | 'offline';
+  lastRead?: Date;
 }
-
-// --- Mibu Brand Colors (Reference) ---
-// Primary Green: #06C755
-// Accent Gold: #C4A77D
-// Background: Slate-50
 
 interface ChatViewProps {
   language: string;
@@ -42,236 +48,298 @@ interface ChatViewProps {
   isAuthenticated: boolean;
 }
 
+// --- Mibu Brand Colors ---
+// Primary Green: #06C755
+// Accent Gold: #C4A77D
+// Background: #F0F4F8
+
 export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenticated }) => {
-  // --- 1. STATE & LOGIC SECTION (Preserve your existing logic here) ---
+  // --- STATE ---
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [isTwilioReady, setIsTwilioReady] = useState(false);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { toast } = useToast();
 
-  // Mock Identity for UI demo (Replace with your actual auth/Twilio identity)
+  // Mock Identity (Replace with real Auth/Twilio identity)
   const myIdentity = "user_me"; 
 
-  // --- MOCK LOGIC: Replace this useEffect with your real Twilio connection ---
+  // --- TWILIO LOGIC PLACEHOLDER ---
+  // Keep your existing Twilio connection logic here.
   useEffect(() => {
-    // Simulate loading Twilio
+    console.log("Initializing Twilio Chat...");
     setIsTwilioReady(true);
-    
-    // Simulate initial messages
-    setMessages([
+
+    // MOCK DATA for Visual Verification
+    const mockMessages: ChatMessage[] = [
       {
         sid: "1",
-        author: "other_user",
-        body: "Hey! Should we book the Universal Studios pass?",
-        dateCreated: new Date(Date.now() - 100000),
+        author: "system",
+        body: "Welcome to the Osaka Trip Group!",
+        dateCreated: new Date(Date.now() - 86400000 * 2), // 2 days ago
+        type: 'system'
       },
       {
         sid: "2",
-        author: "user_me",
-        body: "Yes, I found a good deal on Klook.",
-        dateCreated: new Date(Date.now() - 50000),
+        author: "alice",
+        body: "Has everyone bought their flight tickets yet?",
+        dateCreated: new Date(Date.now() - 86400000), // Yesterday
+        type: 'text'
       },
-      // Example of a Rich Media / Product Message
       {
         sid: "3",
         author: "user_me",
-        body: JSON.stringify({
-          type: "product",
-          data: {
-            id: "klook_123",
-            title: "Universal Studios Japan Studio Pass",
-            price: "¥ 8,400",
-            image: "https://res.klook.com/image/upload/fl_lossy.progressive,q_85/f_auto/v1679034298/blog/yebz5e0j0lqj0qj0qj0q.jpg", // Placeholder
-            rating: 4.8
-          }
-        }),
-        dateCreated: new Date(),
+        body: "Yes! I'm arriving at KIX at 10 AM.",
+        dateCreated: new Date(Date.now() - 3600000), // 1 hour ago
+        type: 'text'
+      },
+      {
+        sid: "4",
+        author: "bob",
+        body: "Nice. I'll be there around noon. Let's meet at the hotel?",
+        dateCreated: new Date(Date.now() - 1800000), // 30 mins ago
+        type: 'text'
       }
+    ];
+    setMessages(mockMessages);
+
+    setParticipants([
+      { identity: "alice", status: "online" },
+      { identity: "bob", status: "offline" },
+      { identity: "user_me", status: "online" }
     ]);
+
+    // Cleanup logic
+    return () => {
+      console.log("Disconnecting Twilio...");
+    };
   }, []);
 
-  // Handle Send
+  // Scroll to bottom on new message
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
+  // --- HANDLERS ---
+
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
-    
-    // Logic: channel.sendMessage(inputText)...
+
+    // TODO: Connect this to Twilio channel.sendMessage(inputText)
     const tempMsg: ChatMessage = {
       sid: Date.now().toString(),
       author: myIdentity,
       body: inputText,
       dateCreated: new Date(),
+      type: 'text'
     };
-    
-    setMessages((prev) => [...prev, tempMsg]);
+
+    setMessages(prev => [...prev, tempMsg]);
     setInputText("");
-    scrollToBottom();
   };
 
-  // Logic: Add to Cart (Mock)
-  const handleAddToCart = (product: Product) => {
-    toast({
-      title: "Added to Cart",
-      description: `${product.title} has been added to your trip cart.`,
-      className: "bg-[#06C755] text-white border-none"
-    });
+  const handleImageUpload = () => {
+    // TODO: Implement file picker and Twilio media message logic
+    console.log("Trigger Image Upload");
+    alert("Image Upload Logic to be implemented here (Keep existing logic)");
   };
 
-  // Helper: Scroll to bottom
-  const scrollToBottom = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+  const handleCall = (video: boolean = false) => {
+    // TODO: Connect to Twilio Voice/Video
+    console.log(`Starting ${video ? 'Video' : 'Voice'} Call...`);
+  };
+
+  const handleInvite = () => {
+    console.log("Open Invite Modal");
+  };
+
+  // --- RENDER HELPERS ---
+
+  const formatMessageDate = (date: Date) => {
+    if (isToday(date)) return "Today";
+    if (isYesterday(date)) return "Yesterday";
+    return format(date, "MMMM d, yyyy");
+  };
+
+  const renderDateSeparator = (currentMsg: ChatMessage, prevMsg: ChatMessage | null) => {
+    if (!prevMsg || !isSameDay(currentMsg.dateCreated, prevMsg.dateCreated)) {
+      return (
+        <div className="flex justify-center my-4">
+          <span className="bg-gray-200/60 text-gray-500 text-[10px] font-medium px-3 py-1 rounded-full">
+            {formatMessageDate(currentMsg.dateCreated)}
+          </span>
+        </div>
+      );
     }
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-
-  // --- 2. RENDER HELPERS ---
-
-  /**
-   * Parse message body to detect if it's a Rich Product Card or plain text.
-   * This preserves your logic requirements for "Parsed Content".
-   */
-  const renderMessageContent = (body: string, isMe: boolean) => {
-    try {
-      // Attempt to parse JSON (assuming your backend sends products as JSON strings)
-      // If your logic uses 'attributes', change this to check msg.attributes
-      if (body.startsWith("{") && body.includes("product")) {
-        const parsed = JSON.parse(body);
-        if (parsed.type === "product" && parsed.data) {
-          return <ProductBubble product={parsed.data} isMe={isMe} onAdd={() => handleAddToCart(parsed.data)} />;
-        }
-      }
-    } catch (e) {
-      // Fallback to plain text if parse fails
-    }
-    return <p className="text-sm leading-relaxed whitespace-pre-wrap">{body}</p>;
+    return null;
   };
 
   return (
-    <div className="flex h-full flex-col bg-slate-50 relative overflow-hidden font-sans">
+    <div className="flex flex-col h-full bg-[#F0F4F8] relative overflow-hidden font-sans">
       
       {/* --- HEADER --- */}
-      <header className="flex items-center justify-between px-6 py-4 bg-white/80 backdrop-blur-md border-b border-gray-100 z-10 sticky top-0 shadow-sm">
+      <header className="bg-white px-4 py-3 border-b border-gray-200 flex items-center justify-between shadow-sm z-20">
         <div className="flex items-center gap-3">
-          <Avatar className="h-10 w-10 ring-2 ring-offset-2 ring-[#06C755]/20">
-            <AvatarImage src="https://github.com/shadcn.png" />
-            <AvatarFallback>TP</AvatarFallback>
-          </Avatar>
-          <div>
-            <h2 className="text-base font-bold text-gray-800">Osaka Trip Group</h2>
-            <div className="flex items-center gap-1.5">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#06C755]"></span>
-              </span>
-              <span className="text-xs text-gray-500 font-medium">Online</span>
-            </div>
+          <Button variant="ghost" size="icon" className="md:hidden -ml-2 text-gray-500">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          
+          {/* Group Avatar / Icon */}
+          <div className="relative">
+            <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
+              <AvatarImage src="/placeholder-group.jpg" />
+              <AvatarFallback className="bg-[#06C755] text-white">TR</AvatarFallback>
+            </Avatar>
+            {/* Online Indicator */}
+            <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-[#06C755] border-2 border-white"></span>
+          </div>
+
+          <div className="flex flex-col">
+            <h2 className="text-sm font-bold text-gray-800 leading-tight">Osaka Trip Group</h2>
+            <span className="text-xs text-gray-500 font-medium">
+              {participants.length} participants
+            </span>
           </div>
         </div>
-        
+
         {/* Header Actions */}
-        <div className="flex items-center gap-2">
-           <Button variant="ghost" size="icon" className="text-gray-400 hover:text-[#06C755]">
-             <ShoppingBag className="h-5 w-5" />
-           </Button>
-           <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-600">
-             <MoreVertical className="h-5 w-5" />
-           </Button>
+        <div className="flex items-center gap-1">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => handleCall(false)} 
+            className="text-gray-400 hover:text-[#06C755] hover:bg-green-50 hidden sm:flex"
+          >
+            <Phone className="h-5 w-5" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={handleInvite} 
+            className="text-gray-400 hover:text-[#06C755] hover:bg-green-50"
+          >
+            <UserPlus className="h-5 w-5" />
+          </Button>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-600">
+                <MoreVertical className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleCall(true)}>
+                <Video className="mr-2 h-4 w-4" /> Video Call
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-red-500">
+                Leave Group
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
       {/* --- MESSAGE LIST --- */}
-      <ScrollArea className="flex-1 px-4 py-6 bg-slate-50/50">
-        <div className="flex flex-col gap-6 max-w-3xl mx-auto pb-4">
+      <ScrollArea className="flex-1 px-4 py-4">
+        <div className="max-w-3xl mx-auto flex flex-col justify-end min-h-full pb-2">
           {messages.map((msg, index) => {
             const isMe = msg.author === myIdentity;
-            const showAvatar = !isMe && (index === 0 || messages[index - 1].author !== msg.author);
-
-            return (
-              <div
-                key={msg.sid}
-                className={cn(
-                  "flex w-full gap-3",
-                  isMe ? "justify-end" : "justify-start"
-                )}
-              >
-                {/* Avatar for Others */}
-                {!isMe && (
-                  <div className="flex-shrink-0 w-8 pt-1">
-                     {showAvatar ? (
-                       <Avatar className="h-8 w-8">
-                         <AvatarFallback className="bg-gray-200 text-xs text-gray-600">
-                           {msg.author.slice(0, 2).toUpperCase()}
-                         </AvatarFallback>
-                       </Avatar>
-                     ) : <div className="w-8" />}
-                  </div>
-                )}
-
-                {/* Message Bubble Container */}
-                <div className={cn("flex flex-col max-w-[75%]", isMe ? "items-end" : "items-start")}>
-                  
-                  {/* The Bubble */}
-                  <div
-                    className={cn(
-                      "relative px-4 py-3 shadow-sm",
-                      isMe 
-                        ? "bg-[#06C755] text-white rounded-2xl rounded-tr-sm" // My Bubble
-                        : "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm" // Other Bubble
-                    )}
-                  >
-                    {renderMessageContent(msg.body, isMe)}
-                  </div>
-
-                  {/* Timestamp */}
-                  <span className="text-[10px] text-gray-400 mt-1 px-1">
-                    {format(new Date(msg.dateCreated), "h:mm a")}
+            const prevMsg = index > 0 ? messages[index - 1] : null;
+            const showAvatar = !isMe && (!prevMsg || prevMsg.author !== msg.author);
+            
+            // System Message Handling
+            if (msg.type === 'system') {
+              return (
+                <div key={msg.sid} className="flex justify-center my-4">
+                  <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
+                    {msg.body}
                   </span>
                 </div>
-              </div>
+              );
+            }
+
+            return (
+              <React.Fragment key={msg.sid}>
+                {renderDateSeparator(msg, prevMsg)}
+                
+                <div className={cn(
+                  "flex w-full gap-2 mb-1", 
+                  isMe ? "justify-end" : "justify-start"
+                )}>
+                  
+                  {/* Avatar (Left) */}
+                  {!isMe && (
+                    <div className="flex-shrink-0 w-8 flex flex-col justify-end">
+                      {showAvatar ? (
+                        <Avatar className="h-8 w-8 mb-1">
+                          <AvatarFallback className="bg-[#C4A77D] text-white text-[10px]">
+                            {msg.author.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      ) : <div className="w-8" />}
+                    </div>
+                  )}
+
+                  {/* Bubble */}
+                  <div className={cn(
+                    "relative max-w-[70%] px-4 py-2 shadow-sm text-sm",
+                    isMe 
+                      ? "bg-[#06C755] text-white rounded-2xl rounded-tr-none"
+                      : "bg-white text-gray-800 rounded-2xl rounded-tl-none"
+                  )}>
+                    <p className="whitespace-pre-wrap leading-relaxed">
+                      {msg.body}
+                    </p>
+                    
+                    {/* Timestamp */}
+                    <div className={cn(
+                      "text-[9px] mt-1 text-right",
+                      isMe ? "text-green-100" : "text-gray-400"
+                    )}>
+                      {format(msg.dateCreated, "h:mm a")}
+                    </div>
+                  </div>
+
+                </div>
+              </React.Fragment>
             );
           })}
           <div ref={scrollRef} />
         </div>
       </ScrollArea>
 
-      {/* --- INPUT FOOTER --- */}
-      <div className="p-4 bg-white border-t border-gray-100 z-10">
+      {/* --- INPUT AREA --- */}
+      <div className="bg-white p-3 border-t border-gray-100">
         <div className="max-w-3xl mx-auto flex items-center gap-2">
           
-          {/* Attachment Popover */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-gray-400 hover:text-[#06C755] hover:bg-green-50 rounded-full h-10 w-10">
-                <Plus className="h-6 w-6" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent side="top" align="start" className="w-48 p-2">
-              <div className="grid gap-1">
-                <Button variant="ghost" className="justify-start gap-2 text-sm font-normal">
-                  <ImageIcon className="h-4 w-4 text-[#06C755]" /> Photos
-                </Button>
-                <Button variant="ghost" className="justify-start gap-2 text-sm font-normal">
-                  <MapPin className="h-4 w-4 text-[#C4A77D]" /> Location
-                </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
+          {/* Attach Button */}
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={handleImageUpload}
+            className="text-gray-400 hover:text-[#06C755] hover:bg-green-50 rounded-full h-10 w-10 flex-shrink-0"
+          >
+            <ImageIcon className="h-5 w-5" />
+          </Button>
 
-          {/* Text Input */}
+          {/* Main Input */}
           <div className="flex-1 relative">
             <Input
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-              placeholder="Type your message..."
-              className="pr-10 rounded-full border-gray-200 bg-slate-50 focus-visible:ring-[#06C755] focus-visible:ring-offset-0 h-11"
+              placeholder="Type a message..."
+              className="pr-10 rounded-full border-gray-200 bg-[#F0F4F8] focus-visible:ring-[#06C755] focus-visible:ring-offset-0 h-10"
             />
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="absolute right-1 top-1 h-8 w-8 text-gray-400 hover:text-[#06C755] rounded-full"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
           </div>
 
           {/* Send Button */}
@@ -279,13 +347,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
             onClick={handleSendMessage} 
             disabled={!inputText.trim()}
             className={cn(
-              "rounded-full h-11 w-11 p-0 transition-all",
+              "rounded-full h-10 w-10 p-0 transition-all flex-shrink-0",
               inputText.trim() 
-                ? "bg-[#06C755] hover:bg-[#05a346] shadow-md shadow-green-200" 
-                : "bg-gray-200 text-gray-400"
+                ? "bg-[#06C755] hover:bg-[#05a346] text-white shadow-md shadow-green-200" 
+                : "bg-gray-100 text-gray-300"
             )}
           >
-             {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5 ml-0.5" />}
+            <Send className="h-4 w-4 ml-0.5" />
           </Button>
 
         </div>
@@ -293,45 +361,3 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
     </div>
   );
 };
-
-// --- SUB-COMPONENT: PRODUCT CARD BUBBLE ---
-function ProductBubble({ product, isMe, onAdd }: { product: Product; isMe: boolean; onAdd: () => void }) {
-  return (
-    <Card className={cn(
-      "w-60 overflow-hidden border-none shadow-none mt-1 mb-1",
-      isMe ? "bg-white/10 text-white" : "bg-slate-50"
-    )}>
-      {/* Product Image */}
-      <div className="h-32 w-full bg-gray-200 relative">
-        <img src={product.image || "/placeholder-travel.jpg"} alt={product.title} className="w-full h-full object-cover" />
-        <div className="absolute top-2 right-2 bg-black/50 text-white text-[10px] px-2 py-0.5 rounded-full backdrop-blur-sm">
-          Klook
-        </div>
-      </div>
-      
-      {/* Content */}
-      <CardContent className="p-3">
-        <h4 className={cn("font-bold text-sm leading-tight mb-1 line-clamp-2", isMe ? "text-white" : "text-gray-800")}>
-          {product.title}
-        </h4>
-        <div className="flex items-center justify-between mt-2">
-          <span className={cn("font-bold text-sm", isMe ? "text-green-100" : "text-[#06C755]")}>
-            {product.price}
-          </span>
-          <Button 
-            size="sm" 
-            onClick={onAdd}
-            className={cn(
-              "h-7 px-3 text-xs rounded-full",
-              isMe 
-               ? "bg-white text-[#06C755] hover:bg-gray-100" 
-               : "bg-[#06C755] text-white hover:bg-[#05a346]"
-            )}
-          >
-            Add +
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
