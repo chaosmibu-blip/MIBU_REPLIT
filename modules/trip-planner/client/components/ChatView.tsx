@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { ArrowRight, Plus, MessageCircle, Users, Loader2, RefreshCw, UserPlus, Copy, Check, ChevronLeft, MoreVertical, Image, Camera, Bookmark, ShoppingCart, X, Minus, Store, MapPin, Trash2 } from 'lucide-react';
+import { ArrowRight, Plus, MessageCircle, Users, Loader2, RefreshCw, UserPlus, Copy, Check, ChevronLeft, MoreVertical, Image, Camera, Bookmark, ShoppingCart, X, Minus, Store, Trash2, Phone } from 'lucide-react';
 
 interface Message {
   sid: string;
@@ -86,9 +86,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
   const [addingToCart, setAddingToCart] = useState<number | null>(null);
-  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [sharingLocation, setSharingLocation] = useState(false);
+  const [calling, setCalling] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [klookHighlights, setKlookHighlights] = useState<Map<string, KlookHighlight[]>>(new Map());
 
@@ -631,7 +630,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
     }
 
     setUploadingImage(true);
-    setShowAttachmentMenu(false);
 
     try {
       const formData = new FormData();
@@ -660,35 +658,33 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
     }
   };
 
-  const shareLocation = async () => {
-    if (!activeConversation) return;
-
-    setSharingLocation(true);
-    setShowAttachmentMenu(false);
-
+  const startCall = async () => {
+    if (!selectedConversation) return;
+    
+    setCalling(true);
     try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0
-        });
+      const res = await fetch(`/api/chat/conversations/${selectedConversation}/call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
       });
-
-      const { latitude, longitude } = position.coords;
-      const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`;
-      const locationMessage = `📍 我的位置\n${mapsUrl}`;
       
-      await activeConversation.sendMessage(locationMessage);
-    } catch (err: any) {
-      console.error('Location sharing error:', err);
-      if (err.code === err.PERMISSION_DENIED) {
-        setError('請允許存取您的位置');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.callUrl) {
+          window.open(data.callUrl, '_blank');
+        } else {
+          await activeConversation?.sendMessage('📞 已發起通話邀請');
+        }
       } else {
-        setError('無法取得位置資訊');
+        const data = await res.json();
+        setError(data.error || '發起通話失敗');
       }
+    } catch (err) {
+      console.error('Start call error:', err);
+      setError('發起通話失敗');
     } finally {
-      setSharingLocation(false);
+      setCalling(false);
     }
   };
 
@@ -907,6 +903,19 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
             </button>
           )}
           <button
+            onClick={startCall}
+            disabled={calling}
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+            data-testid="button-start-call"
+            title="語音通話"
+          >
+            {calling ? (
+              <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
+            ) : (
+              <Phone className="w-5 h-5 text-slate-600" />
+            )}
+          </button>
+          <button
             onClick={() => setShowInviteModal(true)}
             className="p-2 hover:bg-slate-100 rounded-full transition-colors"
             data-testid="button-invite-user"
@@ -1003,54 +1012,27 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
           data-testid="input-file-upload"
         />
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <button 
-              onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-              disabled={uploadingImage || sharingLocation}
-              className="p-2 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-50" 
-              data-testid="button-attachment-menu"
-            >
-              {uploadingImage || sharingLocation ? (
-                <Loader2 className="w-6 h-6 animate-spin" />
-              ) : (
-                <Plus className="w-6 h-6" />
-              )}
-            </button>
-            {showAttachmentMenu && (
-              <div className="absolute bottom-12 left-0 bg-white rounded-xl shadow-lg border border-slate-200 py-2 w-40 z-20">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center gap-3 text-sm"
-                  data-testid="button-upload-image"
-                >
-                  <Image className="w-5 h-5 text-blue-500" />
-                  <span>傳送圖片</span>
-                </button>
-                <button
-                  onClick={shareLocation}
-                  className="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center gap-3 text-sm"
-                  data-testid="button-share-location"
-                >
-                  <MapPin className="w-5 h-5 text-green-500" />
-                  <span>分享位置</span>
-                </button>
-              </div>
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingImage}
+            className="p-2 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-50" 
+            data-testid="button-upload-image"
+          >
+            {uploadingImage ? (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            ) : (
+              <Image className="w-6 h-6" />
             )}
-          </div>
-          <div className="flex-1 relative">
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="輸入訊息"
-              className="w-full px-4 py-3 rounded-full border border-slate-200 focus:ring-2 focus:ring-[#06C755] outline-none pr-12 bg-slate-50"
-              data-testid="input-message"
-            />
-            <button className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" data-testid="button-emoji">
-              😊
-            </button>
-          </div>
+          </button>
+          <input
+            type="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="輸入訊息"
+            className="flex-1 px-4 py-3 rounded-full border border-slate-200 focus:ring-2 focus:ring-[#06C755] outline-none bg-slate-50"
+            data-testid="input-message"
+          />
           <button
             onClick={sendMessage}
             disabled={!newMessage.trim() || sendingMessage}

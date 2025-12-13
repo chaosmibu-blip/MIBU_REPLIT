@@ -2594,6 +2594,31 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // Start a call in conversation
+  app.post("/api/chat/conversations/:conversationSid/call", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { conversationSid } = req.params;
+      
+      // For now, we'll generate a simple call URL using Jitsi Meet (free, no API key needed)
+      const roomName = `mibu-${conversationSid.replace(/[^a-zA-Z0-9]/g, '')}`;
+      const callUrl = `https://meet.jit.si/${roomName}`;
+
+      res.json({ 
+        success: true,
+        callUrl,
+        roomName
+      });
+    } catch (error: any) {
+      console.error("Start call error:", error);
+      res.status(500).json({ error: error.message || "Failed to start call" });
+    }
+  });
+
   // Generate invite link for a conversation
   app.post("/api/chat/conversations/:conversationSid/invite-link", isAuthenticated, async (req: any, res) => {
     try {
