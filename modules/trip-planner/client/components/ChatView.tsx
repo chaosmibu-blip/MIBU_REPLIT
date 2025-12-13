@@ -995,9 +995,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
                       )}
                       <div className="flex-1 min-w-0">
                         <h4 className="font-medium text-slate-800 truncate">{item.product?.name}</h4>
-                        <p className="text-sm text-slate-500">{item.product?.placeName}</p>
                         <div className="flex items-center justify-between mt-2">
-                          <span className="text-[#06C755] font-bold">NT$ {((item.product?.priceNtd || 0) * item.quantity).toLocaleString()}</span>
+                          <span className="text-[#06C755] font-bold">NT$ {((item.product?.price || 0) * item.quantity).toLocaleString()}</span>
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => updateCartQuantity(item.id, item.quantity - 1)}
