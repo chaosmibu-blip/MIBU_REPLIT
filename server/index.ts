@@ -67,10 +67,10 @@ async function initStripe() {
   }
 }
 
-// Initialize Stripe (wrapped in IIFE for CommonJS compatibility)
-(async () => {
-  await initStripe();
-})();
+// Initialize Stripe (wrapped for CommonJS compatibility)
+initStripe().catch((err) => {
+  console.error('Failed to initialize Stripe:', err);
+});
 
 app.post(
   '/api/stripe/webhook/:uuid',
@@ -145,7 +145,7 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
+async function startServer() {
   const httpServer = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -173,4 +173,9 @@ app.use((req, res, next) => {
       console.log("Server is running on port " + port);
     },
   );
-})();
+}
+
+startServer().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+});
