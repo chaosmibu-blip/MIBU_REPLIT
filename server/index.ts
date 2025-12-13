@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import { runMigrations } from 'stripe-replit-sync';
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
@@ -26,6 +27,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
   exposedHeaders: ['Set-Cookie'],
 }));
+
+app.use(cookieParser());
 
 declare module "http" {
   interface IncomingMessage {

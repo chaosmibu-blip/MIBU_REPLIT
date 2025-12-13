@@ -164,6 +164,14 @@ export async function setupAuth(app: Express) {
         return res.status(400).json({ error: 'Invalid redirect_uri' });
       }
       (req.session as any).externalRedirectUri = redirectUri;
+      
+      // Also set a cookie as backup (session might be lost during OAuth flow)
+      res.cookie('app_redirect_uri', redirectUri, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none' as const,
+        maxAge: 10 * 60 * 1000, // 10 minutes
+      });
     }
     
     ensureStrategy(req.hostname);
@@ -177,11 +185,22 @@ export async function setupAuth(app: Express) {
   app.get("/api/auth/login", loginHandler);
 
   app.get("/api/callback", (req, res, next) => {
+    // Helper to get redirect URI from session or cookie
+    const getExternalRedirectUri = () => {
+      return (req.session as any)?.externalRedirectUri || req.cookies?.app_redirect_uri;
+    };
+    
+    // Helper to clear redirect URI from both session and cookie
+    const clearExternalRedirectUri = () => {
+      delete (req.session as any).externalRedirectUri;
+      res.clearCookie('app_redirect_uri');
+    };
+    
     if (req.query.error) {
       console.log("OAuth denied:", req.query.error, req.query.error_description);
-      const externalRedirectUri = (req.session as any)?.externalRedirectUri;
+      const externalRedirectUri = getExternalRedirectUri();
       if (externalRedirectUri) {
-        delete (req.session as any).externalRedirectUri;
+        clearExternalRedirectUri();
         return res.redirect(`${externalRedirectUri}?error=access_denied`);
       }
       return res.redirect("/");
@@ -190,9 +209,9 @@ export async function setupAuth(app: Express) {
     ensureStrategy(req.hostname);
     passport.authenticate(`replitauth:${req.hostname}`, (err: any, user: any) => {
       if (err || !user) {
-        const externalRedirectUri = (req.session as any)?.externalRedirectUri;
+        const externalRedirectUri = getExternalRedirectUri();
         if (externalRedirectUri) {
-          delete (req.session as any).externalRedirectUri;
+          clearExternalRedirectUri();
           return res.redirect(`${externalRedirectUri}?error=auth_failed`);
         }
         return res.redirect("/");
@@ -204,11 +223,12 @@ export async function setupAuth(app: Express) {
           return res.redirect("/");
         }
         
-        const externalRedirectUri = (req.session as any)?.externalRedirectUri;
+        const externalRedirectUri = getExternalRedirectUri();
         if (externalRedirectUri) {
-          delete (req.session as any).externalRedirectUri;
+          clearExternalRedirectUri();
           const token = generateJwtToken(user);
           const separator = externalRedirectUri.includes('?') ? '&' : '?';
+          console.log(`Redirecting to app: ${externalRedirectUri}`);
           return res.redirect(`${externalRedirectUri}${separator}token=${token}`);
         }
         
