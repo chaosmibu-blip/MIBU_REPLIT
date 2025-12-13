@@ -20,27 +20,14 @@ const LANGUAGE_MAP: Record<string, string> = {
   'ko': 'ko',
 };
 
-let cachedMapboxToken: string | null = null;
+import { getCachedToken, preloadMapboxToken } from '../lib/mapPreloader';
 
 async function getMapboxToken(): Promise<string | null> {
-  if (cachedMapboxToken) {
-    return cachedMapboxToken;
+  const cached = getCachedToken();
+  if (cached) {
+    return cached;
   }
-  try {
-    const response = await fetch('/api/config/mapbox');
-    if (!response.ok) {
-      throw new Error('Failed to fetch Mapbox config');
-    }
-    const config = await response.json();
-    if (config.accessToken) {
-      cachedMapboxToken = config.accessToken;
-      return cachedMapboxToken;
-    }
-    return null;
-  } catch (error) {
-    console.error('Failed to get Mapbox token:', error);
-    return null;
-  }
+  return preloadMapboxToken();
 }
 
 interface MarkerData {

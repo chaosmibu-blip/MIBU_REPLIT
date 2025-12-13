@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './hooks/useAuth';
+import { preloadMapboxResources } from '../../modules/trip-planner/client/lib/mapPreloader';
 import { AppState, Language, GachaItem, GachaResponse, AppView, Merchant, GachaSubView, PlannerSubView, SettingsTab } from './types';
 import { InputForm } from './components/InputForm';
 import { GachaScene } from './components/GachaScene';
@@ -112,6 +113,11 @@ const App: React.FC = () => {
     }
   }, [authLoading, isAuthenticated, state.view]);
   
+  // Preload Mapbox resources on mount
+  useEffect(() => {
+    preloadMapboxResources();
+  }, []);
+
   // Check for existing guest session on mount
   useEffect(() => {
     const guestId = localStorage.getItem(STORAGE_KEYS.GUEST_ID);
