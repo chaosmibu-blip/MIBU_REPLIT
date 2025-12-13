@@ -67,11 +67,6 @@ async function initStripe() {
   }
 }
 
-// Initialize Stripe (wrapped for CommonJS compatibility)
-initStripe().catch((err) => {
-  console.error('Failed to initialize Stripe:', err);
-});
-
 app.post(
   '/api/stripe/webhook/:uuid',
   express.raw({ type: 'application/json' }),
@@ -146,6 +141,9 @@ app.use((req, res, next) => {
 });
 
 async function startServer() {
+  // Initialize Stripe
+  await initStripe();
+  
   const httpServer = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
