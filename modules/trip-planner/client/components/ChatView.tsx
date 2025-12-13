@@ -281,15 +281,34 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
     }
   };
 
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+
+  const copyUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedUrl(url);
+      setTimeout(() => setCopiedUrl(null), 2000);
+    } catch (err) {
+      console.error('Copy URL failed:', err);
+    }
+  };
+
   const parseMessageWithPlaces = useCallback((text: string, messageSid?: string): React.ReactNode[] => {
     const highlights = messageSid ? klookHighlights.get(messageSid) || [] : [];
     
-    if (placeNames.length === 0 && highlights.length === 0) return [text];
+    const urlPattern = /(https?:\/\/[^\s]+)/g;
+    const urlMatches = text.match(urlPattern) || [];
     
-    const allKeywords: { keyword: string; type: 'place' | 'klook'; url?: string }[] = [];
+    const allKeywords: { keyword: string; type: 'place' | 'klook' | 'url'; url?: string }[] = [];
+    
+    urlMatches.forEach(url => {
+      allKeywords.push({ keyword: url, type: 'url', url });
+    });
     
     placeNames.forEach(name => {
-      allKeywords.push({ keyword: name, type: 'place' });
+      if (!allKeywords.find(k => k.keyword === name)) {
+        allKeywords.push({ keyword: name, type: 'place' });
+      }
     });
     
     highlights.forEach(h => {
@@ -309,7 +328,34 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
       const matchedKeyword = sortedKeywords.find(k => k.keyword === part);
       
       if (matchedKeyword) {
-        if (matchedKeyword.type === 'klook') {
+        if (matchedKeyword.type === 'url') {
+          return (
+            <span key={idx} className="inline-flex items-center gap-1 flex-wrap">
+              <a
+                href={matchedKeyword.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="text-blue-500 underline break-all hover:text-blue-700"
+                data-testid={`link-url-${idx}`}
+              >
+                {part.length > 40 ? part.slice(0, 40) + '...' : part}
+              </a>
+              <button
+                onClick={(e) => { e.stopPropagation(); copyUrl(matchedKeyword.url!); }}
+                className="inline-flex items-center justify-center w-6 h-6 bg-slate-200 text-slate-600 rounded-full text-xs hover:bg-slate-300 transition-colors flex-shrink-0"
+                data-testid={`button-copy-url-${idx}`}
+                title="複製連結"
+              >
+                {copiedUrl === matchedKeyword.url ? (
+                  <Check className="w-3.5 h-3.5 text-green-600" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </span>
+          );
+        } else if (matchedKeyword.type === 'klook') {
           return (
             <span key={idx} className="inline-flex items-center gap-0.5">
               <span className="text-orange-600 font-medium">{part}</span>
@@ -344,7 +390,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
       }
       return part;
     });
-  }, [placeNames, klookHighlights]);
+  }, [placeNames, klookHighlights, copiedUrl]);
 
   const cartTotal = useMemo(() => {
     return cartItems.reduce((sum, item) => {
