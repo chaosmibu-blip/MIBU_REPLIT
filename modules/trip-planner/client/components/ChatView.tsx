@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Plus, MessageCircle, Users, Loader2, RefreshCw, UserPlus, Copy, Check, ChevronLeft, MoreVertical, Image, Camera, Bookmark } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Send, Plus, MessageCircle, Users, Loader2, RefreshCw, UserPlus, Copy, Check, ChevronLeft, MoreVertical, Image, Camera, Bookmark, ShoppingCart, X, Minus, Store } from 'lucide-react';
 
 interface Message {
   sid: string;
@@ -7,6 +7,29 @@ interface Message {
   body: string;
   dateCreated: Date;
   index: number;
+}
+
+interface PlaceProduct {
+  id: number;
+  placeCacheId: number | null;
+  merchantId: number | null;
+  name: string;
+  description: string | null;
+  price: number;
+  currency: string;
+  category: string | null;
+  imageUrl: string | null;
+  stripeProductId: string | null;
+  stripePriceId: string | null;
+  isActive: boolean;
+  stock: number | null;
+}
+
+interface CartItem {
+  id: number;
+  productId: number;
+  quantity: number;
+  product?: PlaceProduct;
 }
 
 interface Conversation {
@@ -45,6 +68,15 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
   const [inviting, setInviting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const [placeNames, setPlaceNames] = useState<string[]>([]);
+  const [selectedPlace, setSelectedPlace] = useState<string | null>(null);
+  const [placeProducts, setPlaceProducts] = useState<PlaceProduct[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [showProductPopover, setShowProductPopover] = useState(false);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [showCart, setShowCart] = useState(false);
+  const [addingToCart, setAddingToCart] = useState<number | null>(null);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -52,6 +84,165 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    const loadPlaceNames = async () => {
+      try {
+        const res = await fetch('/api/commerce/places/names', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          setPlaceNames(data.names || []);
+        }
+      } catch (err) {
+        console.error('Load place names error:', err);
+      }
+    };
+    loadPlaceNames();
+  }, []);
+
+  useEffect(() => {
+    const loadCart = async () => {
+      if (!isAuthenticated) return;
+      try {
+        const res = await fetch('/api/commerce/cart', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          setCartItems(data.items || []);
+        }
+      } catch (err) {
+        console.error('Load cart error:', err);
+      }
+    };
+    loadCart();
+  }, [isAuthenticated]);
+
+  const loadProductsForPlace = async (placeName: string) => {
+    setLoadingProducts(true);
+    setSelectedPlace(placeName);
+    setShowProductPopover(true);
+    try {
+      const res = await fetch(`/api/commerce/products/by-name?name=${encodeURIComponent(placeName)}`, {
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPlaceProducts(data.products || []);
+      }
+    } catch (err) {
+      console.error('Load products error:', err);
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
+  const addToCart = async (productId: number) => {
+    if (!isAuthenticated) return;
+    setAddingToCart(productId);
+    try {
+      const res = await fetch('/api/commerce/cart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ productId, quantity: 1 })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCartItems(prev => {
+          const existing = prev.find(item => item.productId === productId);
+          if (existing) {
+            return prev.map(item => 
+              item.productId === productId ? { ...item, quantity: item.quantity + 1 } : item
+            );
+          }
+          return [...prev, data.item];
+        });
+      }
+    } catch (err) {
+      console.error('Add to cart error:', err);
+    } finally {
+      setAddingToCart(null);
+    }
+  };
+
+  const updateCartQuantity = async (itemId: number, quantity: number) => {
+    try {
+      if (quantity <= 0) {
+        await fetch(`/api/commerce/cart/${itemId}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        setCartItems(prev => prev.filter(item => item.id !== itemId));
+      } else {
+        const res = await fetch(`/api/commerce/cart/${itemId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ quantity })
+        });
+        if (res.ok) {
+          setCartItems(prev => prev.map(item => 
+            item.id === itemId ? { ...item, quantity } : item
+          ));
+        }
+      }
+    } catch (err) {
+      console.error('Update cart error:', err);
+    }
+  };
+
+  const checkout = async () => {
+    try {
+      const res = await fetch('/api/commerce/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) {
+          window.location.href = data.url;
+        }
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+    }
+  };
+
+  const parseMessageWithPlaces = useCallback((text: string): React.ReactNode[] => {
+    if (placeNames.length === 0) return [text];
+    
+    const sortedNames = [...placeNames].sort((a, b) => b.length - a.length);
+    const escapedNames = sortedNames.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const pattern = new RegExp(`(${escapedNames.join('|')})`, 'g');
+    
+    const parts = text.split(pattern);
+    return parts.map((part, idx) => {
+      if (placeNames.includes(part)) {
+        return (
+          <span key={idx} className="inline-flex items-center gap-0.5">
+            <span className="text-blue-600 font-medium underline cursor-pointer hover:text-blue-800" onClick={() => loadProductsForPlace(part)}>
+              {part}
+            </span>
+            <button
+              onClick={(e) => { e.stopPropagation(); loadProductsForPlace(part); }}
+              className="inline-flex items-center justify-center w-5 h-5 bg-[#06C755] text-white rounded-full text-xs hover:bg-[#05B04A] transition-colors ml-0.5"
+              data-testid={`button-add-product-${part}`}
+            >
+              <Plus className="w-3 h-3" />
+            </button>
+          </span>
+        );
+      }
+      return part;
+    });
+  }, [placeNames]);
+
+  const cartTotal = useMemo(() => {
+    return cartItems.reduce((sum, item) => {
+      const price = item.product?.price || 0;
+      return sum + (price * item.quantity);
+    }, 0);
+  }, [cartItems]);
 
   const initializeTwilioClient = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -475,6 +666,19 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {cartItems.length > 0 && (
+            <button
+              onClick={() => setShowCart(true)}
+              className="p-2 hover:bg-slate-100 rounded-full transition-colors relative"
+              data-testid="button-open-cart"
+              title="購物車"
+            >
+              <ShoppingCart className="w-5 h-5 text-slate-600" />
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                {cartItems.reduce((sum, item) => sum + item.quantity, 0)}
+              </span>
+            </button>
+          )}
           <button
             onClick={() => setShowInviteModal(true)}
             className="p-2 hover:bg-slate-100 rounded-full transition-colors"
@@ -546,7 +750,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
                             : 'bg-white text-slate-800 rounded-2xl rounded-bl-sm shadow-sm'
                         }`}
                       >
-                        <p className="whitespace-pre-wrap break-words text-[15px]">{msg.body}</p>
+                        <p className="whitespace-pre-wrap break-words text-[15px]">{parseMessageWithPlaces(msg.body)}</p>
                       </div>
                       {!isMe && (
                         <span className="text-[10px] text-white/60 mb-1">
@@ -680,6 +884,160 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
                 關閉
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showProductPopover && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={() => setShowProductPopover(false)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md sm:mx-4 max-h-[80vh] animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Store className="w-5 h-5 text-[#06C755]" />
+                <h3 className="text-lg font-bold text-slate-800">{selectedPlace}</h3>
+              </div>
+              <button
+                onClick={() => setShowProductPopover(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-full"
+                data-testid="button-close-products"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[60vh]">
+              {loadingProducts ? (
+                <div className="text-center py-8">
+                  <Loader2 className="w-8 h-8 text-[#06C755] animate-spin mx-auto mb-2" />
+                  <p className="text-slate-500">載入商品中...</p>
+                </div>
+              ) : placeProducts.length === 0 ? (
+                <div className="text-center py-8">
+                  <Store className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-500">此店家尚未上架商品</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {placeProducts.map(product => (
+                    <div key={product.id} className="bg-slate-50 rounded-xl p-3 flex gap-3" data-testid={`product-card-${product.id}`}>
+                      {product.imageUrl ? (
+                        <img src={product.imageUrl} alt={product.name} className="w-20 h-20 object-cover rounded-lg flex-shrink-0" />
+                      ) : (
+                        <div className="w-20 h-20 bg-slate-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Store className="w-8 h-8 text-slate-400" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-slate-800 truncate">{product.name}</h4>
+                        {product.description && (
+                          <p className="text-sm text-slate-500 line-clamp-2 mt-0.5">{product.description}</p>
+                        )}
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-[#06C755] font-bold">NT$ {product.price.toLocaleString()}</span>
+                          <button
+                            onClick={() => addToCart(product.id)}
+                            disabled={addingToCart === product.id || !product.isActive}
+                            className="px-3 py-1.5 bg-[#06C755] text-white text-sm rounded-full hover:bg-[#05B04A] disabled:opacity-50 flex items-center gap-1"
+                            data-testid={`button-add-to-cart-${product.id}`}
+                          >
+                            {addingToCart === product.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <>
+                                <Plus className="w-4 h-4" />
+                                加入
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCart && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={() => setShowCart(false)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md sm:mx-4 max-h-[85vh] animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5 text-[#06C755]" />
+                <h3 className="text-lg font-bold text-slate-800">購物車</h3>
+                <span className="text-sm text-slate-500">({cartItems.reduce((sum, item) => sum + item.quantity, 0)} 項)</span>
+              </div>
+              <button
+                onClick={() => setShowCart(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-full"
+                data-testid="button-close-cart"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[50vh]">
+              {cartItems.length === 0 ? (
+                <div className="text-center py-8">
+                  <ShoppingCart className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-500">購物車是空的</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {cartItems.map(item => (
+                    <div key={item.id} className="bg-slate-50 rounded-xl p-3 flex gap-3" data-testid={`cart-item-${item.id}`}>
+                      {item.product?.imageUrl ? (
+                        <img src={item.product.imageUrl} alt={item.product.name} className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />
+                      ) : (
+                        <div className="w-16 h-16 bg-slate-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Store className="w-6 h-6 text-slate-400" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-slate-800 truncate">{item.product?.name}</h4>
+                        <p className="text-sm text-slate-500">{item.product?.placeName}</p>
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-[#06C755] font-bold">NT$ {((item.product?.priceNtd || 0) * item.quantity).toLocaleString()}</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => updateCartQuantity(item.id, item.quantity - 1)}
+                              className="w-7 h-7 bg-slate-200 rounded-full flex items-center justify-center hover:bg-slate-300"
+                              data-testid={`button-decrease-${item.id}`}
+                            >
+                              <Minus className="w-4 h-4 text-slate-600" />
+                            </button>
+                            <span className="w-6 text-center font-medium">{item.quantity}</span>
+                            <button
+                              onClick={() => updateCartQuantity(item.id, item.quantity + 1)}
+                              className="w-7 h-7 bg-[#06C755] rounded-full flex items-center justify-center hover:bg-[#05B04A]"
+                              data-testid={`button-increase-${item.id}`}
+                            >
+                              <Plus className="w-4 h-4 text-white" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {cartItems.length > 0 && (
+              <div className="p-4 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-slate-600">總計</span>
+                  <span className="text-xl font-bold text-[#06C755]">NT$ {cartTotal.toLocaleString()}</span>
+                </div>
+                <button
+                  onClick={checkout}
+                  className="w-full py-4 rounded-xl bg-[#06C755] text-white font-bold hover:bg-[#05B04A] flex items-center justify-center gap-2"
+                  data-testid="button-checkout"
+                >
+                  <ShoppingCart className="w-5 h-5" />
+                  前往結帳
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

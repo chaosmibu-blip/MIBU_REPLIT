@@ -81,6 +81,7 @@ export interface IStorage {
   updateChatInvite(inviteId: number, data: { status?: string; usedByUserId?: string }): Promise<ChatInvite>;
 
   // Commerce - Products
+  getPlaceNamesWithProducts(): Promise<string[]>;
   getProductsByPlaceId(placeCacheId: number): Promise<PlaceProduct[]>;
   getProductsByPlaceName(placeName: string): Promise<PlaceProduct[]>;
   getProductById(productId: number): Promise<PlaceProduct | undefined>;
@@ -559,6 +560,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Commerce - Products
+  async getPlaceNamesWithProducts(): Promise<string[]> {
+    const products = await db.select({ placeCacheId: placeProducts.placeCacheId })
+      .from(placeProducts)
+      .where(eq(placeProducts.isActive, true))
+      .groupBy(placeProducts.placeCacheId);
+    
+    if (products.length === 0) return [];
+    
+    const placeIds = products.map(p => p.placeCacheId).filter((id): id is number => id !== null);
+    if (placeIds.length === 0) return [];
+    
+    const places = await db.select({ placeName: placeCache.placeName })
+      .from(placeCache)
+      .where(sql`${placeCache.id} = ANY(${placeIds})`);
+    
+    return places.map(p => p.placeName);
+  }
+
   async getProductsByPlaceId(placeCacheId: number): Promise<PlaceProduct[]> {
     return db.select().from(placeProducts).where(
       and(eq(placeProducts.placeCacheId, placeCacheId), eq(placeProducts.isActive, true))

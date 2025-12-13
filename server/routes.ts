@@ -2587,6 +2587,17 @@ ${uncachedSkeleton.map((item, idx) => `  {
 
   // ============ Commerce Routes (In-Chat Shopping) ============
   
+  // Get all place names that have products (for chat message parsing)
+  app.get("/api/commerce/places/names", async (req, res) => {
+    try {
+      const names = await storage.getPlaceNamesWithProducts();
+      res.json({ names });
+    } catch (error) {
+      console.error("Get place names error:", error);
+      res.status(500).json({ error: "Failed to get place names" });
+    }
+  });
+
   // Search places by name (for commerce matching)
   app.get("/api/commerce/places/search", async (req, res) => {
     try {
@@ -2619,10 +2630,10 @@ ${uncachedSkeleton.map((item, idx) => `  {
     try {
       const placeName = req.query.name as string;
       if (!placeName) {
-        return res.json([]);
+        return res.json({ products: [] });
       }
       const products = await storage.getProductsByPlaceName(placeName);
-      res.json(products);
+      res.json({ products });
     } catch (error) {
       console.error("Get products by name error:", error);
       res.status(500).json({ error: "Failed to get products" });
@@ -2637,7 +2648,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
         return res.status(401).json({ error: "Authentication required" });
       }
       const items = await storage.getCartItems(userId);
-      res.json(items);
+      res.json({ items });
     } catch (error) {
       console.error("Get cart error:", error);
       res.status(500).json({ error: "Failed to get cart" });
@@ -2655,8 +2666,9 @@ ${uncachedSkeleton.map((item, idx) => `  {
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid cart item data" });
       }
-      const item = await storage.addToCart(parsed.data);
-      res.json(item);
+      const cartItem = await storage.addToCart(parsed.data);
+      const product = await storage.getProductById(cartItem.productId);
+      res.json({ item: { ...cartItem, product } });
     } catch (error) {
       console.error("Add to cart error:", error);
       res.status(500).json({ error: "Failed to add to cart" });
