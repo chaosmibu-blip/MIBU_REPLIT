@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from './hooks/useAuth';
+import React from 'react';
 import { MapProvider } from '../../modules/trip-planner/client/context/MapContext';
-import { AppState, Language, GachaItem, GachaResponse, AppView, Merchant, GachaSubView, PlannerSubView, SettingsTab } from './types';
+import { GachaItem, GachaResponse, Merchant } from './types';
 import { InputForm } from './components/InputForm';
 import { GachaScene } from './components/GachaScene';
 import { ResultList } from './components/ResultList';
@@ -15,290 +14,95 @@ import { LocationView } from '../../modules/trip-planner/client/components/Locat
 import { ChatView } from '../../modules/trip-planner/client/components/ChatView';
 import { ServicePlans } from '../../modules/trip-planner/client/components/ServicePlans';
 import { OfflineIndicator } from './components/OfflineIndicator';
-import { DEFAULT_LEVEL, TRANSLATIONS, MAX_DAILY_GENERATIONS } from './constants';
-import { Globe, LogIn, LogOut } from 'lucide-react';
-
-const STORAGE_KEYS = {
-  COLLECTION: 'travel_gacha_collection',
-  LAST_COLLECTION_VISIT: 'mibu_last_visit_collection',
-  LAST_BOX_VISIT: 'mibu_last_visit_itembox',
-  MERCHANT_DB: 'mibu_merchant_db',
-  MERCHANT_PROFILE: 'mibu_merchant_profile_v3', 
-  DAILY_LIMIT: 'mibu_daily_limit',
-  GUEST_ID: 'mibu_guest_id',
-  SELECTED_ROLE: 'mibu_selected_role'
-};
-
-const getViewForRole = (role: string): 'mibu_home' | 'merchant_dashboard' | 'agent_dashboard' | 'admin_dashboard' => {
-  switch (role) {
-    case 'merchant': return 'merchant_dashboard';
-    case 'agent': return 'agent_dashboard';
-    case 'admin': return 'admin_dashboard';
-    default: return 'mibu_home';
-  }
-};
-
-const generateGuestId = () => `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+import { TRANSLATIONS, MAX_DAILY_GENERATIONS } from './constants';
+import { useAppState, STORAGE_KEYS, getItemKey, getPlaceId } from './hooks/useAppState';
+import { AppHeader } from './components/AppHeader';
+import { LoginPage } from './pages/LoginPage';
 
 const App: React.FC = () => {
-  const { user, isLoading: authLoading, isAuthenticated } = useAuth();
-  
-  // Check if user has logged in before (Replit auth or guest)
-  const hasExistingSession = () => {
-    return isAuthenticated || localStorage.getItem(STORAGE_KEYS.GUEST_ID);
-  };
-  
-  const [state, setState] = useState<AppState>(() => {
-    const existingGuestId = localStorage.getItem(STORAGE_KEYS.GUEST_ID);
-    const initialView = (isAuthenticated || existingGuestId) ? 'mibu_home' : 'login';
-    return {
-      language: 'zh-TW', user: null, country: '', city: '', countryId: null, regionId: null, level: DEFAULT_LEVEL,
-      loading: false, result: null, error: null, groundingSources: [], view: initialView as any,
-      collection: [], celebrationCoupons: [], 
-      lastVisitCollection: new Date().toISOString(), lastVisitItemBox: new Date().toISOString(),
-      merchantDb: {}, currentMerchant: null
-    };
-  });
-
-  const [showLangMenu, setShowLangMenu] = useState(false);
-  const [showRoleMenu, setShowRoleMenu] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<'consumer' | 'merchant' | 'agent' | 'admin'>('consumer');
-  const [gachaSubView, setGachaSubViewRaw] = useState<GachaSubView>('gacha');
-  const [plannerSubView, setPlannerSubView] = useState<PlannerSubView>('itinerary');
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>('mibu');
-
-  const setGachaSubView = (subView: GachaSubView) => {
-    setGachaSubViewRaw(subView);
-    const now = new Date().toISOString();
-    if (subView === 'collection') {
-      localStorage.setItem(STORAGE_KEYS.LAST_COLLECTION_VISIT, now);
-      setState(prev => ({ ...prev, lastVisitCollection: now }));
-    } else if (subView === 'itembox') {
-      localStorage.setItem(STORAGE_KEYS.LAST_BOX_VISIT, now);
-      setState(prev => ({ ...prev, lastVisitItemBox: now }));
-    }
-  };
-
-  const t = TRANSLATIONS[state.language] as any;
-
-  // Sync Replit Auth user to state and redirect from login based on selected role
-  useEffect(() => {
-    if (user) {
-      const savedRole = localStorage.getItem(STORAGE_KEYS.SELECTED_ROLE) || 'consumer';
-      const targetView = getViewForRole(savedRole);
-      setState(prev => ({
-        ...prev,
-        view: prev.view === 'login' ? targetView : prev.view,
-        user: {
-          id: user.id,
-          name: user.firstName || user.email || 'User',
-          email: user.email,
-          avatar: user.profileImageUrl,
-        }
-      }));
-    }
-  }, [user]);
-  
-  // Handle logout: redirect to login page when user logs out
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      const guestId = localStorage.getItem(STORAGE_KEYS.GUEST_ID);
-      if (!guestId && state.view !== 'login') {
-        setState(prev => ({
-          ...prev,
-          view: 'login',
-          user: null
-        }));
-      }
-    }
-  }, [authLoading, isAuthenticated, state.view]);
-  
-
-  // Check for existing guest session on mount
-  useEffect(() => {
-    const guestId = localStorage.getItem(STORAGE_KEYS.GUEST_ID);
-    if (guestId && !isAuthenticated && state.view === 'login') {
-      setState(prev => ({
-        ...prev,
-        view: 'mibu_home',
-        user: {
-          id: guestId,
-          name: t.guest || '訪客',
-          email: null,
-          avatar: null,
-          provider: 'guest'
-        }
-      }));
-    }
-  }, [isAuthenticated]);
-
-  // Load user collections when authenticated
-  useEffect(() => {
-    const loadCollections = async () => {
-      if (isAuthenticated && user?.id) {
-        try {
-          const response = await fetch('/api/collections');
-          if (response.ok) {
-            const data = await response.json();
-            setState(prev => ({ ...prev, collection: data.collections || [] }));
-          }
-        } catch (error) {
-          console.error('Failed to load collections:', error);
-          // Fall back to localStorage
-          const savedCollection = localStorage.getItem(STORAGE_KEYS.COLLECTION);
-          if (savedCollection) {
-            try {
-              const parsed = JSON.parse(savedCollection);
-              if (Array.isArray(parsed)) {
-                const validItems = parsed.filter(i => i && typeof i === 'object' && i.place_name);
-                setState(prev => ({ ...prev, collection: validItems }));
-              }
-            } catch (e) {}
-          }
-        }
-      }
-    };
-    
-    loadCollections();
-  }, [isAuthenticated, user?.id]);
-
-  // Load other persisted data
-  useEffect(() => {
-    try {
-      const savedMerchant = localStorage.getItem(STORAGE_KEYS.MERCHANT_PROFILE);
-      if (savedMerchant) setState(prev => ({ ...prev, currentMerchant: JSON.parse(savedMerchant) }));
-
-      const lastCol = localStorage.getItem(STORAGE_KEYS.LAST_COLLECTION_VISIT);
-      const lastBox = localStorage.getItem(STORAGE_KEYS.LAST_BOX_VISIT);
-      if (lastCol) setState(prev => ({ ...prev, lastVisitCollection: lastCol }));
-      if (lastBox) setState(prev => ({ ...prev, lastVisitItemBox: lastBox }));
-
-      const savedMerchantDb = localStorage.getItem(STORAGE_KEYS.MERCHANT_DB);
-      if (savedMerchantDb) setState(prev => ({ ...prev, merchantDb: JSON.parse(savedMerchantDb) }));
-      
-      // Load local collection for non-authenticated users
-      if (!isAuthenticated) {
-        const savedCollection = localStorage.getItem(STORAGE_KEYS.COLLECTION);
-        if (savedCollection) {
-          const parsed = JSON.parse(savedCollection);
-          if (Array.isArray(parsed)) {
-            const validItems = parsed.filter(i => i && typeof i === 'object' && i.place_name);
-            setState(prev => ({ ...prev, collection: validItems }));
-          }
-        }
-      }
-    } catch (e) { 
-      console.error("Persistence Error", e); 
-    }
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    const checkPaymentStatus = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const isPaymentSuccess = params.get('payment_success');
-      const sessionId = params.get('session_id');
-
-      if (isPaymentSuccess && sessionId) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-
-        try {
-          const response = await fetch(`/api/verify-session?session_id=${sessionId}`);
-          const data = await response.json();
-
-          if (data.success) {
-             alert(TRANSLATIONS[state.language].paymentSuccess);
-             
-             const savedMerchantStr = localStorage.getItem(STORAGE_KEYS.MERCHANT_PROFILE);
-             if (savedMerchantStr) {
-                 const merchant = JSON.parse(savedMerchantStr);
-                 merchant.subscriptionPlan = 'premium';
-                 localStorage.setItem(STORAGE_KEYS.MERCHANT_PROFILE, JSON.stringify(merchant));
-                 setState(prev => ({ ...prev, currentMerchant: merchant, view: 'merchant_dashboard' }));
-             }
-          } else {
-             console.warn('Payment verification failed:', data.status);
-          }
-        } catch (e) {
-          console.error('Failed to verify payment', e);
-        }
-      }
-    };
-
-    checkPaymentStatus();
-  }, [state.language]);
-
-  const getItemKey = (item: GachaItem): string => {
-    try {
-      if (!item) return `unknown-${Math.random()}`;
-      let nameStr = typeof item.place_name === 'string' ? item.place_name : (item.place_name as any)['en'] || (item.place_name as any)['zh-TW'] || 'unknown';
-      return `${nameStr}-${item.city || 'city'}`;
-    } catch (e) { return `error-${Math.random()}`; }
-  };
-
-  const getPlaceId = (item: GachaItem): string => {
-      const raw = item.place_name as any;
-      if (typeof raw === 'string') return raw;
-      return raw['en'] || raw['zh-TW'] || 'unknown';
-  };
+  const {
+    state,
+    setState,
+    user,
+    authLoading,
+    isAuthenticated,
+    t,
+    showLangMenu,
+    setShowLangMenu,
+    showRoleMenu,
+    setShowRoleMenu,
+    selectedRole,
+    setSelectedRole,
+    gachaSubView,
+    setGachaSubView,
+    setGachaSubViewRaw,
+    plannerSubView,
+    setPlannerSubView,
+    handleViewChange,
+    handleBackToHome,
+    handleLanguageChange,
+    isInGachaModule,
+    isInPlannerModule,
+    hasNewCollection,
+    hasNewItems,
+  } = useAppState();
 
   const handleMerchantLoginStart = () => setState(prev => ({ ...prev, view: 'merchant_login' }));
 
   const handleMerchantLogin = async (name: string, email: string) => {
-      // If authenticated, use backend registration
-      if (isAuthenticated) {
-        try {
-          const response = await fetch('/api/merchant/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ name, email })
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            if (data.merchant) {
-              const merchant: Merchant = {
-                id: `merchant-${data.merchant.id}`,
-                name: data.merchant.name,
-                email: data.merchant.email,
-                claimedPlaceNames: [],
-                subscriptionPlan: data.merchant.subscriptionPlan || 'free'
-              };
-              localStorage.setItem(STORAGE_KEYS.MERCHANT_PROFILE, JSON.stringify(merchant));
-              setState(prev => ({ ...prev, currentMerchant: merchant, view: 'merchant_dashboard' }));
-              return;
-            }
+    if (isAuthenticated) {
+      try {
+        const response = await fetch('/api/merchant/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name, email })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.merchant) {
+            const merchant: Merchant = {
+              id: `merchant-${data.merchant.id}`,
+              name: data.merchant.name,
+              email: data.merchant.email,
+              claimedPlaceNames: [],
+              subscriptionPlan: data.merchant.subscriptionPlan || 'free'
+            };
+            localStorage.setItem(STORAGE_KEYS.MERCHANT_PROFILE, JSON.stringify(merchant));
+            setState(prev => ({ ...prev, currentMerchant: merchant, view: 'merchant_dashboard' }));
+            return;
           }
-        } catch (error) {
-          console.error('Failed to register merchant:', error);
         }
+      } catch (error) {
+        console.error('Failed to register merchant:', error);
       }
-      
-      // Fallback for unauthenticated (should not happen with new flow)
-      setState(prev => ({ ...prev, view: 'merchant_dashboard' }));
+    }
+    
+    setState(prev => ({ ...prev, view: 'merchant_dashboard' }));
   };
 
   const handleMerchantUpdate = (updatedMerchant: Merchant) => {
-      localStorage.setItem(STORAGE_KEYS.MERCHANT_PROFILE, JSON.stringify(updatedMerchant));
-      setState(prev => ({ ...prev, currentMerchant: updatedMerchant }));
+    localStorage.setItem(STORAGE_KEYS.MERCHANT_PROFILE, JSON.stringify(updatedMerchant));
+    setState(prev => ({ ...prev, currentMerchant: updatedMerchant }));
   };
 
   const handleMerchantClaim = (item: GachaItem) => {
-      if (!state.currentMerchant) return;
-      const placeId = getPlaceId(item);
-      const claimedItem: GachaItem = { ...item, merchant_id: state.currentMerchant.id, remaining_coupons: 0, is_coupon: false, coupon_data: null, impressionCount: 0, redemptionCount: 0, merchant_coupons: [] };
-      const newDb = { ...state.merchantDb, [placeId]: claimedItem };
-      const newMerchant = { ...state.currentMerchant, claimedPlaceNames: [...state.currentMerchant.claimedPlaceNames, placeId] };
-      handleMerchantUpdate(newMerchant);
-      setState(prev => ({ ...prev, merchantDb: newDb }));
-      localStorage.setItem(STORAGE_KEYS.MERCHANT_DB, JSON.stringify(newDb));
+    if (!state.currentMerchant) return;
+    const placeId = getPlaceId(item);
+    const claimedItem: GachaItem = { ...item, merchant_id: state.currentMerchant.id, remaining_coupons: 0, is_coupon: false, coupon_data: null, impressionCount: 0, redemptionCount: 0, merchant_coupons: [] };
+    const newDb = { ...state.merchantDb, [placeId]: claimedItem };
+    const newMerchant = { ...state.currentMerchant, claimedPlaceNames: [...state.currentMerchant.claimedPlaceNames, placeId] };
+    handleMerchantUpdate(newMerchant);
+    setState(prev => ({ ...prev, merchantDb: newDb }));
+    localStorage.setItem(STORAGE_KEYS.MERCHANT_DB, JSON.stringify(newDb));
   };
 
   const handleMerchantUpdateItem = (item: GachaItem) => {
-      const placeId = getPlaceId(item);
-      const newDb = { ...state.merchantDb, [placeId]: item };
-      setState(prev => ({ ...prev, merchantDb: newDb }));
-      localStorage.setItem(STORAGE_KEYS.MERCHANT_DB, JSON.stringify(newDb));
+    const placeId = getPlaceId(item);
+    const newDb = { ...state.merchantDb, [placeId]: item };
+    setState(prev => ({ ...prev, merchantDb: newDb }));
+    localStorage.setItem(STORAGE_KEYS.MERCHANT_DB, JSON.stringify(newDb));
   };
 
   const handlePull = async () => {
@@ -326,7 +130,6 @@ const App: React.FC = () => {
         throw new Error('Please select a destination');
       }
       
-      // Use the new itinerary endpoint that generates multiple categories for ONE district
       const response = await fetch('/api/gacha/itinerary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -334,7 +137,7 @@ const App: React.FC = () => {
           countryId: state.countryId, 
           regionId: state.regionId,
           language: state.language,
-          itemCount: state.level  // Use level to determine how many items
+          itemCount: state.level
         })
       });
       
@@ -345,15 +148,12 @@ const App: React.FC = () => {
       const result = await response.json();
       const { itinerary } = result;
       
-      // Show shortage warning if fewer items than requested
       if (itinerary.meta?.shortageWarning) {
         setTimeout(() => {
           alert(itinerary.meta.shortageWarning);
         }, 500);
       }
       
-      // Convert API response to GachaItem format and sort (stay/lodging last)
-      // Use nameZh as canonical key for grouping to avoid duplicates, but store localized name for display
       const rawItems: GachaItem[] = itinerary.items.map((item: any, index: number) => ({
         id: Date.now() + index,
         place_name: item.place?.name || `${itinerary.location.district.name} ${item.subcategory.name}`,
@@ -367,7 +167,7 @@ const App: React.FC = () => {
         country: itinerary.location.country.name,
         city: itinerary.location.region.nameZh || itinerary.location.region.name,
         cityDisplay: itinerary.location.region.name,
-        district: itinerary.location.district.nameZh || itinerary.location.district.name,  // ALL items share the SAME district
+        district: itinerary.location.district.nameZh || itinerary.location.district.name,
         districtDisplay: itinerary.location.district.name,
         collectedAt: new Date().toISOString(),
         is_coupon: false,
@@ -382,7 +182,6 @@ const App: React.FC = () => {
         is_location_verified: item.isVerified || false
       }));
       
-      // Sort items: put "stay" category at the end
       const allItems = rawItems.sort((a, b) => {
         const catA = String(a.category).toLowerCase();
         const catB = String(b.category).toLowerCase();
@@ -401,7 +200,7 @@ const App: React.FC = () => {
           date: new Date().toISOString().split('T')[0],
           country: itinerary.location.country.name,
           city: itinerary.location.region.nameZh || itinerary.location.region.name,
-          locked_district: itinerary.location.district.nameZh || itinerary.location.district.name,  // Display locked district
+          locked_district: itinerary.location.district.nameZh || itinerary.location.district.name,
           user_level: state.level
         },
         inventory: allItems
@@ -420,7 +219,6 @@ const App: React.FC = () => {
                 ? item.place_name 
                 : (item.place_name as any)['en'] || (item.place_name as any)['zh-TW'] || 'unknown';
               
-              // Prefer ai_description for meaningful content
               const aiDesc = item.ai_description;
               const description = aiDesc
                 ? (typeof aiDesc === 'string' ? aiDesc : (aiDesc as any)['en'] || (aiDesc as any)['zh-TW'] || '')
@@ -469,28 +267,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleViewChange = (newView: AppView) => {
-    if (newView === 'gacha_module') { setGachaSubViewRaw('gacha'); setState(prev => ({ ...prev, view: newView })); }
-    else if (newView === 'planner_module') { setPlannerSubView('itinerary'); setState(prev => ({ ...prev, view: newView })); }
-    else { setState(prev => ({ ...prev, view: newView })); }
-  };
-
-  const handleBackToHome = () => {
-    setState(prev => ({ ...prev, view: 'mibu_home', result: null }));
-  };
-
-  const isInGachaModule = ['gacha_module', 'result', 'merchant_login', 'merchant_dashboard'].includes(state.view);
-  const isInPlannerModule = state.view === 'planner_module';
-
-  const handleLanguageChange = (lang: Language) => {
-    setState(prev => ({ ...prev, language: lang }));
-    setShowLangMenu(false);
-  };
-
-  const hasNewCollection = state.collection.some(i => i.collectedAt && i.collectedAt > state.lastVisitCollection);
-  const hasNewItems = state.collection.some(i => i.is_coupon && i.collectedAt && i.collectedAt > state.lastVisitItemBox);
-
-  // Show loading while auth is initializing
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -511,167 +287,35 @@ const App: React.FC = () => {
       
       <OfflineIndicator />
 
-      <nav className="sticky top-0 z-[999] px-6 pt-safe-top pb-4 flex justify-between items-center w-full glass-nav transition-all">
-         <div className="flex items-center gap-2">
-           <img src="/app-icon.jpg" alt="Mibu" className="w-8 h-8 rounded-lg object-cover" />
-           <span className="font-display font-bold text-xl tracking-tight text-slate-800">MIBU</span>
-         </div>
-         
-         <div className="flex items-center gap-3">
-            {/* Language Switcher */}
-            <div className="relative">
-               <button onClick={() => setShowLangMenu(!showLangMenu)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors" data-testid="button-language">
-                  <Globe className="w-5 h-5 text-slate-600" />
-               </button>
-               {showLangMenu && (
-                 <div className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden w-32 py-1 flex flex-col z-50">
-                    <button onClick={() => handleLanguageChange('zh-TW')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700" data-testid="button-lang-zh">繁體中文</button>
-                    <button onClick={() => handleLanguageChange('en')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700" data-testid="button-lang-en">English</button>
-                    <button onClick={() => handleLanguageChange('ja')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700" data-testid="button-lang-ja">日本語</button>
-                    <button onClick={() => handleLanguageChange('ko')} className="px-4 py-2 text-left hover:bg-slate-50 text-sm font-bold text-slate-700" data-testid="button-lang-ko">한국어</button>
-                 </div>
-               )}
-            </div>
-
-            {isAuthenticated && user ? (
-                <button 
-                  onClick={() => {
-                    // Clear guest session if any
-                    localStorage.removeItem(STORAGE_KEYS.GUEST_ID);
-                    // Redirect to logout API, which will redirect back to home
-                    window.location.href = '/api/logout';
-                  }}
-                  className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" 
-                  data-testid="button-logout"
-                >
-                  <img 
-                    src={user.profileImageUrl || `https://ui-avatars.com/api/?name=${user.firstName || 'U'}`} 
-                    className="w-8 h-8 rounded-full border border-white shadow-sm object-cover" 
-                    alt="User" 
-                  />
-                  <span className="text-xs font-bold text-slate-600 hidden sm:block">{user.firstName || user.email}</span>
-                  <LogOut className="w-4 h-4 text-slate-400" />
-                </button>
-            ) : state.view !== 'login' ? (
-                <button 
-                  onClick={() => setState(prev => ({ ...prev, view: 'login', user: null }))}
-                  className="flex items-center gap-2 text-xs font-bold bg-indigo-500 text-white px-4 py-2 rounded-full hover:bg-indigo-600 transition-colors"
-                  data-testid="button-login"
-                >
-                  <LogIn className="w-4 h-4" />
-                  {t.login}
-                </button>
-            ) : null}
-         </div>
-      </nav>
+      <AppHeader
+        isAuthenticated={isAuthenticated}
+        user={user}
+        showLangMenu={showLangMenu}
+        setShowLangMenu={setShowLangMenu}
+        handleLanguageChange={handleLanguageChange}
+        onLogout={() => {
+          localStorage.removeItem(STORAGE_KEYS.GUEST_ID);
+          window.location.href = '/api/logout';
+        }}
+        onLoginClick={() => setState(prev => ({ ...prev, view: 'login', user: null }))}
+        currentView={state.view}
+        t={t}
+      />
 
       {state.loading && <GachaScene language={state.language} />}
 
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-4">
-        {/* Login Screen */}
         {state.view === 'login' && (
-          <div className="flex flex-col items-center justify-center min-h-[80vh] space-y-8 relative">
-            {/* 右上角切換用戶別 */}
-            <button
-              onClick={() => setShowRoleMenu(!showRoleMenu)}
-              className="absolute top-0 right-0 text-xs text-slate-400 hover:text-indigo-600 transition-colors"
-              data-testid="button-switch-role"
-            >
-              {t.switchRole || '切換用戶別'}
-            </button>
-            
-            {/* 角色選擇下拉選單 */}
-            {showRoleMenu && (
-              <div className="absolute top-8 right-0 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden w-32 py-1 z-50">
-                <button
-                  onClick={() => { setSelectedRole('consumer'); setShowRoleMenu(false); }}
-                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium ${selectedRole === 'consumer' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-700'}`}
-                  data-testid="role-consumer"
-                >
-                  {t.roleConsumer || '旅客'}
-                </button>
-                <button
-                  onClick={() => { setSelectedRole('merchant'); setShowRoleMenu(false); }}
-                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium ${selectedRole === 'merchant' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-700'}`}
-                  data-testid="role-merchant"
-                >
-                  {t.roleMerchant || '企業端'}
-                </button>
-                <button
-                  onClick={() => { setSelectedRole('agent'); setShowRoleMenu(false); }}
-                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium ${selectedRole === 'agent' ? 'text-purple-600 bg-purple-50' : 'text-slate-700'}`}
-                  data-testid="role-agent"
-                >
-                  {t.roleAgent || '專員端'}
-                </button>
-                <button
-                  onClick={() => { setSelectedRole('admin'); setShowRoleMenu(false); }}
-                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium ${selectedRole === 'admin' ? 'text-amber-600 bg-amber-50' : 'text-slate-700'}`}
-                  data-testid="role-admin"
-                >
-                  {t.roleAdmin || '管理端'}
-                </button>
-              </div>
-            )}
-            
-            <div className="text-center">
-              <h1 className="text-4xl font-bold text-slate-800 mb-2">Mibu</h1>
-              <p className="text-slate-500">{t.appSubtitle || '探索台灣的最佳方式'}</p>
-            </div>
-            
-            {/* 登入區塊 */}
-            <div className="w-full max-w-sm space-y-4">
-              <button
-                onClick={() => {
-                  localStorage.setItem(STORAGE_KEYS.SELECTED_ROLE, selectedRole);
-                  window.location.href = '/api/login';
-                }}
-                className={`flex items-center justify-center gap-2 w-full font-bold py-4 rounded-2xl transition-colors shadow-lg ${
-                  selectedRole === 'consumer' ? 'bg-indigo-500 hover:bg-indigo-600 text-white' :
-                  selectedRole === 'merchant' ? 'bg-emerald-500 hover:bg-emerald-600 text-white' :
-                  selectedRole === 'agent' ? 'bg-purple-500 hover:bg-purple-600 text-white' :
-                  'bg-amber-500 hover:bg-amber-600 text-white'
-                }`}
-                data-testid="button-google-login"
-              >
-                <LogIn className="w-5 h-5" />
-                {t.loginWithGoogle || 'Google 登入'}
-              </button>
-              
-              {selectedRole === 'consumer' && (
-                <button
-                  onClick={() => {
-                    const guestId = generateGuestId();
-                    localStorage.setItem(STORAGE_KEYS.GUEST_ID, guestId);
-                    setState(prev => ({
-                      ...prev,
-                      view: 'mibu_home',
-                      user: {
-                        id: guestId,
-                        name: t.guest || '訪客',
-                        email: null,
-                        avatar: null,
-                        provider: 'guest'
-                      }
-                    }));
-                  }}
-                  className="w-full bg-slate-100 text-slate-700 font-medium py-4 rounded-2xl hover:bg-slate-200 transition-colors"
-                  data-testid="button-guest-login"
-                >
-                  {t.guestLogin || '訪客登入'}
-                </button>
-              )}
-              
-              <p className="text-center text-xs text-slate-400">
-                {selectedRole === 'consumer' && (t.guestLoginNote || '訪客模式的資料僅保存在此裝置')}
-                {selectedRole === 'merchant' && (t.merchantLoginNote || '景點業者、餐廳、住宿等企業合作夥伴')}
-                {selectedRole === 'admin' && (t.adminLoginNote || '系統管理員專用入口')}
-              </p>
-            </div>
-          </div>
+          <LoginPage
+            selectedRole={selectedRole}
+            setSelectedRole={setSelectedRole}
+            showRoleMenu={showRoleMenu}
+            setShowRoleMenu={setShowRoleMenu}
+            setState={setState}
+            t={t}
+          />
         )}
 
-        {/* Mibu Home */}
         {state.view === 'mibu_home' && (
           <div className="space-y-6 pb-24">
             <div className="text-center py-4">
@@ -679,7 +323,6 @@ const App: React.FC = () => {
               <p className="text-slate-500">{t.appSubtitle || '探索台灣的最佳方式'}</p>
             </div>
 
-            {/* 公告欄 */}
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4" data-testid="section-announcements">
               <h3 className="text-sm font-bold text-amber-800 mb-2 flex items-center gap-2">
                 📢 {t.announcements || '公告'}
@@ -690,7 +333,6 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* 快閃活動通知 */}
             <div className="bg-gradient-to-r from-rose-500 to-pink-500 text-white rounded-2xl p-4 shadow-lg" data-testid="section-flash-events">
               <h3 className="text-sm font-bold mb-2 flex items-center gap-2">
                 ⚡ {t.flashEvents || '快閃活動'}
@@ -709,7 +351,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Gacha Module */}
         {state.view === 'gacha_module' && (
           <div className="pb-24">
             <ModuleHeader 
@@ -741,7 +382,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Planner Module */}
         {state.view === 'planner_module' && (
           <div className="pb-24">
             <ModuleHeader 
@@ -788,7 +428,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Result view - stays in gacha module context */}
         {state.view === 'result' && state.result && (
           <div className="pb-24">
             <ModuleHeader 
@@ -956,7 +595,8 @@ const App: React.FC = () => {
                   <div key={i} className="flex items-center gap-2 py-1">
                     <span className={`w-2 h-2 rounded-full ${
                       log.level === 'info' ? 'bg-blue-500' :
-                      log.level === 'warn' ? 'bg-amber-500' : 'bg-red-500'
+                      log.level === 'warn' ? 'bg-amber-500' :
+                      'bg-red-500'
                     }`}></span>
                     <span className="text-slate-400">[{log.time}]</span>
                     <span className="text-slate-700">{log.msg}</span>
@@ -966,144 +606,7 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
-
-        {state.view === 'settings' && (
-          <div className="space-y-6 pb-24">
-            <ModuleHeader 
-              onBack={handleBackToHome} 
-              language={state.language} 
-            />
-            
-            <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
-              {([
-                { id: 'mibu' as SettingsTab, label: 'Mibu' },
-                { id: 'gacha' as SettingsTab, label: t.navGachaModule || '行程扭蛋' },
-                { id: 'planner' as SettingsTab, label: t.navPlannerModule || '旅程策劃' },
-              ]).map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setSettingsTab(tab.id)}
-                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
-                    settingsTab === tab.id
-                      ? 'bg-white text-indigo-600 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                  data-testid={`tab-settings-${tab.id}`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-            
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 space-y-4">
-              {settingsTab === 'mibu' && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-700 font-medium">{t.language || '語言'}</span>
-                    <div className="flex gap-2">
-                      {(['zh-TW', 'en', 'ja', 'ko'] as Language[]).map(lang => (
-                        <button
-                          key={lang}
-                          onClick={() => setState(p => ({ ...p, language: lang }))}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                            state.language === lang 
-                              ? 'bg-indigo-500 text-white' 
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                          }`}
-                          data-testid={`button-lang-${lang}`}
-                        >
-                          {lang === 'zh-TW' ? '繁中' : lang === 'en' ? 'EN' : lang === 'ja' ? '日本語' : '한국어'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {isAuthenticated && user && (
-                    <div className="pt-4 border-t border-slate-100">
-                      <div className="flex items-center gap-3 mb-4">
-                        {user.profileImageUrl && (
-                          <img src={user.profileImageUrl} alt="" className="w-10 h-10 rounded-full" />
-                        )}
-                        <div>
-                          <p className="font-medium text-slate-800">{user.firstName || user.email}</p>
-                          <p className="text-sm text-slate-500">{user.email}</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => {
-                          localStorage.removeItem(STORAGE_KEYS.GUEST_ID);
-                          window.location.href = '/api/logout';
-                        }}
-                        className="flex items-center gap-2 text-red-500 hover:text-red-600 text-sm font-medium"
-                        data-testid="button-logout-settings"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        {t.logout || '登出'}
-                      </button>
-                    </div>
-                  )}
-
-                  {!isAuthenticated && (
-                    <div className="pt-4 border-t border-slate-100">
-                      <button 
-                        onClick={() => setState(prev => ({ ...prev, view: 'login', user: null }))}
-                        className="flex items-center gap-2 text-indigo-500 hover:text-indigo-600 font-medium"
-                        data-testid="button-login-settings"
-                      >
-                        <LogIn className="w-4 h-4" />
-                        {t.login}
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {settingsTab === 'gacha' && (
-                <div className="space-y-4">
-                  <h3 className="font-medium text-slate-800">{t.navGachaModule || '行程扭蛋'} 設定</h3>
-                  <div className="pt-4 border-t border-slate-100">
-                    <button
-                      onClick={() => { setGachaSubView('collection'); setState(p => ({ ...p, view: 'gacha_module' })); }}
-                      className="w-full text-left py-2 text-slate-700 hover:text-indigo-600"
-                      data-testid="link-collection"
-                    >
-                      📚 {t.navCollection}
-                    </button>
-                    <button
-                      onClick={() => { setGachaSubView('itembox'); setState(p => ({ ...p, view: 'gacha_module' })); }}
-                      className="w-full text-left py-2 text-slate-700 hover:text-indigo-600"
-                      data-testid="link-itembox"
-                    >
-                      📦 {t.navMyBox}
-                    </button>
-                    <button
-                      onClick={() => setState(p => ({ ...p, view: 'merchant_login' }))}
-                      className="w-full text-left py-2 text-slate-700 hover:text-indigo-600"
-                      data-testid="link-merchant"
-                    >
-                      🏪 {t.navStore}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {settingsTab === 'planner' && (
-                <div className="space-y-4">
-                  <h3 className="font-medium text-slate-800">{t.navPlannerModule || '旅程策劃'} 設定</h3>
-                  <p className="text-slate-500 text-sm">旅程策劃偏好設定開發中...</p>
-                </div>
-              )}
-            </div>
-            
-            <HomeNav 
-              currentView={state.view}
-              onChange={handleViewChange}
-              language={state.language}
-            />
-          </div>
-        )}
       </main>
-
     </div>
     </MapProvider>
   );
