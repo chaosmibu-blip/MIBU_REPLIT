@@ -88,6 +88,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
   const [addingToCart, setAddingToCart] = useState<number | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [calling, setCalling] = useState(false);
+  const [showCallDialog, setShowCallDialog] = useState(false);
+  const [callUrl, setCallUrl] = useState<string | null>(null);
+  const [callLinkCopied, setCallLinkCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [klookHighlights, setKlookHighlights] = useState<Map<string, KlookHighlight[]>>(new Map());
 
@@ -672,13 +675,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
       if (res.ok) {
         const data = await res.json();
         if (data.callUrl) {
-          const link = document.createElement('a');
-          link.href = data.callUrl;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+          setCallUrl(data.callUrl);
+          setShowCallDialog(true);
           await activeConversation?.sendMessage(`📞 已發起通話\n${data.callUrl}`);
         }
       } else {
@@ -691,6 +689,29 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
     } finally {
       setCalling(false);
     }
+  };
+
+  const joinCall = () => {
+    if (callUrl) {
+      window.open(callUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const copyCallLink = async () => {
+    if (!callUrl) return;
+    try {
+      await navigator.clipboard.writeText(callUrl);
+      setCallLinkCopied(true);
+      setTimeout(() => setCallLinkCopied(false), 2000);
+    } catch (err) {
+      console.error('Copy call link failed:', err);
+    }
+  };
+
+  const closeCallDialog = () => {
+    setShowCallDialog(false);
+    setCallUrl(null);
+    setCallLinkCopied(false);
   };
 
   const formatMessageDate = (date: Date) => {
@@ -1292,6 +1313,61 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {showCallDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" onClick={closeCallDialog}>
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm sm:mx-4 animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-center">
+              <div className="w-20 h-20 bg-[#06C755] rounded-full flex items-center justify-center mx-auto mb-4">
+                <Phone className="w-10 h-10 text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">通話已準備好</h3>
+              <p className="text-slate-500 mb-6">選擇加入通話或複製連結分享給其他人</p>
+              
+              {callUrl && (
+                <div className="p-3 bg-slate-100 rounded-xl break-all text-sm text-slate-600 mb-4 text-left">
+                  {callUrl}
+                </div>
+              )}
+              
+              <div className="space-y-3">
+                <button
+                  onClick={joinCall}
+                  className="w-full py-4 rounded-xl bg-[#06C755] text-white font-bold hover:bg-[#05B04A] flex items-center justify-center gap-2"
+                  data-testid="button-join-call"
+                >
+                  <Phone className="w-5 h-5" />
+                  立即加入通話
+                </button>
+                <button
+                  onClick={copyCallLink}
+                  className="w-full py-4 rounded-xl bg-[#C4A77D] text-white font-bold hover:bg-[#B39A70] flex items-center justify-center gap-2"
+                  data-testid="button-copy-call-link"
+                >
+                  {callLinkCopied ? (
+                    <>
+                      <Check className="w-5 h-5" />
+                      已複製連結
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-5 h-5" />
+                      複製通話連結
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={closeCallDialog}
+                  className="w-full py-4 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50"
+                  data-testid="button-close-call-dialog"
+                >
+                  關閉
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
