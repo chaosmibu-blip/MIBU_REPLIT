@@ -1,5 +1,61 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { ArrowRight, Plus, MessageCircle, Users, Loader2, RefreshCw, UserPlus, Copy, Check, ChevronLeft, MoreVertical, Image, Camera, Bookmark, ShoppingCart, X, Minus, Store, Trash2, Phone } from 'lucide-react';
+
+const MessageBubble = memo<{
+  message: Message;
+  isMe: boolean;
+  showDate: boolean;
+  parseContent: (text: string, sid?: string) => React.ReactNode[];
+}>(({ message, isMe, showDate, parseContent }) => (
+  <React.Fragment>
+    {showDate && (
+      <div className="text-center my-4">
+        <span className="px-3 py-1.5 bg-slate-600/70 text-white text-xs font-medium rounded-full shadow-sm">
+          {new Date(message.dateCreated).toLocaleDateString('zh-TW', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric',
+            weekday: 'short'
+          })}
+        </span>
+      </div>
+    )}
+    <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} items-end gap-2 mb-1`}>
+      {!isMe && (
+        <div 
+          className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm"
+          style={{ backgroundColor: '#7C8DB5' }}
+        >
+          <span className="text-sm text-white font-bold">
+            {message.author?.slice(0, 1).toUpperCase() || '?'}
+          </span>
+        </div>
+      )}
+      <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[75%]`}>
+        {!isMe && (
+          <span className="text-xs text-slate-500 mb-1 ml-2 font-medium">{message.author?.slice(0, 8) || '用戶'}</span>
+        )}
+        <div className={`flex items-end gap-1.5 ${isMe ? 'flex-row' : 'flex-row-reverse'}`}>
+          <span className="text-[10px] text-slate-400 mb-1.5 flex-shrink-0">
+            {new Date(message.dateCreated).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+          <div
+            className="px-4 py-2.5 shadow-md"
+            style={{
+              backgroundColor: isMe ? '#06C755' : '#FFFFFF',
+              color: isMe ? '#FFFFFF' : '#1E293B',
+              borderRadius: isMe ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
+              maxWidth: '100%',
+              wordBreak: 'break-word'
+            }}
+          >
+            <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{parseContent(message.body, message.sid)}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </React.Fragment>
+));
 
 interface Message {
   sid: string;
@@ -974,54 +1030,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ language, userId, isAuthenti
               new Date(messages[idx - 1].dateCreated).toDateString() !== new Date(msg.dateCreated).toDateString();
             
             return (
-              <React.Fragment key={msg.sid}>
-                {showDate && (
-                  <div className="text-center my-4">
-                    <span className="px-3 py-1.5 bg-slate-600/70 text-white text-xs font-medium rounded-full shadow-sm">
-                      {new Date(msg.dateCreated).toLocaleDateString('zh-TW', { 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric',
-                        weekday: 'short'
-                      })}
-                    </span>
-                  </div>
-                )}
-                <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} items-end gap-2 mb-1`}>
-                  {!isMe && (
-                    <div 
-                      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm"
-                      style={{ backgroundColor: '#7C8DB5' }}
-                    >
-                      <span className="text-sm text-white font-bold">
-                        {msg.author?.slice(0, 1).toUpperCase() || '?'}
-                      </span>
-                    </div>
-                  )}
-                  <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[75%]`}>
-                    {!isMe && (
-                      <span className="text-xs text-slate-500 mb-1 ml-2 font-medium">{msg.author?.slice(0, 8) || '用戶'}</span>
-                    )}
-                    <div className={`flex items-end gap-1.5 ${isMe ? 'flex-row' : 'flex-row-reverse'}`}>
-                      <span className="text-[10px] text-slate-400 mb-1.5 flex-shrink-0">
-                        {new Date(msg.dateCreated).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      <div
-                        className="px-4 py-2.5 shadow-md"
-                        style={{
-                          backgroundColor: isMe ? '#06C755' : '#FFFFFF',
-                          color: isMe ? '#FFFFFF' : '#1E293B',
-                          borderRadius: isMe ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
-                          maxWidth: '100%',
-                          wordBreak: 'break-word'
-                        }}
-                      >
-                        <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{parseMessageWithPlaces(msg.body, msg.sid)}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </React.Fragment>
+              <MessageBubble
+                key={msg.sid}
+                message={msg}
+                isMe={isMe}
+                showDate={showDate}
+                parseContent={parseMessageWithPlaces}
+              />
             );
           })
         )}

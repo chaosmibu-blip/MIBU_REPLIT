@@ -1,6 +1,7 @@
 let preloadPromise: Promise<string | null> | null = null;
 let cachedToken: string | null = null;
 let isMapboxLoaded = false;
+let preconnectDone = false;
 
 export async function preloadMapboxToken(): Promise<string | null> {
   if (cachedToken) {
@@ -9,6 +10,11 @@ export async function preloadMapboxToken(): Promise<string | null> {
 
   if (preloadPromise) {
     return preloadPromise;
+  }
+
+  if (!preconnectDone) {
+    addPreconnectLinks();
+    preconnectDone = true;
   }
 
   preloadPromise = fetch('/api/config/mapbox')
@@ -34,6 +40,29 @@ export async function preloadMapboxToken(): Promise<string | null> {
   return preloadPromise;
 }
 
+function addPreconnectLinks(): void {
+  const domains = [
+    'https://api.mapbox.com',
+    'https://tiles.mapbox.com',
+    'https://events.mapbox.com'
+  ];
+
+  domains.forEach(href => {
+    if (!document.querySelector(`link[href="${href}"]`)) {
+      const link = document.createElement('link');
+      link.rel = 'preconnect';
+      link.href = href;
+      link.crossOrigin = 'anonymous';
+      document.head.appendChild(link);
+
+      const dnsLink = document.createElement('link');
+      dnsLink.rel = 'dns-prefetch';
+      dnsLink.href = href;
+      document.head.appendChild(dnsLink);
+    }
+  });
+}
+
 export function getCachedToken(): string | null {
   return cachedToken;
 }
@@ -51,16 +80,6 @@ export async function preloadMapboxResources(): Promise<void> {
     await preloadMapboxToken();
     
     if (cachedToken) {
-      const link = document.createElement('link');
-      link.rel = 'preconnect';
-      link.href = 'https://api.mapbox.com';
-      document.head.appendChild(link);
-
-      const tileLink = document.createElement('link');
-      tileLink.rel = 'preconnect';
-      tileLink.href = 'https://tiles.mapbox.com';
-      document.head.appendChild(tileLink);
-
       isMapboxLoaded = true;
     }
   } catch (error) {
@@ -72,4 +91,16 @@ export function clearMapboxCache(): void {
   cachedToken = null;
   preloadPromise = null;
   isMapboxLoaded = false;
+}
+
+if (typeof window !== 'undefined') {
+  if ('requestIdleCallback' in window) {
+    (window as any).requestIdleCallback(() => {
+      preloadMapboxToken();
+    });
+  } else {
+    setTimeout(() => {
+      preloadMapboxToken();
+    }, 100);
+  }
 }

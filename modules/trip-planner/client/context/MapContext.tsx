@@ -12,6 +12,8 @@ interface UserLocation {
 
 interface MapContextValue {
   isMapReady: boolean;
+  isMapLoading: boolean;
+  loadProgress: number;
   userLocation: UserLocation | null;
   locationError: string | null;
   isTracking: boolean;
@@ -47,6 +49,8 @@ export const MapProvider: React.FC<{ children: React.ReactNode; language?: strin
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   const [isMapReady, setIsMapReady] = useState(false);
+  const [isMapLoading, setIsMapLoading] = useState(true);
+  const [loadProgress, setLoadProgress] = useState(0);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isTracking, setIsTracking] = useState(false);
@@ -109,9 +113,9 @@ export const MapProvider: React.FC<{ children: React.ReactNode; language?: strin
         }
       },
       {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 5000,
+        enableHighAccuracy: false,
+        timeout: 15000,
+        maximumAge: 30000,
       }
     );
   }, [isTracking, updateUserMarker]);
@@ -129,7 +133,8 @@ export const MapProvider: React.FC<{ children: React.ReactNode; language?: strin
       mapRef.current.flyTo({
         center: [lng, lat],
         zoom,
-        duration: 1000,
+        duration: 800,
+        essential: true,
       });
     }
   }, []);
@@ -147,7 +152,7 @@ export const MapProvider: React.FC<{ children: React.ReactNode; language?: strin
         () => {
           setLocationError('無法取得位置');
         },
-        { enableHighAccuracy: true, timeout: 10000 }
+        { enableHighAccuracy: false, timeout: 15000 }
       );
     }
   }, [userLocation, flyTo, updateUserMarker]);
@@ -167,7 +172,9 @@ export const MapProvider: React.FC<{ children: React.ReactNode; language?: strin
       targetContainer.innerHTML = '';
       targetContainer.appendChild(mapContainer);
       currentContainerIdRef.current = containerId;
-      mapRef.current.resize();
+      requestAnimationFrame(() => {
+        mapRef.current?.resize();
+      });
     }
   }, []);
 
@@ -189,18 +196,27 @@ export const MapProvider: React.FC<{ children: React.ReactNode; language?: strin
       hiddenContainerRef.current.innerHTML = '';
       hiddenContainerRef.current.appendChild(mapContainer);
       currentContainerIdRef.current = '__hidden_map_container__';
-      mapRef.current.resize();
+      requestAnimationFrame(() => {
+        mapRef.current?.resize();
+      });
     }
   }, []);
 
   useEffect(() => {
+    if (mapRef.current) return;
+
     const initializeMap = async () => {
+      setIsMapLoading(true);
+      setLoadProgress(10);
+
       const token = await preloadMapboxToken();
       if (!token) {
         console.error('Failed to get Mapbox token');
+        setIsMapLoading(false);
         return;
       }
 
+      setLoadProgress(30);
       mapboxgl.accessToken = token;
 
       if (!hiddenContainerRef.current) {
@@ -214,26 +230,47 @@ export const MapProvider: React.FC<{ children: React.ReactNode; language?: strin
         hiddenContainerRef.current = container;
       }
 
+      setLoadProgress(50);
+
       mapRef.current = new mapboxgl.Map({
         container: hiddenContainerRef.current,
         style: 'mapbox://styles/mapbox/streets-v12',
         center: DEFAULT_CENTER,
         zoom: DEFAULT_ZOOM,
         attributionControl: false,
+        antialias: false,
+        fadeDuration: 0,
+        preserveDrawingBuffer: false,
+        trackResize: true,
+        maxTileCacheSize: 50,
+        refreshExpiredTiles: false,
+        pitchWithRotate: false,
+        dragRotate: false,
       });
+
+      setLoadProgress(70);
 
       const mapboxLanguage = LANGUAGE_MAP[language] || 'zh-Hant';
       const languageControl = new MapboxLanguage({ defaultLanguage: mapboxLanguage });
       mapRef.current.addControl(languageControl);
-      mapRef.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      mapRef.current.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
 
       mapRef.current.on('load', () => {
+        setLoadProgress(100);
         setIsMapReady(true);
+        setIsMapLoading(false);
         startTracking();
+      });
+
+      mapRef.current.on('idle', () => {
+        if (!isMapReady) {
+          setLoadProgress(90);
+        }
       });
 
       mapRef.current.on('error', (e) => {
         console.error('Mapbox error:', e);
+        setIsMapLoading(false);
       });
     };
 
@@ -254,6 +291,8 @@ export const MapProvider: React.FC<{ children: React.ReactNode; language?: strin
 
   const value: MapContextValue = {
     isMapReady,
+    isMapLoading,
+    loadProgress,
     userLocation,
     locationError,
     isTracking,
