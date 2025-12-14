@@ -3301,11 +3301,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
       });
 
       // Update order with session ID
-      await storage.updateOrderStatus(order.id, 'pending', undefined);
-      await storage.createOrder({
-        ...order,
-        stripeSessionId: session.id,
-      }).catch(() => {});
+      await storage.updateOrderStatus(order.id, 'pending', session.id);
 
       res.json({ sessionId: session.id, url: session.url });
     } catch (error) {

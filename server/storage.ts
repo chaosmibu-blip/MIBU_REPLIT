@@ -108,7 +108,7 @@ export interface IStorage {
   createOrder(order: InsertCommerceOrder): Promise<CommerceOrder>;
   getOrderById(orderId: number): Promise<CommerceOrder | undefined>;
   getOrderBySessionId(sessionId: string): Promise<CommerceOrder | undefined>;
-  updateOrderStatus(orderId: number, status: string, paymentIntentId?: string): Promise<CommerceOrder>;
+  updateOrderStatus(orderId: number, status: string, sessionId?: string): Promise<CommerceOrder>;
   getUserOrders(userId: string): Promise<CommerceOrder[]>;
 
   // Klook Products
@@ -719,9 +719,9 @@ export class DatabaseStorage implements IStorage {
     return order;
   }
 
-  async updateOrderStatus(orderId: number, status: string, paymentIntentId?: string): Promise<CommerceOrder> {
+  async updateOrderStatus(orderId: number, status: string, sessionId?: string): Promise<CommerceOrder> {
     const updateData: Partial<CommerceOrder> = { status, updatedAt: new Date() };
-    if (paymentIntentId) updateData.stripePaymentIntentId = paymentIntentId;
+    if (sessionId) updateData.stripeSessionId = sessionId;
     const [updated] = await db.update(commerceOrders).set(updateData).where(eq(commerceOrders.id, orderId)).returning();
     return updated;
   }
