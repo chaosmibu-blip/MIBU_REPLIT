@@ -268,6 +268,78 @@ async function main() {
     console.log(`Subcategories already exist (${existingSubcategories.length} found), skipping...`);
   }
 
+  // ============ Merchant Claims & Itinerary Cards ============
+  // Check if merchant claims already exist
+  const existingClaims = await prisma.merchantClaim.findMany({ where: { merchantId: merchant.id } });
+  if (existingClaims.length === 0) {
+    // Create a MerchantClaim for the test merchant
+    const claim = await prisma.merchantClaim.create({
+      data: {
+        merchantId: merchant.id,
+        googlePlaceId: 'ChIJN1t_tDeuEmsRUsoyG83frY4',
+        placeName: "王記小吃店",
+        address: '宜蘭縣宜蘭市中正路88號',
+        status: 'APPROVED',
+        draftCard: {
+          create: {
+            title: '王記小吃店 - 在地美食推薦',
+            description: '傳承三代的道地宜蘭小吃，招牌肉羹湯、米粉炒是必點美食。',
+            imageUrl: 'https://example.com/wangs-shop.jpg',
+            category: 'food',
+            discountInfo: '出示扭蛋卡享9折優惠',
+          },
+        },
+      },
+    });
+    console.log(`Created merchant claim: ${claim.placeName}`);
+
+    // Create an ItineraryCard (official published card)
+    const card = await prisma.itineraryCard.create({
+      data: {
+        merchantId: merchant.id,
+        title: '王記小吃店',
+        description: '傳承三代的道地宜蘭小吃，招牌肉羹湯、米粉炒是必點美食。營業超過50年，是在地人推薦的隱藏美食。',
+        imageUrl: 'https://example.com/wangs-shop.jpg',
+        googlePlaceId: 'ChIJN1t_tDeuEmsRUsoyG83frY4',
+        isPublished: true,
+      },
+    });
+    console.log(`Created itinerary card: ${card.title}`);
+
+    // Create a CouponSetting for the card
+    const coupon = await prisma.couponSetting.create({
+      data: {
+        merchantId: merchant.id,
+        title: '9折優惠券',
+        description: '出示此券享全品項9折優惠，每人限用一次',
+        isActive: true,
+        cardId: card.id,
+      },
+    });
+    console.log(`Created coupon setting: ${coupon.title}`);
+
+    // Add the card to the gacha pool
+    await prisma.gachaItem.create({
+      data: {
+        cardId: card.id,
+        poolName: 'yilan_food',
+        weight: 10,
+      },
+    });
+    console.log('Added card to gacha pool: yilan_food');
+
+    // Create a collection for the consumer
+    await prisma.userCollection.create({
+      data: {
+        userId: consumerA.id,
+        cardId: card.id,
+      },
+    });
+    console.log(`Added card to consumer collection`);
+  } else {
+    console.log(`Merchant claims already exist (${existingClaims.length} found), skipping...`);
+  }
+
   console.log('Seeding finished.');
 }
 
