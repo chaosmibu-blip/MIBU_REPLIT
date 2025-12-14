@@ -102,15 +102,20 @@ async function startServer() {
 
   // JWT 驗證 middleware
   const jwtAuth = (req: any, res: Response, next: NextFunction) => {
+    console.log('[jwtAuth] Request to:', req.path);
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('[jwtAuth] FAIL: Missing or invalid Authorization header');
       return res.status(401).json({ message: "Missing or invalid Authorization header" });
     }
     const token = authHeader.substring(7);
+    console.log('[jwtAuth] Token received (first 10 chars):', token.substring(0, 10));
     const decoded = verifyJwtToken(token);
     if (!decoded) {
+      console.log('[jwtAuth] FAIL: Token verification failed');
       return res.status(401).json({ message: "Invalid token" });
     }
+    console.log('[jwtAuth] SUCCESS: User authenticated, sub:', decoded.sub);
     req.user = { claims: { sub: decoded.sub, email: decoded.email } };
     next();
   };

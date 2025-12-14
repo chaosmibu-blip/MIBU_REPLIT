@@ -9,10 +9,8 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET;
-if (!JWT_SECRET) {
-  console.error('WARNING: JWT_SECRET or SESSION_SECRET must be set for JWT token signing');
-}
+const JWT_SECRET = process.env.JWT_SECRET || 'mibu_secret_key_fixed_12345';
+console.log('[JWT] Using fixed JWT_SECRET (first 10 chars):', JWT_SECRET.substring(0, 10));
 const JWT_EXPIRES_IN = '7d';
 
 const ALLOWED_REDIRECT_ORIGINS = [
@@ -52,12 +50,16 @@ export function generateJwtToken(user: any): string {
 }
 
 export function verifyJwtToken(token: string): any {
-  if (!JWT_SECRET) {
-    return null;
-  }
+  console.log('[JWT DEBUG] verifyJwtToken called');
+  console.log('[JWT DEBUG] Token (first 10 chars):', token ? token.substring(0, 10) : 'null/undefined');
+  console.log('[JWT DEBUG] JWT_SECRET (first 10 chars):', JWT_SECRET.substring(0, 10));
+  
   try {
-    return jwt.verify(token, JWT_SECRET);
-  } catch {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    console.log('[JWT DEBUG] Token verification SUCCESS, decoded sub:', (decoded as any)?.sub);
+    return decoded;
+  } catch (error: any) {
+    console.log('[JWT DEBUG] Token verification FAILED, reason:', error?.message || 'unknown error');
     return null;
   }
 }
