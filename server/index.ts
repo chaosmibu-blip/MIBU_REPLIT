@@ -154,6 +154,11 @@ async function startServer() {
     throw err;
   });
 
+  // API 404 fallback - MUST be before Vite to prevent HTML response for missing API routes
+  app.use('/api/*', (req, res) => {
+    res.status(404).json({ error: 'API endpoint not found', path: req.originalUrl });
+  });
+
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
