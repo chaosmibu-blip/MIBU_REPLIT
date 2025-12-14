@@ -310,6 +310,139 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ SOS Emergency Routes ============
+
+  // Trigger SOS mode via webhook (for iOS Shortcuts, no auth required - uses secret key)
+  app.post('/api/sos/trigger', async (req, res) => {
+    const sosSchema = z.object({
+      lat: z.number().min(-90).max(90).optional(),
+      lon: z.number().min(-180).max(180).optional(),
+    });
+
+    try {
+      const key = req.query.key as string;
+      if (!key) {
+        return res.status(401).json({ status: "error", error: "Missing SOS key" });
+      }
+
+      const user = await storage.getUserBySosKey(key);
+      if (!user) {
+        return res.status(401).json({ status: "error", error: "Invalid SOS key" });
+      }
+
+      const validated = sosSchema.parse(req.body);
+      
+      // Enable SOS mode
+      let location = await storage.getUserLocation(user.id);
+      
+      if (validated.lat !== undefined && validated.lon !== undefined) {
+        // Update location and enable SOS mode
+        location = await storage.upsertUserLocation(
+          user.id,
+          validated.lat,
+          validated.lon,
+          location?.isSharingEnabled ?? true,
+          true // sosMode = true
+        );
+      } else if (location) {
+        // Just enable SOS mode without updating location
+        location = await storage.setSosMode(user.id, true);
+      } else {
+        return res.status(400).json({ status: "error", error: "No location data available. Please provide lat/lon." });
+      }
+
+      // TODO: Notify planner via push notification or SMS
+      console.log(`[SOS TRIGGERED] User ${user.id} (${user.firstName} ${user.lastName}) triggered SOS mode`);
+      
+      res.json({ 
+        status: "ok", 
+        message: "SOS mode activated",
+        location
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ status: "error", error: error.errors });
+      }
+      console.error("Error triggering SOS:", error);
+      res.status(500).json({ status: "error", error: "Failed to trigger SOS" });
+    }
+  });
+
+  // Deactivate SOS mode (requires auth)
+  app.post('/api/sos/deactivate', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const location = await storage.setSosMode(userId, false);
+      
+      if (!location) {
+        return res.status(404).json({ status: "error", error: "No location found" });
+      }
+
+      console.log(`[SOS DEACTIVATED] User ${userId} deactivated SOS mode`);
+      res.json({ status: "ok", message: "SOS mode deactivated", location });
+    } catch (error) {
+      console.error("Error deactivating SOS:", error);
+      res.status(500).json({ status: "error", error: "Failed to deactivate SOS" });
+    }
+  });
+
+  // Get SOS webhook link (requires auth)
+  app.get('/api/user/sos-link', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      let sosKey = user.sosSecretKey;
+      
+      // Generate new key if not exists
+      if (!sosKey) {
+        sosKey = await storage.generateSosKey(userId);
+      }
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPLIT_DOMAINS?.split(',')[0] 
+          ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+          : 'https://your-app.replit.app';
+
+      const webhookUrl = `${baseUrl}/api/sos/trigger?key=${sosKey}`;
+      
+      res.json({ 
+        webhookUrl,
+        sosKey,
+        instructions: {
+          method: "POST",
+          body: "Optional JSON: { \"lat\": number, \"lon\": number }",
+          example: `curl -X POST "${webhookUrl}" -H "Content-Type: application/json" -d '{"lat": 25.0330, "lon": 121.5654}'`
+        }
+      });
+    } catch (error) {
+      console.error("Error getting SOS link:", error);
+      res.status(500).json({ error: "Failed to get SOS link" });
+    }
+  });
+
+  // Regenerate SOS key (requires auth)
+  app.post('/api/user/sos-key/regenerate', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const newKey = await storage.generateSosKey(userId);
+      
+      res.json({ 
+        status: "ok",
+        message: "SOS key regenerated successfully",
+        sosKey: newKey
+      });
+    } catch (error) {
+      console.error("Error regenerating SOS key:", error);
+      res.status(500).json({ error: "Failed to regenerate SOS key" });
+    }
+  });
+
   // ============ Collection Routes ============
   
   app.get("/api/collections", isAuthenticated, async (req: any, res) => {

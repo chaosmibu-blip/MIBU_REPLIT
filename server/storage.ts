@@ -833,7 +833,13 @@ export class DatabaseStorage implements IStorage {
 
   // User Locations (位置共享)
   async upsertUserLocation(userId: string, lat: number, lon: number, isSharingEnabled: boolean, sosMode?: boolean): Promise<UserLocation> {
-    const setData: any = { lat, lon, isSharingEnabled, updatedAt: new Date() };
+    const setData: Record<string, any> = { 
+      lat, 
+      lon, 
+      isSharingEnabled, 
+      updatedAt: new Date() 
+    };
+    
     if (sosMode !== undefined) {
       setData.sosMode = sosMode;
     }
