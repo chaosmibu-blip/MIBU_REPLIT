@@ -9,6 +9,7 @@ import { createPlannerServiceRoutes } from "../modules/trip-planner/server/plann
 import { registerStripeRoutes } from "./stripeRoutes";
 import { authRoutes } from "./authRoutes";
 import { checkGeofence } from "./lib/geofencing";
+import { prisma } from "./prisma";
 import twilio from "twilio";
 const { AccessToken } = twilio.jwt;
 const ChatGrant = AccessToken.ChatGrant;
@@ -569,6 +570,186 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ merchant });
     } catch (error) {
       res.status(500).json({ error: "Failed to update plan" });
+    }
+  });
+
+  // ============ Merchant Claim Routes (Prisma) ============
+
+  const claimSchema = z.object({
+    googlePlaceId: z.string().min(1),
+    placeName: z.string().min(1),
+    address: z.string().optional(),
+  });
+
+  app.post("/api/merchant/claim", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const user = await prisma.user.findFirst({
+        where: { 
+          OR: [
+            { id: parseInt(userId) || 0 },
+            { email: userId }
+          ]
+        }
+      });
+
+      if (!user || user.role !== 'MERCHANT') {
+        return res.status(403).json({ error: "只有商家帳號可以認領地點" });
+      }
+
+      const validated = claimSchema.parse(req.body);
+
+      const existingCard = await prisma.itineraryCard.findFirst({
+        where: { googlePlaceId: validated.googlePlaceId },
+        include: { merchant: { select: { id: true, email: true } } }
+      });
+
+      if (existingCard) {
+        return res.status(409).json({
+          error: "Conflict",
+          message: "該地點已被認領",
+          canDispute: true,
+          claimedBy: existingCard.merchantId === user.id ? "self" : "other"
+        });
+      }
+
+      const existingClaim = await prisma.merchantClaim.findFirst({
+        where: { 
+          googlePlaceId: validated.googlePlaceId,
+          status: { in: ['PENDING', 'APPROVED'] }
+        }
+      });
+
+      if (existingClaim) {
+        return res.status(409).json({
+          error: "Conflict",
+          message: existingClaim.merchantId === user.id 
+            ? "您已經提交過此地點的認領申請" 
+            : "該地點已有待審核或已核准的認領申請",
+          canDispute: existingClaim.merchantId !== user.id,
+          claimedBy: existingClaim.merchantId === user.id ? "self" : "other"
+        });
+      }
+
+      const claim = await prisma.merchantClaim.create({
+        data: {
+          merchantId: user.id,
+          googlePlaceId: validated.googlePlaceId,
+          placeName: validated.placeName,
+          address: validated.address,
+          status: 'PENDING',
+          isDispute: false,
+        }
+      });
+
+      res.status(201).json({
+        message: "認領申請已提交，等待審核",
+        claim
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Merchant claim error:", error);
+      res.status(500).json({ error: "認領申請失敗" });
+    }
+  });
+
+  app.post("/api/merchant/claim/dispute", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const user = await prisma.user.findFirst({
+        where: { 
+          OR: [
+            { id: parseInt(userId) || 0 },
+            { email: userId }
+          ]
+        }
+      });
+
+      if (!user || user.role !== 'MERCHANT') {
+        return res.status(403).json({ error: "只有商家帳號可以提交爭議" });
+      }
+
+      const validated = claimSchema.parse(req.body);
+
+      const existingSelfClaim = await prisma.merchantClaim.findFirst({
+        where: { 
+          googlePlaceId: validated.googlePlaceId,
+          merchantId: user.id
+        }
+      });
+
+      if (existingSelfClaim) {
+        return res.status(400).json({
+          error: "您已經對此地點提交過認領或爭議申請"
+        });
+      }
+
+      const dispute = await prisma.merchantClaim.create({
+        data: {
+          merchantId: user.id,
+          googlePlaceId: validated.googlePlaceId,
+          placeName: validated.placeName,
+          address: validated.address,
+          status: 'PENDING',
+          isDispute: true,
+        }
+      });
+
+      console.log(`[DISPUTE] 商家 ${user.id} (${user.email}) 對地點 ${validated.placeName} 提交爭議`);
+
+      res.status(201).json({
+        message: "爭議申請已提交，管理員將進行人工審核",
+        dispute
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Merchant dispute error:", error);
+      res.status(500).json({ error: "爭議申請失敗" });
+    }
+  });
+
+  app.get("/api/merchant/claims", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const user = await prisma.user.findFirst({
+        where: { 
+          OR: [
+            { id: parseInt(userId) || 0 },
+            { email: userId }
+          ]
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: "用戶不存在" });
+      }
+
+      const claims = await prisma.merchantClaim.findMany({
+        where: { merchantId: user.id },
+        include: { draftCard: true },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      res.json({ claims });
+    } catch (error) {
+      console.error("Get merchant claims error:", error);
+      res.status(500).json({ error: "獲取認領列表失敗" });
     }
   });
 
