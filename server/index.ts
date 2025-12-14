@@ -120,6 +120,14 @@ async function startServer() {
     next();
   };
 
+  // POST /api/sos/trigger - 直接在 index.ts 中處理，確保優先載入
+  app.post('/api/sos/trigger', (req, res) => {
+    console.log('🚨 SOS TRIGGERED!');
+    console.log('🚨 Request body:', req.body);
+    console.log('🚨 Query params:', req.query);
+    res.json({ success: true, message: 'SOS triggered successfully' });
+  });
+
   // POST /api/location/update
   app.post('/api/location/update', jwtAuth, async (req: any, res) => {
     const userId = req.user?.claims?.sub;
