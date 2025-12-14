@@ -134,3 +134,11 @@ model SosEvent {
   status    SosStatus @default(TRIGGERED)
   createdAt DateTime  @default(now())
 }
+
+model Session {
+  sid    String   @id @db.VarChar(255)
+  sess   Json
+  expire DateTime @db.Timestamp(6)
+
+  @@map("sessions")
+}

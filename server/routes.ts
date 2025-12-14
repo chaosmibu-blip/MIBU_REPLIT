@@ -7,6 +7,7 @@ import { z } from "zod";
 import { createTripPlannerRoutes } from "../modules/trip-planner/server/routes";
 import { createPlannerServiceRoutes } from "../modules/trip-planner/server/planner-routes";
 import { registerStripeRoutes } from "./stripeRoutes";
+import { authRoutes } from "./authRoutes";
 import { checkGeofence } from "./lib/geofencing";
 import twilio from "twilio";
 const { AccessToken } = twilio.jwt;
@@ -214,6 +215,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ Module Routes ============
   // Trip Planner Module
   app.use('/api/planner', createTripPlannerRoutes());
+  
+  // New Prisma-based Auth Routes (email/password)
+  app.use('/api/v2/auth', authRoutes);
   
   // Planner Service Routes (策劃師服務)
   createPlannerServiceRoutes(app);
