@@ -526,4 +526,22 @@ export function createPlannerServiceRoutes(app: Express) {
       res.status(500).json({ error: "Failed to fetch orders" });
     }
   });
+
+  app.get("/api/planner/users-locations", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const planner = await plannerServiceStorage.getPlannerByUserId(userId);
+      
+      if (!planner) {
+        return res.status(403).json({ error: "Not a planner" });
+      }
+
+      const { storage } = await import("../../../server/storage");
+      const locations = await storage.getSharedLocationsForPlanner(planner.id);
+      res.json(locations);
+    } catch (error) {
+      console.error("Error fetching user locations:", error);
+      res.status(500).json({ error: "Failed to fetch user locations" });
+    }
+  });
 }

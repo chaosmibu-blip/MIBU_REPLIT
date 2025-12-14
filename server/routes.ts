@@ -243,6 +243,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ Location Routes ============
+
+  app.post('/api/location/update', isAuthenticated, async (req: any, res) => {
+    const locationSchema = z.object({
+      lat: z.number(),
+      lon: z.number(),
+      isSharingEnabled: z.boolean().optional(),
+    });
+
+    try {
+      const userId = req.user.claims.sub;
+      const validated = locationSchema.parse(req.body);
+      
+      let sharingEnabled = validated.isSharingEnabled;
+      if (sharingEnabled === undefined) {
+        const existingLocation = await storage.getUserLocation(userId);
+        sharingEnabled = existingLocation?.isSharingEnabled ?? true;
+      }
+      
+      const location = await storage.upsertUserLocation(
+        userId,
+        validated.lat,
+        validated.lon,
+        sharingEnabled
+      );
+      
+      res.json({ 
+        success: true, 
+        location,
+        message: sharingEnabled ? '位置已更新' : '位置共享已關閉'
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Error updating location:", error);
+      res.status(500).json({ error: "Failed to update location" });
+    }
+  });
+
+  app.get('/api/location/me', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const location = await storage.getUserLocation(userId);
+      res.json(location || null);
+    } catch (error) {
+      console.error("Error fetching location:", error);
+      res.status(500).json({ error: "Failed to fetch location" });
+    }
+  });
+
   // ============ Collection Routes ============
   
   app.get("/api/collections", isAuthenticated, async (req: any, res) => {
