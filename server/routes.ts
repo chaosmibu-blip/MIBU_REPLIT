@@ -247,6 +247,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ Location Routes ============
 
   app.post('/api/location/update', isAuthenticated, async (req: any, res) => {
+    const userId = req.user?.claims?.sub;
+    console.log('📍 Location Update Request:', { userId, body: req.body });
+    
     const locationSchema = z.object({
       lat: z.number().min(-90).max(90),
       lon: z.number().min(-180).max(180),
@@ -261,8 +264,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
 
     try {
-      const userId = req.user.claims.sub;
       const validated = locationSchema.parse(req.body);
+      console.log('📍 Location Update Validated:', { userId, lat: validated.lat, lon: validated.lon, isSharingEnabled: validated.isSharingEnabled });
       
       let sharingEnabled = validated.isSharingEnabled;
       if (sharingEnabled === undefined) {
@@ -314,22 +317,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Trigger SOS mode via webhook (for iOS Shortcuts, no auth required - uses secret key)
   app.post('/api/sos/trigger', async (req, res) => {
+    const key = req.query.key as string;
+    console.log('🚨 SOS Trigger Request:', { key: key ? `${key.slice(0, 8)}...` : 'missing', body: req.body });
+    
     const sosSchema = z.object({
       lat: z.number().min(-90).max(90).optional(),
       lon: z.number().min(-180).max(180).optional(),
     });
 
     try {
-      const key = req.query.key as string;
       if (!key) {
+        console.log('🚨 SOS Trigger Failed: Missing key');
         return res.status(401).json({ status: "error", error: "Missing SOS key" });
       }
 
       const user = await storage.getUserBySosKey(key);
       if (!user) {
+        console.log('🚨 SOS Trigger Failed: Invalid key');
         return res.status(401).json({ status: "error", error: "Invalid SOS key" });
       }
 
+      console.log('🚨 SOS Trigger Authenticated:', { userId: user.id, userName: `${user.firstName} ${user.lastName}` });
       const validated = sosSchema.parse(req.body);
       
       // Enable SOS mode
@@ -370,8 +378,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Deactivate SOS mode (requires auth)
   app.post('/api/sos/deactivate', isAuthenticated, async (req: any, res) => {
+    const userId = req.user?.claims?.sub;
+    console.log('🚨 SOS Deactivate Request:', { userId });
+    
     try {
-      const userId = req.user.claims.sub;
       const location = await storage.setSosMode(userId, false);
       
       if (!location) {
@@ -388,8 +398,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get SOS webhook link (requires auth)
   app.get('/api/user/sos-link', isAuthenticated, async (req: any, res) => {
+    const userId = req.user?.claims?.sub;
+    console.log('🔗 SOS Link Request:', { userId });
+    
     try {
-      const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
       if (!user) {
