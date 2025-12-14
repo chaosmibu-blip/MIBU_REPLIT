@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, index, doublePrecision } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -693,6 +693,35 @@ export const chatInvites = pgTable("chat_invites", {
   index("IDX_chat_invites_code").on(table.inviteCode),
   index("IDX_chat_invites_conversation").on(table.conversationSid),
 ]);
+
+// ============ User Locations (位置共享) ============
+
+export const userLocations = pgTable("user_locations", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull().unique(),
+  lat: doublePrecision("lat").notNull(),
+  lon: doublePrecision("lon").notNull(),
+  isSharingEnabled: boolean("is_sharing_enabled").default(true).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_locations_user").on(table.userId),
+  index("IDX_user_locations_sharing").on(table.isSharingEnabled),
+]);
+
+export const userLocationsRelations = relations(userLocations, ({ one }) => ({
+  user: one(users, {
+    fields: [userLocations.userId],
+    references: [users.id],
+  }),
+}));
+
+export const insertUserLocationSchema = createInsertSchema(userLocations).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type UserLocation = typeof userLocations.$inferSelect;
+export type InsertUserLocation = z.infer<typeof insertUserLocationSchema>;
 
 // Insert schemas
 export const insertTravelCompanionSchema = createInsertSchema(travelCompanions).omit({
