@@ -1,0 +1,60 @@
+我們的商業邏輯有重大更新。我們需要建立嚴格的「八大分類體系」，並升級商家認領與扭蛋邏輯。
+請執行以下修改：
+1. 資料庫 Schema 擴充 (prisma/schema.prisma)
+請新增/修改以下模型以支援分類與地區鎖定：
+code
+Prisma
+// 1. 分類系統 (用於篩選行程卡)
+model MainCategory {
+  id            Int           @id @default(autoincrement())
+  code          String        @unique // e.g., "FOOD", "STAY"
+  name          String        // e.g., "食", "宿"
+  subCategories SubCategory[]
+}
+
+model SubCategory {
+  id            Int             @id @default(autoincrement())
+  mainCategoryId Int
+  mainCategory  MainCategory    @relation(fields: [mainCategoryId], references: [id])
+  name          String          // e.g., "在地小吃", "星級飯店"
+  
+  // 關聯到行程卡
+  cards         ItineraryCard[]
+  drafts        DraftItineraryCard[]
+}
+
+// 2. 行程卡關聯更新
+model ItineraryCard {
+  // ... 保留原有欄位
+  cityId        Int?            // 必須鎖定地區
+  city          City?           @relation(fields: [cityId], references: [id])
+  
+  subCategoryId Int?
+  subCategory   SubCategory?  @relation(fields: [subCategoryId], references: [id])
+}
+
+// 3. 商家認領擴充 (處理撞店)
+model MerchantClaim {
+  // ... 保留原有欄位
+  isDispute     Boolean       @default(false) // 是否為爭議案件(撞店)
+  adminNote     String?       // 管理員審核筆記
+}
+2. Seed Data (寫入八大分類 - 關鍵!)
+請在 prisma/seed.ts 中，清空並重新建立以下分類資料 (請務必照抄)：
+FOOD (食): 在地小吃/夜市, 特色餐廳, 異國料理, 咖啡/甜點, 酒吧/餐酒館, 特殊飲食
+STAY (宿): 星級飯店, 一般旅館, 民宿, 青年旅館, 露營, 休閒渡假村, 溫泉飯店
+ECO (生態文化): 歷史古蹟, 博物館, 觀光工廠, 自然生態, 宗教場所, 原民部落, 科普教育
+EXP (遊程體驗): 手作DIY, 戶外冒險, 在地導覽, 農事體驗, 療癒身心靈, 服飾體驗
+FUN (娛樂設施): 主題樂園, 動物園, 親子樂園, 溫泉SPA, 影視娛樂, 博弈競技
+EVENT (活動): 節慶祭典, 季節限定, 藝文展演, 體育賽事, 市集展覽
+SPOT (景點): 自然景觀, 海岸風光, 都會公園, 特色建築, 觀景台/夜景, 網美打卡點
+SHOP (購物): 百貨公司, 商圈, 特色伴手禮, 免稅店, 傳統市場, 文創商店
+3. 升級商家認領 API (POST /api/merchant/claim)
+撞店檢測：在建立 MerchantClaim 前，檢查 ItineraryCard 或其他 MerchantClaim 是否已有相同的 googlePlaceId。
+若已存在：
+回傳 409 Conflict。
+JSON Body 需包含：{ error: "Conflict", message: "該地點已被認領", canDispute: true }。
+爭議提交 (POST /api/merchant/claim/dispute)：
+允許商家針對已存在的 googlePlaceId 提交認領，但將 status 設為 PENDING 且 isDispute 設為 true。
+這會通知管理員介入人工審核。
+請執行 Migration、Seed，並實作上述 API。

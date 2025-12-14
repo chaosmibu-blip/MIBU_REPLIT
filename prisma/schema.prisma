@@ -121,8 +121,9 @@ model City {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  districts District[]
-  planners  PlannerProfile[]
+  districts      District[]
+  planners       PlannerProfile[]
+  itineraryCards ItineraryCard[]
 
   @@index([countryId])
   @@map("regions")
@@ -177,6 +178,9 @@ model Subcategory {
   preferredTimeSlot String?  @default("anytime") @db.VarChar(20)
   isActive          Boolean  @default(true)
   createdAt         DateTime @default(now())
+
+  itineraryCards     ItineraryCard[]
+  draftItineraryCards DraftItineraryCard[]
 
   @@index([categoryId])
   @@map("subcategories")
@@ -437,6 +441,8 @@ model MerchantClaim {
   placeName     String
   address       String?
   status        ClaimStatus @default(PENDING)
+  isDispute     Boolean     @default(false)
+  adminNote     String?
   createdAt     DateTime    @default(now())
 
   draftCard     DraftItineraryCard?
@@ -453,7 +459,9 @@ model DraftItineraryCard {
   title        String
   description  String?
   imageUrl     String?
-  category     String?
+  
+  subcategoryId Int?
+  subcategory   Subcategory?  @relation(fields: [subcategoryId], references: [id])
 
   discountInfo String?
 
@@ -472,6 +480,12 @@ model ItineraryCard {
   imageUrl      String
   googlePlaceId String
 
+  cityId        Int?
+  city          City?     @relation(fields: [cityId], references: [id])
+  
+  subcategoryId Int?
+  subcategory   Subcategory? @relation(fields: [subcategoryId], references: [id])
+
   gachaItems    GachaItem[]
   collections   UserCollection[]
   coupons       CouponSetting[]
@@ -480,6 +494,8 @@ model ItineraryCard {
 
   @@index([merchantId])
   @@index([googlePlaceId])
+  @@index([cityId])
+  @@index([subcategoryId])
 }
 
 model CouponSetting {
