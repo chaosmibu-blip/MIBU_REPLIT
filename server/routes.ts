@@ -7,6 +7,7 @@ import { z } from "zod";
 import { createTripPlannerRoutes } from "../modules/trip-planner/server/routes";
 import { createPlannerServiceRoutes } from "../modules/trip-planner/server/planner-routes";
 import { registerStripeRoutes } from "./stripeRoutes";
+import { checkGeofence } from "./lib/geofencing";
 import twilio from "twilio";
 const { AccessToken } = twilio.jwt;
 const ChatGrant = AccessToken.ChatGrant;
@@ -247,9 +248,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/location/update', isAuthenticated, async (req: any, res) => {
     const locationSchema = z.object({
-      lat: z.number(),
-      lon: z.number(),
+      lat: z.number().min(-90).max(90),
+      lon: z.number().min(-180).max(180),
       isSharingEnabled: z.boolean().optional(),
+      targets: z.array(z.object({
+        id: z.union([z.string(), z.number()]),
+        name: z.string(),
+        lat: z.number().min(-90).max(90),
+        lon: z.number().min(-180).max(180),
+        radiusMeters: z.number().min(1).max(10000).default(50),
+      })).optional(),
     });
 
     try {
@@ -269,17 +277,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sharingEnabled
       );
       
+      const geofenceResult = checkGeofence(
+        { lat: validated.lat, lon: validated.lon },
+        validated.targets || []
+      );
+      
       res.json({ 
-        success: true, 
+        status: "ok",
+        arrived: geofenceResult.arrived,
+        target: geofenceResult.target,
+        distanceMeters: geofenceResult.distanceMeters,
         location,
         message: sharingEnabled ? '位置已更新' : '位置共享已關閉'
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: error.errors });
+        return res.status(400).json({ status: "error", error: error.errors });
       }
       console.error("Error updating location:", error);
-      res.status(500).json({ error: "Failed to update location" });
+      res.status(500).json({ status: "error", error: "Failed to update location" });
     }
   });
 
