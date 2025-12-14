@@ -2,7 +2,7 @@ import {
   users, collections, merchants, coupons, placeCache, placeFeedback, merchantPlaceLinks,
   countries, regions, districts, categories, subcategories, chatInvites,
   placeProducts, cartItems, commerceOrders, klookProducts, messageHighlights,
-  placeDrafts, placeApplications,
+  placeDrafts, placeApplications, userLocations, planners, serviceOrders,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -19,7 +19,8 @@ import {
   type KlookProduct, type InsertKlookProduct,
   type MessageHighlight, type InsertMessageHighlight,
   type PlaceDraft, type InsertPlaceDraft,
-  type PlaceApplication, type InsertPlaceApplication
+  type PlaceApplication, type InsertPlaceApplication,
+  type UserLocation, type InsertUserLocation
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -133,6 +134,11 @@ export interface IStorage {
   getPlaceApplicationsByMerchant(merchantId: number): Promise<PlaceApplication[]>;
   getPendingApplications(): Promise<PlaceApplication[]>;
   updatePlaceApplication(id: number, data: Partial<PlaceApplication>): Promise<PlaceApplication>;
+
+  // User Locations (位置共享)
+  upsertUserLocation(userId: string, lat: number, lon: number, isSharingEnabled: boolean): Promise<UserLocation>;
+  getUserLocation(userId: string): Promise<UserLocation | undefined>;
+  getSharedLocationsForPlanner(plannerId: number): Promise<Array<{ userId: string; lat: number; lon: number; updatedAt: Date; firstName: string | null; lastName: string | null; profileImageUrl: string | null }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -818,6 +824,47 @@ export class DatabaseStorage implements IStorage {
       .where(eq(placeApplications.id, id))
       .returning();
     return updated;
+  }
+
+  // User Locations (位置共享)
+  async upsertUserLocation(userId: string, lat: number, lon: number, isSharingEnabled: boolean): Promise<UserLocation> {
+    const [location] = await db
+      .insert(userLocations)
+      .values({ userId, lat, lon, isSharingEnabled })
+      .onConflictDoUpdate({
+        target: userLocations.userId,
+        set: { lat, lon, isSharingEnabled, updatedAt: new Date() },
+      })
+      .returning();
+    return location;
+  }
+
+  async getUserLocation(userId: string): Promise<UserLocation | undefined> {
+    const [location] = await db.select().from(userLocations).where(eq(userLocations.userId, userId));
+    return location;
+  }
+
+  async getSharedLocationsForPlanner(plannerId: number): Promise<Array<{ userId: string; lat: number; lon: number; updatedAt: Date; firstName: string | null; lastName: string | null; profileImageUrl: string | null }>> {
+    const results = await db
+      .select({
+        userId: userLocations.userId,
+        lat: userLocations.lat,
+        lon: userLocations.lon,
+        updatedAt: userLocations.updatedAt,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        profileImageUrl: users.profileImageUrl,
+      })
+      .from(userLocations)
+      .innerJoin(users, eq(userLocations.userId, users.id))
+      .innerJoin(serviceOrders, eq(serviceOrders.userId, userLocations.userId))
+      .where(
+        and(
+          eq(serviceOrders.plannerId, plannerId),
+          eq(userLocations.isSharingEnabled, true)
+        )
+      );
+    return results;
   }
 }
 
