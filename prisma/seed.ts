@@ -138,7 +138,6 @@ async function main() {
     { code: 'lienchiang', nameEn: 'Lienchiang County', nameZh: '連江縣', nameJa: '連江県', nameKo: '롄장현' },
   ];
 
-  // Check if cities already exist
   const existingCities = await prisma.city.findMany({ where: { countryId: taiwan.id } });
   if (existingCities.length === 0) {
     for (const city of cities) {
@@ -159,23 +158,139 @@ async function main() {
     console.log(`Cities already exist (${existingCities.length} found), skipping...`);
   }
 
-  // ============ Categories ============
-  const categories = [
-    { code: 'food', nameEn: 'Food', nameZh: '美食', colorHex: '#f97316', sortOrder: 1 },
-    { code: 'accommodation', nameEn: 'Accommodation', nameZh: '住宿', colorHex: '#8b5cf6', sortOrder: 2 },
-    { code: 'attraction', nameEn: 'Attraction', nameZh: '景點', colorHex: '#22c55e', sortOrder: 3 },
-    { code: 'shopping', nameEn: 'Shopping', nameZh: '購物', colorHex: '#ec4899', sortOrder: 4 },
-    { code: 'entertainment', nameEn: 'Entertainment', nameZh: '娛樂', colorHex: '#eab308', sortOrder: 5 },
-    { code: 'activity', nameEn: 'Activity', nameZh: '活動', colorHex: '#14b8a6', sortOrder: 6 },
-    { code: 'culture', nameEn: 'Culture & Education', nameZh: '生態文化教育', colorHex: '#6366f1', sortOrder: 7 },
-    { code: 'tour', nameEn: 'Tour Experience', nameZh: '遊程體驗', colorHex: '#3b82f6', sortOrder: 8 },
+  // ============ 八大分類體系 (8 Main Categories) ============
+  // 先清除舊的子分類和分類
+  await prisma.subcategory.deleteMany({});
+  await prisma.category.deleteMany({});
+  console.log('Cleared old categories and subcategories');
+
+  const categoriesWithSubs = [
+    {
+      code: 'FOOD',
+      nameEn: 'Food',
+      nameZh: '食',
+      colorHex: '#f97316',
+      sortOrder: 1,
+      subcategories: [
+        { code: 'local_snack', nameEn: 'Local Snacks / Night Market', nameZh: '在地小吃/夜市' },
+        { code: 'special_restaurant', nameEn: 'Special Restaurant', nameZh: '特色餐廳' },
+        { code: 'foreign_cuisine', nameEn: 'Foreign Cuisine', nameZh: '異國料理' },
+        { code: 'cafe_dessert', nameEn: 'Cafe / Dessert', nameZh: '咖啡/甜點' },
+        { code: 'bar', nameEn: 'Bar / Bistro', nameZh: '酒吧/餐酒館' },
+        { code: 'special_diet', nameEn: 'Special Diet', nameZh: '特殊飲食' },
+      ],
+    },
+    {
+      code: 'STAY',
+      nameEn: 'Accommodation',
+      nameZh: '宿',
+      colorHex: '#8b5cf6',
+      sortOrder: 2,
+      subcategories: [
+        { code: 'star_hotel', nameEn: 'Star Hotel', nameZh: '星級飯店' },
+        { code: 'regular_hotel', nameEn: 'Regular Hotel', nameZh: '一般旅館' },
+        { code: 'bnb', nameEn: 'B&B', nameZh: '民宿' },
+        { code: 'hostel', nameEn: 'Hostel', nameZh: '青年旅館' },
+        { code: 'camping', nameEn: 'Camping', nameZh: '露營' },
+        { code: 'resort', nameEn: 'Resort', nameZh: '休閒渡假村' },
+        { code: 'hot_spring_hotel', nameEn: 'Hot Spring Hotel', nameZh: '溫泉飯店' },
+      ],
+    },
+    {
+      code: 'ECO',
+      nameEn: 'Culture & Ecology',
+      nameZh: '生態文化',
+      colorHex: '#6366f1',
+      sortOrder: 3,
+      subcategories: [
+        { code: 'historical', nameEn: 'Historical Site', nameZh: '歷史古蹟' },
+        { code: 'museum', nameEn: 'Museum', nameZh: '博物館' },
+        { code: 'factory_tour', nameEn: 'Factory Tour', nameZh: '觀光工廠' },
+        { code: 'nature_eco', nameEn: 'Nature & Ecology', nameZh: '自然生態' },
+        { code: 'religious', nameEn: 'Religious Site', nameZh: '宗教場所' },
+        { code: 'indigenous', nameEn: 'Indigenous Tribe', nameZh: '原民部落' },
+        { code: 'science_edu', nameEn: 'Science Education', nameZh: '科普教育' },
+      ],
+    },
+    {
+      code: 'EXP',
+      nameEn: 'Experience',
+      nameZh: '遊程體驗',
+      colorHex: '#3b82f6',
+      sortOrder: 4,
+      subcategories: [
+        { code: 'diy', nameEn: 'DIY Workshop', nameZh: '手作DIY' },
+        { code: 'outdoor_adventure', nameEn: 'Outdoor Adventure', nameZh: '戶外冒險' },
+        { code: 'local_tour', nameEn: 'Local Guided Tour', nameZh: '在地導覽' },
+        { code: 'farm_experience', nameEn: 'Farm Experience', nameZh: '農事體驗' },
+        { code: 'wellness', nameEn: 'Wellness', nameZh: '療癒身心靈' },
+        { code: 'costume', nameEn: 'Costume Experience', nameZh: '服飾體驗' },
+      ],
+    },
+    {
+      code: 'FUN',
+      nameEn: 'Entertainment',
+      nameZh: '娛樂設施',
+      colorHex: '#eab308',
+      sortOrder: 5,
+      subcategories: [
+        { code: 'theme_park', nameEn: 'Theme Park', nameZh: '主題樂園' },
+        { code: 'zoo', nameEn: 'Zoo / Aquarium', nameZh: '動物園' },
+        { code: 'kids_park', nameEn: 'Kids Park', nameZh: '親子樂園' },
+        { code: 'hot_spring_spa', nameEn: 'Hot Spring / SPA', nameZh: '溫泉SPA' },
+        { code: 'cinema', nameEn: 'Cinema / Entertainment', nameZh: '影視娛樂' },
+        { code: 'gaming', nameEn: 'Gaming', nameZh: '博弈競技' },
+      ],
+    },
+    {
+      code: 'EVENT',
+      nameEn: 'Events',
+      nameZh: '活動',
+      colorHex: '#14b8a6',
+      sortOrder: 6,
+      subcategories: [
+        { code: 'festival', nameEn: 'Festival', nameZh: '節慶祭典' },
+        { code: 'seasonal', nameEn: 'Seasonal', nameZh: '季節限定' },
+        { code: 'art_performance', nameEn: 'Art & Performance', nameZh: '藝文展演' },
+        { code: 'sports', nameEn: 'Sports Event', nameZh: '體育賽事' },
+        { code: 'market_expo', nameEn: 'Market & Expo', nameZh: '市集展覽' },
+      ],
+    },
+    {
+      code: 'SPOT',
+      nameEn: 'Attractions',
+      nameZh: '景點',
+      colorHex: '#22c55e',
+      sortOrder: 7,
+      subcategories: [
+        { code: 'nature_landscape', nameEn: 'Nature Landscape', nameZh: '自然景觀' },
+        { code: 'coastal', nameEn: 'Coastal', nameZh: '海岸風光' },
+        { code: 'urban_park', nameEn: 'Urban Park', nameZh: '都會公園' },
+        { code: 'architecture', nameEn: 'Special Architecture', nameZh: '特色建築' },
+        { code: 'observation', nameEn: 'Observation / Night View', nameZh: '觀景台/夜景' },
+        { code: 'instagram', nameEn: 'Instagram Spot', nameZh: '網美打卡點' },
+      ],
+    },
+    {
+      code: 'SHOP',
+      nameEn: 'Shopping',
+      nameZh: '購物',
+      colorHex: '#ec4899',
+      sortOrder: 8,
+      subcategories: [
+        { code: 'department', nameEn: 'Department Store', nameZh: '百貨公司' },
+        { code: 'shopping_district', nameEn: 'Shopping District', nameZh: '商圈' },
+        { code: 'souvenir', nameEn: 'Souvenir', nameZh: '特色伴手禮' },
+        { code: 'duty_free', nameEn: 'Duty Free', nameZh: '免稅店' },
+        { code: 'traditional_market', nameEn: 'Traditional Market', nameZh: '傳統市場' },
+        { code: 'creative', nameEn: 'Creative Shop', nameZh: '文創商店' },
+      ],
+    },
   ];
 
-  for (const cat of categories) {
-    await prisma.category.upsert({
-      where: { code: cat.code },
-      update: {},
-      create: {
+  for (const cat of categoriesWithSubs) {
+    const createdCat = await prisma.category.create({
+      data: {
         code: cat.code,
         nameEn: cat.nameEn,
         nameZh: cat.nameZh,
@@ -184,108 +299,44 @@ async function main() {
         isActive: true,
       },
     });
-  }
-  console.log(`Created ${categories.length} categories`);
 
-  // ============ Subcategories ============
-  const foodCategory = await prisma.category.findUnique({ where: { code: 'food' } });
-  const accommodationCategory = await prisma.category.findUnique({ where: { code: 'accommodation' } });
-  const attractionCategory = await prisma.category.findUnique({ where: { code: 'attraction' } });
-
-  // Check if subcategories already exist
-  const existingSubcategories = await prisma.subcategory.findMany();
-  if (existingSubcategories.length === 0) {
-    if (foodCategory) {
-      const foodSubs = [
-        { code: 'hotpot', nameEn: 'Hot Pot', nameZh: '火鍋', preferredTimeSlot: 'dinner' },
-        { code: 'ramen', nameEn: 'Ramen', nameZh: '拉麵', preferredTimeSlot: 'lunch' },
-        { code: 'cafe', nameEn: 'Cafe', nameZh: '咖啡廳', preferredTimeSlot: 'afternoon' },
-        { code: 'breakfast', nameEn: 'Breakfast', nameZh: '早餐', preferredTimeSlot: 'morning' },
-        { code: 'night_market', nameEn: 'Night Market', nameZh: '夜市', preferredTimeSlot: 'evening' },
-        { code: 'dessert', nameEn: 'Dessert', nameZh: '甜點', preferredTimeSlot: 'afternoon' },
-        { code: 'local_cuisine', nameEn: 'Local Cuisine', nameZh: '在地小吃', preferredTimeSlot: 'anytime' },
-      ];
-      for (const sub of foodSubs) {
-        await prisma.subcategory.create({
-          data: {
-            categoryId: foodCategory.id,
-            code: sub.code,
-            nameEn: sub.nameEn,
-            nameZh: sub.nameZh,
-            preferredTimeSlot: sub.preferredTimeSlot,
-            isActive: true,
-          },
-        });
-      }
-      console.log(`Created ${foodSubs.length} food subcategories`);
+    for (const sub of cat.subcategories) {
+      await prisma.subcategory.create({
+        data: {
+          categoryId: createdCat.id,
+          code: sub.code,
+          nameEn: sub.nameEn,
+          nameZh: sub.nameZh,
+          isActive: true,
+        },
+      });
     }
-
-    if (accommodationCategory) {
-      const accommodationSubs = [
-        { code: 'hotel', nameEn: 'Hotel', nameZh: '旅館' },
-        { code: 'boutique_hotel', nameEn: 'Boutique Hotel', nameZh: '設計旅店' },
-        { code: 'hostel', nameEn: 'Hostel', nameZh: '青年旅館' },
-        { code: 'bnb', nameEn: 'B&B', nameZh: '民宿' },
-      ];
-      for (const sub of accommodationSubs) {
-        await prisma.subcategory.create({
-          data: {
-            categoryId: accommodationCategory.id,
-            code: sub.code,
-            nameEn: sub.nameEn,
-            nameZh: sub.nameZh,
-            preferredTimeSlot: 'anytime',
-            isActive: true,
-          },
-        });
-      }
-      console.log(`Created ${accommodationSubs.length} accommodation subcategories`);
-    }
-
-    if (attractionCategory) {
-      const attractionSubs = [
-        { code: 'nature', nameEn: 'Nature', nameZh: '自然景觀' },
-        { code: 'temple', nameEn: 'Temple', nameZh: '寺廟' },
-        { code: 'museum', nameEn: 'Museum', nameZh: '博物館' },
-        { code: 'park', nameEn: 'Park', nameZh: '公園' },
-        { code: 'historical', nameEn: 'Historical Site', nameZh: '古蹟' },
-      ];
-      for (const sub of attractionSubs) {
-        await prisma.subcategory.create({
-          data: {
-            categoryId: attractionCategory.id,
-            code: sub.code,
-            nameEn: sub.nameEn,
-            nameZh: sub.nameZh,
-            preferredTimeSlot: 'anytime',
-            isActive: true,
-          },
-        });
-      }
-      console.log(`Created ${attractionSubs.length} attraction subcategories`);
-    }
-  } else {
-    console.log(`Subcategories already exist (${existingSubcategories.length} found), skipping...`);
+    console.log(`Created category ${cat.nameZh} with ${cat.subcategories.length} subcategories`);
   }
 
   // ============ Merchant Claims & Itinerary Cards ============
-  // Check if merchant claims already exist
   const existingClaims = await prisma.merchantClaim.findMany({ where: { merchantId: merchant.id } });
   if (existingClaims.length === 0) {
-    // Create a MerchantClaim for the test merchant
+    const yilanCity = await prisma.city.findFirst({ where: { code: 'yilan' } });
+    const foodCategory = await prisma.category.findFirst({ where: { code: 'FOOD' } });
+    const localSnackSub = foodCategory
+      ? await prisma.subcategory.findFirst({ where: { categoryId: foodCategory.id, code: 'local_snack' } })
+      : null;
+
     const claim = await prisma.merchantClaim.create({
       data: {
         merchantId: merchant.id,
         googlePlaceId: 'ChIJN1t_tDeuEmsRUsoyG83frY4',
-        placeName: "王記小吃店",
+        placeName: '王記小吃店',
         address: '宜蘭縣宜蘭市中正路88號',
         status: 'APPROVED',
+        isDispute: false,
         draftCard: {
           create: {
             title: '王記小吃店 - 在地美食推薦',
             description: '傳承三代的道地宜蘭小吃，招牌肉羹湯、米粉炒是必點美食。',
             imageUrl: 'https://example.com/wangs-shop.jpg',
-            category: 'food',
+            subcategoryId: localSnackSub?.id,
             discountInfo: '出示扭蛋卡享9折優惠',
           },
         },
@@ -293,7 +344,6 @@ async function main() {
     });
     console.log(`Created merchant claim: ${claim.placeName}`);
 
-    // Create an ItineraryCard (official published card)
     const card = await prisma.itineraryCard.create({
       data: {
         merchantId: merchant.id,
@@ -301,12 +351,13 @@ async function main() {
         description: '傳承三代的道地宜蘭小吃，招牌肉羹湯、米粉炒是必點美食。營業超過50年，是在地人推薦的隱藏美食。',
         imageUrl: 'https://example.com/wangs-shop.jpg',
         googlePlaceId: 'ChIJN1t_tDeuEmsRUsoyG83frY4',
+        cityId: yilanCity?.id,
+        subcategoryId: localSnackSub?.id,
         isPublished: true,
       },
     });
     console.log(`Created itinerary card: ${card.title}`);
 
-    // Create a CouponSetting for the card
     const coupon = await prisma.couponSetting.create({
       data: {
         merchantId: merchant.id,
@@ -318,7 +369,6 @@ async function main() {
     });
     console.log(`Created coupon setting: ${coupon.title}`);
 
-    // Add the card to the gacha pool
     await prisma.gachaItem.create({
       data: {
         cardId: card.id,
@@ -328,7 +378,6 @@ async function main() {
     });
     console.log('Added card to gacha pool: yilan_food');
 
-    // Create a collection for the consumer
     await prisma.userCollection.create({
       data: {
         userId: consumerA.id,
