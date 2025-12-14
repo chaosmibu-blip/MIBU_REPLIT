@@ -1,0 +1,159 @@
+我們需要重構並完善整個資料庫，以支援 Mibu 平台的完整業務邏輯（媒合、聊天、救援、扭蛋）。
+請執行以下操作：
+清空資料庫：準備重置所有資料。
+定義 Schema：修改 prisma/schema.prisma，包含以下完整的模型定義。
+寫入種子資料 (Seed)：建立不同角色的測試帳號與基礎數據。
+1. Prisma Schema 定義
+code
+Prisma
+// Enums (列舉狀態)
+enum UserRole {
+  CONSUMER
+  PLANNER
+  MERCHANT
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING     // 等待媒合
+  MATCHED     // 已分配策劃師
+  IN_PROGRESS // 旅程進行中
+  COMPLETED   // 已結束
+  CANCELLED   // 已取消
+}
+
+enum SosStatus {
+  TRIGGERED
+  RESOLVED
+}
+
+// 1. 核心用戶表
+model User {
+  id            Int       @id @default(autoincrement())
+  email         String    @unique
+  passwordHash  String
+  role          UserRole  @default(CONSUMER)
+  pushToken     String?   // 用於發送推播通知
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // 關聯 (Relations)
+  consumerProfile ConsumerProfile?
+  plannerProfile  PlannerProfile?
+  merchantProfile MerchantProfile?
+
+  // 訂單關聯
+  ordersAsConsumer ServiceOrder[] @relation("ConsumerOrders")
+  ordersAsPlanner  ServiceOrder[] @relation("PlannerOrders")
+
+  // 聊天關聯
+  sentMessages     ChatMessage[]
+  chatRooms        ChatRoomMember[]
+
+  // 求救紀錄
+  sosEvents        SosEvent[]
+}
+
+// 2. 角色詳情表 (1對1)
+model ConsumerProfile {
+  id           Int     @id @default(autoincrement())
+  userId       Int     @unique
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  gachaTickets Int     @default(0) // 扭蛋券數量
+}
+
+model PlannerProfile {
+  id           Int     @id @default(autoincrement())
+  userId       Int     @unique
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  region       String  // 服務地區 (例如: "Yilan", "Taipei")
+  isOnline     Boolean @default(false)
+  rating       Float   @default(5.0)
+}
+
+model MerchantProfile {
+  id           Int     @id @default(autoincrement())
+  userId       Int     @unique
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName String
+  address      String
+}
+
+// 3. 服務訂單 (核心業務：連結旅客與策劃師)
+model ServiceOrder {
+  id          Int         @id @default(autoincrement())
+  consumerId  Int
+  consumer    User        @relation("ConsumerOrders", fields: [consumerId], references: [id])
+  plannerId   Int?        // 剛下單時可能還沒分配，所以是 Optional
+  planner     User?       @relation("PlannerOrders", fields: [plannerId], references: [id])
+
+  targetRegion String     // 旅客想去哪裡 (例如: "Yilan")
+  status       OrderStatus @default(PENDING)
+  
+  startDate    DateTime
+  endDate      DateTime
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  // 訂單對應的聊天室
+  chatRoom     ChatRoom?
+}
+
+// 4. 聊天系統 (1個訂單對應1個聊天室)
+model ChatRoom {
+  id             Int              @id @default(autoincrement())
+  orderId        Int?             @unique // 聊天室通常綁定訂單
+  order          ServiceOrder?    @relation(fields: [orderId], references: [id])
+  createdAt      DateTime         @default(now())
+  
+  members        ChatRoomMember[]
+  messages       ChatMessage[]
+}
+
+model ChatRoomMember {
+  id         Int      @id @default(autoincrement())
+  chatRoomId Int
+  chatRoom   ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt   DateTime @default(now())
+
+  @@unique([chatRoomId, userId]) // 防止重複加入
+}
+
+model ChatMessage {
+  id         Int      @id @default(autoincrement())
+  chatRoomId Int
+  chatRoom   ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  senderId   Int
+  sender     User     @relation(fields: [senderId], references: [id])
+  content    String
+  type       String   @default("TEXT") // TEXT, IMAGE, SOS_ALERT
+  createdAt  DateTime @default(now())
+}
+
+// 5. SOS 求救紀錄
+model SosEvent {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id])
+  latitude  Float?
+  longitude Float?
+  status    SosStatus @default(TRIGGERED)
+  createdAt DateTime  @default(now())
+}
+2. Seed Data (種子資料指令)
+請更新 prisma/seed.ts，建立以下 5 個測試帳號，密碼統一為 "123456" (請模擬 hash)：
+旅客A (小明): consumer@test.com, Role: CONSUMER, Profile Name: "Xiao Ming"
+宜蘭策劃師 (小美): planner_yilan@test.com, Role: PLANNER, Region: "Yilan", Profile Name: "Planner Mei"
+台北策劃師 (大華): planner_taipei@test.com, Role: PLANNER, Region: "Taipei", Profile Name: "Planner Hua"
+商家 (老王): merchant@test.com, Role: MERCHANT, Business: "Wang's Shop"
+管理員: admin@test.com, Role: ADMIN
+執行步驟：
+npx prisma migrate reset --force (重置資料庫)
+npx prisma db push (套用 Schema)
+npx prisma db seed (寫入測試資料)
+完成後，請回報「資料庫重構完成」，並確認可以查詢到這 5 位使用者。

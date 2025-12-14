@@ -15,7 +15,8 @@ enum UserRole {
 
 enum OrderStatus {
   PENDING
-  ACTIVE
+  MATCHED
+  IN_PROGRESS
   COMPLETED
   CANCELLED
 }
@@ -31,67 +32,105 @@ model User {
   passwordHash String
   role         UserRole @default(CONSUMER)
   pushToken    String?
+  isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   consumerProfile ConsumerProfile?
   plannerProfile  PlannerProfile?
   merchantProfile MerchantProfile?
-  
+
   ordersAsConsumer ServiceOrder[] @relation("ConsumerOrders")
   ordersAsPlanner  ServiceOrder[] @relation("PlannerOrders")
-  
+
+  sentMessages ChatMessage[]
+  chatRooms    ChatRoomMember[]
+
   sosEvents SosEvent[]
 }
 
 model ConsumerProfile {
-  id           Int    @id @default(autoincrement())
-  userId       Int    @unique
+  id           Int  @id @default(autoincrement())
+  userId       Int  @unique
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
   name         String
-  gachaTickets Int    @default(0)
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gachaTickets Int  @default(0)
 }
 
 model PlannerProfile {
   id       Int     @id @default(autoincrement())
   userId   Int     @unique
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   name     String
   region   String
   isOnline Boolean @default(false)
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating   Float   @default(5.0)
 }
 
 model MerchantProfile {
   id           Int    @id @default(autoincrement())
   userId       Int    @unique
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   businessName String
   address      String
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ServiceOrder {
-  id         Int         @id @default(autoincrement())
-  consumerId Int
-  plannerId  Int?
-  status     OrderStatus @default(PENDING)
-  region     String
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  id           Int         @id @default(autoincrement())
+  consumerId   Int
+  consumer     User        @relation("ConsumerOrders", fields: [consumerId], references: [id])
+  plannerId    Int?
+  planner      User?       @relation("PlannerOrders", fields: [plannerId], references: [id])
 
-  consumer User  @relation("ConsumerOrders", fields: [consumerId], references: [id])
-  planner  User? @relation("PlannerOrders", fields: [plannerId], references: [id])
+  targetRegion String
+  status       OrderStatus @default(PENDING)
+
+  startDate DateTime
+  endDate   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chatRoom ChatRoom?
+}
+
+model ChatRoom {
+  id        Int           @id @default(autoincrement())
+  orderId   Int?          @unique
+  order     ServiceOrder? @relation(fields: [orderId], references: [id])
+  createdAt DateTime      @default(now())
+
+  members  ChatRoomMember[]
+  messages ChatMessage[]
+}
+
+model ChatRoomMember {
+  id         Int      @id @default(autoincrement())
+  chatRoomId Int
+  chatRoom   ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt   DateTime @default(now())
+
+  @@unique([chatRoomId, userId])
+}
+
+model ChatMessage {
+  id         Int      @id @default(autoincrement())
+  chatRoomId Int
+  chatRoom   ChatRoom @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  senderId   Int
+  sender     User     @relation(fields: [senderId], references: [id])
+  content    String
+  type       String   @default("TEXT")
+  createdAt  DateTime @default(now())
 }
 
 model SosEvent {
   id        Int       @id @default(autoincrement())
   userId    Int
+  user      User      @relation(fields: [userId], references: [id])
   latitude  Float?
   longitude Float?
   status    SosStatus @default(TRIGGERED)
   createdAt DateTime  @default(now())
-
-  user User @relation(fields: [userId], references: [id])
 }

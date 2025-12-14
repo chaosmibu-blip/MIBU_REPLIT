@@ -13,52 +13,72 @@ async function main() {
 
   const passwordHash = await bcrypt.hash('123456', 10);
 
-  const traveler = await prisma.user.upsert({
-    where: { email: 'traveler@test.com' },
+  const consumerA = await prisma.user.upsert({
+    where: { email: 'consumer@test.com' },
     update: {},
     create: {
-      email: 'traveler@test.com',
+      email: 'consumer@test.com',
       passwordHash,
       role: UserRole.CONSUMER,
       consumerProfile: {
         create: {
-          name: 'Test Traveler',
+          name: 'Xiao Ming',
           gachaTickets: 10,
         },
       },
     },
   });
-  console.log(`Created consumer: ${traveler.email}`);
+  console.log(`Created consumer: ${consumerA.email}`);
 
-  const planner = await prisma.user.upsert({
-    where: { email: 'planner@test.com' },
+  const plannerYilan = await prisma.user.upsert({
+    where: { email: 'planner_yilan@test.com' },
     update: {},
     create: {
-      email: 'planner@test.com',
+      email: 'planner_yilan@test.com',
       passwordHash,
       role: UserRole.PLANNER,
       plannerProfile: {
         create: {
-          name: 'Test Planner',
+          name: 'Planner Mei',
           region: 'Yilan',
           isOnline: true,
+          rating: 5.0,
         },
       },
     },
   });
-  console.log(`Created planner: ${planner.email}`);
+  console.log(`Created planner (Yilan): ${plannerYilan.email}`);
 
-  const merchant = await prisma.user.upsert({
-    where: { email: 'shop@test.com' },
+  const plannerTaipei = await prisma.user.upsert({
+    where: { email: 'planner_taipei@test.com' },
     update: {},
     create: {
-      email: 'shop@test.com',
+      email: 'planner_taipei@test.com',
+      passwordHash,
+      role: UserRole.PLANNER,
+      plannerProfile: {
+        create: {
+          name: 'Planner Hua',
+          region: 'Taipei',
+          isOnline: false,
+          rating: 4.8,
+        },
+      },
+    },
+  });
+  console.log(`Created planner (Taipei): ${plannerTaipei.email}`);
+
+  const merchant = await prisma.user.upsert({
+    where: { email: 'merchant@test.com' },
+    update: {},
+    create: {
+      email: 'merchant@test.com',
       passwordHash,
       role: UserRole.MERCHANT,
       merchantProfile: {
         create: {
-          businessName: 'Test Shop',
-          address: 'No. 123, Test Street, Yilan',
+          businessName: "Wang's Shop",
+          address: 'No. 88, Zhongzheng Road, Yilan City',
         },
       },
     },
@@ -86,4 +106,5 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
+    await pool.end();
   });
