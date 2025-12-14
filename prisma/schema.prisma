@@ -26,6 +26,12 @@ enum SosStatus {
   RESOLVED
 }
 
+enum ClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // ============ User & Profile Models ============
 
 model User {
@@ -49,6 +55,11 @@ model User {
   chatRooms    ChatRoomMember[]
 
   sosEvents SosEvent[]
+
+  merchantClaims   MerchantClaim[]
+  itineraryCards   ItineraryCard[]
+  couponSettings   CouponSetting[]
+  userCollections  UserCollection[]
 }
 
 model ConsumerProfile {
@@ -414,4 +425,99 @@ model Session {
   expire DateTime @db.Timestamp(6)
 
   @@map("sessions")
+}
+
+// ============ Merchant Claim & Draft System ============
+
+model MerchantClaim {
+  id            Int         @id @default(autoincrement())
+  merchantId    Int
+  merchant      User        @relation(fields: [merchantId], references: [id])
+  googlePlaceId String
+  placeName     String
+  address       String?
+  status        ClaimStatus @default(PENDING)
+  createdAt     DateTime    @default(now())
+
+  draftCard     DraftItineraryCard?
+
+  @@index([merchantId])
+  @@index([googlePlaceId])
+}
+
+model DraftItineraryCard {
+  id           Int           @id @default(autoincrement())
+  claimId      Int           @unique
+  claim        MerchantClaim @relation(fields: [claimId], references: [id])
+
+  title        String
+  description  String?
+  imageUrl     String?
+  category     String?
+
+  discountInfo String?
+
+  updatedAt    DateTime      @updatedAt
+}
+
+// ============ Official Itinerary Cards (for Gacha & Collection) ============
+
+model ItineraryCard {
+  id            Int       @id @default(autoincrement())
+  merchantId    Int
+  merchant      User      @relation(fields: [merchantId], references: [id])
+
+  title         String
+  description   String
+  imageUrl      String
+  googlePlaceId String
+
+  gachaItems    GachaItem[]
+  collections   UserCollection[]
+  coupons       CouponSetting[]
+
+  isPublished   Boolean   @default(true)
+
+  @@index([merchantId])
+  @@index([googlePlaceId])
+}
+
+model CouponSetting {
+  id          Int       @id @default(autoincrement())
+  merchantId  Int
+  merchant    User      @relation(fields: [merchantId], references: [id])
+
+  title       String
+  description String?
+  isActive    Boolean   @default(true)
+
+  cardId      Int?
+  card        ItineraryCard? @relation(fields: [cardId], references: [id])
+
+  @@index([merchantId])
+  @@index([cardId])
+}
+
+model GachaItem {
+  id         Int           @id @default(autoincrement())
+  cardId     Int
+  card       ItineraryCard @relation(fields: [cardId], references: [id])
+  poolName   String        @default("default")
+  weight     Int           @default(1)
+  createdAt  DateTime      @default(now())
+
+  @@index([cardId])
+  @@index([poolName])
+}
+
+model UserCollection {
+  id         Int           @id @default(autoincrement())
+  userId     Int
+  user       User          @relation(fields: [userId], references: [id])
+  cardId     Int
+  card       ItineraryCard @relation(fields: [cardId], references: [id])
+  collectedAt DateTime     @default(now())
+
+  @@unique([userId, cardId])
+  @@index([userId])
 }
