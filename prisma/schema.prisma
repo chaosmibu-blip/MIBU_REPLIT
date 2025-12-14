@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CONSUMER
+  PLANNER
+  MERCHANT
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum SosStatus {
+  TRIGGERED
+  RESOLVED
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(CONSUMER)
+  pushToken    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  consumerProfile ConsumerProfile?
+  plannerProfile  PlannerProfile?
+  merchantProfile MerchantProfile?
+  
+  ordersAsConsumer ServiceOrder[] @relation("ConsumerOrders")
+  ordersAsPlanner  ServiceOrder[] @relation("PlannerOrders")
+  
+  sosEvents SosEvent[]
+}
+
+model ConsumerProfile {
+  id           Int    @id @default(autoincrement())
+  userId       Int    @unique
+  name         String
+  gachaTickets Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PlannerProfile {
+  id       Int     @id @default(autoincrement())
+  userId   Int     @unique
+  name     String
+  region   String
+  isOnline Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MerchantProfile {
+  id           Int    @id @default(autoincrement())
+  userId       Int    @unique
+  businessName String
+  address      String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ServiceOrder {
+  id         Int         @id @default(autoincrement())
+  consumerId Int
+  plannerId  Int?
+  status     OrderStatus @default(PENDING)
+  region     String
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  consumer User  @relation("ConsumerOrders", fields: [consumerId], references: [id])
+  planner  User? @relation("PlannerOrders", fields: [plannerId], references: [id])
+}
+
+model SosEvent {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  latitude  Float?
+  longitude Float?
+  status    SosStatus @default(TRIGGERED)
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
