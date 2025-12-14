@@ -26,6 +26,8 @@ enum SosStatus {
   RESOLVED
 }
 
+// ============ User & Profile Models ============
+
 model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique
@@ -63,17 +65,251 @@ model PlannerProfile {
   user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   name     String
   region   String
+  cityId   Int?
+  city     City?   @relation(fields: [cityId], references: [id])
   isOnline Boolean @default(false)
   rating   Float   @default(5.0)
 }
 
 model MerchantProfile {
-  id           Int    @id @default(autoincrement())
-  userId       Int    @unique
-  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           Int       @id @default(autoincrement())
+  userId       Int       @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   businessName String
   address      String
+  categoryId   Int?
+  category     Category? @relation(fields: [categoryId], references: [id])
 }
+
+// ============ Location Hierarchy ============
+
+model Country {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique @db.VarChar(10)
+  nameEn    String
+  nameZh    String
+  nameJa    String?
+  nameKo    String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  cities City[]
+
+  @@map("countries")
+}
+
+model City {
+  id        Int      @id @default(autoincrement())
+  countryId Int
+  country   Country  @relation(fields: [countryId], references: [id])
+  code      String   @db.VarChar(50)
+  nameEn    String
+  nameZh    String
+  nameJa    String?
+  nameKo    String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  districts District[]
+  planners  PlannerProfile[]
+
+  @@index([countryId])
+  @@map("regions")
+}
+
+model District {
+  id        Int      @id @default(autoincrement())
+  regionId  Int
+  city      City     @relation(fields: [regionId], references: [id])
+  code      String   @db.VarChar(50)
+  nameEn    String
+  nameZh    String
+  nameJa    String?
+  nameKo    String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([regionId])
+  @@map("districts")
+}
+
+// ============ Category Hierarchy ============
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique @db.VarChar(50)
+  nameEn    String
+  nameZh    String
+  nameJa    String?
+  nameKo    String?
+  colorHex  String?  @default("#6366f1") @db.VarChar(7)
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  subcategories Subcategory[]
+  merchants     MerchantProfile[]
+
+  @@map("categories")
+}
+
+model Subcategory {
+  id                Int      @id @default(autoincrement())
+  categoryId        Int
+  category          Category @relation(fields: [categoryId], references: [id])
+  code              String   @db.VarChar(100)
+  nameEn            String
+  nameZh            String
+  nameJa            String?
+  nameKo            String?
+  searchKeywords    String?
+  preferredTimeSlot String?  @default("anytime") @db.VarChar(20)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+
+  @@index([categoryId])
+  @@map("subcategories")
+}
+
+// ============ Place Cache & Collections ============
+
+model PlaceCache {
+  id                Int       @id @default(autoincrement())
+  subCategory       String
+  district          String
+  city              String
+  country           String
+  placeName         String
+  description       String
+  category          String
+  suggestedTime     String?
+  duration          String?
+  searchQuery       String?
+  rarity            String?
+  colorHex          String?
+  placeId           String?
+  verifiedName      String?
+  verifiedAddress   String?
+  googleRating      String?
+  googleTypes       String?
+  primaryType       String?
+  locationLat       String?
+  locationLng       String?
+  isLocationVerified Boolean  @default(false)
+  businessStatus    String?   @db.VarChar(50)
+  lastVerifiedAt    DateTime?
+  createdAt         DateTime  @default(now())
+
+  feedback PlaceFeedback[]
+
+  @@index([subCategory, district, city, country])
+  @@map("place_cache")
+}
+
+model Collection {
+  id          Int      @id @default(autoincrement())
+  legacyUserId String? @db.VarChar(255)
+  placeName   String
+  country     String
+  city        String
+  district    String?
+  category    String?
+  subcategory String?
+  description String?
+  address     String?
+  placeId     String?
+  rating      String?
+  locationLat String?
+  locationLng String?
+  googleTypes String?
+  isCoupon    Boolean  @default(false)
+  couponData  Json?
+  collectedAt DateTime @default(now())
+
+  @@index([legacyUserId, placeName, district])
+  @@map("collections")
+}
+
+model PlaceFeedback {
+  id               Int        @id @default(autoincrement())
+  legacyUserId     String?    @db.VarChar(255)
+  placeCacheId     Int?
+  placeCache       PlaceCache? @relation(fields: [placeCacheId], references: [id])
+  placeName        String
+  district         String
+  city             String
+  penaltyScore     Int        @default(1)
+  lastInteractedAt DateTime   @default(now())
+  createdAt        DateTime   @default(now())
+
+  @@index([legacyUserId, placeName, district, city])
+  @@map("place_feedback")
+}
+
+// ============ Merchant System ============
+
+model Merchant {
+  id               Int      @id @default(autoincrement())
+  legacyUserId     String?  @db.VarChar(255)
+  name             String
+  email            String
+  subscriptionPlan String   @default("free")
+  createdAt        DateTime @default(now())
+
+  placeLinks MerchantPlaceLink[]
+  coupons    Coupon[]
+
+  @@map("merchants")
+}
+
+model MerchantPlaceLink {
+  id            Int      @id @default(autoincrement())
+  merchantId    Int
+  merchant      Merchant @relation(fields: [merchantId], references: [id])
+  placeCacheId  Int?
+  googlePlaceId String?
+  placeName     String
+  district      String
+  city          String
+  country       String
+  status        String   @default("pending") @db.VarChar(50)
+  promoTitle    String?
+  promoDescription String?
+  promoImageUrl String?
+  isPromoActive Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now())
+
+  coupons Coupon[]
+
+  @@index([placeName, district, city])
+  @@index([merchantId])
+  @@index([googlePlaceId])
+  @@map("merchant_place_links")
+}
+
+model Coupon {
+  id                  Int      @id @default(autoincrement())
+  merchantId          Int
+  merchant            Merchant @relation(fields: [merchantId], references: [id])
+  merchantPlaceLinkId Int?
+  merchantPlaceLink   MerchantPlaceLink? @relation(fields: [merchantPlaceLinkId], references: [id])
+  placeName           String
+  title               String
+  code                String
+  terms               String?
+  rarity              String?
+  remainingQuantity   Int      @default(0)
+  redeemedCount       Int      @default(0)
+  impressionCount     Int      @default(0)
+  isActive            Boolean  @default(true)
+  archived            Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  @@map("coupons")
+}
+
+// ============ Trip & Order System ============
 
 model ServiceOrder {
   id           Int         @id @default(autoincrement())
@@ -92,6 +328,8 @@ model ServiceOrder {
 
   chatRoom ChatRoom?
 }
+
+// ============ Chat System ============
 
 model ChatRoom {
   id        Int           @id @default(autoincrement())
@@ -125,6 +363,8 @@ model ChatMessage {
   createdAt  DateTime @default(now())
 }
 
+// ============ SOS & Location ============
+
 model SosEvent {
   id        Int       @id @default(autoincrement())
   userId    Int
@@ -134,6 +374,39 @@ model SosEvent {
   status    SosStatus @default(TRIGGERED)
   createdAt DateTime  @default(now())
 }
+
+model UserLocation {
+  id               Int      @id @default(autoincrement())
+  legacyUserId     String   @unique @db.VarChar(255)
+  latitude         Float
+  longitude        Float
+  isSharingEnabled Boolean  @default(true)
+  sosMode          Boolean  @default(false)
+  updatedAt        DateTime @default(now())
+
+  @@map("user_locations")
+}
+
+// ============ Legacy Users (for Replit Auth) ============
+
+model LegacyUser {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.VarChar(255)
+  email           String?
+  firstName       String?
+  lastName        String?
+  profileImageUrl String?
+  role            String   @default("consumer") @db.VarChar(20)
+  provider        String?  @db.VarChar(20)
+  stripeCustomerId String?
+  sosSecretKey    String?  @db.VarChar(64)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now())
+
+  @@map("users")
+}
+
+// ============ Session Storage ============
 
 model Session {
   sid    String   @id @db.VarChar(255)
