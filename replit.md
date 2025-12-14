@@ -131,6 +131,22 @@ Mibu 旅行扭蛋是一個結合旅遊規劃與扭蛋遊戲化的漸進式網頁
 
 ## 最近更動
 
+### 2025-12-14 更動
+- **Prisma ORM 遷移**：從 Drizzle 遷移到 Prisma
+  - 新增 `prisma/schema.prisma` - 資料庫結構定義
+  - 新增 `server/prisma.ts` - Prisma Client 實例
+  - 新增 `prisma/seed.ts` - 測試帳號種子資料
+- **新 Auth API (v2)**：Email/密碼認證系統
+  - `POST /api/v2/auth/register` - 註冊新帳號
+  - `POST /api/v2/auth/login` - 登入取得 JWT Token
+  - `GET /api/v2/auth/me` - 取得當前用戶資料
+- **測試帳號**（密碼：123456）：
+  - consumer@test.com (CONSUMER)
+  - planner_yilan@test.com (PLANNER)
+  - planner_taipei@test.com (PLANNER)
+  - merchant@test.com (MERCHANT)
+  - admin@test.com (ADMIN)
+
 ### 2025-12-12 更動
 - 更新子分類資料，共 67 個子分類
 - 新增「遊程體驗」分類的子分類：手作體驗、一日遊、導覽遊程
