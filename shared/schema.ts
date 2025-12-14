@@ -108,6 +108,7 @@ export const users = pgTable("users", {
   role: varchar("role", { length: 20 }).default('consumer').notNull(),
   provider: varchar("provider", { length: 20 }), // 'replit' | 'guest' | 'email'
   stripeCustomerId: varchar("stripe_customer_id"),
+  sosSecretKey: varchar("sos_secret_key", { length: 64 }), // Long-lived SOS webhook key
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -702,6 +703,7 @@ export const userLocations = pgTable("user_locations", {
   lat: doublePrecision("lat").notNull(),
   lon: doublePrecision("lon").notNull(),
   isSharingEnabled: boolean("is_sharing_enabled").default(true).notNull(),
+  sosMode: boolean("sos_mode").default(false).notNull(), // Emergency SOS mode - forces location sharing
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_user_locations_user").on(table.userId),

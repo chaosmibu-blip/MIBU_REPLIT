@@ -136,9 +136,14 @@ export interface IStorage {
   updatePlaceApplication(id: number, data: Partial<PlaceApplication>): Promise<PlaceApplication>;
 
   // User Locations (位置共享)
-  upsertUserLocation(userId: string, lat: number, lon: number, isSharingEnabled: boolean): Promise<UserLocation>;
+  upsertUserLocation(userId: string, lat: number, lon: number, isSharingEnabled: boolean, sosMode?: boolean): Promise<UserLocation>;
   getUserLocation(userId: string): Promise<UserLocation | undefined>;
-  getSharedLocationsForPlanner(plannerId: number): Promise<Array<{ userId: string; lat: number; lon: number; updatedAt: Date; firstName: string | null; lastName: string | null; profileImageUrl: string | null }>>;
+  getSharedLocationsForPlanner(plannerId: number): Promise<Array<{ userId: string; lat: number; lon: number; updatedAt: Date; firstName: string | null; lastName: string | null; profileImageUrl: string | null; sosMode: boolean }>>;
+  
+  // SOS 緊急救援
+  setSosMode(userId: string, enabled: boolean): Promise<UserLocation | undefined>;
+  getUserBySosKey(sosKey: string): Promise<User | undefined>;
+  generateSosKey(userId: string): Promise<string>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -827,13 +832,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   // User Locations (位置共享)
-  async upsertUserLocation(userId: string, lat: number, lon: number, isSharingEnabled: boolean): Promise<UserLocation> {
+  async upsertUserLocation(userId: string, lat: number, lon: number, isSharingEnabled: boolean, sosMode?: boolean): Promise<UserLocation> {
+    const setData: any = { lat, lon, isSharingEnabled, updatedAt: new Date() };
+    if (sosMode !== undefined) {
+      setData.sosMode = sosMode;
+    }
+    
     const [location] = await db
       .insert(userLocations)
-      .values({ userId, lat, lon, isSharingEnabled })
+      .values({ userId, lat, lon, isSharingEnabled, sosMode: sosMode ?? false })
       .onConflictDoUpdate({
         target: userLocations.userId,
-        set: { lat, lon, isSharingEnabled, updatedAt: new Date() },
+        set: setData,
       })
       .returning();
     return location;
@@ -844,7 +854,7 @@ export class DatabaseStorage implements IStorage {
     return location;
   }
 
-  async getSharedLocationsForPlanner(plannerId: number): Promise<Array<{ userId: string; lat: number; lon: number; updatedAt: Date; firstName: string | null; lastName: string | null; profileImageUrl: string | null }>> {
+  async getSharedLocationsForPlanner(plannerId: number): Promise<Array<{ userId: string; lat: number; lon: number; updatedAt: Date; firstName: string | null; lastName: string | null; profileImageUrl: string | null; sosMode: boolean }>> {
     const results = await db
       .select({
         userId: userLocations.userId,
@@ -854,6 +864,7 @@ export class DatabaseStorage implements IStorage {
         firstName: users.firstName,
         lastName: users.lastName,
         profileImageUrl: users.profileImageUrl,
+        sosMode: userLocations.sosMode,
       })
       .from(userLocations)
       .innerJoin(users, eq(userLocations.userId, users.id))
@@ -861,10 +872,37 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(serviceOrders.plannerId, plannerId),
-          eq(userLocations.isSharingEnabled, true)
+          sql`(${userLocations.isSharingEnabled} = true OR ${userLocations.sosMode} = true)`
         )
       );
     return results;
+  }
+
+  // SOS 緊急救援
+  async setSosMode(userId: string, enabled: boolean): Promise<UserLocation | undefined> {
+    const [location] = await db
+      .update(userLocations)
+      .set({ sosMode: enabled, updatedAt: new Date() })
+      .where(eq(userLocations.userId, userId))
+      .returning();
+    return location;
+  }
+
+  async getUserBySosKey(sosKey: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.sosSecretKey, sosKey));
+    return user;
+  }
+
+  async generateSosKey(userId: string): Promise<string> {
+    const key = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '').slice(0, 32);
+    await db
+      .update(users)
+      .set({ sosSecretKey: key, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+    return key;
   }
 }
 
