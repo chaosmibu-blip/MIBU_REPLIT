@@ -3,6 +3,7 @@ import {
   countries, regions, districts, categories, subcategories, chatInvites,
   placeProducts, cartItems, commerceOrders, klookProducts, messageHighlights,
   placeDrafts, placeApplications, userLocations, planners, serviceOrders, places,
+  specialists, transactions, serviceRelations,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -21,7 +22,10 @@ import {
   type PlaceDraft, type InsertPlaceDraft,
   type PlaceApplication, type InsertPlaceApplication,
   type UserLocation, type InsertUserLocation,
-  type Place
+  type Place,
+  type Specialist, type InsertSpecialist,
+  type Transaction, type InsertTransaction,
+  type ServiceRelation, type InsertServiceRelation
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike, or, isNull } from "drizzle-orm";
@@ -167,6 +171,34 @@ export interface IStorage {
   getOfficialPlacesByDistrict(city: string, district: string, limit?: number): Promise<Place[]>;
   getClaimByOfficialPlaceId(officialPlaceId: number): Promise<{ claim: MerchantPlaceLink; coupons: Coupon[] } | undefined>;
   saveToCollectionWithCoupon(userId: string, place: Place, wonCoupon?: Coupon): Promise<Collection>;
+
+  // Specialists (旅遊專員)
+  getSpecialistByUserId(userId: string): Promise<Specialist | undefined>;
+  getSpecialistById(id: number): Promise<Specialist | undefined>;
+  createSpecialist(specialist: InsertSpecialist): Promise<Specialist>;
+  updateSpecialist(id: number, data: Partial<Specialist>): Promise<Specialist | undefined>;
+  getActiveSpecialistsByRegion(regionCode: string): Promise<Specialist[]>;
+  findAvailableSpecialist(regionCode: string): Promise<Specialist | undefined>;
+
+  // Transactions (交易紀錄)
+  createTransaction(transaction: InsertTransaction): Promise<Transaction>;
+  getTransactionById(id: number): Promise<Transaction | undefined>;
+  getTransactionsByMerchantId(merchantId: number): Promise<Transaction[]>;
+  updateTransactionStatus(id: number, status: string): Promise<Transaction | undefined>;
+
+  // Service Relations (服務關係)
+  createServiceRelation(relation: InsertServiceRelation): Promise<ServiceRelation>;
+  getServiceRelationById(id: number): Promise<ServiceRelation | undefined>;
+  getActiveServiceRelationByTraveler(travelerId: string): Promise<ServiceRelation | undefined>;
+  getActiveServiceRelationsBySpecialist(specialistId: number): Promise<ServiceRelation[]>;
+  updateServiceRelation(id: number, data: Partial<ServiceRelation>): Promise<ServiceRelation | undefined>;
+  endServiceRelation(id: number, rating?: number): Promise<ServiceRelation | undefined>;
+
+  // Merchant Credits (商家點數)
+  getMerchantById(id: number): Promise<Merchant | undefined>;
+  updateMerchantDailySeedCode(merchantId: number, seedCode: string): Promise<Merchant | undefined>;
+  updateMerchantCreditBalance(merchantId: number, amount: number): Promise<Merchant | undefined>;
+  getMerchantDailySeedCode(merchantId: number): Promise<{ seedCode: string; updatedAt: Date } | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1318,6 +1350,167 @@ export class DatabaseStorage implements IStorage {
     }
 
     return results;
+  }
+
+  // Specialists (旅遊專員)
+  async getSpecialistByUserId(userId: string): Promise<Specialist | undefined> {
+    const [specialist] = await db.select().from(specialists).where(eq(specialists.userId, userId));
+    return specialist || undefined;
+  }
+
+  async getSpecialistById(id: number): Promise<Specialist | undefined> {
+    const [specialist] = await db.select().from(specialists).where(eq(specialists.id, id));
+    return specialist || undefined;
+  }
+
+  async createSpecialist(specialist: InsertSpecialist): Promise<Specialist> {
+    const [created] = await db.insert(specialists).values(specialist).returning();
+    return created;
+  }
+
+  async updateSpecialist(id: number, data: Partial<Specialist>): Promise<Specialist | undefined> {
+    const [updated] = await db.update(specialists).set(data).where(eq(specialists.id, id)).returning();
+    return updated || undefined;
+  }
+
+  async getActiveSpecialistsByRegion(serviceRegion: string): Promise<Specialist[]> {
+    return await db.select().from(specialists).where(
+      and(
+        eq(specialists.isAvailable, true),
+        eq(specialists.serviceRegion, serviceRegion)
+      )
+    );
+  }
+
+  async findAvailableSpecialist(serviceRegion: string): Promise<Specialist | undefined> {
+    const [specialist] = await db
+      .select()
+      .from(specialists)
+      .where(
+        and(
+          eq(specialists.isAvailable, true),
+          eq(specialists.serviceRegion, serviceRegion),
+          sql`${specialists.currentTravelers} < ${specialists.maxTravelers}`
+        )
+      )
+      .orderBy(sql`RANDOM()`)
+      .limit(1);
+    return specialist || undefined;
+  }
+
+  // Transactions (交易紀錄)
+  async createTransaction(transaction: InsertTransaction): Promise<Transaction> {
+    const [created] = await db.insert(transactions).values(transaction).returning();
+    return created;
+  }
+
+  async getTransactionById(id: number): Promise<Transaction | undefined> {
+    const [transaction] = await db.select().from(transactions).where(eq(transactions.id, id));
+    return transaction || undefined;
+  }
+
+  async getTransactionsByMerchantId(merchantId: number): Promise<Transaction[]> {
+    return await db.select().from(transactions).where(eq(transactions.merchantId, merchantId)).orderBy(desc(transactions.createdAt));
+  }
+
+  async updateTransactionStatus(id: number, status: string): Promise<Transaction | undefined> {
+    const [updated] = await db.update(transactions).set({ status }).where(eq(transactions.id, id)).returning();
+    return updated || undefined;
+  }
+
+  // Service Relations (服務關係)
+  async createServiceRelation(relation: InsertServiceRelation): Promise<ServiceRelation> {
+    const [created] = await db.insert(serviceRelations).values(relation).returning();
+    return created;
+  }
+
+  async getServiceRelationById(id: number): Promise<ServiceRelation | undefined> {
+    const [relation] = await db.select().from(serviceRelations).where(eq(serviceRelations.id, id));
+    return relation || undefined;
+  }
+
+  async getActiveServiceRelationByTraveler(travelerId: string): Promise<ServiceRelation | undefined> {
+    const [relation] = await db
+      .select()
+      .from(serviceRelations)
+      .where(
+        and(
+          eq(serviceRelations.travelerId, travelerId),
+          eq(serviceRelations.status, 'active')
+        )
+      );
+    return relation || undefined;
+  }
+
+  async getActiveServiceRelationsBySpecialist(specialistId: number): Promise<ServiceRelation[]> {
+    return await db
+      .select()
+      .from(serviceRelations)
+      .where(
+        and(
+          eq(serviceRelations.specialistId, specialistId),
+          eq(serviceRelations.status, 'active')
+        )
+      );
+  }
+
+  async updateServiceRelation(id: number, data: Partial<ServiceRelation>): Promise<ServiceRelation | undefined> {
+    const [updated] = await db.update(serviceRelations).set(data).where(eq(serviceRelations.id, id)).returning();
+    return updated || undefined;
+  }
+
+  async endServiceRelation(id: number, rating?: number): Promise<ServiceRelation | undefined> {
+    const updateData: Partial<ServiceRelation> = {
+      status: 'completed',
+      endedAt: new Date(),
+    };
+    // Note: rating is stored but not used since schema doesn't have rating field
+    const [updated] = await db.update(serviceRelations).set(updateData).where(eq(serviceRelations.id, id)).returning();
+    return updated || undefined;
+  }
+
+  // Merchant Credits (商家點數)
+  async getMerchantById(id: number): Promise<Merchant | undefined> {
+    const [merchant] = await db.select().from(merchants).where(eq(merchants.id, id));
+    return merchant || undefined;
+  }
+
+  async updateMerchantDailySeedCode(merchantId: number, seedCode: string): Promise<Merchant | undefined> {
+    const [updated] = await db
+      .update(merchants)
+      .set({ 
+        dailySeedCode: seedCode, 
+        codeUpdatedAt: new Date() 
+      })
+      .where(eq(merchants.id, merchantId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async updateMerchantCreditBalance(merchantId: number, amount: number): Promise<Merchant | undefined> {
+    const [updated] = await db
+      .update(merchants)
+      .set({ 
+        creditBalance: sql`${merchants.creditBalance} + ${amount}` 
+      })
+      .where(eq(merchants.id, merchantId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async getMerchantDailySeedCode(merchantId: number): Promise<{ seedCode: string; updatedAt: Date } | undefined> {
+    const [merchant] = await db
+      .select({ 
+        dailySeedCode: merchants.dailySeedCode, 
+        codeUpdatedAt: merchants.codeUpdatedAt 
+      })
+      .from(merchants)
+      .where(eq(merchants.id, merchantId));
+    
+    if (merchant?.dailySeedCode && merchant?.codeUpdatedAt) {
+      return { seedCode: merchant.dailySeedCode, updatedAt: merchant.codeUpdatedAt };
+    }
+    return undefined;
   }
 }
 

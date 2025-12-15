@@ -2,7 +2,9 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema, insertPlaceDraftSchema, insertPlaceApplicationSchema } from "@shared/schema";
+import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema, insertPlaceDraftSchema, insertPlaceApplicationSchema, registerUserSchema, insertSpecialistSchema, insertServiceRelationSchema } from "@shared/schema";
+import * as crypto from "crypto";
+import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { createTripPlannerRoutes } from "../modules/trip-planner/server/routes";
 import { createPlannerServiceRoutes } from "../modules/trip-planner/server/planner-routes";
@@ -188,6 +190,128 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ Auth Routes ============
   
+  // Password hashing utilities
+  const hashPassword = (password: string): string => {
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+    return `${salt}:${hash}`;
+  };
+  
+  const verifyPassword = (password: string, storedHash: string): boolean => {
+    const [salt, hash] = storedHash.split(':');
+    const verifyHash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+    return hash === verifyHash;
+  };
+  
+  const generateToken = (userId: string, role: string): string => {
+    const secret = process.env.SESSION_SECRET || 'mibu-secret-key';
+    return jwt.sign({ sub: userId, role }, secret, { expiresIn: '30d' });
+  };
+
+  // Email/Password Registration
+  app.post('/api/auth/register', async (req, res) => {
+    try {
+      const validated = registerUserSchema.parse(req.body);
+      
+      // Check if email already exists
+      const existingUser = await storage.getUserByEmail(validated.email);
+      if (existingUser) {
+        return res.status(400).json({ error: '此電子郵件已被註冊' });
+      }
+      
+      // Hash password
+      const hashedPassword = hashPassword(validated.password);
+      
+      // Generate unique user ID
+      const userId = `email_${crypto.randomBytes(16).toString('hex')}`;
+      
+      // Create user with consumer role by default
+      const user = await storage.createUser({
+        id: userId,
+        email: validated.email,
+        password: hashedPassword,
+        firstName: validated.firstName || null,
+        lastName: validated.lastName || null,
+        role: validated.role || 'consumer',
+        isApproved: validated.role === 'consumer', // Consumers are auto-approved
+        provider: 'email',
+      });
+      
+      // Generate JWT token
+      const token = generateToken(user.id, user.role || 'consumer');
+      
+      res.status(201).json({ 
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          firstName: user.firstName, 
+          lastName: user.lastName,
+          role: user.role,
+          isApproved: user.isApproved,
+        }, 
+        token 
+      });
+    } catch (error: any) {
+      console.error("Registration error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: '輸入資料格式錯誤', details: error.errors });
+      }
+      res.status(500).json({ error: '註冊失敗，請稍後再試' });
+    }
+  });
+
+  // Email/Password Login
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const loginSchema = z.object({
+        email: z.string().email('請輸入有效的電子郵件'),
+        password: z.string().min(1, '請輸入密碼'),
+      });
+      
+      const validated = loginSchema.parse(req.body);
+      
+      // Find user by email
+      const user = await storage.getUserByEmail(validated.email);
+      if (!user || !user.password) {
+        return res.status(401).json({ error: '電子郵件或密碼錯誤' });
+      }
+      
+      // Verify password
+      if (!verifyPassword(validated.password, user.password)) {
+        return res.status(401).json({ error: '電子郵件或密碼錯誤' });
+      }
+      
+      // Check approval status for non-consumer roles
+      if (user.role !== 'consumer' && !user.isApproved) {
+        return res.status(403).json({ 
+          error: '帳號審核中，請等待管理員核准',
+          isApproved: user.isApproved 
+        });
+      }
+      
+      // Generate JWT token
+      const token = generateToken(user.id, user.role || 'consumer');
+      
+      res.json({ 
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          firstName: user.firstName, 
+          lastName: user.lastName,
+          role: user.role,
+          isApproved: user.isApproved,
+        }, 
+        token 
+      });
+    } catch (error: any) {
+      console.error("Login error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: '輸入資料格式錯誤' });
+      }
+      res.status(500).json({ error: '登入失敗，請稍後再試' });
+    }
+  });
+
   // Get current authenticated user
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
@@ -2781,6 +2905,370 @@ ${uncachedSkeleton.map((item, idx) => `  {
     } catch (error) {
       console.error("Get merchant error:", error);
       res.status(500).json({ error: "Failed to get merchant info" });
+    }
+  });
+
+  // ============ Merchant Daily Seed Code ============
+  // Get daily seed code
+  app.get("/api/merchant/daily-code", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      const codeData = await storage.getMerchantDailySeedCode(merchant.id);
+      
+      // Check if code needs to be regenerated (new day)
+      const today = new Date().toDateString();
+      const codeDate = codeData?.updatedAt ? new Date(codeData.updatedAt).toDateString() : null;
+      
+      if (!codeData || codeDate !== today) {
+        // Generate new daily code
+        const newCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+        await storage.updateMerchantDailySeedCode(merchant.id, newCode);
+        return res.json({ code: newCode, generatedAt: new Date() });
+      }
+
+      res.json({ code: codeData.seedCode, generatedAt: codeData.updatedAt });
+    } catch (error) {
+      console.error("Get daily code error:", error);
+      res.status(500).json({ error: "Failed to get daily code" });
+    }
+  });
+
+  // Verify daily code (for check-in verification)
+  app.post("/api/merchant/verify-code", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { merchantId, code } = req.body;
+      if (!merchantId || !code) {
+        return res.status(400).json({ error: "merchantId and code are required" });
+      }
+
+      const codeData = await storage.getMerchantDailySeedCode(merchantId);
+      if (!codeData) {
+        return res.status(404).json({ error: "No code found for this merchant" });
+      }
+
+      // Check if code is from today
+      const today = new Date().toDateString();
+      const codeDate = new Date(codeData.updatedAt).toDateString();
+      if (codeDate !== today) {
+        return res.status(400).json({ error: "Code has expired", isValid: false });
+      }
+
+      const isValid = codeData.seedCode === code.toUpperCase();
+      res.json({ isValid, merchantId });
+    } catch (error) {
+      console.error("Verify code error:", error);
+      res.status(500).json({ error: "Failed to verify code" });
+    }
+  });
+
+  // ============ Merchant Credits ============
+  // Get merchant credit balance
+  app.get("/api/merchant/credits", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      res.json({ 
+        creditBalance: merchant.creditBalance || 0,
+        subscriptionPlan: merchant.subscriptionPlan 
+      });
+    } catch (error) {
+      console.error("Get credits error:", error);
+      res.status(500).json({ error: "Failed to get credits" });
+    }
+  });
+
+  // Purchase credits (creates a transaction record, actual payment via Stripe webhook)
+  app.post("/api/merchant/credits/purchase", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      const { amount, paymentMethod } = req.body;
+      if (!amount || amount < 100) {
+        return res.status(400).json({ error: "Minimum purchase amount is 100 credits" });
+      }
+
+      // Create pending transaction
+      const transaction = await storage.createTransaction({
+        merchantId: merchant.id,
+        amount,
+        paymentStatus: 'pending',
+        paymentMethod: paymentMethod || 'stripe',
+      });
+
+      res.json({ 
+        transactionId: transaction.id,
+        amount,
+        status: 'pending',
+        message: '請完成付款以獲得點數'
+      });
+    } catch (error) {
+      console.error("Purchase credits error:", error);
+      res.status(500).json({ error: "Failed to create purchase request" });
+    }
+  });
+
+  // Get merchant transaction history
+  app.get("/api/merchant/transactions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      const transactions = await storage.getTransactionsByMerchantId(merchant.id);
+      res.json({ transactions });
+    } catch (error) {
+      console.error("Get transactions error:", error);
+      res.status(500).json({ error: "Failed to get transactions" });
+    }
+  });
+
+  // ============ Specialist Routes ============
+  // Register as specialist
+  app.post("/api/specialist/register", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Check if already a specialist
+      const existing = await storage.getSpecialistByUserId(userId);
+      if (existing) {
+        return res.status(400).json({ error: "Already registered as specialist" });
+      }
+
+      const { name, serviceRegion } = req.body;
+      if (!name || !serviceRegion) {
+        return res.status(400).json({ error: "name and serviceRegion are required" });
+      }
+
+      const specialist = await storage.createSpecialist({
+        userId,
+        name,
+        serviceRegion,
+        isAvailable: false, // Start as unavailable until admin approves
+        maxTravelers: 5,
+        currentTravelers: 0,
+      });
+
+      res.status(201).json({ specialist });
+    } catch (error) {
+      console.error("Specialist registration error:", error);
+      res.status(500).json({ error: "Failed to register as specialist" });
+    }
+  });
+
+  // Get current specialist profile
+  app.get("/api/specialist/me", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const specialist = await storage.getSpecialistByUserId(userId);
+      res.json({ specialist: specialist || null });
+    } catch (error) {
+      console.error("Get specialist error:", error);
+      res.status(500).json({ error: "Failed to get specialist profile" });
+    }
+  });
+
+  // Toggle online status
+  app.post("/api/specialist/toggle-online", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const specialist = await storage.getSpecialistByUserId(userId);
+      if (!specialist) {
+        return res.status(403).json({ error: "Specialist registration required" });
+      }
+
+      if (!specialist.isAvailable) {
+        // Toggle to available
+        const updated = await storage.updateSpecialist(specialist.id, {
+          isAvailable: true,
+        });
+        return res.json({ isAvailable: updated?.isAvailable });
+      } else {
+        // Toggle to unavailable
+        const updated = await storage.updateSpecialist(specialist.id, {
+          isAvailable: false,
+        });
+        return res.json({ isAvailable: updated?.isAvailable });
+      }
+    } catch (error) {
+      console.error("Toggle online error:", error);
+      res.status(500).json({ error: "Failed to toggle online status" });
+    }
+  });
+
+  // Get active service relations for specialist
+  app.get("/api/specialist/services", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const specialist = await storage.getSpecialistByUserId(userId);
+      if (!specialist) {
+        return res.status(403).json({ error: "Specialist registration required" });
+      }
+
+      const relations = await storage.getActiveServiceRelationsBySpecialist(specialist.id);
+      res.json({ services: relations });
+    } catch (error) {
+      console.error("Get services error:", error);
+      res.status(500).json({ error: "Failed to get services" });
+    }
+  });
+
+  // ============ Traveler Service Routes ============
+  // Request a specialist (auto-match by region)
+  app.post("/api/service/request", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { region } = req.body;
+      if (!region) {
+        return res.status(400).json({ error: "region is required" });
+      }
+
+      // Check if already has active service
+      const existing = await storage.getActiveServiceRelationByTraveler(userId);
+      if (existing) {
+        return res.status(400).json({ error: "Already have an active service session" });
+      }
+
+      // Find available specialist in region
+      const specialist = await storage.findAvailableSpecialist(region);
+      if (!specialist) {
+        return res.status(404).json({ error: "No available specialists in your region" });
+      }
+
+      // Create service relation
+      const relation = await storage.createServiceRelation({
+        travelerId: userId,
+        specialistId: specialist.id,
+        region,
+      });
+
+      res.status(201).json({ 
+        service: relation,
+        specialist: {
+          id: specialist.id,
+          name: specialist.name,
+          serviceRegion: specialist.serviceRegion,
+        }
+      });
+    } catch (error) {
+      console.error("Request service error:", error);
+      res.status(500).json({ error: "Failed to request specialist" });
+    }
+  });
+
+  // Get current service for traveler
+  app.get("/api/service/current", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const relation = await storage.getActiveServiceRelationByTraveler(userId);
+      if (!relation) {
+        return res.json({ service: null });
+      }
+
+      const specialist = await storage.getSpecialistById(relation.specialistId);
+      res.json({ 
+        service: relation,
+        specialist: specialist ? {
+          id: specialist.id,
+          name: specialist.name,
+          serviceRegion: specialist.serviceRegion,
+        } : null
+      });
+    } catch (error) {
+      console.error("Get current service error:", error);
+      res.status(500).json({ error: "Failed to get current service" });
+    }
+  });
+
+  // End service and rate specialist
+  app.post("/api/service/:id/end", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const serviceId = parseInt(req.params.id);
+      const { rating } = req.body;
+
+      const relation = await storage.getServiceRelationById(serviceId);
+      if (!relation) {
+        return res.status(404).json({ error: "Service not found" });
+      }
+
+      if (relation.travelerId !== userId) {
+        return res.status(403).json({ error: "Not authorized to end this service" });
+      }
+
+      const updated = await storage.endServiceRelation(serviceId, rating);
+
+      res.json({ success: true, service: updated });
+    } catch (error) {
+      console.error("End service error:", error);
+      res.status(500).json({ error: "Failed to end service" });
     }
   });
 

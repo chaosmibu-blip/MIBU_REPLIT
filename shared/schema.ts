@@ -123,8 +123,57 @@ export const merchants = pgTable("merchants", {
   name: text("name").notNull(),
   email: text("email").notNull(),
   subscriptionPlan: text("subscription_plan").default('free').notNull(),
+  dailySeedCode: text("daily_seed_code"), // 每日核銷碼
+  codeUpdatedAt: timestamp("code_updated_at"), // 核銷碼更新時間
+  creditBalance: integer("credit_balance").default(0).notNull(), // 平台點數餘額
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Specialists (專員)
+export const specialists = pgTable("specialists", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  name: text("name").notNull(),
+  serviceRegion: text("service_region").notNull(), // 服務地區 (e.g., "taipei", "taichung")
+  isAvailable: boolean("is_available").default(true).notNull(), // 是否可接案
+  maxTravelers: integer("max_travelers").default(5).notNull(), // 最大同時服務人數
+  currentTravelers: integer("current_travelers").default(0).notNull(), // 目前服務人數
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_specialists_region").on(table.serviceRegion),
+]);
+
+// Transactions (交易記錄)
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
+
+export const transactions = pgTable("transactions", {
+  id: serial("id").primaryKey(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  amount: integer("amount").notNull(), // 金額（點數）
+  price: integer("price"), // 實際支付金額（TWD）
+  paymentStatus: varchar("payment_status", { length: 20 }).default('pending').notNull(),
+  paymentMethod: varchar("payment_method", { length: 50 }), // 付款方式
+  externalOrderId: text("external_order_id"), // 外部金流訂單編號
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  paidAt: timestamp("paid_at"), // 付款完成時間
+}, (table) => [
+  index("IDX_transactions_merchant").on(table.merchantId),
+]);
+
+// Service Relations (專員-旅客服務關係)
+export const serviceRelations = pgTable("service_relations", {
+  id: serial("id").primaryKey(),
+  specialistId: integer("specialist_id").references(() => specialists.id).notNull(),
+  travelerId: varchar("traveler_id").references(() => users.id).notNull(),
+  twilioChannelSid: text("twilio_channel_sid"), // Twilio 聊天室 SID
+  region: text("region").notNull(), // 服務地區
+  status: varchar("status", { length: 20 }).default('active').notNull(), // active, completed, cancelled
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  endedAt: timestamp("ended_at"),
+}, (table) => [
+  index("IDX_service_relations_specialist").on(table.specialistId),
+  index("IDX_service_relations_traveler").on(table.travelerId),
+]);
 
 // Place cache for AI-generated content
 export const placeCache = pgTable("place_cache", {
@@ -375,6 +424,21 @@ export const insertMerchantSchema = createInsertSchema(merchants).omit({
   createdAt: true,
 });
 
+export const insertSpecialistSchema = createInsertSchema(specialists).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertTransactionSchema = createInsertSchema(transactions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertServiceRelationSchema = createInsertSchema(serviceRelations).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertCouponSchema = createInsertSchema(coupons).omit({
   id: true,
   createdAt: true,
@@ -437,6 +501,15 @@ export type Collection = typeof collections.$inferSelect;
 
 export type InsertMerchant = z.infer<typeof insertMerchantSchema>;
 export type Merchant = typeof merchants.$inferSelect;
+
+export type InsertSpecialist = z.infer<typeof insertSpecialistSchema>;
+export type Specialist = typeof specialists.$inferSelect;
+
+export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
+export type Transaction = typeof transactions.$inferSelect;
+
+export type InsertServiceRelation = z.infer<typeof insertServiceRelationSchema>;
+export type ServiceRelation = typeof serviceRelations.$inferSelect;
 
 export type InsertCoupon = z.infer<typeof insertCouponSchema>;
 export type Coupon = typeof coupons.$inferSelect;
