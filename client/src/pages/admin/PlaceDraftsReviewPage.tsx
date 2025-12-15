@@ -327,14 +327,22 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
         <p className="text-slate-500 text-sm">建立與審核行程卡草稿</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white rounded-2xl p-3 shadow-sm border border-slate-100 text-center">
-          <div className="text-xl font-bold text-teal-600 mb-1" data-testid="text-pending-drafts-count">{pendingDrafts.length}</div>
-          <div className="text-xs text-slate-500">待發布草稿</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center">
+          <div className="text-2xl font-bold text-teal-600 mb-1" data-testid="text-pending-drafts-count">{pendingDrafts.length}</div>
+          <div className="text-sm text-slate-500">待發布草稿</div>
         </div>
-        <div className="bg-white rounded-2xl p-3 shadow-sm border border-slate-100 text-center">
-          <div className="text-xl font-bold text-indigo-600 mb-1" data-testid="text-total-drafts-count">{allDrafts.length}</div>
-          <div className="text-xs text-slate-500">草稿總數</div>
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center">
+          <div className="text-2xl font-bold text-indigo-600 mb-1" data-testid="text-total-drafts-count">{allDrafts.length}</div>
+          <div className="text-sm text-slate-500">草稿總數</div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center">
+          <div className="text-2xl font-bold text-emerald-600 mb-1">{allDrafts.filter(d => d.status === 'approved').length}</div>
+          <div className="text-sm text-slate-500">已發布</div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center">
+          <div className="text-2xl font-bold text-red-600 mb-1">{allDrafts.filter(d => d.status === 'rejected').length}</div>
+          <div className="text-sm text-slate-500">已退回</div>
         </div>
       </div>
 
@@ -534,9 +542,9 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
           </form>
         </div>
       ) : (
-        <div className="flex gap-4 min-h-[650px]">
-          <div className="w-1/2 bg-white rounded-2xl p-4 shadow-sm border border-slate-100 overflow-y-auto max-h-[600px]">
-            <h3 className="font-bold text-slate-800 mb-4">待發布草稿</h3>
+        <div className="flex gap-6 min-h-[700px]">
+          <div className="w-2/5 bg-white rounded-2xl p-5 shadow-sm border border-slate-100 overflow-y-auto max-h-[700px]">
+            <h3 className="font-bold text-slate-800 mb-4 text-lg">待發布草稿</h3>
             {pendingDrafts.length === 0 ? (
               <p className="text-slate-400 text-center py-4">目前沒有待發布的草稿</p>
             ) : (
@@ -581,8 +589,8 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
             )}
           </div>
 
-          <div className="w-1/2 bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col">
-            <h3 className="font-bold text-slate-800 mb-4">Google 搜尋預覽</h3>
+          <div className="w-3/5 bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col">
+            <h3 className="font-bold text-slate-800 mb-4 text-lg">Google 搜尋預覽</h3>
             {selectedDraft ? (
               <div className="flex flex-col flex-1">
                 <div className="flex-1 min-h-[450px] rounded-xl overflow-hidden bg-slate-100 mb-4">

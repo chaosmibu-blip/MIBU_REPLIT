@@ -198,18 +198,22 @@ export const UsersReviewPage: React.FC<UsersReviewPageProps> = ({ language, t })
         <p className="text-slate-500 text-sm">審核用戶帳號與商家申請</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white rounded-2xl p-3 shadow-sm border border-slate-100 text-center">
-          <div className="text-xl font-bold text-indigo-600 mb-1" data-testid="text-total-users">{allUsers.length}</div>
-          <div className="text-xs text-slate-500">總用戶</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center">
+          <div className="text-2xl font-bold text-indigo-600 mb-1" data-testid="text-total-users">{allUsers.length}</div>
+          <div className="text-sm text-slate-500">總用戶</div>
         </div>
-        <div className="bg-white rounded-2xl p-3 shadow-sm border border-slate-100 text-center">
-          <div className="text-xl font-bold text-amber-600 mb-1" data-testid="text-pending-users-count">{pendingUsers.length}</div>
-          <div className="text-xs text-slate-500">待審核用戶</div>
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center">
+          <div className="text-2xl font-bold text-amber-600 mb-1" data-testid="text-pending-users-count">{pendingUsers.length}</div>
+          <div className="text-sm text-slate-500">待審核用戶</div>
         </div>
-        <div className="bg-white rounded-2xl p-3 shadow-sm border border-slate-100 text-center">
-          <div className="text-xl font-bold text-purple-600 mb-1" data-testid="text-pending-apps-count">{pendingApplications.length}</div>
-          <div className="text-xs text-slate-500">待審核申請</div>
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center">
+          <div className="text-2xl font-bold text-purple-600 mb-1" data-testid="text-pending-apps-count">{pendingApplications.length}</div>
+          <div className="text-sm text-slate-500">待審核申請</div>
+        </div>
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 text-center">
+          <div className="text-2xl font-bold text-emerald-600 mb-1">{allUsers.filter(u => u.isApproved).length}</div>
+          <div className="text-sm text-slate-500">已審核用戶</div>
         </div>
       </div>
 
@@ -266,69 +270,87 @@ export const UsersReviewPage: React.FC<UsersReviewPageProps> = ({ language, t })
         </div>
       ) : activeTab === 'pending_users' ? (
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <h3 className="font-bold text-slate-800 mb-4">待審核用戶</h3>
+          <h3 className="font-bold text-slate-800 mb-4 text-lg">待審核用戶</h3>
           {pendingUsers.length === 0 ? (
-            <p className="text-slate-400 text-center py-4">目前沒有待審核的用戶</p>
+            <p className="text-slate-400 text-center py-8">目前沒有待審核的用戶</p>
           ) : (
-            <div className="space-y-3">
-              {pendingUsers.map((user) => (
-                <div 
-                  key={user.id} 
-                  className="flex items-center justify-between py-3 px-4 bg-slate-50 rounded-xl"
-                  data-testid={`pending-user-${user.id}`}
-                >
-                  <div className="flex-1">
-                    <p className="font-medium text-slate-800">
-                      {user.firstName || user.lastName 
-                        ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
-                        : user.email}
-                    </p>
-                    <p className="text-sm text-slate-500">{user.email}</p>
-                    <span className={`inline-block text-xs px-2 py-1 rounded-full mt-1 ${getRoleColor(user.role)}`}>
-                      {getRoleLabel(user.role)}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => handleApproveUser(user.id)}
-                    disabled={approving === user.id}
-                    className="px-4 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    data-testid={`button-approve-user-${user.id}`}
-                  >
-                    {approving === user.id ? '審核中...' : '通過'}
-                  </button>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-200">
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">用戶名稱</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Email</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">角色</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">註冊時間</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingUsers.map((user) => (
+                    <tr 
+                      key={user.id} 
+                      className="border-b border-slate-100 hover:bg-slate-50"
+                      data-testid={`pending-user-${user.id}`}
+                    >
+                      <td className="py-3 px-4">
+                        <p className="font-medium text-slate-800">
+                          {user.firstName || user.lastName 
+                            ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
+                            : '-'}
+                        </p>
+                      </td>
+                      <td className="py-3 px-4 text-slate-600">{user.email}</td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-block text-xs px-2 py-1 rounded-full ${getRoleColor(user.role)}`}>
+                          {getRoleLabel(user.role)}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-sm text-slate-500">
+                        {new Date(user.createdAt).toLocaleDateString('zh-TW')}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          onClick={() => handleApproveUser(user.id)}
+                          disabled={approving === user.id}
+                          className="px-4 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          data-testid={`button-approve-user-${user.id}`}
+                        >
+                          {approving === user.id ? '審核中...' : '通過'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
       ) : activeTab === 'pending_apps' ? (
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <h3 className="font-bold text-slate-800 mb-4">待審核行程卡申請</h3>
+          <h3 className="font-bold text-slate-800 mb-4 text-lg">待審核行程卡申請</h3>
           {pendingApplications.length === 0 ? (
-            <p className="text-slate-400 text-center py-4">目前沒有待審核的申請</p>
+            <p className="text-slate-400 text-center py-8">目前沒有待審核的申請</p>
           ) : (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
               {pendingApplications.map((app) => (
                 <div 
                   key={app.id} 
-                  className="py-4 px-4 bg-slate-50 rounded-xl"
+                  className="p-5 bg-slate-50 rounded-xl border border-slate-200 hover:border-slate-300 transition-colors"
                   data-testid={`pending-app-${app.id}`}
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <p className="font-bold text-slate-800 text-lg">
-                        {app.placeDraft?.placeName || '未命名地點'}
-                      </p>
-                      <div className="flex gap-2 mt-1">
-                        <span className="inline-block text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
-                          {getSourceLabel(app.placeDraft?.source || '')}
+                  <div className="mb-3">
+                    <p className="font-bold text-slate-800 text-lg mb-2">
+                      {app.placeDraft?.placeName || '未命名地點'}
+                    </p>
+                    <div className="flex gap-2 flex-wrap">
+                      <span className="inline-block text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+                        {getSourceLabel(app.placeDraft?.source || '')}
+                      </span>
+                      {app.placeDraft?.googleRating && (
+                        <span className="inline-block text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">
+                          ⭐ {app.placeDraft.googleRating}
                         </span>
-                        {app.placeDraft?.googleRating && (
-                          <span className="inline-block text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">
-                            ⭐ {app.placeDraft.googleRating}
-                          </span>
-                        )}
-                      </div>
+                      )}
                     </div>
                   </div>
                   
@@ -339,14 +361,14 @@ export const UsersReviewPage: React.FC<UsersReviewPageProps> = ({ language, t })
                   )}
                   
                   {app.placeDraft?.address && (
-                    <p className="text-xs text-slate-500 mb-3">
+                    <p className="text-xs text-slate-500 mb-2">
                       📍 {app.placeDraft.address}
                     </p>
                   )}
 
                   {app.merchant && (
-                    <p className="text-xs text-slate-500 mb-3">
-                      👤 申請商家：{app.merchant.name} ({app.merchant.email})
+                    <p className="text-xs text-slate-500 mb-4">
+                      👤 {app.merchant.name}
                     </p>
                   )}
                   
@@ -375,47 +397,68 @@ export const UsersReviewPage: React.FC<UsersReviewPageProps> = ({ language, t })
         </div>
       ) : (
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <h3 className="font-bold text-slate-800 mb-4">所有用戶</h3>
+          <h3 className="font-bold text-slate-800 mb-4 text-lg">所有用戶</h3>
           {allUsers.length === 0 ? (
-            <p className="text-slate-400 text-center py-4">目前沒有用戶</p>
+            <p className="text-slate-400 text-center py-8">目前沒有用戶</p>
           ) : (
-            <div className="space-y-3">
-              {allUsers.map((user) => (
-                <div 
-                  key={user.id} 
-                  className="flex items-center justify-between py-3 px-4 bg-slate-50 rounded-xl"
-                  data-testid={`user-${user.id}`}
-                >
-                  <div className="flex-1">
-                    <p className="font-medium text-slate-800">
-                      {user.firstName || user.lastName 
-                        ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
-                        : user.email}
-                    </p>
-                    <p className="text-sm text-slate-500">{user.email}</p>
-                    <div className="flex gap-2 mt-1">
-                      <span className={`inline-block text-xs px-2 py-1 rounded-full ${getRoleColor(user.role)}`}>
-                        {getRoleLabel(user.role)}
-                      </span>
-                      <span className={`inline-block text-xs px-2 py-1 rounded-full ${
-                        user.isApproved ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {user.isApproved ? '已審核' : '待審核'}
-                      </span>
-                    </div>
-                  </div>
-                  {!user.isApproved && (
-                    <button
-                      onClick={() => handleApproveUser(user.id)}
-                      disabled={approving === user.id}
-                      className="px-4 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      data-testid={`button-approve-all-${user.id}`}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-200">
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">用戶名稱</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Email</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">角色</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">狀態</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">註冊時間</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allUsers.map((user) => (
+                    <tr 
+                      key={user.id} 
+                      className="border-b border-slate-100 hover:bg-slate-50"
+                      data-testid={`user-${user.id}`}
                     >
-                      {approving === user.id ? '審核中...' : '通過'}
-                    </button>
-                  )}
-                </div>
-              ))}
+                      <td className="py-3 px-4">
+                        <p className="font-medium text-slate-800">
+                          {user.firstName || user.lastName 
+                            ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
+                            : '-'}
+                        </p>
+                      </td>
+                      <td className="py-3 px-4 text-slate-600">{user.email}</td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-block text-xs px-2 py-1 rounded-full ${getRoleColor(user.role)}`}>
+                          {getRoleLabel(user.role)}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-block text-xs px-2 py-1 rounded-full ${
+                          user.isApproved ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {user.isApproved ? '已審核' : '待審核'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-sm text-slate-500">
+                        {new Date(user.createdAt).toLocaleDateString('zh-TW')}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        {!user.isApproved && (
+                          <button
+                            onClick={() => handleApproveUser(user.id)}
+                            disabled={approving === user.id}
+                            className="px-4 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            data-testid={`button-approve-all-${user.id}`}
+                          >
+                            {approving === user.id ? '審核中...' : '通過'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

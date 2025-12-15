@@ -39,7 +39,7 @@ const App: React.FC = () => {
       <div className="fixed top-0 left-0 w-full h-96 bg-gradient-to-b from-indigo-50 to-transparent pointer-events-none -z-10"></div>
 
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-lg border-b border-slate-100">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-bold text-slate-800">Mibu Admin</h1>
           </div>
@@ -63,7 +63,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-4">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-6 py-6">
         {state.view === 'login' && (
           <LoginPage
             selectedRole={selectedRole}

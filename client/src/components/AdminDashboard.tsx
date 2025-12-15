@@ -148,54 +148,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
           <div className="space-y-4">
             <h2 className="font-bold text-slate-700 text-lg">審核管理</h2>
             
-            <div 
-              onClick={() => setCurrentView('users_review')}
-              className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:border-purple-300 hover:shadow-md transition-all cursor-pointer"
-              data-testid="card-users-review"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-purple-100 rounded-2xl flex items-center justify-center flex-shrink-0">
-                  <span className="text-2xl">👥</span>
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-slate-800 text-lg">用戶與商家審核</h3>
-                  <p className="text-slate-500 text-sm">審核用戶帳號、商家申請</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {(stats.pendingUsers + stats.pendingApps) > 0 && (
-                    <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">
-                      {stats.pendingUsers + stats.pendingApps} 待處理
-                    </span>
-                  )}
-                  <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div 
+                onClick={() => setCurrentView('users_review')}
+                className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 hover:border-purple-300 hover:shadow-md transition-all cursor-pointer"
+                data-testid="card-users-review"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 bg-purple-100 rounded-2xl flex items-center justify-center flex-shrink-0">
+                    <span className="text-3xl">👥</span>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-slate-800 text-xl">用戶與商家審核</h3>
+                    <p className="text-slate-500">審核用戶帳號、商家申請</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {(stats.pendingUsers + stats.pendingApps) > 0 && (
+                      <span className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-full font-medium">
+                        {stats.pendingUsers + stats.pendingApps} 待處理
+                      </span>
+                    )}
+                    <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div 
-              onClick={() => setCurrentView('drafts_review')}
-              className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:border-teal-300 hover:shadow-md transition-all cursor-pointer"
-              data-testid="card-drafts-review"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-teal-100 rounded-2xl flex items-center justify-center flex-shrink-0">
-                  <span className="text-2xl">📍</span>
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-slate-800 text-lg">草稿行程卡審核</h3>
-                  <p className="text-slate-500 text-sm">建立與審核行程卡草稿，含地圖預覽</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {stats.pendingDrafts > 0 && (
-                    <span className="px-3 py-1 bg-teal-100 text-teal-700 rounded-full text-sm font-medium">
-                      {stats.pendingDrafts} 待發布
-                    </span>
-                  )}
-                  <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
+              <div 
+                onClick={() => setCurrentView('drafts_review')}
+                className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 hover:border-teal-300 hover:shadow-md transition-all cursor-pointer"
+                data-testid="card-drafts-review"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 bg-teal-100 rounded-2xl flex items-center justify-center flex-shrink-0">
+                    <span className="text-3xl">📍</span>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-slate-800 text-xl">草稿行程卡審核</h3>
+                    <p className="text-slate-500">建立與審核行程卡草稿，含地圖預覽</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {stats.pendingDrafts > 0 && (
+                      <span className="px-3 py-1.5 bg-teal-100 text-teal-700 rounded-full font-medium">
+                        {stats.pendingDrafts} 待發布
+                      </span>
+                    )}
+                    <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
                 </div>
               </div>
             </div>
