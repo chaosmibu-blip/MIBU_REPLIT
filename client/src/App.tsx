@@ -9,6 +9,7 @@ import { ItemBox } from './components/ItemBox';
 import { ModuleHeader, GachaModuleNav, PlannerModuleNav, HomeNav } from './components/ModuleNav';
 import { CouponCelebration } from './components/CouponCelebration';
 import { MerchantDashboard } from './components/MerchantDashboard';
+import { AdminDashboard } from './components/AdminDashboard';
 import { TripPlanner } from '../../modules/trip-planner/client';
 import { LocationView } from '../../modules/trip-planner/client/components/LocationView';
 import { ChatView } from '../../modules/trip-planner/client/components/ChatView';
@@ -532,79 +533,11 @@ const App: React.FC = () => {
         )}
 
         {state.view === 'admin_dashboard' && (
-          <div className="space-y-6 pb-24">
-            <ModuleHeader 
-              onBack={() => setState(prev => ({ ...prev, view: 'login' }))} 
-              language={state.language} 
-            />
-            
-            <div className="text-center py-8">
-              <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-3xl">⚙️</span>
-              </div>
-              <h1 className="text-2xl font-bold text-slate-800 mb-2">{t.adminDashboard || '管理後台'}</h1>
-              <p className="text-slate-500">{t.adminWelcome || '系統管理中心'}</p>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center">
-                <div className="text-3xl font-bold text-indigo-600 mb-1">15,234</div>
-                <div className="text-sm text-slate-500">{t.totalUsers || '總用戶數'}</div>
-              </div>
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center">
-                <div className="text-3xl font-bold text-emerald-600 mb-1">892</div>
-                <div className="text-sm text-slate-500">{t.totalMerchants || '合作商家'}</div>
-              </div>
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center">
-                <div className="text-3xl font-bold text-purple-600 mb-1">24</div>
-                <div className="text-sm text-slate-500">{t.totalAgents || '專員人數'}</div>
-              </div>
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 text-center">
-                <div className="text-3xl font-bold text-amber-600 mb-1">98.5%</div>
-                <div className="text-sm text-slate-500">{t.systemUptime || '系統穩定度'}</div>
-              </div>
-            </div>
-            
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-              <h3 className="font-bold text-slate-800 mb-4">{t.quickActions || '快速操作'}</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <button className="p-4 bg-indigo-50 rounded-xl text-indigo-700 font-medium text-sm hover:bg-indigo-100 transition-colors">
-                  {t.manageUsers || '用戶管理'}
-                </button>
-                <button className="p-4 bg-emerald-50 rounded-xl text-emerald-700 font-medium text-sm hover:bg-emerald-100 transition-colors">
-                  {t.manageMerchants || '商家管理'}
-                </button>
-                <button className="p-4 bg-purple-50 rounded-xl text-purple-700 font-medium text-sm hover:bg-purple-100 transition-colors">
-                  {t.manageAgents || '專員管理'}
-                </button>
-                <button className="p-4 bg-amber-50 rounded-xl text-amber-700 font-medium text-sm hover:bg-amber-100 transition-colors">
-                  {t.systemSettings || '系統設定'}
-                </button>
-              </div>
-            </div>
-            
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-              <h3 className="font-bold text-slate-800 mb-4">{t.systemLogs || '系統日誌'}</h3>
-              <div className="space-y-2 text-sm font-mono">
-                {[
-                  { level: 'info', msg: '用戶 user_12345 登入成功', time: '14:32:01' },
-                  { level: 'warn', msg: 'API 請求超時 - /api/gacha', time: '14:28:45' },
-                  { level: 'info', msg: '商家 merchant_789 資料更新', time: '14:25:12' },
-                  { level: 'error', msg: '支付處理失敗 - session_abc', time: '14:20:33' },
-                ].map((log, i) => (
-                  <div key={i} className="flex items-center gap-2 py-1">
-                    <span className={`w-2 h-2 rounded-full ${
-                      log.level === 'info' ? 'bg-blue-500' :
-                      log.level === 'warn' ? 'bg-amber-500' :
-                      'bg-red-500'
-                    }`}></span>
-                    <span className="text-slate-400">[{log.time}]</span>
-                    <span className="text-slate-700">{log.msg}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <AdminDashboard
+            language={state.language}
+            onBack={() => setState(prev => ({ ...prev, view: 'login' }))}
+            t={t}
+          />
         )}
       </main>
     </div>
