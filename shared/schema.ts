@@ -558,6 +558,7 @@ export const serviceOrders = pgTable("service_orders", {
   assignedAt: timestamp("assigned_at"),
   completedAt: timestamp("completed_at"),
   expiresAt: timestamp("expires_at"),
+  verificationCode: varchar("verification_code", { length: 8 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
@@ -1004,3 +1005,41 @@ export type PlaceDraft = typeof placeDrafts.$inferSelect;
 export type InsertPlaceDraft = z.infer<typeof insertPlaceDraftSchema>;
 export type PlaceApplication = typeof placeApplications.$inferSelect;
 export type InsertPlaceApplication = z.infer<typeof insertPlaceApplicationSchema>;
+
+// ============ SOS Events Table ============
+
+export type SosEventStatus = 'pending' | 'processing' | 'resolved' | 'false_alarm';
+
+export const sosEvents = pgTable("sos_events", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  locationLat: text("location_lat"),
+  locationLng: text("location_lng"),
+  status: varchar("status", { length: 20 }).default('pending').notNull(),
+  resolvedBy: varchar("resolved_by").references(() => users.id),
+  resolvedAt: timestamp("resolved_at"),
+  audioUrl: text("audio_url"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_sos_events_user").on(table.userId),
+  index("IDX_sos_events_status").on(table.status),
+]);
+
+export const sosEventsRelations = relations(sosEvents, ({ one }) => ({
+  user: one(users, {
+    fields: [sosEvents.userId],
+    references: [users.id],
+  }),
+  resolver: one(users, {
+    fields: [sosEvents.resolvedBy],
+    references: [users.id],
+  }),
+}));
+
+export const insertSosEventSchema = createInsertSchema(sosEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type SosEvent = typeof sosEvents.$inferSelect;
+export type InsertSosEvent = z.infer<typeof insertSosEventSchema>;
