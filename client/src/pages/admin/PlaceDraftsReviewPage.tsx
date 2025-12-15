@@ -81,6 +81,10 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
   const [formSuccess, setFormSuccess] = useState(false);
   const [publishingDraft, setPublishingDraft] = useState<number | null>(null);
   const [deletingDraft, setDeletingDraft] = useState<number | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ placeName: '', description: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [regeneratingDesc, setRegeneratingDesc] = useState(false);
 
   const [draftForm, setDraftForm] = useState({
     placeName: '',
@@ -294,6 +298,74 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
       setError(err.message);
     } finally {
       setDeletingDraft(null);
+    }
+  };
+
+  const startEditing = () => {
+    if (selectedDraft) {
+      setEditForm({
+        placeName: selectedDraft.placeName,
+        description: selectedDraft.description || ''
+      });
+      setIsEditing(true);
+    }
+  };
+
+  const cancelEditing = () => {
+    setIsEditing(false);
+    setEditForm({ placeName: '', description: '' });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedDraft) return;
+    setSavingEdit(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/place-drafts/${selectedDraft.id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          placeName: editForm.placeName,
+          description: editForm.description
+        })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || '儲存失敗');
+      }
+      const { draft } = await response.json();
+      setSelectedDraft(draft);
+      setAllDrafts(prev => prev.map(d => d.id === draft.id ? draft : d));
+      setIsEditing(false);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleRegenerateDescription = async () => {
+    if (!selectedDraft) return;
+    setRegeneratingDesc(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/place-drafts/${selectedDraft.id}/regenerate-description`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'AI 重新生成失敗');
+      }
+      const { draft, description } = await response.json();
+      setSelectedDraft(draft);
+      setAllDrafts(prev => prev.map(d => d.id === draft.id ? draft : d));
+      setEditForm(f => ({ ...f, description }));
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setRegeneratingDesc(false);
     }
   };
 
@@ -578,7 +650,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
                         : 'border-transparent bg-slate-50 hover:bg-slate-100'
                     }`}
                     data-testid={`draft-${draft.id}`}
-                    onClick={() => setSelectedDraft(draft)}
+                    onClick={() => { setSelectedDraft(draft); setIsEditing(false); }}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
@@ -626,21 +698,82 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
                   />
                 </div>
                 
-                <div className="space-y-2 mb-4">
-                  <h4 className="font-bold text-slate-800">{selectedDraft.placeName}</h4>
-                  {selectedDraft.description && (
-                    <p className="text-sm text-slate-600">{selectedDraft.description}</p>
-                  )}
-                  {selectedDraft.address && (
-                    <p className="text-xs text-slate-500">📍 {selectedDraft.address}</p>
-                  )}
-                  {selectedDraft.googlePlaceId && (
-                    <p className="text-xs text-slate-400">Place ID: {selectedDraft.googlePlaceId}</p>
-                  )}
-                  {(selectedDraft.locationLat && selectedDraft.locationLng) && (
-                    <p className="text-xs text-slate-400">座標: {selectedDraft.locationLat}, {selectedDraft.locationLng}</p>
-                  )}
-                </div>
+                {isEditing ? (
+                  <div className="space-y-3 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">地點名稱</label>
+                      <input
+                        type="text"
+                        value={editForm.placeName}
+                        onChange={(e) => setEditForm(f => ({ ...f, placeName: e.target.value }))}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        data-testid="input-edit-place-name"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-sm font-medium text-slate-700">介紹描述</label>
+                        <button
+                          onClick={handleRegenerateDescription}
+                          disabled={regeneratingDesc}
+                          className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          data-testid="button-regenerate-description"
+                        >
+                          {regeneratingDesc ? '生成中...' : '✨ AI 重新生成'}
+                        </button>
+                      </div>
+                      <textarea
+                        value={editForm.description}
+                        onChange={(e) => setEditForm(f => ({ ...f, description: e.target.value }))}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        rows={3}
+                        data-testid="input-edit-description"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSaveEdit}
+                        disabled={savingEdit}
+                        className="flex-1 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                        data-testid="button-save-edit"
+                      >
+                        {savingEdit ? '儲存中...' : '儲存'}
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        className="py-2 px-4 bg-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-300 transition-colors text-sm"
+                        data-testid="button-cancel-edit"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-slate-800">{selectedDraft.placeName}</h4>
+                      <button
+                        onClick={startEditing}
+                        className="text-xs px-2 py-1 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors"
+                        data-testid="button-start-edit"
+                      >
+                        ✏️ 編輯
+                      </button>
+                    </div>
+                    {selectedDraft.description && (
+                      <p className="text-sm text-slate-600">{selectedDraft.description}</p>
+                    )}
+                    {selectedDraft.address && (
+                      <p className="text-xs text-slate-500">📍 {selectedDraft.address}</p>
+                    )}
+                    {selectedDraft.googlePlaceId && (
+                      <p className="text-xs text-slate-400">Place ID: {selectedDraft.googlePlaceId}</p>
+                    )}
+                    {(selectedDraft.locationLat && selectedDraft.locationLng) && (
+                      <p className="text-xs text-slate-400">座標: {selectedDraft.locationLat}, {selectedDraft.locationLng}</p>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex gap-2">
                   <a
@@ -654,7 +787,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
                   </a>
                   <button
                     onClick={() => handlePublishDraft(selectedDraft.id)}
-                    disabled={publishingDraft === selectedDraft.id}
+                    disabled={publishingDraft === selectedDraft.id || isEditing}
                     className="flex-1 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
                     data-testid={`button-publish-draft-${selectedDraft.id}`}
                   >
@@ -662,7 +795,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
                   </button>
                   <button
                     onClick={() => handleDeleteDraft(selectedDraft.id)}
-                    disabled={deletingDraft === selectedDraft.id}
+                    disabled={deletingDraft === selectedDraft.id || isEditing}
                     className="py-2 px-4 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
                     data-testid={`button-delete-draft-${selectedDraft.id}`}
                   >
