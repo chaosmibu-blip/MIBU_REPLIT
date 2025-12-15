@@ -139,6 +139,7 @@ export interface IStorage {
   getPlaceApplicationById(id: number): Promise<PlaceApplication | undefined>;
   getPlaceApplicationsByMerchant(merchantId: number): Promise<PlaceApplication[]>;
   getPendingApplications(): Promise<PlaceApplication[]>;
+  getPendingApplicationsWithDetails(): Promise<Array<PlaceApplication & { placeDraft?: PlaceDraft; merchant?: Merchant }>>;
   updatePlaceApplication(id: number, data: Partial<PlaceApplication>): Promise<PlaceApplication>;
 
   // User Locations (位置共享)
@@ -864,6 +865,20 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(placeApplications)
       .where(eq(placeApplications.status, 'pending'))
       .orderBy(placeApplications.createdAt);
+  }
+
+  async getPendingApplicationsWithDetails(): Promise<Array<PlaceApplication & { placeDraft?: PlaceDraft; merchant?: Merchant }>> {
+    const applications = await db.select().from(placeApplications)
+      .where(eq(placeApplications.status, 'pending'))
+      .orderBy(placeApplications.createdAt);
+    
+    const results = await Promise.all(applications.map(async (app) => {
+      const [draft] = await db.select().from(placeDrafts).where(eq(placeDrafts.id, app.placeDraftId));
+      const [merchant] = await db.select().from(merchants).where(eq(merchants.id, app.merchantId));
+      return { ...app, placeDraft: draft, merchant };
+    }));
+    
+    return results;
   }
 
   async updatePlaceApplication(id: number, data: Partial<PlaceApplication>): Promise<PlaceApplication> {

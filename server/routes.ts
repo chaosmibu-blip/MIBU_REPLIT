@@ -3877,7 +3877,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
-  // 管理員：取得待審核申請
+  // 管理員：取得待審核申請（包含草稿和商家詳情）
   app.get("/api/admin/applications/pending", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
@@ -3886,7 +3886,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const user = await storage.getUser(userId);
       if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
 
-      const applications = await storage.getPendingApplications();
+      const applications = await storage.getPendingApplicationsWithDetails();
       res.json({ applications });
     } catch (error) {
       console.error("Get pending applications error:", error);
