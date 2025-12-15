@@ -75,22 +75,19 @@ async function startServer() {
   // ============================================================
   // 2. 第二順位：CORS 和 Cookie
   // ============================================================
-  const ALLOWED_ORIGINS = [
-    'https://cca44805-83a8-48a7-8754-2ce82f774385-00-1gu87zpyw11ng.pike.replit.dev',
-    'https://mibu-1--s8869420.replit.app',
-    process.env.EXPO_APP_URL,
-  ].filter(Boolean) as string[];
-
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (ALLOWED_ORIGINS.some(allowed => origin === allowed || origin.endsWith('.replit.dev') || origin.endsWith('.replit.app'))) {
+      if (isDevelopment) return callback(null, true);
+      if (origin.endsWith('.replit.dev') || origin.endsWith('.replit.app')) {
         return callback(null, true);
       }
       callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
     exposedHeaders: ['Set-Cookie'],
   }));
