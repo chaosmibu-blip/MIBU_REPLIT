@@ -242,9 +242,19 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
         throw new Error(data.error || '發布失敗');
       }
 
+      const currentPendingDrafts = allDrafts.filter(d => d.status === 'pending');
+      const currentIndex = currentPendingDrafts.findIndex(d => d.id === draftId);
+      
       await fetchAllDrafts();
+      
       if (selectedDraft?.id === draftId) {
-        setSelectedDraft(null);
+        const remainingPending = currentPendingDrafts.filter(d => d.id !== draftId);
+        if (remainingPending.length > 0) {
+          const nextIndex = Math.min(currentIndex, remainingPending.length - 1);
+          setSelectedDraft(remainingPending[nextIndex]);
+        } else {
+          setSelectedDraft(null);
+        }
       }
     } catch (err: any) {
       setError(err.message);
