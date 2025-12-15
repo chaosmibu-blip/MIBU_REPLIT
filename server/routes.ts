@@ -3942,6 +3942,73 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // 管理員：更新草稿地點（名稱、描述）
+  app.patch("/api/admin/place-drafts/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const draftId = parseInt(req.params.id);
+      const draft = await storage.getPlaceDraftById(draftId);
+      if (!draft) return res.status(404).json({ error: "Draft not found" });
+
+      const updateSchema = z.object({
+        placeName: z.string().min(1).optional(),
+        description: z.string().optional(),
+      });
+
+      const validated = updateSchema.parse(req.body);
+      const updated = await storage.updatePlaceDraft(draftId, validated);
+      res.json({ draft: updated });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      console.error("Admin update place draft error:", error);
+      res.status(500).json({ error: "Failed to update place draft" });
+    }
+  });
+
+  // 管理員：用 AI 重新生成草稿描述
+  app.post("/api/admin/place-drafts/:id/regenerate-description", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const draftId = parseInt(req.params.id);
+      const draft = await storage.getPlaceDraftById(draftId);
+      if (!draft) return res.status(404).json({ error: "Draft not found" });
+
+      const districtInfo = await storage.getDistrictWithParents(draft.districtId);
+      const categories = await storage.getCategories();
+      const category = categories.find(c => c.id === draft.categoryId);
+      const subcategories = await storage.getSubcategoriesByCategory(draft.categoryId);
+      const subcategory = subcategories.find(s => s.id === draft.subcategoryId);
+
+      const prompt = `你是一位專業的旅遊作家。請為以下景點撰寫一段吸引觀光客的介紹文字（繁體中文，50-100字）：
+
+景點名稱：${draft.placeName}
+類別：${category?.nameZh || ''} / ${subcategory?.nameZh || ''}
+地區：${districtInfo?.country?.nameZh || ''} ${districtInfo?.region?.nameZh || ''} ${districtInfo?.district?.nameZh || ''}
+${draft.address ? `地址：${draft.address}` : ''}
+
+請直接輸出介紹文字，不需要標題或其他格式。文字應該生動有趣，突出景點特色，吸引遊客前往。`;
+
+      const newDescription = await callGemini(prompt);
+      const cleanDescription = newDescription.trim();
+
+      const updated = await storage.updatePlaceDraft(draftId, { description: cleanDescription });
+      res.json({ draft: updated, description: cleanDescription });
+    } catch (error) {
+      console.error("Admin regenerate description error:", error);
+      res.status(500).json({ error: "Failed to regenerate description" });
+    }
+  });
+
   // ============ Admin User Management Routes ============
 
   // 管理員：取得待審核用戶
