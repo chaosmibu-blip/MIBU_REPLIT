@@ -4163,6 +4163,79 @@ ${draft.address ? `地址：${draft.address}` : ''}
     }
   });
 
+  // ============ Admin Global Exclusions (全域排除地點) ============
+
+  // 取得全域排除清單
+  app.get("/api/admin/global-exclusions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const { district, city } = req.query;
+      const exclusions = await storage.getGlobalExclusions(
+        district as string | undefined,
+        city as string | undefined
+      );
+      res.json({ exclusions });
+    } catch (error) {
+      console.error("Get global exclusions error:", error);
+      res.status(500).json({ error: "Failed to get global exclusions" });
+    }
+  });
+
+  // 新增全域排除地點
+  app.post("/api/admin/global-exclusions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const schema = z.object({
+        placeName: z.string().min(1),
+        district: z.string().min(1),
+        city: z.string().min(1),
+      });
+
+      const validated = schema.parse(req.body);
+      const exclusion = await storage.addGlobalExclusion(validated);
+      res.json({ success: true, exclusion });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Add global exclusion error:", error);
+      res.status(500).json({ error: "Failed to add global exclusion" });
+    }
+  });
+
+  // 移除全域排除地點
+  app.delete("/api/admin/global-exclusions/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const exclusionId = parseInt(req.params.id);
+      const removed = await storage.removeGlobalExclusion(exclusionId);
+      
+      if (!removed) {
+        return res.status(404).json({ error: "Exclusion not found" });
+      }
+      
+      res.json({ success: true, message: "Global exclusion removed" });
+    } catch (error) {
+      console.error("Remove global exclusion error:", error);
+      res.status(500).json({ error: "Failed to remove global exclusion" });
+    }
+  });
+
   registerStripeRoutes(app);
 
   const httpServer = createServer(app);

@@ -24,7 +24,7 @@ import {
   type Place
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, ilike } from "drizzle-orm";
+import { eq, and, desc, sql, ilike, or, isNull } from "drizzle-orm";
 
 export interface IStorage {
   // Users (mandatory for Replit Auth)
@@ -78,6 +78,11 @@ export interface IStorage {
   getPlacePenalty(userId: string, placeName: string, district: string, city: string): Promise<number>;
   incrementPlacePenalty(userId: string, placeName: string, district: string, city: string, placeCacheId?: number): Promise<PlaceFeedback>;
   getExcludedPlaceNames(userId: string, district: string, city: string, threshold?: number): Promise<string[]>;
+  
+  // Global Exclusions (全域排除)
+  addGlobalExclusion(data: { placeName: string; district: string; city: string }): Promise<PlaceFeedback>;
+  getGlobalExclusions(district?: string, city?: string): Promise<PlaceFeedback[]>;
+  removeGlobalExclusion(id: number): Promise<boolean>;
 
   // Merchant Place Links (ownership/claim)
   getMerchantPlaceLinks(merchantId: number): Promise<MerchantPlaceLink[]>;
@@ -538,14 +543,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getExcludedPlaceNames(userId: string, district: string, city: string, threshold: number = 3): Promise<string[]> {
+    // 查詢個人排除（penaltyScore >= threshold）和全域排除（userId = null）
     const results = await db
       .select({ placeName: placeFeedback.placeName })
       .from(placeFeedback)
       .where(and(
-        eq(placeFeedback.userId, userId),
         eq(placeFeedback.district, district),
         eq(placeFeedback.city, city),
-        sql`${placeFeedback.penaltyScore} >= ${threshold}`
+        or(
+          // 全域排除：userId 為 null 的地點永遠排除
+          isNull(placeFeedback.userId),
+          // 個人排除：該用戶的 penaltyScore 達到門檻
+          and(
+            eq(placeFeedback.userId, userId),
+            sql`${placeFeedback.penaltyScore} >= ${threshold}`
+          )
+        )
       ));
     return results.map(r => r.placeName);
   }
@@ -563,6 +576,69 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return created;
+  }
+
+  // 創建全域排除地點（userId = null，任何使用者都不會抽到）
+  async addGlobalExclusion(data: { placeName: string; district: string; city: string }): Promise<PlaceFeedback> {
+    // 先檢查是否已存在
+    const existing = await db
+      .select()
+      .from(placeFeedback)
+      .where(and(
+        isNull(placeFeedback.userId),
+        eq(placeFeedback.placeName, data.placeName),
+        eq(placeFeedback.district, data.district),
+        eq(placeFeedback.city, data.city)
+      ));
+
+    if (existing.length > 0) {
+      return existing[0];
+    }
+
+    const [created] = await db
+      .insert(placeFeedback)
+      .values({
+        userId: null,
+        placeName: data.placeName,
+        district: data.district,
+        city: data.city,
+        penaltyScore: 999, // 高分代表永久排除
+        lastInteractedAt: new Date()
+      })
+      .returning();
+    return created;
+  }
+
+  // 取得全域排除清單
+  async getGlobalExclusions(district?: string, city?: string): Promise<PlaceFeedback[]> {
+    if (district && city) {
+      return db
+        .select()
+        .from(placeFeedback)
+        .where(and(
+          isNull(placeFeedback.userId),
+          eq(placeFeedback.district, district),
+          eq(placeFeedback.city, city)
+        ))
+        .orderBy(desc(placeFeedback.createdAt));
+    }
+    return db
+      .select()
+      .from(placeFeedback)
+      .where(isNull(placeFeedback.userId))
+      .orderBy(desc(placeFeedback.createdAt));
+  }
+
+  // 移除全域排除地點
+  async removeGlobalExclusion(id: number): Promise<boolean> {
+    const result = await db
+      .delete(placeFeedback)
+      .where(and(
+        eq(placeFeedback.id, id),
+        isNull(placeFeedback.userId)
+      ))
+      .returning();
+    return result.length > 0;
   }
 
   // Merchant Place Links methods
