@@ -4,12 +4,70 @@ import { Strategy, type VerifyFunction } from "openid-client/passport";
 import passport from "passport";
 import session from "express-session";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
+import { registerUserSchema } from "@shared/schema";
+import { z } from "zod";
 
 const JWT_SECRET = process.env.JWT_SECRET || 'mibu_secret_key_fixed_12345';
+
+// Password hashing using PBKDF2 (Node.js built-in)
+const SALT_LENGTH = 16;
+const HASH_ITERATIONS = 100000;
+const HASH_KEY_LENGTH = 64;
+const HASH_DIGEST = 'sha512';
+
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(SALT_LENGTH).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, HASH_ITERATIONS, HASH_KEY_LENGTH, HASH_DIGEST).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+export function verifyPassword(password: string, storedHash: string): boolean {
+  const [salt, hash] = storedHash.split(':');
+  if (!salt || !hash) return false;
+  const verifyHash = crypto.pbkdf2Sync(password, salt, HASH_ITERATIONS, HASH_KEY_LENGTH, HASH_DIGEST).toString('hex');
+  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(verifyHash));
+}
+
+// Super admin initialization
+const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
+const SUPER_ADMIN_PASSWORD = 'A25576321zzay69@';
+
+export async function initializeSuperAdmin(): Promise<void> {
+  try {
+    const existingUser = await storage.getUserByEmail(SUPER_ADMIN_EMAIL);
+    
+    if (!existingUser) {
+      console.log('[Admin] Creating super admin account...');
+      await storage.createUser({
+        email: SUPER_ADMIN_EMAIL,
+        password: hashPassword(SUPER_ADMIN_PASSWORD),
+        role: 'admin',
+        isApproved: true,
+        provider: 'email',
+        firstName: 'Super',
+        lastName: 'Admin',
+      });
+      console.log('[Admin] Super admin account created successfully');
+    } else {
+      // Ensure super admin has correct role and is approved
+      if (existingUser.role !== 'admin' || !existingUser.isApproved) {
+        console.log('[Admin] Updating super admin privileges...');
+        await storage.updateUser(existingUser.id, { 
+          role: 'admin', 
+          isApproved: true 
+        });
+        console.log('[Admin] Super admin privileges updated');
+      }
+    }
+  } catch (error) {
+    console.error('[Admin] Failed to initialize super admin:', error);
+  }
+}
 console.log('[JWT] Using fixed JWT_SECRET (first 10 chars):', JWT_SECRET.substring(0, 10));
 const JWT_EXPIRES_IN = '7d';
 
@@ -370,6 +428,139 @@ export async function setupAuth(app: Express) {
     });
     
     return res.json({ token: newToken });
+  });
+
+  // ============ Email/Password Auth Routes ============
+
+  // POST /api/register - 註冊新帳號
+  app.post("/api/register", async (req, res) => {
+    try {
+      const { email, password, firstName, lastName, role } = req.body;
+
+      // 驗證輸入
+      const validated = registerUserSchema.parse({ email, password, firstName, lastName, role });
+
+      // 檢查 email 是否已存在
+      const existingUser = await storage.getUserByEmail(validated.email);
+      if (existingUser) {
+        return res.status(409).json({ error: "此電子郵件已被註冊" });
+      }
+
+      // 決定是否需要審核
+      const needsApproval = ['merchant', 'specialist', 'admin'].includes(validated.role || 'consumer');
+      const isApproved = !needsApproval; // consumer 直接通過，其他需審核
+
+      // 建立使用者
+      const user = await storage.createUser({
+        email: validated.email,
+        password: hashPassword(validated.password),
+        firstName: validated.firstName || null,
+        lastName: validated.lastName || null,
+        role: validated.role || 'consumer',
+        provider: 'email',
+        isApproved,
+      });
+
+      if (needsApproval) {
+        return res.status(201).json({
+          success: true,
+          message: "註冊成功！您的帳號需要管理員審核後才能登入。",
+          needsApproval: true,
+          user: {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+          }
+        });
+      }
+
+      // 如果不需要審核，直接發放 token
+      const token = generateJwtToken({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: "註冊成功！",
+        needsApproval: false,
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+        }
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0]?.message || "輸入格式錯誤" });
+      }
+      console.error("Register error:", error);
+      return res.status(500).json({ error: "註冊失敗，請稍後再試" });
+    }
+  });
+
+  // POST /api/login - 登入（email/password）
+  app.post("/api/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ error: "請輸入電子郵件和密碼" });
+      }
+
+      // 查找使用者
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(401).json({ error: "電子郵件或密碼錯誤" });
+      }
+
+      // 檢查是否是 email 註冊的使用者
+      if (!user.password) {
+        return res.status(401).json({ error: "此帳號使用其他方式登入（如 Replit）" });
+      }
+
+      // 檢查審核狀態
+      if (!user.isApproved) {
+        return res.status(403).json({ 
+          error: "帳號待審核中，請聯繫管理員",
+          code: "PENDING_APPROVAL"
+        });
+      }
+
+      // 驗證密碼
+      if (!verifyPassword(password, user.password)) {
+        return res.status(401).json({ error: "電子郵件或密碼錯誤" });
+      }
+
+      // 發放 token
+      const token = generateJwtToken({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      });
+
+      return res.json({
+        success: true,
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          profileImageUrl: user.profileImageUrl,
+        }
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      return res.status(500).json({ error: "登入失敗，請稍後再試" });
+    }
   });
 }
 

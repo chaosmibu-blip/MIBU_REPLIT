@@ -29,8 +29,13 @@ import { eq, and, desc, sql, ilike } from "drizzle-orm";
 export interface IStorage {
   // Users (mandatory for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(user: UpsertUser): Promise<User>;
   upsertUser(user: UpsertUser): Promise<User>;
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
+  getPendingApprovalUsers(): Promise<User[]>;
+  getAllUsers(): Promise<User[]>;
+  approveUser(userId: string): Promise<User | undefined>;
 
   // Collections
   getUserCollections(userId: string): Promise<Collection[]>;
@@ -164,6 +169,16 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || undefined;
+  }
+
+  async createUser(userData: UpsertUser): Promise<User> {
+    const [user] = await db.insert(users).values(userData).returning();
+    return user;
+  }
+
   async upsertUser(userData: UpsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
@@ -184,6 +199,23 @@ export class DatabaseStorage implements IStorage {
       .update(users)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(users.id, id))
+      .returning();
+    return user;
+  }
+
+  async getPendingApprovalUsers(): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.isApproved, false));
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async approveUser(userId: string): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ isApproved: true, updatedAt: new Date() })
+      .where(eq(users.id, userId))
       .returning();
     return user;
   }

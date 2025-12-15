@@ -8,7 +8,7 @@ import { serveStatic } from "./static";
 import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
 import { storage } from "./storage";
-import { verifyJwtToken } from "./replitAuth";
+import { verifyJwtToken, initializeSuperAdmin } from "./replitAuth";
 import { checkGeofence } from "./lib/geofencing";
 import { z } from "zod";
 
@@ -282,6 +282,9 @@ async function startServer() {
 
   // Initialize Stripe
   await initStripe();
+
+  // Initialize super admin account
+  await initializeSuperAdmin();
   
   // 註冊其他 API 路由 (從 routes.ts)
   const httpServer = await registerRoutes(app);
