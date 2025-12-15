@@ -550,6 +550,21 @@ export class DatabaseStorage implements IStorage {
     return results.map(r => r.placeName);
   }
 
+  async createPlaceFeedback(data: { userId: string; placeName: string; district: string; city: string; penaltyScore: number }): Promise<PlaceFeedback> {
+    const [created] = await db
+      .insert(placeFeedback)
+      .values({
+        userId: data.userId,
+        placeName: data.placeName,
+        district: data.district,
+        city: data.city,
+        penaltyScore: data.penaltyScore,
+        lastInteractedAt: new Date()
+      })
+      .returning();
+    return created;
+  }
+
   // Merchant Place Links methods
   async getMerchantPlaceLinks(merchantId: number): Promise<MerchantPlaceLink[]> {
     return db

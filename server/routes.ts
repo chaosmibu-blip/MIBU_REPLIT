@@ -3912,9 +3912,10 @@ ${uncachedSkeleton.map((item, idx) => `  {
         verifiedAddress: draft.address || undefined,
       });
 
-      await storage.updatePlaceDraft(draftId, { status: 'approved' });
+      // 發布後從 drafts 刪除（不只是標記 approved）
+      await storage.deletePlaceDraft(draftId);
 
-      res.json({ placeCache: newPlace, draft: { ...draft, status: 'approved' } });
+      res.json({ placeCache: newPlace, published: true });
     } catch (error) {
       console.error("Admin publish place draft error:", error);
       res.status(500).json({ error: "Failed to publish place draft" });
@@ -3934,8 +3935,20 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const draft = await storage.getPlaceDraftById(draftId);
       if (!draft) return res.status(404).json({ error: "Draft not found" });
 
+      // 刪除前先存入 place_feedback 排除表，避免 AI 再次生成
+      const districtInfo = await storage.getDistrictWithParents(draft.districtId);
+      if (districtInfo) {
+        await storage.createPlaceFeedback({
+          userId: userId,
+          placeName: draft.placeName,
+          district: districtInfo.district.nameZh,
+          city: districtInfo.region.nameZh,
+          penaltyScore: 100, // 高分代表完全排除
+        });
+      }
+
       await storage.deletePlaceDraft(draftId);
-      res.json({ success: true, message: "Draft deleted" });
+      res.json({ success: true, message: "Draft deleted and added to exclusion list" });
     } catch (error: any) {
       console.error("Error deleting draft:", error);
       res.status(500).json({ error: "Failed to delete draft" });
