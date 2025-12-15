@@ -1020,13 +1020,59 @@ ${uncachedSkeleton.map((item, idx) => `  {
         });
       }
 
-      // Save new entries to cache
+      // Save new entries to drafts (待審核) instead of cache
       if (newCacheEntries.length > 0) {
         try {
-          await storage.savePlacesToCache(newCacheEntries);
-          console.log(`Saved ${newCacheEntries.length} new places to cache`);
-        } catch (cacheError) {
-          console.error('Failed to save to cache:', cacheError);
+          // 映射代碼到資料庫中的實際名稱
+          const countryNameMap: Record<string, string> = {
+            'taiwan': '台灣',
+            'japan': '日本',
+            'hong_kong': '香港',
+          };
+          const cityNameMap: Record<string, string> = {
+            'taipei': '台北市',
+            'new_taipei': '新北市',
+            'taoyuan': '桃園市',
+            'taichung': '台中市',
+            'tainan': '台南市',
+            'kaohsiung': '高雄市',
+            'keelung': '基隆市',
+            'hsinchu_city': '新竹市',
+            'chiayi_city': '嘉義市',
+            'tokyo': '東京都',
+            'osaka': '大阪市',
+            'kyoto': '京都市',
+            'fukuoka': '福岡市',
+            'hong_kong': '香港',
+          };
+          const categoryNameMap: Record<string, string> = {
+            'Food': '食',
+            'Stay': '宿',
+            'Education': '生態文化教育',
+            'Activity': '遊程體驗',
+            'Entertainment': '娛樂設施',
+            'Scenery': '景點',
+            'Shopping': '購物',
+          };
+
+          const draftEntries = newCacheEntries.map(entry => ({
+            placeName: entry.placeName,
+            description: entry.description,
+            category: categoryNameMap[entry.category] || entry.category,
+            subCategory: entry.subCategory,
+            district: entry.district,
+            city: cityNameMap[entry.city] || entry.city,
+            country: countryNameMap[entry.country] || entry.country,
+            googlePlaceId: entry.placeId,
+            googleRating: entry.googleRating ? parseFloat(entry.googleRating) : null,
+            locationLat: entry.locationLat,
+            locationLng: entry.locationLng,
+            address: entry.verifiedAddress,
+          }));
+          const savedDrafts = await storage.saveAIPlacesToDrafts(draftEntries);
+          console.log(`Saved ${savedDrafts.length} new AI places to drafts (pending review)`);
+        } catch (draftError) {
+          console.error('Failed to save to drafts:', draftError);
         }
       }
 

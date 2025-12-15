@@ -1100,6 +1100,149 @@ export class DatabaseStorage implements IStorage {
 
     return newCollection;
   }
+
+  // AI 生成地點存入草稿（根據文字名稱查詢 ID）
+  async saveAIPlacesToDrafts(places: Array<{
+    placeName: string;
+    description: string;
+    category: string;
+    subCategory: string;
+    district: string;
+    city: string;
+    country: string;
+    googlePlaceId?: string | null;
+    googleRating?: number | null;
+    locationLat?: string | null;
+    locationLng?: string | null;
+    address?: string | null;
+  }>): Promise<PlaceDraft[]> {
+    if (places.length === 0) return [];
+
+    const results: PlaceDraft[] = [];
+
+    for (const place of places) {
+      try {
+        // 1. 查詢 country ID（用 nameZh 或 nameEn）
+        const [countryRow] = await db
+          .select()
+          .from(countries)
+          .where(
+            sql`${countries.nameZh} = ${place.country} OR ${countries.nameEn} = ${place.country}`
+          )
+          .limit(1);
+        if (!countryRow) {
+          console.log(`[AI Draft] Country not found: ${place.country}`);
+          continue;
+        }
+
+        // 2. 查詢 region ID（用 nameZh 或 nameEn，city 對應 region）
+        const [regionRow] = await db
+          .select()
+          .from(regions)
+          .where(
+            and(
+              eq(regions.countryId, countryRow.id),
+              sql`${regions.nameZh} = ${place.city} OR ${regions.nameEn} = ${place.city}`
+            )
+          )
+          .limit(1);
+        if (!regionRow) {
+          console.log(`[AI Draft] Region/City not found: ${place.city}`);
+          continue;
+        }
+
+        // 3. 查詢 district ID
+        const [districtRow] = await db
+          .select()
+          .from(districts)
+          .where(
+            and(
+              eq(districts.regionId, regionRow.id),
+              sql`${districts.nameZh} = ${place.district} OR ${districts.nameEn} = ${place.district}`
+            )
+          )
+          .limit(1);
+        if (!districtRow) {
+          console.log(`[AI Draft] District not found: ${place.district}`);
+          continue;
+        }
+
+        // 4. 查詢 category ID（用 nameZh 或 nameEn）
+        const [categoryRow] = await db
+          .select()
+          .from(categories)
+          .where(
+            sql`${categories.nameZh} = ${place.category} OR ${categories.nameEn} = ${place.category}`
+          )
+          .limit(1);
+        if (!categoryRow) {
+          console.log(`[AI Draft] Category not found: ${place.category}`);
+          continue;
+        }
+
+        // 5. 查詢 subcategory ID
+        const [subcategoryRow] = await db
+          .select()
+          .from(subcategories)
+          .where(
+            and(
+              eq(subcategories.categoryId, categoryRow.id),
+              sql`${subcategories.nameZh} = ${place.subCategory} OR ${subcategories.nameEn} = ${place.subCategory}`
+            )
+          )
+          .limit(1);
+        if (!subcategoryRow) {
+          console.log(`[AI Draft] Subcategory not found: ${place.subCategory}`);
+          continue;
+        }
+
+        // 6. 檢查是否已存在相同的草稿（避免重複）
+        const [existingDraft] = await db
+          .select()
+          .from(placeDrafts)
+          .where(
+            and(
+              eq(placeDrafts.placeName, place.placeName),
+              eq(placeDrafts.districtId, districtRow.id)
+            )
+          )
+          .limit(1);
+        
+        if (existingDraft) {
+          console.log(`[AI Draft] Already exists: ${place.placeName}`);
+          continue;
+        }
+
+        // 7. 存入 place_drafts
+        const [draft] = await db
+          .insert(placeDrafts)
+          .values({
+            merchantId: null, // AI 生成的沒有商家
+            source: 'ai',
+            placeName: place.placeName,
+            categoryId: categoryRow.id,
+            subcategoryId: subcategoryRow.id,
+            description: place.description,
+            districtId: districtRow.id,
+            regionId: regionRow.id,
+            countryId: countryRow.id,
+            address: place.address || null,
+            googlePlaceId: place.googlePlaceId || null,
+            googleRating: place.googleRating || null,
+            locationLat: place.locationLat || null,
+            locationLng: place.locationLng || null,
+          })
+          .returning();
+
+        results.push(draft);
+        console.log(`[AI Draft] Saved: ${place.placeName}`);
+      } catch (error) {
+        console.error(`[AI Draft] Error saving ${place.placeName}:`, error);
+      }
+    }
+
+    return results;
+  }
 }
 
 export const storage = new DatabaseStorage();
