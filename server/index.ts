@@ -77,13 +77,14 @@ async function startServer() {
   // ============================================================
   const ALLOWED_ORIGINS = [
     'https://cca44805-83a8-48a7-8754-2ce82f774385-00-1gu87zpyw11ng.pike.replit.dev',
+    'https://mibu-1--s8869420.replit.app',
     process.env.EXPO_APP_URL,
   ].filter(Boolean) as string[];
 
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (ALLOWED_ORIGINS.some(allowed => origin === allowed || origin.endsWith('.replit.dev'))) {
+      if (ALLOWED_ORIGINS.some(allowed => origin === allowed || origin.endsWith('.replit.dev') || origin.endsWith('.replit.app'))) {
         return callback(null, true);
       }
       callback(new Error('Not allowed by CORS'));
