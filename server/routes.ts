@@ -3974,6 +3974,89 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // ============ Admin Place Draft Routes (管理員地點草稿) ============
+
+  // 管理員：建立草稿地點（無需商家帳號）
+  app.post("/api/admin/place-drafts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const validated = insertPlaceDraftSchema.parse({ ...req.body, source: 'ai' });
+      const draft = await storage.createPlaceDraft(validated);
+
+      res.json({ draft });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      console.error("Admin create place draft error:", error);
+      res.status(500).json({ error: "Failed to create place draft" });
+    }
+  });
+
+  // 管理員：取得所有草稿地點
+  app.get("/api/admin/place-drafts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const drafts = await storage.getAllPlaceDrafts();
+      res.json({ drafts });
+    } catch (error) {
+      console.error("Admin get place drafts error:", error);
+      res.status(500).json({ error: "Failed to get place drafts" });
+    }
+  });
+
+  // 管理員：直接發布草稿到行程卡池（跳過申請流程）
+  app.post("/api/admin/place-drafts/:id/publish", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const draftId = parseInt(req.params.id);
+      const draft = await storage.getPlaceDraftById(draftId);
+      if (!draft) return res.status(404).json({ error: "Draft not found" });
+
+      const districtInfo = await storage.getDistrictWithParents(draft.districtId);
+      if (!districtInfo) return res.status(400).json({ error: "Invalid district" });
+
+      const categories = await storage.getCategories();
+      const category = categories.find(c => c.id === draft.categoryId);
+      const subcategories = await storage.getSubcategoriesByCategory(draft.categoryId);
+      const subcategory = subcategories.find(s => s.id === draft.subcategoryId);
+
+      const newPlace = await storage.savePlaceToCache({
+        placeName: draft.placeName,
+        description: draft.description || '',
+        category: category?.nameZh || '',
+        subCategory: subcategory?.nameZh || '',
+        district: districtInfo.district.nameZh,
+        city: districtInfo.region.nameZh,
+        country: districtInfo.country.nameZh,
+        placeId: draft.googlePlaceId || undefined,
+        locationLat: draft.locationLat || undefined,
+        locationLng: draft.locationLng || undefined,
+        verifiedAddress: draft.address || undefined,
+      });
+
+      await storage.updatePlaceDraft(draftId, { status: 'approved' });
+
+      res.json({ placeCache: newPlace, draft: { ...draft, status: 'approved' } });
+    } catch (error) {
+      console.error("Admin publish place draft error:", error);
+      res.status(500).json({ error: "Failed to publish place draft" });
+    }
+  });
+
   // ============ Admin User Management Routes ============
 
   // 管理員：取得待審核用戶

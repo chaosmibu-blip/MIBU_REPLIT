@@ -131,6 +131,7 @@ export interface IStorage {
   createPlaceDraft(draft: InsertPlaceDraft): Promise<PlaceDraft>;
   getPlaceDraftById(id: number): Promise<PlaceDraft | undefined>;
   getPlaceDraftsByMerchant(merchantId: number): Promise<PlaceDraft[]>;
+  getAllPlaceDrafts(): Promise<PlaceDraft[]>;
   updatePlaceDraft(id: number, data: Partial<PlaceDraft>): Promise<PlaceDraft>;
   deletePlaceDraft(id: number): Promise<void>;
 
@@ -829,6 +830,11 @@ export class DatabaseStorage implements IStorage {
   async getPlaceDraftsByMerchant(merchantId: number): Promise<PlaceDraft[]> {
     return db.select().from(placeDrafts)
       .where(eq(placeDrafts.merchantId, merchantId))
+      .orderBy(desc(placeDrafts.createdAt));
+  }
+
+  async getAllPlaceDrafts(): Promise<PlaceDraft[]> {
+    return db.select().from(placeDrafts)
       .orderBy(desc(placeDrafts.createdAt));
   }
 
