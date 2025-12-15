@@ -150,6 +150,144 @@ const data = await response.json();
 
 ## 前端同步指令記錄
 
+### 2025-12-15：即時位置追蹤功能
+
+```
+=== 前端同步指令 ===
+
+【後端更新摘要】
+新增 Socket.IO 即時位置追蹤功能，旅客可透過 WebSocket 即時上報位置，後端會自動轉發給對應的專家。
+
+【API 變更】
+- 現有 API：POST /api/location/update - HTTP 位置更新（保留，用於非即時場景）
+- 現有 API：GET /api/location/me - 取得我的位置
+- 新增 Socket.IO 事件：location_update - 即時位置串流（取代頻繁 HTTP 請求）
+- 新增 Socket.IO 事件：traveler_location - 專家接收旅客位置
+- 新增 Socket.IO 事件：specialist_subscribe - 專家訂閱旅客位置
+
+【Socket.IO 連線設定】
+- 後端 URL：wss://gacha-travel--s8869420.replit.app
+- 傳輸方式：['websocket', 'polling']
+- 認證：handshake.auth.token = JWT Token
+
+【前端需要的改動 - 旅客端】
+1. 安裝 socket.io-client：`expo install socket.io-client`
+2. 安裝 expo-location：`expo install expo-location`
+3. 建立 Socket 連線並發送位置更新：
+
+// 連線範例
+import { io } from 'socket.io-client';
+import * as Location from 'expo-location';
+
+const socket = io('https://gacha-travel--s8869420.replit.app', {
+  auth: { token: jwtToken },
+  transports: ['websocket', 'polling'],
+});
+
+// 請求定位權限
+const { status } = await Location.requestForegroundPermissionsAsync();
+
+// 即時位置追蹤（每 5 秒或移動 10 公尺）
+Location.watchPositionAsync(
+  {
+    accuracy: Location.Accuracy.High,
+    timeInterval: 5000,
+    distanceInterval: 10,
+  },
+  (location) => {
+    socket.emit('location_update', {
+      lat: location.coords.latitude,
+      lng: location.coords.longitude,
+      timestamp: Date.now(),
+    });
+  }
+);
+
+// 監聽確認
+socket.on('location_ack', (data) => {
+  console.log('位置已更新', data);
+});
+
+【前端需要的改動 - 專家端】
+1. 連線後發送訂閱請求
+2. 監聽旅客位置更新
+
+// 訂閱旅客
+socket.emit('specialist_subscribe', {});
+
+// 接收旅客位置
+socket.on('traveler_location', (data) => {
+  // data: { travelerId, serviceId, lat, lng, timestamp }
+  updateMarkerPosition(data.travelerId, data.lat, data.lng);
+});
+
+// 接收目前服務中的旅客列表
+socket.on('active_travelers', (data) => {
+  // data: { count, travelers: [{ serviceId, travelerId, region, createdAt }] }
+});
+
+【回傳資料格式】
+// location_ack
+{ success: boolean; timestamp: number; serviceActive: boolean }
+
+// traveler_location
+{ travelerId: string; serviceId: number; lat: number; lng: number; timestamp: number }
+
+// active_travelers
+{ count: number; travelers: Array<{ serviceId: number; travelerId: string; region: string; createdAt: Date }> }
+
+=== 指令結束 ===
+```
+
+### 2025-12-15：現有定位 HTTP API
+
+```
+=== 前端同步指令 ===
+
+【後端更新摘要】
+現有的 HTTP 定位 API，適用於非即時場景（如初次定位、定期備份）
+
+【API 變更】
+- POST /api/location/update - 更新用戶位置
+- GET /api/location/me - 取得我的位置
+
+【API 呼叫範例】
+// 更新位置
+const response = await fetch('https://gacha-travel--s8869420.replit.app/api/location/update', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  },
+  body: JSON.stringify({
+    lat: 25.033,
+    lon: 121.565,
+    isSharingEnabled: true,  // 可選
+    targets: [  // 可選，用於 geofencing
+      { id: 1, name: '目的地', lat: 25.04, lon: 121.57, radiusMeters: 100 }
+    ]
+  })
+});
+
+// 回傳格式
+{
+  status: "ok",
+  arrived: boolean,       // 是否抵達 geofence 目標
+  target: object | null,  // 最近的目標
+  distanceMeters: number | null,
+  location: { id, userId, lat, lon, isSharingEnabled, ... },
+  message: string
+}
+
+// 取得我的位置
+const response = await fetch('https://gacha-travel--s8869420.replit.app/api/location/me', {
+  headers: { 'Authorization': `Bearer ${token}` }
+});
+// 回傳格式：UserLocation | null
+
+=== 指令結束 ===
+```
+
 ### 2025-12-15：全域排除功能
 
 ```

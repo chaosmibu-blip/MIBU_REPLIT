@@ -11,6 +11,7 @@ import { storage } from "./storage";
 import { verifyJwtToken, initializeSuperAdmin } from "./replitAuth";
 import { checkGeofence } from "./lib/geofencing";
 import { generatePlaceWithAI, verifyPlaceWithGoogle } from "./lib/placeGenerator";
+import { setupSocketIO } from "./socketHandler";
 import { z } from "zod";
 
 declare module "http" {
@@ -286,6 +287,9 @@ async function startServer() {
   
   // 註冊其他 API 路由 (從 routes.ts)
   const httpServer = await registerRoutes(app);
+
+  // 初始化 Socket.IO 即時位置追蹤
+  setupSocketIO(httpServer);
 
   // 錯誤處理
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
