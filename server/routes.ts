@@ -9,6 +9,7 @@ import { z } from "zod";
 import { createTripPlannerRoutes } from "../modules/trip-planner/server/routes";
 import { createPlannerServiceRoutes } from "../modules/trip-planner/server/planner-routes";
 import { registerStripeRoutes } from "./stripeRoutes";
+import { getUncachableStripeClient } from "./stripeClient";
 import { checkGeofence } from "./lib/geofencing";
 import { callGemini, generatePlaceWithAI, verifyPlaceWithGoogle } from "./lib/placeGenerator";
 import twilio from "twilio";
@@ -2999,7 +3000,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
-  // Purchase credits (creates a transaction record, actual payment via Stripe webhook)
+  // Purchase credits - supports both Stripe and Recur payment providers
   app.post("/api/merchant/credits/purchase", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
@@ -3012,24 +3013,72 @@ ${uncachedSkeleton.map((item, idx) => `  {
         return res.status(403).json({ error: "Merchant registration required" });
       }
 
-      const { amount, paymentMethod } = req.body;
+      const { amount, provider } = req.body;
       if (!amount || amount < 100) {
         return res.status(400).json({ error: "Minimum purchase amount is 100 credits" });
       }
+
+      const paymentProvider = provider === 'recur' ? 'recur' : 'stripe';
 
       // Create pending transaction
       const transaction = await storage.createTransaction({
         merchantId: merchant.id,
         amount,
         paymentStatus: 'pending',
-        paymentMethod: paymentMethod || 'stripe',
+        paymentMethod: paymentProvider,
       });
+
+      // Generate checkout URL based on provider
+      let checkoutUrl: string | null = null;
+      
+      if (paymentProvider === 'stripe') {
+        try {
+          const stripeClient = await getUncachableStripeClient();
+          const session = await stripeClient.checkout.sessions.create({
+            mode: 'payment',
+            line_items: [{
+              price_data: {
+                currency: 'twd',
+                product_data: {
+                  name: `${amount} 平台點數`,
+                  description: `購買 ${amount} 點平台點數`,
+                },
+                unit_amount: amount * 100,
+              },
+              quantity: 1,
+            }],
+            metadata: {
+              transactionId: transaction.id.toString(),
+              merchantId: merchant.id.toString(),
+              amount: amount.toString(),
+              type: 'credits_purchase',
+            },
+            success_url: `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'https://gacha-travel--s8869420.replit.app'}/merchant/credits?success=true`,
+            cancel_url: `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'https://gacha-travel--s8869420.replit.app'}/merchant/credits?canceled=true`,
+          });
+          checkoutUrl = session.url;
+        } catch (stripeError) {
+          console.error("Stripe checkout error:", stripeError);
+          return res.status(500).json({ error: "Failed to create Stripe checkout session" });
+        }
+      } else if (paymentProvider === 'recur') {
+        // Recur (PAYUNi) checkout - generate payment URL
+        // Note: This requires PAYUNi API integration
+        const recurSecretKey = process.env.RECUR_SECRET_KEY;
+        if (!recurSecretKey) {
+          return res.status(500).json({ error: "Recur payment not configured" });
+        }
+        // For now, return pending status - actual Recur integration would generate a payment URL
+        checkoutUrl = null; // TODO: Implement PAYUNi/Recur checkout URL generation
+      }
 
       res.json({ 
         transactionId: transaction.id,
         amount,
+        provider: paymentProvider,
+        checkoutUrl,
         status: 'pending',
-        message: '請完成付款以獲得點數'
+        message: checkoutUrl ? '請前往付款頁面完成付款' : '請完成付款以獲得點數'
       });
     } catch (error) {
       console.error("Purchase credits error:", error);
@@ -3510,7 +3559,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
   });
 
   // ============ Twilio Chat Routes ============
-  app.post("/api/chat/token", isAuthenticated, async (req: any, res) => {
+  // GET /api/chat/token - Get Twilio Conversations token for chat
+  app.get("/api/chat/token", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
       if (!userId) {
