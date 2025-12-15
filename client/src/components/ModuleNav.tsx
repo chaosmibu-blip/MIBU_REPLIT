@@ -25,6 +25,61 @@ export const ModuleHeader: React.FC<ModuleHeaderProps> = ({ onBack, language }) 
   );
 };
 
+// 扭蛋模組頂部導航欄
+interface GachaTopNavProps {
+  currentTab: GachaSubView;
+  onChange: (tab: GachaSubView) => void;
+  language: Language;
+  hasNewCollection?: boolean;
+  hasNewItems?: boolean;
+}
+
+export const GachaTopNav: React.FC<GachaTopNavProps> = ({ 
+  currentTab, 
+  onChange, 
+  language,
+  hasNewCollection = false,
+  hasNewItems = false
+}) => {
+  const t = TRANSLATIONS[language];
+  const tabs: { id: GachaSubView; label: string; icon: React.FC<any>; hasNew?: boolean }[] = [
+    { id: 'gacha', label: t.navGacha || '扭蛋', icon: Compass },
+    { id: 'collection', label: t.navCollection || '圖鑑', icon: BookOpen, hasNew: hasNewCollection },
+    { id: 'itembox', label: t.navMyBox || '道具箱', icon: Package, hasNew: hasNewItems },
+  ];
+
+  return (
+    <nav className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-100 shadow-sm">
+      <div className="flex items-center justify-center gap-1 px-4 py-2">
+        {tabs.map((tab) => {
+          const isActive = currentTab === tab.id;
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onChange(tab.id)}
+              className={`relative flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+                isActive 
+                  ? 'bg-indigo-100 text-indigo-600' 
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+              }`}
+              data-testid={`tab-gacha-top-${tab.id}`}
+            >
+              <Icon className="w-4 h-4" strokeWidth={isActive ? 2.5 : 2} />
+              <span className={`text-sm font-medium ${isActive ? 'text-indigo-600' : ''}`}>
+                {tab.label}
+              </span>
+              {tab.hasNew && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+};
+
 interface GachaModuleNavProps {
   currentTab: GachaSubView;
   onChange: (tab: GachaSubView) => void;
