@@ -802,6 +802,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ Gemini AI Itinerary Generation ============
 
   app.post("/api/generate-itinerary", async (req, res) => {
+    console.log('[generate-itinerary] API called with:', { country: req.body.country, city: req.body.city, level: req.body.level });
     try {
       const { country, city, level, language, collectedNames } = req.body;
       
