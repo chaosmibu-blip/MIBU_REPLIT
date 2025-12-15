@@ -2,7 +2,7 @@ import {
   users, collections, merchants, coupons, placeCache, placeFeedback, merchantPlaceLinks,
   countries, regions, districts, categories, subcategories, chatInvites,
   placeProducts, cartItems, commerceOrders, klookProducts, messageHighlights,
-  placeDrafts, placeApplications, userLocations, planners, serviceOrders,
+  placeDrafts, placeApplications, userLocations, planners, serviceOrders, places,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -20,7 +20,8 @@ import {
   type MessageHighlight, type InsertMessageHighlight,
   type PlaceDraft, type InsertPlaceDraft,
   type PlaceApplication, type InsertPlaceApplication,
-  type UserLocation, type InsertUserLocation
+  type UserLocation, type InsertUserLocation,
+  type Place
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike } from "drizzle-orm";
@@ -144,6 +145,11 @@ export interface IStorage {
   setSosMode(userId: string, enabled: boolean): Promise<UserLocation | undefined>;
   getUserBySosKey(sosKey: string): Promise<User | undefined>;
   generateSosKey(userId: string): Promise<string>;
+
+  // Places (Gacha Pool)
+  getPlacesByDistrict(city: string, district: string): Promise<Place[]>;
+  getJackpotPlaces(city: string, district: string): Promise<Place[]>;
+  getCouponsByPlaceId(placeId: number): Promise<Coupon[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -909,6 +915,30 @@ export class DatabaseStorage implements IStorage {
       .set({ sosSecretKey: key, updatedAt: new Date() })
       .where(eq(users.id, userId));
     return key;
+  }
+
+  // Places (Gacha Pool)
+  async getPlacesByDistrict(city: string, district: string): Promise<Place[]> {
+    return await db
+      .select()
+      .from(places)
+      .where(and(eq(places.city, city), eq(places.district, district)));
+  }
+
+  async getJackpotPlaces(city: string, district: string): Promise<Place[]> {
+    return await db
+      .select()
+      .from(places)
+      .where(
+        sql`${places.city} = ${city} AND ${places.district} = ${district} AND (${places.rating} >= 4.5 OR ${places.merchantId} IS NOT NULL)`
+      );
+  }
+
+  async getCouponsByPlaceId(placeId: number): Promise<Coupon[]> {
+    return await db
+      .select()
+      .from(coupons)
+      .where(eq(coupons.placeId, placeId));
   }
 }
 

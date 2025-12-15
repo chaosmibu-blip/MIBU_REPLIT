@@ -1,0 +1,51 @@
+我是專案管理者。我們要實作核心功能「行程扭蛋 (Gacha)」。這是一個基於預先建立的地點資料庫，結合機率與商業邏輯的系統。
+
+請依序執行以下 3 大任務：
+
+### 任務 1：資料庫架構重構 (Schema)
+請修改 `shared/schema.ts`，確保以下結構存在：
+
+1.  **`place_drafts` (草稿池)**
+    *   用於儲存 AI 生成或商家提交的原始資料。
+    *   欄位：`id`, `country`, `city`, `district`, `placeName`, `category` (Enum: FOOD, STAY, ECO, EXP, FUN, EVENT, SPOT, SHOP), `subcategory`, `description`, `status` ('pending', 'approved', 'rejected'), `source` ('ai', 'merchant'), `createdAt`.
+
+2.  **`places` (正式行程卡池)**
+    *   扭蛋機的實際來源，存放已經 Google 驗證過的地點。
+    *   欄位：`id`, `placeName`, `country`, `city`, `district`, `address`, `locationLat`, `locationLng`, `googlePlaceId` (Unique), `rating`, `photoReference`, `category`, `subcategory`, `description`, `merchantId` (FK -> merchants, nullable), `isPromoActive` (boolean), `createdAt`.
+
+3.  **`coupons` (優惠券更新)**
+    *   欄位補充：`rarity` (Enum: 'SP', 'SSR', 'SR', 'S', 'R'), `dropRate` (float, 用於個別設定機率，預設 null).
+
+執行完畢後，請務必執行 `npx drizzle-kit push` 同步資料庫。
+
+---
+
+### 任務 2：資料初始化腳本 (Seeding)
+請建立 `scripts/seed_gacha.ts`，用於填充 `places` 資料表：
+1.  **定義範圍**：建立一個包含台灣主要縣市與行政區的陣列 (例如：台北市[信義區, 大安區...], 宜蘭縣[礁溪鄉, 羅東鎮...])。
+2.  **AI 生成**：撰寫函式呼叫 Gemini，針對每個行政區生成 "食、宿、遊、購" 等類別的熱門地點。
+3.  **Google 驗證轉正**：生成的資料先視為 draft，隨即呼叫 Google Places API 取得詳細資訊 (Photo, Rating)，若存在則寫入 `places` 表。
+*   *備註：請提供一個指令讓我能手動執行此腳本 (e.g., `npm run seed:gacha`)。*
+
+---
+
+### 任務 3：核心 API 實作 (Routes)
+
+請在 `server/routes.ts` 實作以下接口：
+
+**1. 扭蛋抽獎 API: `POST /api/gacha/pull`**
+*   **輸入**：`userId`, `city`, `district`, `itemCount` (預設 5).
+*   **邏輯**：
+    1.  **時段/分類分配**：依 itemCount 決定各分類數量 (如：早=食+遊, 午=食+遊+遊...)，避免全部抽到同一類。
+    2.  **已收集降權**：查詢 `collections` 表，若用戶已擁有該地點，該地點被抽中的權重降低 45%。
+    3.  **隨機抽取**：從 `places` 表中，依據上述條件與權重，撈出對應數量的地點。
+    4.  **優惠券掉落判定**：針對抽出的每張卡，若有對應商家 (`merchantId` not null)，執行機率判定：
+        *   SP (2%), SSR (8%), SR (15%), S (20%), R (35%)。
+        *   若中獎，從 `coupons` 表撈出對應等級的優惠券，附加在回傳資料中。
+*   **輸出**：包含地點資訊、商家優惠資訊、以及是否獲得優惠券的 JSON。
+
+**2. 獎池預覽 API: `GET /api/gacha/pool/:city/:district`**
+*   **邏輯**：從 `places` 表中撈出該地區 `rating > 4.5` (視為 SP/SSR 候選) 或有 `merchantId` (有優惠) 的地點。
+*   **輸出**：回傳該地區的 "大獎" 列表 (僅顯示名稱與圖片，作為預覽)。
+
+請確保程式碼中有適當的 Error Handling，並使用 `drizzle-orm` 進行查詢。

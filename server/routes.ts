@@ -2330,6 +2330,205 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // ============ Gacha V2 - Places Pool Based ============
+  
+  // Gacha pool preview - show jackpot places for a district
+  app.get("/api/gacha/pool/:city/:district", async (req, res) => {
+    try {
+      const { city, district } = req.params;
+      
+      if (!city || !district) {
+        return res.status(400).json({ error: "city and district are required" });
+      }
+
+      const decodedCity = decodeURIComponent(city);
+      const decodedDistrict = decodeURIComponent(district);
+      
+      // Get jackpot places: rating > 4.5 or has merchantId
+      const jackpotPlaces = await storage.getJackpotPlaces(decodedCity, decodedDistrict);
+      
+      res.json({
+        success: true,
+        pool: {
+          city: decodedCity,
+          district: decodedDistrict,
+          jackpots: jackpotPlaces.map(p => ({
+            id: p.id,
+            placeName: p.placeName,
+            category: p.category,
+            rating: p.rating,
+            hasMerchant: !!p.merchantId,
+            isPromoActive: p.isPromoActive,
+          })),
+          totalInPool: jackpotPlaces.length,
+        }
+      });
+    } catch (error) {
+      console.error("Gacha pool error:", error);
+      res.status(500).json({ error: "Failed to get gacha pool" });
+    }
+  });
+
+  // Gacha pull V2 - from verified places pool with weighted selection
+  app.post("/api/gacha/pull/v2", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { city, district, itemCount = 5 } = req.body;
+      
+      if (!city || !district) {
+        return res.status(400).json({ error: "city and district are required" });
+      }
+
+      // Get current hour to determine time slot
+      const hour = new Date().getHours();
+      let timeSlots: string[] = [];
+      
+      if (hour >= 6 && hour < 10) {
+        timeSlots = ['morning', 'FOOD'];
+      } else if (hour >= 10 && hour < 14) {
+        timeSlots = ['lunch', 'FOOD', 'SPOT'];
+      } else if (hour >= 14 && hour < 17) {
+        timeSlots = ['afternoon', 'SPOT', 'SHOP', 'EXP'];
+      } else if (hour >= 17 && hour < 21) {
+        timeSlots = ['dinner', 'FOOD', 'FUN'];
+      } else {
+        timeSlots = ['evening', 'FUN', 'FOOD'];
+      }
+
+      // Get all places in the pool for this district
+      const allPlaces = await storage.getPlacesByDistrict(city, district);
+      
+      if (allPlaces.length === 0) {
+        return res.json({
+          success: true,
+          items: [],
+          meta: {
+            message: "No places found in this district. Run seed to populate.",
+            city,
+            district,
+          }
+        });
+      }
+
+      // Get user's collected places for de-weighting
+      const userCollections = userId ? await storage.getUserCollections(userId) : [];
+      const collectedPlaceNames = new Set(userCollections.map(c => c.placeName));
+
+      // Calculate weights for each place
+      const weightedPlaces = allPlaces.map(place => {
+        let weight = 1.0;
+        
+        // Boost places matching time slot categories
+        if (timeSlots.includes(place.category)) {
+          weight *= 1.5;
+        }
+        
+        // Boost high-rated places
+        if (place.rating && place.rating >= 4.5) {
+          weight *= 1.3;
+        }
+        
+        // Boost merchant places with active promo
+        if (place.merchantId && place.isPromoActive) {
+          weight *= 1.4;
+        }
+        
+        // De-weight already collected places by 45%
+        if (collectedPlaceNames.has(place.placeName)) {
+          weight *= 0.55;
+        }
+        
+        return { place, weight };
+      });
+
+      // Weighted random selection without replacement
+      const selectedPlaces: typeof allPlaces = [];
+      const availablePlaces = [...weightedPlaces];
+
+      for (let i = 0; i < Math.min(itemCount, allPlaces.length) && availablePlaces.length > 0; i++) {
+        const totalWeight = availablePlaces.reduce((sum, p) => sum + p.weight, 0);
+        let random = Math.random() * totalWeight;
+        
+        for (let j = 0; j < availablePlaces.length; j++) {
+          random -= availablePlaces[j].weight;
+          if (random <= 0) {
+            selectedPlaces.push(availablePlaces[j].place);
+            availablePlaces.splice(j, 1);
+            break;
+          }
+        }
+      }
+
+      // Determine coupon drops for each place
+      const RARITY_DROP_RATES: Record<string, number> = {
+        SP: 0.02,
+        SSR: 0.08,
+        SR: 0.15,
+        S: 0.20,
+        R: 0.35,
+      };
+
+      const items = await Promise.all(selectedPlaces.map(async (place) => {
+        let couponDrop = null;
+        
+        // Check if this place has active coupons
+        const coupons = await storage.getCouponsByPlaceId(place.id);
+        const activeCoupons = coupons.filter(c => c.isActive && !c.archived && c.remainingQuantity > 0);
+        
+        if (activeCoupons.length > 0) {
+          // Roll for each coupon based on rarity
+          for (const coupon of activeCoupons) {
+            const dropRate = coupon.dropRate || RARITY_DROP_RATES[coupon.rarity || 'R'] || 0.35;
+            if (Math.random() < dropRate) {
+              couponDrop = {
+                id: coupon.id,
+                title: coupon.title,
+                code: coupon.code,
+                rarity: coupon.rarity,
+                terms: coupon.terms,
+              };
+              break;
+            }
+          }
+        }
+
+        return {
+          id: place.id,
+          placeName: place.placeName,
+          category: place.category,
+          subcategory: place.subcategory,
+          description: place.description,
+          address: place.address,
+          rating: place.rating,
+          locationLat: place.locationLat,
+          locationLng: place.locationLng,
+          googlePlaceId: place.googlePlaceId,
+          photoReference: place.photoReference,
+          coupon: couponDrop,
+        };
+      }));
+
+      res.json({
+        success: true,
+        pull: {
+          city,
+          district,
+          timeSlot: timeSlots[0],
+          items,
+        },
+        meta: {
+          totalItems: items.length,
+          requestedItems: itemCount,
+          poolSize: allPlaces.length,
+          couponDrops: items.filter(i => i.coupon).length,
+        }
+      });
+    } catch (error) {
+      console.error("Gacha pull v2 error:", error);
+      res.status(500).json({ error: "Failed to perform gacha pull" });
+    }
+  });
+
   // ============ Merchant Registration ============
   app.post("/api/merchant/register", isAuthenticated, async (req: any, res) => {
     try {

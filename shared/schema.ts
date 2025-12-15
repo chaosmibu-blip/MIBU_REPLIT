@@ -217,16 +217,47 @@ export const merchantPlaceLinks = pgTable("merchant_place_links", {
   index("IDX_merchant_place_links_google_place_id").on(table.googlePlaceId),
 ]);
 
+// Gacha Rarity Types
+export type GachaRarity = 'SP' | 'SSR' | 'SR' | 'S' | 'R';
+
+// Places - 正式行程卡池 (Google 驗證過的地點)
+export const places = pgTable("places", {
+  id: serial("id").primaryKey(),
+  placeName: text("place_name").notNull(),
+  country: text("country").notNull(),
+  city: text("city").notNull(),
+  district: text("district").notNull(),
+  address: text("address"),
+  locationLat: doublePrecision("location_lat"),
+  locationLng: doublePrecision("location_lng"),
+  googlePlaceId: text("google_place_id").unique(),
+  rating: doublePrecision("rating"),
+  photoReference: text("photo_reference"),
+  category: text("category").notNull(),
+  subcategory: text("subcategory"),
+  description: text("description"),
+  merchantId: integer("merchant_id").references(() => merchants.id),
+  isPromoActive: boolean("is_promo_active").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_places_google_place_id").on(table.googlePlaceId),
+  index("IDX_places_city_district").on(table.city, table.district),
+  index("IDX_places_category").on(table.category),
+  index("IDX_places_merchant").on(table.merchantId),
+]);
+
 // Merchant coupons
 export const coupons = pgTable("coupons", {
   id: serial("id").primaryKey(),
   merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
   merchantPlaceLinkId: integer("merchant_place_link_id").references(() => merchantPlaceLinks.id),
+  placeId: integer("place_id").references(() => places.id),
   placeName: text("place_name").notNull(),
   title: text("title").notNull(),
   code: text("code").notNull(),
   terms: text("terms"),
-  rarity: text("rarity"),
+  rarity: varchar("rarity", { length: 10 }),
+  dropRate: doublePrecision("drop_rate"),
   remainingQuantity: integer("remaining_quantity").default(0).notNull(),
   redeemedCount: integer("redeemed_count").default(0).notNull(),
   impressionCount: integer("impression_count").default(0).notNull(),
@@ -295,6 +326,19 @@ export const couponsRelations = relations(coupons, ({ one }) => ({
     fields: [coupons.merchantId],
     references: [merchants.id],
   }),
+  place: one(places, {
+    fields: [coupons.placeId],
+    references: [places.id],
+  }),
+}));
+
+// Places relations
+export const placesRelations = relations(places, ({ one, many }) => ({
+  merchant: one(merchants, {
+    fields: [places.merchantId],
+    references: [merchants.id],
+  }),
+  coupons: many(coupons),
 }));
 
 // Insert/Upsert schemas
@@ -327,6 +371,11 @@ export const insertPlaceCacheSchema = createInsertSchema(placeCache).omit({
 });
 
 export const insertPlaceFeedbackSchema = createInsertSchema(placeFeedback).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPlaceSchema = createInsertSchema(places).omit({
   id: true,
   createdAt: true,
 });
@@ -379,6 +428,9 @@ export type PlaceCache = typeof placeCache.$inferSelect;
 
 export type InsertPlaceFeedback = z.infer<typeof insertPlaceFeedbackSchema>;
 export type PlaceFeedback = typeof placeFeedback.$inferSelect;
+
+export type InsertPlace = z.infer<typeof insertPlaceSchema>;
+export type Place = typeof places.$inferSelect;
 
 // Location types
 export type InsertCountry = z.infer<typeof insertCountrySchema>;
