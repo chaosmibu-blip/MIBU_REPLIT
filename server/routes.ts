@@ -2666,6 +2666,160 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // ============ Gacha V3 - One-Day Itinerary from Official Pool ============
+  
+  app.post("/api/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const itinerarySchema = z.object({
+        city: z.string().min(1),
+        district: z.string().min(1),
+        pace: z.enum(['relaxed', 'moderate', 'packed']).optional().default('moderate'),
+      });
+
+      const validated = itinerarySchema.parse(req.body);
+      const { city, district, pace } = validated;
+
+      const itemCounts = { relaxed: 5, moderate: 7, packed: 10 };
+      const targetCount = itemCounts[pace];
+
+      const allPlaces = await storage.getOfficialPlacesByDistrict(city, district, 50);
+      
+      if (allPlaces.length === 0) {
+        return res.json({
+          success: true,
+          itinerary: [],
+          couponsWon: [],
+          meta: { message: "No places found in this district.", city, district }
+        });
+      }
+
+      const categoryToTimeSlot: Record<string, string[]> = {
+        'food': ['breakfast', 'lunch', 'dinner'],
+        'scenery': ['morning', 'afternoon'],
+        'activity': ['morning', 'afternoon', 'evening'],
+        'entertainment': ['afternoon', 'evening'],
+        'education': ['morning', 'afternoon'],
+        'experience': ['morning', 'afternoon'],
+        'shopping': ['afternoon', 'evening'],
+        'stay': ['evening'],
+      };
+
+      const timeSlotOrder = ['breakfast', 'morning', 'lunch', 'afternoon', 'dinner', 'evening'];
+      
+      const timeSlotQuotas: Record<string, number> = pace === 'relaxed' 
+        ? { breakfast: 1, morning: 1, lunch: 1, afternoon: 1, dinner: 1 }
+        : pace === 'moderate'
+        ? { breakfast: 1, morning: 1, lunch: 1, afternoon: 2, dinner: 1, evening: 1 }
+        : { breakfast: 1, morning: 2, lunch: 1, afternoon: 3, dinner: 1, evening: 2 };
+
+      const itinerary: Array<{
+        timeSlot: string;
+        place: {
+          id: number;
+          placeName: string;
+          category: string;
+          subcategory?: string | null;
+          description?: string | null;
+          address?: string | null;
+          rating?: number | null;
+          locationLat?: number | null;
+          locationLng?: number | null;
+          googlePlaceId?: string | null;
+        };
+        couponWon?: { id: number; title: string; code: string; terms?: string | null } | null;
+      }> = [];
+      
+      const couponsWon: Array<{ couponId: number; placeId: number; placeName: string; title: string; code: string; terms?: string | null }> = [];
+      const usedPlaceIds = new Set<number>();
+
+      for (const timeSlot of timeSlotOrder) {
+        const quota = timeSlotQuotas[timeSlot] || 0;
+        if (quota === 0) continue;
+
+        const isFood = ['breakfast', 'lunch', 'dinner'].includes(timeSlot);
+        
+        let candidatePlaces = allPlaces.filter(p => {
+          if (usedPlaceIds.has(p.id)) return false;
+          const slots = categoryToTimeSlot[p.category] || ['afternoon'];
+          if (isFood) {
+            return p.category === 'food' && slots.includes(timeSlot);
+          }
+          return p.category !== 'food' && slots.includes(timeSlot);
+        });
+
+        for (let i = candidatePlaces.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [candidatePlaces[i], candidatePlaces[j]] = [candidatePlaces[j], candidatePlaces[i]];
+        }
+
+        const selected = candidatePlaces.slice(0, quota);
+        
+        for (const place of selected) {
+          usedPlaceIds.add(place.id);
+          
+          let couponWon = null;
+          const claimInfo = await storage.getClaimByOfficialPlaceId(place.id);
+          
+          if (claimInfo) {
+            const dropRate = claimInfo.claim.couponDropRate ?? 0.1;
+            if (Math.random() < dropRate && claimInfo.coupons.length > 0) {
+              const randomIdx = Math.floor(Math.random() * claimInfo.coupons.length);
+              const wonCoupon = claimInfo.coupons[randomIdx];
+              couponWon = { id: wonCoupon.id, title: wonCoupon.title, code: wonCoupon.code, terms: wonCoupon.terms };
+              couponsWon.push({ couponId: wonCoupon.id, placeId: place.id, placeName: place.placeName, title: wonCoupon.title, code: wonCoupon.code, terms: wonCoupon.terms });
+              await storage.saveToCollectionWithCoupon(userId, place, wonCoupon);
+            } else {
+              await storage.saveToCollectionWithCoupon(userId, place);
+            }
+          } else {
+            await storage.saveToCollectionWithCoupon(userId, place);
+          }
+
+          itinerary.push({
+            timeSlot,
+            place: {
+              id: place.id,
+              placeName: place.placeName,
+              category: place.category,
+              subcategory: place.subcategory,
+              description: place.description,
+              address: place.address,
+              rating: place.rating,
+              locationLat: place.locationLat,
+              locationLng: place.locationLng,
+              googlePlaceId: place.googlePlaceId,
+            },
+            couponWon,
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        itinerary,
+        couponsWon,
+        meta: {
+          city,
+          district,
+          pace,
+          totalPlaces: itinerary.length,
+          totalCouponsWon: couponsWon.length,
+        }
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Gacha itinerary v3 error:", error);
+      res.status(500).json({ error: "Failed to generate itinerary" });
+    }
+  });
+
   // ============ Merchant Registration ============
   app.post("/api/merchant/register", isAuthenticated, async (req: any, res) => {
     try {
