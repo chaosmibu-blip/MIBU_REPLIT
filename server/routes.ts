@@ -318,7 +318,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
-      res.json(user);
+      
+      // Check if user is super admin (can access any interface)
+      const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
+      const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL;
+      
+      res.json({
+        ...user,
+        isSuperAdmin,
+        accessibleRoles: isSuperAdmin 
+          ? ['traveler', 'merchant', 'specialist', 'admin'] 
+          : [user?.role || 'traveler']
+      });
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });

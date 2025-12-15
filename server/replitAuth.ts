@@ -629,13 +629,18 @@ export const requireRole = (...allowedRoles: string[]): RequestHandler => {
       }
       
       const userRole = dbUser.role || 'traveler';
-      if (!allowedRoles.includes(userRole)) {
+      
+      // Super admin can access any interface
+      const isSuperAdmin = dbUser.email === SUPER_ADMIN_EMAIL;
+      
+      if (!isSuperAdmin && !allowedRoles.includes(userRole)) {
         return res.status(403).json({ message: "Forbidden: insufficient permissions" });
       }
       
       // Attach role to request for downstream use
       (req as any).userRole = userRole;
       (req as any).dbUser = dbUser;
+      (req as any).isSuperAdmin = isSuperAdmin;
       
       return next();
     } catch (error) {
