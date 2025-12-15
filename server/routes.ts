@@ -3892,6 +3892,27 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // 管理員：刪除草稿地點
+  app.delete("/api/admin/place-drafts/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const draftId = parseInt(req.params.id);
+      const draft = await storage.getPlaceDraftById(draftId);
+      if (!draft) return res.status(404).json({ error: "Draft not found" });
+
+      await storage.deletePlaceDraft(draftId);
+      res.json({ success: true, message: "Draft deleted" });
+    } catch (error: any) {
+      console.error("Error deleting draft:", error);
+      res.status(500).json({ error: "Failed to delete draft" });
+    }
+  });
+
   // ============ Admin User Management Routes ============
 
   // 管理員：取得待審核用戶

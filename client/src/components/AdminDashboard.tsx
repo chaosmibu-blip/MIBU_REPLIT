@@ -89,6 +89,7 @@ interface PlaceDraft {
   countryId: number;
   address: string | null;
   googlePlaceId: string | null;
+  googleRating: number | null;
   createdAt: string;
 }
 
@@ -120,6 +121,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formSuccess, setFormSuccess] = useState(false);
   const [publishingDraft, setPublishingDraft] = useState<number | null>(null);
+  const [expandedDraft, setExpandedDraft] = useState<number | null>(null);
+  const [deletingDraft, setDeletingDraft] = useState<number | null>(null);
 
   const [draftForm, setDraftForm] = useState({
     placeName: '',
@@ -385,6 +388,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
       setError(err.message);
     } finally {
       setPublishingDraft(null);
+    }
+  };
+
+  const handleDeleteDraft = async (draftId: number) => {
+    if (!confirm('確定要刪除這個草稿嗎？')) return;
+    setDeletingDraft(draftId);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/place-drafts/${draftId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || '刪除失敗');
+      }
+      await fetchAllDrafts();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setDeletingDraft(null);
     }
   };
 
@@ -706,30 +730,82 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
               {allDrafts.map((draft) => (
                 <div 
                   key={draft.id} 
-                  className="py-3 px-4 bg-slate-50 rounded-xl"
+                  className="py-3 px-4 bg-slate-50 rounded-xl cursor-pointer transition-all"
                   data-testid={`draft-${draft.id}`}
+                  onClick={() => setExpandedDraft(expandedDraft === draft.id ? null : draft.id)}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <p className="font-medium text-slate-800">{draft.placeName}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-slate-800">{draft.placeName}</p>
+                        <span className="text-slate-400 text-sm">
+                          {expandedDraft === draft.id ? '▲' : '▼'}
+                        </span>
+                      </div>
                       {draft.description && (
-                        <p className="text-sm text-slate-500 mt-1 line-clamp-2">{draft.description}</p>
+                        <p className={`text-sm text-slate-500 mt-1 ${expandedDraft === draft.id ? '' : 'line-clamp-2'}`}>
+                          {draft.description}
+                        </p>
                       )}
-                      <div className="flex gap-2 mt-2">
+                      <div className="flex gap-2 mt-2 flex-wrap">
                         <span className={`inline-block text-xs px-2 py-1 rounded-full ${getStatusColor(draft.status)}`}>
                           {getStatusLabel(draft.status)}
                         </span>
                         <span className="inline-block text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
                           {getSourceLabel(draft.source)}
                         </span>
+                        {draft.googleRating && (
+                          <span className="inline-block text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">
+                            ⭐ {draft.googleRating}
+                          </span>
+                        )}
                       </div>
+                      {expandedDraft === draft.id && (
+                        <div className="mt-3 pt-3 border-t border-slate-200 space-y-2">
+                          {draft.address && (
+                            <p className="text-xs text-slate-500">📍 {draft.address}</p>
+                          )}
+                          {draft.googlePlaceId && (
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query_place_id=${draft.googlePlaceId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 text-xs px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                              data-testid={`link-google-maps-${draft.id}`}
+                            >
+                              🗺️ 在 Google 地圖中查看
+                            </a>
+                          )}
+                          <div className="flex gap-2 mt-2">
+                            {draft.status === 'pending' && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handlePublishDraft(draft.id); }}
+                                disabled={publishingDraft === draft.id}
+                                className="px-3 py-1.5 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs"
+                                data-testid={`button-publish-draft-${draft.id}`}
+                              >
+                                {publishingDraft === draft.id ? '發布中...' : '發布'}
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteDraft(draft.id); }}
+                              disabled={deletingDraft === draft.id}
+                              className="px-3 py-1.5 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs"
+                              data-testid={`button-delete-draft-${draft.id}`}
+                            >
+                              {deletingDraft === draft.id ? '刪除中...' : '刪除'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    {draft.status === 'pending' && (
+                    {draft.status === 'pending' && expandedDraft !== draft.id && (
                       <button
-                        onClick={() => handlePublishDraft(draft.id)}
+                        onClick={(e) => { e.stopPropagation(); handlePublishDraft(draft.id); }}
                         disabled={publishingDraft === draft.id}
                         className="ml-3 px-4 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                        data-testid={`button-publish-draft-${draft.id}`}
+                        data-testid={`button-publish-draft-collapsed-${draft.id}`}
                       >
                         {publishingDraft === draft.id ? '發布中...' : '發布'}
                       </button>
