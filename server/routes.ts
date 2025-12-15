@@ -2529,6 +2529,143 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // ============ Gacha V3 - Official Pool with Coupon Drop ============
+  
+  app.post("/api/gacha/pull/v3", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const pullSchema = z.object({
+        city: z.string().min(1),
+        district: z.string().min(1),
+        count: z.number().int().min(1).max(10).optional().default(5),
+      });
+
+      const validated = pullSchema.parse(req.body);
+      const { city, district, count } = validated;
+
+      const pulledPlaces = await storage.getOfficialPlacesByDistrict(city, district, count);
+      
+      if (pulledPlaces.length === 0) {
+        return res.json({
+          success: true,
+          places: [],
+          couponsWon: [],
+          meta: {
+            message: "No places found in this district pool.",
+            city,
+            district,
+          }
+        });
+      }
+
+      const placesResult: Array<{
+        id: number;
+        placeName: string;
+        category: string;
+        subcategory?: string | null;
+        description?: string | null;
+        address?: string | null;
+        rating?: number | null;
+        locationLat?: number | null;
+        locationLng?: number | null;
+        googlePlaceId?: string | null;
+        hasMerchantClaim: boolean;
+        couponWon?: {
+          id: number;
+          title: string;
+          code: string;
+          terms?: string | null;
+        } | null;
+      }> = [];
+      
+      const couponsWon: Array<{
+        couponId: number;
+        placeId: number;
+        placeName: string;
+        title: string;
+        code: string;
+        terms?: string | null;
+      }> = [];
+
+      for (const place of pulledPlaces) {
+        let couponWon: typeof couponsWon[0] | null = null;
+        let hasMerchantClaim = false;
+
+        const claimInfo = await storage.getClaimByOfficialPlaceId(place.id);
+        
+        if (claimInfo) {
+          hasMerchantClaim = true;
+          
+          const dropRate = claimInfo.claim.couponDropRate ?? 0.1;
+          
+          if (Math.random() < dropRate && claimInfo.coupons.length > 0) {
+            const randomIndex = Math.floor(Math.random() * claimInfo.coupons.length);
+            const wonCoupon = claimInfo.coupons[randomIndex];
+            
+            couponWon = {
+              couponId: wonCoupon.id,
+              placeId: place.id,
+              placeName: place.placeName,
+              title: wonCoupon.title,
+              code: wonCoupon.code,
+              terms: wonCoupon.terms,
+            };
+            
+            couponsWon.push(couponWon);
+            
+            await storage.saveToCollectionWithCoupon(userId, place, wonCoupon);
+          } else {
+            await storage.saveToCollectionWithCoupon(userId, place);
+          }
+        } else {
+          await storage.saveToCollectionWithCoupon(userId, place);
+        }
+
+        placesResult.push({
+          id: place.id,
+          placeName: place.placeName,
+          category: place.category,
+          subcategory: place.subcategory,
+          description: place.description,
+          address: place.address,
+          rating: place.rating,
+          locationLat: place.locationLat,
+          locationLng: place.locationLng,
+          googlePlaceId: place.googlePlaceId,
+          hasMerchantClaim,
+          couponWon: couponWon ? {
+            id: couponWon.couponId,
+            title: couponWon.title,
+            code: couponWon.code,
+            terms: couponWon.terms,
+          } : null,
+        });
+      }
+
+      res.json({
+        success: true,
+        places: placesResult,
+        couponsWon,
+        meta: {
+          city,
+          district,
+          totalPlaces: placesResult.length,
+          totalCouponsWon: couponsWon.length,
+        }
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Gacha pull v3 error:", error);
+      res.status(500).json({ error: "Failed to perform gacha pull" });
+    }
+  });
+
   // ============ Merchant Registration ============
   app.post("/api/merchant/register", isAuthenticated, async (req: any, res) => {
     try {

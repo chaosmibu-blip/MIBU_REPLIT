@@ -150,6 +150,11 @@ export interface IStorage {
   getPlacesByDistrict(city: string, district: string): Promise<Place[]>;
   getJackpotPlaces(city: string, district: string): Promise<Place[]>;
   getCouponsByPlaceId(placeId: number): Promise<Coupon[]>;
+
+  // Gacha 2.0 - Official Pool
+  getOfficialPlacesByDistrict(city: string, district: string, limit?: number): Promise<Place[]>;
+  getClaimByOfficialPlaceId(officialPlaceId: number): Promise<{ claim: MerchantPlaceLink; coupons: Coupon[] } | undefined>;
+  saveToCollectionWithCoupon(userId: string, place: Place, wonCoupon?: Coupon): Promise<Collection>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -939,6 +944,93 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(coupons)
       .where(eq(coupons.placeId, placeId));
+  }
+
+  // Gacha 2.0 - Official Pool
+  async getOfficialPlacesByDistrict(city: string, district: string, limit?: number): Promise<Place[]> {
+    const query = db
+      .select()
+      .from(places)
+      .where(and(eq(places.city, city), eq(places.district, district)))
+      .orderBy(sql`RANDOM()`);
+    
+    if (limit) {
+      return await query.limit(limit);
+    }
+    return await query;
+  }
+
+  async getClaimByOfficialPlaceId(officialPlaceId: number): Promise<{ claim: MerchantPlaceLink; coupons: Coupon[] } | undefined> {
+    const [claim] = await db
+      .select()
+      .from(merchantPlaceLinks)
+      .where(
+        and(
+          eq(merchantPlaceLinks.officialPlaceId, officialPlaceId),
+          eq(merchantPlaceLinks.status, 'approved')
+        )
+      );
+    
+    if (!claim) {
+      return undefined;
+    }
+
+    const placeCoupons = await db
+      .select()
+      .from(coupons)
+      .where(
+        and(
+          eq(coupons.placeId, officialPlaceId),
+          eq(coupons.isActive, true),
+          eq(coupons.archived, false),
+          sql`${coupons.remainingQuantity} > 0`
+        )
+      );
+
+    return { claim, coupons: placeCoupons };
+  }
+
+  async saveToCollectionWithCoupon(userId: string, place: Place, wonCoupon?: Coupon): Promise<Collection> {
+    const collectionData: InsertCollection = {
+      userId,
+      officialPlaceId: place.id,
+      placeName: place.placeName,
+      country: place.country,
+      city: place.city,
+      district: place.district,
+      category: place.category,
+      subcategory: place.subcategory || undefined,
+      description: place.description || undefined,
+      address: place.address || undefined,
+      placeId: place.googlePlaceId || undefined,
+      rating: place.rating?.toString(),
+      locationLat: place.locationLat?.toString(),
+      locationLng: place.locationLng?.toString(),
+      isCoupon: !!wonCoupon,
+      couponData: wonCoupon ? { 
+        title: wonCoupon.title, 
+        code: wonCoupon.code, 
+        terms: wonCoupon.terms 
+      } : undefined,
+      wonCouponId: wonCoupon?.id,
+    };
+
+    const [newCollection] = await db
+      .insert(collections)
+      .values(collectionData)
+      .returning();
+    
+    if (wonCoupon) {
+      await db
+        .update(coupons)
+        .set({ 
+          remainingQuantity: sql`${coupons.remainingQuantity} - 1`,
+          impressionCount: sql`${coupons.impressionCount} + 1`
+        })
+        .where(eq(coupons.id, wonCoupon.id));
+    }
+
+    return newCollection;
   }
 }
 

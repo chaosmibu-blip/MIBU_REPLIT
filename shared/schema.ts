@@ -114,30 +114,6 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// User's collected places
-export const collections = pgTable("collections", {
-  id: serial("id").primaryKey(),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  placeName: text("place_name").notNull(),
-  country: text("country").notNull(),
-  city: text("city").notNull(),
-  district: text("district"),
-  category: text("category"),
-  subcategory: text("subcategory"),
-  description: text("description"),
-  address: text("address"),
-  placeId: text("place_id"),
-  rating: text("rating"),
-  locationLat: text("location_lat"),
-  locationLng: text("location_lng"),
-  googleTypes: text("google_types"),
-  isCoupon: boolean("is_coupon").default(false),
-  couponData: jsonb("coupon_data"),
-  collectedAt: timestamp("collected_at").defaultNow().notNull(),
-}, (table) => [
-  index("IDX_collections_user_place").on(table.userId, table.placeName, table.district),
-]);
-
 // Merchants
 export const merchants = pgTable("merchants", {
   id: serial("id").primaryKey(),
@@ -194,29 +170,6 @@ export const placeFeedback = pgTable("place_feedback", {
   index("IDX_place_feedback_lookup").on(table.userId, table.placeName, table.district, table.city),
 ]);
 
-// Merchant-Place Links (ownership/claim system)
-export const merchantPlaceLinks = pgTable("merchant_place_links", {
-  id: serial("id").primaryKey(),
-  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
-  placeCacheId: integer("place_cache_id").references(() => placeCache.id),
-  googlePlaceId: text("google_place_id"), // Google Places API place_id for accurate matching
-  placeName: text("place_name").notNull(),
-  district: text("district").notNull(),
-  city: text("city").notNull(),
-  country: text("country").notNull(),
-  status: varchar("status", { length: 50 }).default('pending').notNull(), // pending, approved, rejected
-  promoTitle: text("promo_title"),
-  promoDescription: text("promo_description"),
-  promoImageUrl: text("promo_image_url"),
-  isPromoActive: boolean("is_promo_active").default(false),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => [
-  index("IDX_merchant_place_links_lookup").on(table.placeName, table.district, table.city),
-  index("IDX_merchant_place_links_merchant").on(table.merchantId),
-  index("IDX_merchant_place_links_google_place_id").on(table.googlePlaceId),
-]);
-
 // Gacha Rarity Types
 export type GachaRarity = 'SP' | 'SSR' | 'SR' | 'S' | 'R';
 
@@ -246,6 +199,32 @@ export const places = pgTable("places", {
   index("IDX_places_merchant").on(table.merchantId),
 ]);
 
+// Merchant-Place Links (ownership/claim system) - 單一認領制
+export const merchantPlaceLinks = pgTable("merchant_place_links", {
+  id: serial("id").primaryKey(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  officialPlaceId: integer("official_place_id").references(() => places.id).unique(),
+  placeCacheId: integer("place_cache_id").references(() => placeCache.id),
+  googlePlaceId: text("google_place_id"),
+  placeName: text("place_name").notNull(),
+  district: text("district").notNull(),
+  city: text("city").notNull(),
+  country: text("country").notNull(),
+  status: varchar("status", { length: 50 }).default('pending').notNull(),
+  couponDropRate: doublePrecision("coupon_drop_rate").default(0.1),
+  promoTitle: text("promo_title"),
+  promoDescription: text("promo_description"),
+  promoImageUrl: text("promo_image_url"),
+  isPromoActive: boolean("is_promo_active").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_merchant_place_links_lookup").on(table.placeName, table.district, table.city),
+  index("IDX_merchant_place_links_merchant").on(table.merchantId),
+  index("IDX_merchant_place_links_google_place_id").on(table.googlePlaceId),
+  index("IDX_merchant_place_links_official").on(table.officialPlaceId),
+]);
+
 // Merchant coupons
 export const coupons = pgTable("coupons", {
   id: serial("id").primaryKey(),
@@ -265,6 +244,33 @@ export const coupons = pgTable("coupons", {
   archived: boolean("archived").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// User's collected places (圖鑑/背包)
+export const collections = pgTable("collections", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  officialPlaceId: integer("official_place_id").references(() => places.id),
+  placeName: text("place_name").notNull(),
+  country: text("country").notNull(),
+  city: text("city").notNull(),
+  district: text("district"),
+  category: text("category"),
+  subcategory: text("subcategory"),
+  description: text("description"),
+  address: text("address"),
+  placeId: text("place_id"),
+  rating: text("rating"),
+  locationLat: text("location_lat"),
+  locationLng: text("location_lng"),
+  googleTypes: text("google_types"),
+  isCoupon: boolean("is_coupon").default(false),
+  couponData: jsonb("coupon_data"),
+  wonCouponId: integer("won_coupon_id").references(() => coupons.id),
+  collectedAt: timestamp("collected_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_collections_user_place").on(table.userId, table.placeName, table.district),
+  index("IDX_collections_official_place").on(table.officialPlaceId),
+]);
 
 // ============ Relations ============
 
@@ -944,9 +950,13 @@ export type InsertMessageHighlight = z.infer<typeof insertMessageHighlightSchema
 // Place Drafts - 草稿地點（待審核）
 export type PlaceDraftStatus = 'pending' | 'approved' | 'rejected';
 
+export type DraftSource = 'ai' | 'merchant';
+export type DraftStatus = 'pending' | 'approved' | 'rejected';
+
 export const placeDrafts = pgTable("place_drafts", {
   id: serial("id").primaryKey(),
-  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  merchantId: integer("merchant_id").references(() => merchants.id),
+  source: varchar("source", { length: 20 }).default('merchant').notNull(),
   placeName: text("place_name").notNull(),
   categoryId: integer("category_id").references(() => categories.id).notNull(),
   subcategoryId: integer("subcategory_id").references(() => subcategories.id).notNull(),
@@ -956,15 +966,18 @@ export const placeDrafts = pgTable("place_drafts", {
   countryId: integer("country_id").references(() => countries.id).notNull(),
   address: text("address"),
   googlePlaceId: text("google_place_id"),
+  googleRating: doublePrecision("google_rating"),
   locationLat: text("location_lat"),
   locationLng: text("location_lng"),
   status: varchar("status", { length: 20 }).default('pending').notNull(),
+  approvedPlaceId: integer("approved_place_id").references(() => places.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_place_drafts_merchant").on(table.merchantId),
   index("IDX_place_drafts_status").on(table.status),
   index("IDX_place_drafts_district").on(table.districtId),
+  index("IDX_place_drafts_source").on(table.source),
 ]);
 
 // Place Applications - 申請紀錄（審核流程）
