@@ -767,7 +767,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
                           )}
                           {draft.googlePlaceId && (
                             <a
-                              href={`https://www.google.com/maps/search/?api=1&query_place_id=${draft.googlePlaceId}`}
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(draft.placeName)}&query_place_id=${draft.googlePlaceId}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
