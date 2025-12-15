@@ -83,15 +83,9 @@ async function startServer() {
   app.use(cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (ALLOWED_ORIGINS.some(allowed => origin === allowed) || 
-          origin.endsWith('.replit.dev') || 
-          origin.endsWith('.replit.app') ||
-          origin.includes('.replit.') ||
-          origin.startsWith('http://localhost:') ||
-          origin.startsWith('http://127.0.0.1:')) {
+      if (ALLOWED_ORIGINS.some(allowed => origin === allowed || origin.endsWith('.replit.dev'))) {
         return callback(null, true);
       }
-      console.log('CORS blocked origin:', origin);
       callback(new Error('Not allowed by CORS'));
     },
     credentials: true,

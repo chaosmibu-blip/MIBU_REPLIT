@@ -10,25 +10,25 @@ import { z } from "zod";
 export const countries = pgTable("countries", {
   id: serial("id").primaryKey(),
   code: varchar("code", { length: 10 }).notNull().unique(),
-  nameEn: text("nameEn").notNull(),
-  nameZh: text("nameZh").notNull(),
-  nameJa: text("nameJa"),
-  nameKo: text("nameKo"),
-  isActive: boolean("isActive").default(true).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  nameEn: text("name_en").notNull(),
+  nameZh: text("name_zh").notNull(),
+  nameJa: text("name_ja"),
+  nameKo: text("name_ko"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Regions table (e.g., 北部, 中部, 南部, 東部 for Taiwan)
 export const regions = pgTable("regions", {
   id: serial("id").primaryKey(),
-  countryId: integer("countryId").references(() => countries.id).notNull(),
+  countryId: integer("country_id").references(() => countries.id).notNull(),
   code: varchar("code", { length: 50 }).notNull(),
-  nameEn: text("nameEn").notNull(),
-  nameZh: text("nameZh").notNull(),
-  nameJa: text("nameJa"),
-  nameKo: text("nameKo"),
-  isActive: boolean("isActive").default(true).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  nameEn: text("name_en").notNull(),
+  nameZh: text("name_zh").notNull(),
+  nameJa: text("name_ja"),
+  nameKo: text("name_ko"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_regions_country").on(table.countryId),
 ]);
@@ -36,14 +36,14 @@ export const regions = pgTable("regions", {
 // Districts table (行政區 e.g., 信義區, 大安區)
 export const districts = pgTable("districts", {
   id: serial("id").primaryKey(),
-  regionId: integer("regionId").references(() => regions.id).notNull(),
+  regionId: integer("region_id").references(() => regions.id).notNull(),
   code: varchar("code", { length: 50 }).notNull(),
-  nameEn: text("nameEn").notNull(),
-  nameZh: text("nameZh").notNull(),
-  nameJa: text("nameJa"),
-  nameKo: text("nameKo"),
-  isActive: boolean("isActive").default(true).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  nameEn: text("name_en").notNull(),
+  nameZh: text("name_zh").notNull(),
+  nameJa: text("name_ja"),
+  nameKo: text("name_ko"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_districts_region").on(table.regionId),
 ]);
@@ -54,30 +54,30 @@ export const districts = pgTable("districts", {
 export const categories = pgTable("categories", {
   id: serial("id").primaryKey(),
   code: varchar("code", { length: 50 }).notNull().unique(),
-  nameEn: text("nameEn").notNull(),
-  nameZh: text("nameZh").notNull(),
-  nameJa: text("nameJa"),
-  nameKo: text("nameKo"),
-  colorHex: varchar("colorHex", { length: 7 }).default('#6366f1'),
-  sortOrder: integer("sortOrder").default(0),
-  isActive: boolean("isActive").default(true).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  nameEn: text("name_en").notNull(),
+  nameZh: text("name_zh").notNull(),
+  nameJa: text("name_ja"),
+  nameKo: text("name_ko"),
+  colorHex: varchar("color_hex", { length: 7 }).default('#6366f1'),
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Subcategories (e.g., 火鍋, 鐵板燒, 排餐 under 食)
 // preferredTimeSlot: morning, lunch, afternoon, dinner, evening, anytime
 export const subcategories = pgTable("subcategories", {
   id: serial("id").primaryKey(),
-  categoryId: integer("categoryId").references(() => categories.id).notNull(),
+  categoryId: integer("category_id").references(() => categories.id).notNull(),
   code: varchar("code", { length: 100 }).notNull(),
-  nameEn: text("nameEn").notNull(),
-  nameZh: text("nameZh").notNull(),
-  nameJa: text("nameJa"),
-  nameKo: text("nameKo"),
-  searchKeywords: text("searchKeywords"),
-  preferredTimeSlot: varchar("preferredTimeSlot", { length: 20 }).default('anytime'),
-  isActive: boolean("isActive").default(true).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  nameEn: text("name_en").notNull(),
+  nameZh: text("name_zh").notNull(),
+  nameJa: text("name_ja"),
+  nameKo: text("name_ko"),
+  searchKeywords: text("search_keywords"),
+  preferredTimeSlot: varchar("preferred_time_slot", { length: 20 }).default('anytime'),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_subcategories_category").on(table.categoryId),
 ]);
