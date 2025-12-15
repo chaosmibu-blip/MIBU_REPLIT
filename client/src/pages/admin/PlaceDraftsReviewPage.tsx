@@ -303,22 +303,16 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
     return colors[status] || 'bg-slate-100 text-slate-700';
   };
 
+  const getGoogleSearchUrl = (draft: PlaceDraft) => {
+    const query = encodeURIComponent(draft.placeName + (draft.address ? ' ' + draft.address : ''));
+    return `https://www.google.com/search?igu=1&q=${query}`;
+  };
+
   const getGoogleMapsSearchUrl = (draft: PlaceDraft) => {
     if (draft.googlePlaceId) {
       return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(draft.placeName)}&query_place_id=${draft.googlePlaceId}`;
     }
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(draft.placeName + (draft.address ? ' ' + draft.address : ''))}`;
-  };
-
-  const getGoogleMapsEmbedSrc = (draft: PlaceDraft) => {
-    if (draft.googlePlaceId) {
-      return `https://www.google.com/maps?q=place_id:${draft.googlePlaceId}&output=embed`;
-    }
-    if (draft.locationLat && draft.locationLng) {
-      return `https://www.google.com/maps?q=${draft.locationLat},${draft.locationLng}&z=16&output=embed`;
-    }
-    const query = encodeURIComponent(draft.placeName + (draft.address ? ' ' + draft.address : ''));
-    return `https://www.google.com/maps?q=${query}&output=embed`;
   };
 
   const pendingDrafts = allDrafts.filter(d => d.status === 'pending');
@@ -588,19 +582,19 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
           </div>
 
           <div className="w-1/2 bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col">
-            <h3 className="font-bold text-slate-800 mb-4">地點預覽</h3>
+            <h3 className="font-bold text-slate-800 mb-4">Google 搜尋預覽</h3>
             {selectedDraft ? (
               <div className="flex flex-col flex-1">
                 <div className="flex-1 min-h-[300px] rounded-xl overflow-hidden bg-slate-100 mb-4">
                   <iframe
-                    src={getGoogleMapsEmbedSrc(selectedDraft)}
+                    src={getGoogleSearchUrl(selectedDraft)}
                     width="100%"
                     height="100%"
                     style={{ border: 0, minHeight: '300px' }}
                     allowFullScreen
                     loading="lazy"
                     referrerPolicy="no-referrer-when-downgrade"
-                    title={`Map preview for ${selectedDraft.placeName}`}
+                    title={`Google search for ${selectedDraft.placeName}`}
                   />
                 </div>
                 
