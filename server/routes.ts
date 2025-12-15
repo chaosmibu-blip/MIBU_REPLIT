@@ -2504,32 +2504,49 @@ ${uncachedSkeleton.map((item, idx) => `  {
   // ============ Gacha V3 - One-Day Itinerary from Official Pool ============
   
   app.post("/api/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
+    console.log('[Gacha V3] Request received:', { body: req.body, userId: req.user?.claims?.sub });
+    
     try {
       const userId = req.user?.claims?.sub;
       if (!userId) {
-        return res.status(401).json({ error: "Authentication required" });
+        console.log('[Gacha V3] No userId found in request');
+        return res.status(401).json({ 
+          success: false,
+          error: "需要登入才能使用扭蛋功能",
+          code: "AUTH_REQUIRED"
+        });
       }
 
       const itinerarySchema = z.object({
-        city: z.string().min(1),
-        district: z.string().min(1),
+        city: z.string().min(1, "請選擇城市"),
+        district: z.string().min(1, "請選擇區域"),
         pace: z.enum(['relaxed', 'moderate', 'packed']).optional().default('moderate'),
       });
 
       const validated = itinerarySchema.parse(req.body);
       const { city, district, pace } = validated;
+      
+      console.log('[Gacha V3] Validated params:', { city, district, pace, userId });
 
       const itemCounts = { relaxed: 5, moderate: 7, packed: 10 };
       const targetCount = itemCounts[pace];
 
       const allPlaces = await storage.getOfficialPlacesByDistrict(city, district, 50);
       
+      console.log('[Gacha V3] Found places:', allPlaces.length);
+      
       if (allPlaces.length === 0) {
+        console.log('[Gacha V3] No places found for:', { city, district });
         return res.json({
           success: true,
           itinerary: [],
           couponsWon: [],
-          meta: { message: "No places found in this district.", city, district }
+          meta: { 
+            message: `${city}${district}目前還沒有上線的景點，我們正在努力擴充中！`,
+            code: "NO_PLACES_AVAILABLE",
+            city, 
+            district 
+          }
         });
       }
 
@@ -2647,11 +2664,23 @@ ${uncachedSkeleton.map((item, idx) => `  {
         }
       });
     } catch (error) {
+      console.error("[Gacha V3] Error:", error);
+      
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: error.errors });
+        const firstError = error.errors[0];
+        return res.status(400).json({ 
+          success: false,
+          error: firstError?.message || "請求參數格式錯誤",
+          code: "INVALID_PARAMS",
+          details: error.errors
+        });
       }
-      console.error("Gacha itinerary v3 error:", error);
-      res.status(500).json({ error: "Failed to generate itinerary" });
+      
+      res.status(500).json({ 
+        success: false,
+        error: "扭蛋系統暫時無法使用，請稍後再試",
+        code: "INTERNAL_ERROR"
+      });
     }
   });
 
