@@ -534,7 +534,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
           </form>
         </div>
       ) : (
-        <div className="flex gap-4 min-h-[500px]">
+        <div className="flex gap-4 min-h-[650px]">
           <div className="w-1/2 bg-white rounded-2xl p-4 shadow-sm border border-slate-100 overflow-y-auto max-h-[600px]">
             <h3 className="font-bold text-slate-800 mb-4">待發布草稿</h3>
             {pendingDrafts.length === 0 ? (
@@ -585,12 +585,12 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
             <h3 className="font-bold text-slate-800 mb-4">Google 搜尋預覽</h3>
             {selectedDraft ? (
               <div className="flex flex-col flex-1">
-                <div className="flex-1 min-h-[300px] rounded-xl overflow-hidden bg-slate-100 mb-4">
+                <div className="flex-1 min-h-[450px] rounded-xl overflow-hidden bg-slate-100 mb-4">
                   <iframe
                     src={getGoogleSearchUrl(selectedDraft)}
                     width="100%"
                     height="100%"
-                    style={{ border: 0, minHeight: '300px' }}
+                    style={{ border: 0, minHeight: '450px' }}
                     allowFullScreen
                     loading="lazy"
                     referrerPolicy="no-referrer-when-downgrade"
