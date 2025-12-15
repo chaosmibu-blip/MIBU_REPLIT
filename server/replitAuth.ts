@@ -447,8 +447,8 @@ export async function setupAuth(app: Express) {
       }
 
       // 決定是否需要審核
-      const needsApproval = ['merchant', 'specialist', 'admin'].includes(validated.role || 'consumer');
-      const isApproved = !needsApproval; // consumer 直接通過，其他需審核
+      const needsApproval = ['merchant', 'specialist', 'admin'].includes(validated.role || 'traveler');
+      const isApproved = !needsApproval; // traveler 直接通過，其他需審核
 
       // 建立使用者
       const user = await storage.createUser({
@@ -456,7 +456,7 @@ export async function setupAuth(app: Express) {
         password: hashPassword(validated.password),
         firstName: validated.firstName || null,
         lastName: validated.lastName || null,
-        role: validated.role || 'consumer',
+        role: validated.role || 'traveler',
         provider: 'email',
         isApproved,
       });
@@ -628,7 +628,7 @@ export const requireRole = (...allowedRoles: string[]): RequestHandler => {
         return res.status(401).json({ message: "User not found" });
       }
       
-      const userRole = dbUser.role || 'consumer';
+      const userRole = dbUser.role || 'traveler';
       if (!allowedRoles.includes(userRole)) {
         return res.status(403).json({ message: "Forbidden: insufficient permissions" });
       }
