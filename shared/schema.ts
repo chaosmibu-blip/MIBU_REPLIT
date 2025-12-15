@@ -95,8 +95,8 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// User roles: consumer (default), merchant, specialist, admin
-export type UserRole = 'consumer' | 'merchant' | 'specialist' | 'admin';
+// User roles: traveler (default), merchant, specialist, admin
+export type UserRole = 'traveler' | 'merchant' | 'specialist' | 'admin';
 
 // Users table - supports Replit Auth, guest login, and email/password auth
 export const users = pgTable("users", {
@@ -106,7 +106,7 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
-  role: varchar("role", { length: 20 }).default('consumer').notNull(),
+  role: varchar("role", { length: 20 }).default('traveler').notNull(),
   provider: varchar("provider", { length: 20 }), // 'replit' | 'guest' | 'email'
   isApproved: boolean("is_approved").default(false).notNull(), // Requires admin approval for certain roles
   stripeCustomerId: varchar("stripe_customer_id"),
@@ -411,7 +411,7 @@ export const registerUserSchema = createInsertSchema(users).pick({
 }).extend({
   email: z.string().email("請輸入有效的電子郵件"),
   password: z.string().min(8, "密碼至少需要 8 個字元"),
-  role: z.enum(['consumer', 'merchant', 'specialist', 'admin']).default('consumer'),
+  role: z.enum(['traveler', 'merchant', 'specialist', 'admin']).default('traveler'),
 });
 
 export const insertCollectionSchema = createInsertSchema(collections).omit({

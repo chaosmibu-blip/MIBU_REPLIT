@@ -225,20 +225,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Generate unique user ID
       const userId = `email_${crypto.randomBytes(16).toString('hex')}`;
       
-      // Create user with consumer role by default
+      // Create user with traveler role by default
       const user = await storage.createUser({
         id: userId,
         email: validated.email,
         password: hashedPassword,
         firstName: validated.firstName || null,
         lastName: validated.lastName || null,
-        role: validated.role || 'consumer',
-        isApproved: validated.role === 'consumer', // Consumers are auto-approved
+        role: validated.role || 'traveler',
+        isApproved: validated.role === 'traveler', // Travelers are auto-approved
         provider: 'email',
       });
       
       // Generate JWT token
-      const token = generateToken(user.id, user.role || 'consumer');
+      const token = generateToken(user.id, user.role || 'traveler');
       
       res.status(201).json({ 
         user: { 
@@ -281,8 +281,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: '電子郵件或密碼錯誤' });
       }
       
-      // Check approval status for non-consumer roles
-      if (user.role !== 'consumer' && !user.isApproved) {
+      // Check approval status for non-traveler roles
+      if (user.role !== 'traveler' && !user.isApproved) {
         return res.status(403).json({ 
           error: '帳號審核中，請等待管理員核准',
           isApproved: user.isApproved 
@@ -290,7 +290,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Generate JWT token
-      const token = generateToken(user.id, user.role || 'consumer');
+      const token = generateToken(user.id, user.role || 'traveler');
       
       res.json({ 
         user: { 
