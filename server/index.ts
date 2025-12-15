@@ -10,6 +10,7 @@ import { WebhookHandlers } from "./webhookHandlers";
 import { storage } from "./storage";
 import { verifyJwtToken, initializeSuperAdmin } from "./replitAuth";
 import { checkGeofence } from "./lib/geofencing";
+import { generatePlaceWithAI, verifyPlaceWithGoogle } from "./lib/placeGenerator";
 import { z } from "zod";
 
 declare module "http" {
@@ -320,6 +321,110 @@ async function startServer() {
     },
     () => {
       console.log("Server is running on port " + port);
+
+      // ============================================================
+      // 6. 每分鐘自動生成行程卡草稿
+      // ============================================================
+      let isAutoDraftRunning = false;
+      
+      setInterval(async () => {
+        // Prevent overlapping runs
+        if (isAutoDraftRunning) {
+          console.log('[AutoDraft] Previous run still in progress, skipping...');
+          return;
+        }
+        
+        isAutoDraftRunning = true;
+        try {
+          console.log('[AutoDraft] Starting automatic draft generation...');
+          
+          // 1. 隨機選擇一個區域 (district) - 預設台灣 (countryId = 1)
+          const district = await storage.getRandomDistrictByCountry(1);
+          if (!district) {
+            console.log('[AutoDraft] No district found, skipping...');
+            return;
+          }
+          
+          // 2. 取得區域的父級資料
+          const districtWithParents = await storage.getDistrictWithParents(district.id);
+          if (!districtWithParents) {
+            console.log('[AutoDraft] Failed to get district parents, skipping...');
+            return;
+          }
+          
+          const { region, country } = districtWithParents;
+          
+          // 3. 隨機選擇一個分類和子分類
+          const category = await storage.getRandomCategory();
+          if (!category) {
+            console.log('[AutoDraft] No category found, skipping...');
+            return;
+          }
+          
+          const subcategory = await storage.getRandomSubcategoryByCategory(category.id);
+          if (!subcategory) {
+            console.log('[AutoDraft] No subcategory found, skipping...');
+            return;
+          }
+          
+          console.log(`[AutoDraft] Generating for: ${region.nameZh}${district.nameZh} - ${category.nameZh}/${subcategory.nameZh}`);
+          
+          // 4. 呼叫 AI 生成地點
+          const aiResult = await generatePlaceWithAI(
+            district.nameZh,
+            region.nameZh,
+            country.nameZh,
+            subcategory.nameZh,
+            category.nameZh
+          );
+          
+          if (!aiResult) {
+            console.log('[AutoDraft] AI generation failed, skipping...');
+            return;
+          }
+          
+          console.log(`[AutoDraft] AI generated: ${aiResult.placeName}`);
+          
+          // 5. 用 Google Maps API 驗證
+          const verification = await verifyPlaceWithGoogle(
+            aiResult.placeName,
+            district.nameZh,
+            region.nameZh
+          );
+          
+          if (!verification.verified) {
+            console.log(`[AutoDraft] Google verification failed for: ${aiResult.placeName}, skipping...`);
+            return;
+          }
+          
+          console.log(`[AutoDraft] Verified: ${verification.verifiedName} (${verification.placeId})`);
+          
+          // 6. 存入 placeDrafts 表
+          const draft = await storage.createPlaceDraft({
+            source: 'ai',
+            placeName: verification.verifiedName || aiResult.placeName,
+            categoryId: category.id,
+            subcategoryId: subcategory.id,
+            districtId: district.id,
+            regionId: region.id,
+            countryId: country.id,
+            description: aiResult.description,
+            address: verification.verifiedAddress,
+            googlePlaceId: verification.placeId,
+            googleRating: verification.rating,
+            locationLat: verification.location?.lat?.toString(),
+            locationLng: verification.location?.lng?.toString(),
+          });
+          
+          console.log(`[AutoDraft] Draft created: ID=${draft.id}, Name=${draft.placeName}`);
+        } catch (error) {
+          console.error('[AutoDraft] Error:', error);
+        } finally {
+          isAutoDraftRunning = false;
+        }
+      }, 60000); // 60秒 = 1分鐘
+      
+      console.log('[AutoDraft] Automatic draft generation scheduled (every 1 minute)');
     },
   );
 }
