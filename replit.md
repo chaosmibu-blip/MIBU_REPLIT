@@ -92,7 +92,7 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) that gamifies travel pl
 - **後端正式網址**：`https://gacha-travel--s8869420.replit.app`
 
 ### 技術長模式（CTO Mode）
-當後端 Agent 完成功能更新時，必須產生「前端同步指令」，讓使用者可以直接貼給前端 Agent。
+當後端 Agent 完成功能更新有牽動到前端時，必須產生「前端同步指令」，讓使用者可以直接貼給前端 Agent。
 
 #### 指令格式模板
 每次後端更新完成後，產生以下格式的指令：
