@@ -487,8 +487,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
           <div className="text-xs text-slate-500">待審核申請</div>
         </div>
         <div className="bg-white rounded-2xl p-3 shadow-sm border border-slate-100 text-center">
-          <div className="text-xl font-bold text-teal-600 mb-1" data-testid="text-drafts-count">{allDrafts.length}</div>
-          <div className="text-xs text-slate-500">草稿地點</div>
+          <div className="text-xl font-bold text-teal-600 mb-1" data-testid="text-drafts-count">{allDrafts.filter(d => d.status === 'pending').length}</div>
+          <div className="text-xs text-slate-500">待發布</div>
         </div>
       </div>
 
@@ -513,7 +513,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
           }`}
           data-testid="tab-all-drafts"
         >
-          所有草稿 ({allDrafts.length})
+          待發布草稿 ({allDrafts.filter(d => d.status === 'pending').length})
         </button>
         <button
           onClick={() => setActiveTab('pending_users')}
@@ -722,12 +722,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
         </div>
       ) : activeTab === 'all_drafts' ? (
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <h3 className="font-bold text-slate-800 mb-4">所有草稿地點</h3>
-          {allDrafts.length === 0 ? (
-            <p className="text-slate-400 text-center py-4">目前沒有草稿</p>
+          <h3 className="font-bold text-slate-800 mb-4">待發布草稿</h3>
+          {allDrafts.filter(d => d.status === 'pending').length === 0 ? (
+            <p className="text-slate-400 text-center py-4">目前沒有待發布的草稿</p>
           ) : (
             <div className="space-y-3">
-              {allDrafts.map((draft) => (
+              {allDrafts.filter(d => d.status === 'pending').map((draft) => (
                 <div 
                   key={draft.id} 
                   className="py-3 px-4 bg-slate-50 rounded-xl cursor-pointer transition-all"
