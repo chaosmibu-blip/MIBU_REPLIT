@@ -95,18 +95,20 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// User roles: consumer (default), merchant, admin
-export type UserRole = 'consumer' | 'merchant' | 'admin';
+// User roles: consumer (default), merchant, specialist, admin
+export type UserRole = 'consumer' | 'merchant' | 'specialist' | 'admin';
 
-// Users table - supports Replit Auth and guest login
+// Users table - supports Replit Auth, guest login, and email/password auth
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email"),
+  password: text("password"), // Hashed password for email auth (null for OAuth users)
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
   role: varchar("role", { length: 20 }).default('consumer').notNull(),
   provider: varchar("provider", { length: 20 }), // 'replit' | 'guest' | 'email'
+  isApproved: boolean("is_approved").default(false).notNull(), // Requires admin approval for certain roles
   stripeCustomerId: varchar("stripe_customer_id"),
   sosSecretKey: varchar("sos_secret_key", { length: 64 }), // Long-lived SOS webhook key
   isActive: boolean("is_active").default(true).notNull(),
@@ -349,6 +351,19 @@ export const placesRelations = relations(places, ({ one, many }) => ({
 
 // Insert/Upsert schemas
 export const upsertUserSchema = createInsertSchema(users);
+
+// Registration schema for email/password signup
+export const registerUserSchema = createInsertSchema(users).pick({
+  email: true,
+  password: true,
+  firstName: true,
+  lastName: true,
+  role: true,
+}).extend({
+  email: z.string().email("請輸入有效的電子郵件"),
+  password: z.string().min(8, "密碼至少需要 8 個字元"),
+  role: z.enum(['consumer', 'merchant', 'specialist', 'admin']).default('consumer'),
+});
 
 export const insertCollectionSchema = createInsertSchema(collections).omit({
   id: true,
