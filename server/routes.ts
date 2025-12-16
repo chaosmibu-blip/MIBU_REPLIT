@@ -8,7 +8,6 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { createTripPlannerRoutes } from "../modules/trip-planner/server/routes";
 import { createPlannerServiceRoutes } from "../modules/trip-planner/server/planner-routes";
-import { performGachaDraw } from "./lib/gachaService";
 import { registerStripeRoutes } from "./stripeRoutes";
 import { getUncachableStripeClient } from "./stripeClient";
 import { checkGeofence } from "./lib/geofencing";
@@ -5332,69 +5331,6 @@ ${draft.address ? `地址：${draft.address}` : ''}
     } catch (error) {
       console.error("Remove global exclusion error:", error);
       res.status(500).json({ error: "Failed to remove global exclusion" });
-    }
-  });
-
-  /**
-   * ===============================================
-   * POST /api/gacha/draw - 执行扭蛋抽取
-   * ===============================================
-   * 重构后的端点，呼叫 GachaService 来处理复杂的扭蛋逻辑。
-   */
-  app.post('/api/gacha/draw', isAuthenticated, async (req: any, res) => {
-    const { cityId, count } = req.body;
-    const userId = req.user?.claims?.sub;
-
-    if (!userId || !cityId || !count || count <= 0) {
-      return res.status(400).json({ error: 'Missing or invalid parameters: userId, cityId, count are required.' });
-    }
-
-    try {
-      const results = await performGachaDraw(userId, cityId, parseInt(count, 10));
-      return res.status(200).json(results);
-    } catch (error) {
-      console.error('[API Error] Gacha draw failed:', error);
-      return res.status(500).json({
-        error: 'An error occurred during the gacha draw.',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
-
-  /**
-   * ===============================================
-   * GET /api/home/content - 获取首页动态内容
-   * ===============================================
-   * 该端点用于提供App首页所需的所有动态资讯，
-   * 包括有效的公告和当前正在进行的活动。
-   */
-  app.get('/api/home/content', async (req, res) => {
-    console.log('[API] Received request for /api/home/content');
-    try {
-      const [
-        activeAnnouncements,
-        currentEvents
-      ] = await Promise.all([
-        storage.getActiveAnnouncements(),
-        storage.getCurrentEvents()
-      ]);
-
-      const homeContent = {
-        announcements: activeAnnouncements,
-        events: currentEvents,
-      };
-
-      console.log(`[API] Responding to /api/home/content with ${activeAnnouncements.length} announcements and ${currentEvents.length} events.`);
-      
-      return res.status(200).json(homeContent);
-
-    } catch (error) {
-      console.error('[API Error] Failed to get home content:', error);
-      
-      return res.status(500).json({
-        error: 'Failed to retrieve home page content.',
-        details: error instanceof Error ? error.message : 'An unknown error occurred'
-      });
     }
   });
 

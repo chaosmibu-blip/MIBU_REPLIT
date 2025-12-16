@@ -3,7 +3,7 @@ import {
   countries, regions, districts, categories, subcategories, chatInvites,
   placeProducts, cartItems, commerceOrders, klookProducts, messageHighlights,
   placeDrafts, placeApplications, userLocations, planners, serviceOrders, places,
-  specialists, transactions, serviceRelations, announcements, events, userCoupons, userCollection,
+  specialists, transactions, serviceRelations,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -25,12 +25,10 @@ import {
   type Place,
   type Specialist, type InsertSpecialist,
   type Transaction, type InsertTransaction,
-  type ServiceRelation, type InsertServiceRelation,
-  type Announcement, type Event,
-  type UserCoupon, type UserCollectionItem
+  type ServiceRelation, type InsertServiceRelation
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, ilike, or, isNull, lte, gte } from "drizzle-orm";
+import { eq, and, desc, sql, ilike, or, isNull } from "drizzle-orm";
 
 export interface IStorage {
   // Users (mandatory for Replit Auth)
@@ -1513,91 +1511,6 @@ export class DatabaseStorage implements IStorage {
       return { seedCode: merchant.dailySeedCode, updatedAt: merchant.codeUpdatedAt };
     }
     return undefined;
-  }
-
-  async getActiveAnnouncements(): Promise<Announcement[]> {
-    try {
-      const result = await db
-        .select()
-        .from(announcements)
-        .where(eq(announcements.isActive, true))
-        .orderBy(desc(announcements.createdAt));
-      return result;
-    } catch (error) {
-      console.error('Error fetching active announcements:', error);
-      throw new Error('Could not fetch announcements');
-    }
-  }
-
-  async getCurrentEvents(): Promise<Event[]> {
-    try {
-      const now = new Date();
-      const result = await db
-        .select()
-        .from(events)
-        .where(
-          and(
-            lte(events.startDate, now),
-            gte(events.endDate, now)
-          )
-        )
-        .orderBy(desc(events.endDate));
-      return result;
-    } catch (error) {
-      console.error('Error fetching current events:', error);
-      throw new Error('Could not fetch events');
-    }
-  }
-
-  async getRandomPlacesByCity(cityId: string, limit: number): Promise<Place[]> {
-    const result = await db
-      .select()
-      .from(places)
-      .where(eq(places.city, cityId))
-      .orderBy(sql`RANDOM()`)
-      .limit(limit);
-    return result;
-  }
-
-  async getActiveCouponsForPlace(placeId: number): Promise<Coupon[]> {
-    return await db
-      .select()
-      .from(coupons)
-      .where(
-        and(
-          eq(coupons.placeId, placeId),
-          eq(coupons.isActive, true)
-        )
-      );
-  }
-
-  async addUserCoupon(userId: string, couponId: number): Promise<void> {
-    await db.insert(userCoupons).values({
-      userId,
-      couponId,
-      status: 'active',
-    });
-  }
-
-  async upsertUserCollectionEntry(userId: string, placeId: number): Promise<void> {
-    const existing = await db
-      .select()
-      .from(userCollection)
-      .where(
-        and(
-          eq(userCollection.userId, userId),
-          eq(userCollection.placeId, placeId)
-        )
-      )
-      .limit(1);
-    
-    if (existing.length === 0) {
-      await db.insert(userCollection).values({
-        userId,
-        placeId,
-        isNew: true,
-      });
-    }
   }
 }
 

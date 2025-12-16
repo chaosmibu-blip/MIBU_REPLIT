@@ -8,13 +8,6 @@
       "when": 1765864204911,
       "tag": "0000_eager_zarek",
       "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1765907431590,
-      "tag": "0001_material_sabra",
-      "breakpoints": true
     }
   ]
 }

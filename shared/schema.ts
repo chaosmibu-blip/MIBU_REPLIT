@@ -1,13 +1,8 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, index, doublePrecision, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, index, doublePrecision } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-
-// ============ Enums ============
-
-export const eventTypeEnum = pgEnum('event_type', ['flash', 'holiday']);
-export const userCouponStatusEnum = pgEnum('user_coupon_status', ['active', 'used', 'expired']);
 
 // ============ Location Hierarchy Tables ============
 
@@ -119,13 +114,6 @@ export const users = pgTable("users", {
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-  // Personal profile fields
-  gender: varchar("gender", { length: 50 }),
-  dateOfBirth: timestamp("date_of_birth"),
-  phone: varchar("phone", { length: 50 }),
-  dietaryRestrictions: jsonb("dietary_restrictions").default([]),
-  medicalHistory: jsonb("medical_history").default([]),
-  emergencyContact: jsonb("emergency_contact"),
 });
 
 // Merchants
@@ -376,8 +364,6 @@ export const subcategoriesRelations = relations(subcategories, ({ one }) => ({
 export const usersRelations = relations(users, ({ many }) => ({
   collections: many(collections),
   merchants: many(merchants),
-  userCoupons: many(userCoupons),
-  userCollection: many(userCollection),
 }));
 
 export const collectionsRelations = relations(collections, ({ one }) => ({
@@ -1213,93 +1199,3 @@ export const insertSosEventSchema = createInsertSchema(sosEvents).omit({
 
 export type SosEvent = typeof sosEvents.$inferSelect;
 export type InsertSosEvent = z.infer<typeof insertSosEventSchema>;
-
-// ============ Announcements Table ============
-
-export const announcements = pgTable('announcements', {
-  id: serial('id').primaryKey(),
-  content: text('content').notNull(),
-  isActive: boolean('is_active').default(true),
-  createdAt: timestamp('created_at').defaultNow(),
-});
-
-export const insertAnnouncementSchema = createInsertSchema(announcements).omit({
-  id: true,
-  createdAt: true,
-});
-
-export type Announcement = typeof announcements.$inferSelect;
-export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
-
-// ============ Events Table ============
-
-export const events = pgTable('events', {
-  id: serial('id').primaryKey(),
-  title: varchar('title', { length: 256 }).notNull(),
-  content: text('content'),
-  eventType: eventTypeEnum('event_type').notNull(),
-  startDate: timestamp('start_date').notNull(),
-  endDate: timestamp('end_date').notNull(),
-  imageUrl: varchar('image_url', { length: 512 }),
-  createdAt: timestamp('created_at').defaultNow(),
-});
-
-export const insertEventSchema = createInsertSchema(events).omit({
-  id: true,
-  createdAt: true,
-});
-
-export type Event = typeof events.$inferSelect;
-export type InsertEvent = z.infer<typeof insertEventSchema>;
-
-// ============ User Coupons Table (道具箱) ============
-
-export const userCoupons = pgTable('user_coupons', {
-  id: serial('id').primaryKey(),
-  userId: varchar('user_id').references(() => users.id).notNull(),
-  couponId: integer('coupon_id').references(() => coupons.id).notNull(),
-  acquiredAt: timestamp('acquired_at').defaultNow(),
-  status: userCouponStatusEnum('status').default('active').notNull(),
-}, (table) => [
-  index("IDX_user_coupons_user").on(table.userId),
-  index("IDX_user_coupons_coupon").on(table.couponId),
-]);
-
-export const userCouponsRelations = relations(userCoupons, ({ one }) => ({
-  user: one(users, { fields: [userCoupons.userId], references: [users.id] }),
-  couponTemplate: one(coupons, { fields: [userCoupons.couponId], references: [coupons.id] }),
-}));
-
-export const insertUserCouponSchema = createInsertSchema(userCoupons).omit({
-  id: true,
-  acquiredAt: true,
-});
-
-export type UserCoupon = typeof userCoupons.$inferSelect;
-export type InsertUserCoupon = z.infer<typeof insertUserCouponSchema>;
-
-// ============ User Collection Table (圖鑑) ============
-
-export const userCollection = pgTable('user_collection', {
-  id: serial('id').primaryKey(),
-  userId: varchar('user_id').references(() => users.id).notNull(),
-  placeId: integer('place_id').references(() => places.id).notNull(),
-  firstAcquiredAt: timestamp('first_acquired_at').defaultNow(),
-  isNew: boolean('is_new').default(true),
-}, (table) => [
-  index("IDX_user_collection_user").on(table.userId),
-  index("IDX_user_collection_place").on(table.placeId),
-]);
-
-export const userCollectionRelations = relations(userCollection, ({ one }) => ({
-  user: one(users, { fields: [userCollection.userId], references: [users.id] }),
-  place: one(places, { fields: [userCollection.placeId], references: [places.id] }),
-}));
-
-export const insertUserCollectionSchema = createInsertSchema(userCollection).omit({
-  id: true,
-  firstAcquiredAt: true,
-});
-
-export type UserCollectionItem = typeof userCollection.$inferSelect;
-export type InsertUserCollectionItem = z.infer<typeof insertUserCollectionSchema>;
