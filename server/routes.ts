@@ -5334,6 +5334,43 @@ ${draft.address ? `地址：${draft.address}` : ''}
     }
   });
 
+  /**
+   * ===============================================
+   * GET /api/home/content - 获取首页动态内容
+   * ===============================================
+   * 该端点用于提供App首页所需的所有动态资讯，
+   * 包括有效的公告和当前正在进行的活动。
+   */
+  app.get('/api/home/content', async (req, res) => {
+    console.log('[API] Received request for /api/home/content');
+    try {
+      const [
+        activeAnnouncements,
+        currentEvents
+      ] = await Promise.all([
+        storage.getActiveAnnouncements(),
+        storage.getCurrentEvents()
+      ]);
+
+      const homeContent = {
+        announcements: activeAnnouncements,
+        events: currentEvents,
+      };
+
+      console.log(`[API] Responding to /api/home/content with ${activeAnnouncements.length} announcements and ${currentEvents.length} events.`);
+      
+      return res.status(200).json(homeContent);
+
+    } catch (error) {
+      console.error('[API Error] Failed to get home content:', error);
+      
+      return res.status(500).json({
+        error: 'Failed to retrieve home page content.',
+        details: error instanceof Error ? error.message : 'An unknown error occurred'
+      });
+    }
+  });
+
   registerStripeRoutes(app);
 
   const httpServer = createServer(app);
