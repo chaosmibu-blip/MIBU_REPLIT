@@ -142,41 +142,6 @@ class APIService {
     const result = await response.json();
     return result.merchant;
   }
-
-  // Home Content
-  async getHomeContent(): Promise<HomeContentResponse> {
-    const response = await fetch(`${this.baseURL}/home/content`);
-    
-    if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
-    }
-    
-    return await response.json();
-  }
-}
-
-// Home Content Types
-export interface Announcement {
-  id: number;
-  content: string;
-  isActive: boolean | null;
-  createdAt: string | null;
-}
-
-export interface AppEvent {
-  id: number;
-  title: string;
-  content: string | null;
-  eventType: 'flash' | 'holiday';
-  startDate: string;
-  endDate: string;
-  imageUrl: string | null;
-  createdAt: string | null;
-}
-
-export interface HomeContentResponse {
-  announcements: Announcement[];
-  events: AppEvent[];
 }
 
 export const apiService = new APIService();
