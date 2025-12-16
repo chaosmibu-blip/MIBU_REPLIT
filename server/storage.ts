@@ -3,7 +3,7 @@ import {
   countries, regions, districts, categories, subcategories, chatInvites,
   placeProducts, cartItems, commerceOrders, klookProducts, messageHighlights,
   placeDrafts, placeApplications, userLocations, planners, serviceOrders, places,
-  specialists, transactions, serviceRelations,
+  specialists, transactions, serviceRelations, announcements, events,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -25,10 +25,11 @@ import {
   type Place,
   type Specialist, type InsertSpecialist,
   type Transaction, type InsertTransaction,
-  type ServiceRelation, type InsertServiceRelation
+  type ServiceRelation, type InsertServiceRelation,
+  type Announcement, type Event
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, ilike, or, isNull } from "drizzle-orm";
+import { eq, and, desc, sql, ilike, or, isNull, lte, gte } from "drizzle-orm";
 
 export interface IStorage {
   // Users (mandatory for Replit Auth)
@@ -1511,6 +1512,40 @@ export class DatabaseStorage implements IStorage {
       return { seedCode: merchant.dailySeedCode, updatedAt: merchant.codeUpdatedAt };
     }
     return undefined;
+  }
+
+  async getActiveAnnouncements(): Promise<Announcement[]> {
+    try {
+      const result = await db
+        .select()
+        .from(announcements)
+        .where(eq(announcements.isActive, true))
+        .orderBy(desc(announcements.createdAt));
+      return result;
+    } catch (error) {
+      console.error('Error fetching active announcements:', error);
+      throw new Error('Could not fetch announcements');
+    }
+  }
+
+  async getCurrentEvents(): Promise<Event[]> {
+    try {
+      const now = new Date();
+      const result = await db
+        .select()
+        .from(events)
+        .where(
+          and(
+            lte(events.startDate, now),
+            gte(events.endDate, now)
+          )
+        )
+        .orderBy(desc(events.endDate));
+      return result;
+    } catch (error) {
+      console.error('Error fetching current events:', error);
+      throw new Error('Could not fetch events');
+    }
   }
 }
 
