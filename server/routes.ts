@@ -394,16 +394,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
       const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL;
       
+      const accessibleRoles = isSuperAdmin 
+        ? ['traveler', 'merchant', 'specialist', 'admin'] 
+        : [user?.role || 'traveler'];
+      
+      // Get active role from session or default to user's role
+      const activeRole = req.session?.activeRole || user?.role || 'traveler';
+      
       res.json({
         ...user,
         isSuperAdmin,
-        accessibleRoles: isSuperAdmin 
-          ? ['traveler', 'merchant', 'specialist', 'admin'] 
-          : [user?.role || 'traveler']
+        accessibleRoles,
+        activeRole: accessibleRoles.includes(activeRole) ? activeRole : (user?.role || 'traveler'),
       });
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Switch active role (for super admin God Mode)
+  app.post('/api/auth/switch-role', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
+      const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL;
+      
+      const switchRoleSchema = z.object({
+        role: z.enum(['traveler', 'merchant', 'specialist', 'admin']),
+      });
+      
+      const { role: targetRole } = switchRoleSchema.parse(req.body);
+      
+      // Check if user can access this role
+      const accessibleRoles = isSuperAdmin 
+        ? ['traveler', 'merchant', 'specialist', 'admin'] 
+        : [user?.role || 'traveler'];
+      
+      if (!accessibleRoles.includes(targetRole)) {
+        return res.status(403).json({ 
+          error: '您沒有權限切換到此角色', 
+          code: 'ROLE_NOT_ACCESSIBLE' 
+        });
+      }
+      
+      // Store active role in session
+      if (req.session) {
+        req.session.activeRole = targetRole;
+      }
+      
+      // Auto-seed merchant/specialist data for super admin
+      if (isSuperAdmin) {
+        if (targetRole === 'merchant') {
+          let merchant = await storage.getMerchantByUserId(user!.id);
+          if (!merchant) {
+            merchant = await storage.createMerchant({
+              userId: user!.id,
+              name: `${user!.firstName || 'Admin'}'s Test Store`,
+              email: user!.email!,
+              subscriptionPlan: 'premium',
+              dailySeedCode: crypto.randomBytes(4).toString('hex').toUpperCase(),
+              creditBalance: 10000,
+            });
+            console.log(`[GOD MODE] Auto-created merchant for super admin: ${merchant.id}`);
+          }
+        } else if (targetRole === 'specialist') {
+          let specialist = await storage.getSpecialistByUserId(user!.id);
+          if (!specialist) {
+            specialist = await storage.createSpecialist({
+              userId: user!.id,
+              name: `${user!.firstName || 'Admin'} Specialist`,
+              serviceRegion: 'taipei',
+              isAvailable: true,
+              maxTravelers: 10,
+            });
+            console.log(`[GOD MODE] Auto-created specialist for super admin: ${specialist.id}`);
+          }
+        }
+      }
+      
+      console.log(`[Role Switch] User ${userId} switched to role: ${targetRole}`);
+      
+      res.json({ 
+        success: true, 
+        activeRole: targetRole,
+        message: `已切換至${targetRole === 'traveler' ? '旅客' : targetRole === 'merchant' ? '商家' : targetRole === 'specialist' ? '專員' : '管理員'}模式`
+      });
+    } catch (error: any) {
+      console.error("Switch role error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: '無效的角色', code: 'INVALID_ROLE' });
+      }
+      res.status(500).json({ error: '切換角色失敗', code: 'SERVER_ERROR' });
     }
   });
 
