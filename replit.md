@@ -156,14 +156,14 @@ const data = await response.json();
 === 前端同步指令 ===
 
 【後端更新摘要】
-新增 Socket.IO 即時位置追蹤功能，旅客可透過 WebSocket 即時上報位置，後端會自動轉發給對應的專家。
+新增 Socket.IO 即時位置追蹤功能，旅客可透過 WebSocket 即時上報位置，後端會自動轉發給對應的專員。
 
 【API 變更】
 - 現有 API：POST /api/location/update - HTTP 位置更新（保留，用於非即時場景）
 - 現有 API：GET /api/location/me - 取得我的位置
 - 新增 Socket.IO 事件：location_update - 即時位置串流（取代頻繁 HTTP 請求）
-- 新增 Socket.IO 事件：traveler_location - 專家接收旅客位置
-- 新增 Socket.IO 事件：specialist_subscribe - 專家訂閱旅客位置
+- 新增 Socket.IO 事件：traveler_location - 專員接收旅客位置
+- 新增 Socket.IO 事件：specialist_subscribe - 專員訂閱旅客位置
 
 【Socket.IO 連線設定】
 - 後端 URL：wss://gacha-travel--s8869420.replit.app
@@ -208,9 +208,9 @@ socket.on('location_ack', (data) => {
   console.log('位置已更新', data);
 });
 
-【前端需要的改動 - 專家端】
+【前端需要的改動 - 專員端】
 1. 連線後發送訂閱請求
-2. 監聽旅客位置更新
+2. 監聯旅客位置更新
 
 // 訂閱旅客
 socket.emit('specialist_subscribe', {});
