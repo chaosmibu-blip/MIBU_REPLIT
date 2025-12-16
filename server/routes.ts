@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated, generateJwtToken } from "./replitAuth";
 import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema, insertPlaceDraftSchema, insertPlaceApplicationSchema, registerUserSchema, insertSpecialistSchema, insertServiceRelationSchema } from "@shared/schema";
 import * as crypto from "crypto";
 import jwt from "jsonwebtoken";
@@ -398,14 +398,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? ['traveler', 'merchant', 'specialist', 'admin'] 
         : [user?.role || 'traveler'];
       
-      // Get active role from session or default to user's role
-      const activeRole = req.session?.activeRole || user?.role || 'traveler';
+      // Get active role: Priority: JWT token > session > database role
+      // For JWT auth (mobile app), read from jwtUser.activeRole
+      // For session auth (web), read from session.activeRole
+      const jwtActiveRole = req.jwtUser?.activeRole;
+      const sessionActiveRole = req.session?.activeRole;
+      const activeRole = jwtActiveRole || sessionActiveRole || user?.role || 'traveler';
+      
+      console.log(`[/api/auth/user] userId: ${userId}, jwtActiveRole: ${jwtActiveRole}, sessionActiveRole: ${sessionActiveRole}, finalActiveRole: ${activeRole}`);
+      
+      // For super admin god mode: return activeRole as the "role" field for frontend compatibility
+      const responseRole = isSuperAdmin ? activeRole : (user?.role || 'traveler');
       
       res.json({
         ...user,
         isSuperAdmin,
         accessibleRoles,
         activeRole: accessibleRoles.includes(activeRole) ? activeRole : (user?.role || 'traveler'),
+        role: responseRole, // Override role for super admin god mode
       });
     } catch (error) {
       console.error("Error fetching user:", error);
@@ -477,9 +487,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`[Role Switch] User ${userId} switched to role: ${targetRole}`);
       
+      // Generate new JWT token with updated activeRole
+      const newToken = generateJwtToken({
+        claims: {
+          sub: user!.id,
+          email: user!.email,
+          first_name: user!.firstName,
+          last_name: user!.lastName,
+          profile_image_url: user!.profileImageUrl,
+        }
+      }, targetRole);
+      
       res.json({ 
         success: true, 
         activeRole: targetRole,
+        role: targetRole, // For frontend compatibility
+        token: newToken, // New token with updated activeRole
         message: `已切換至${targetRole === 'traveler' ? '旅客' : targetRole === 'merchant' ? '商家' : targetRole === 'specialist' ? '專員' : '管理員'}模式`
       });
     } catch (error: any) {

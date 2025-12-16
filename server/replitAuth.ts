@@ -93,7 +93,7 @@ function isAllowedRedirectUri(uri: string): boolean {
   }
 }
 
-export function generateJwtToken(user: any): string {
+export function generateJwtToken(user: any, activeRole?: string): string {
   if (!JWT_SECRET) {
     throw new Error('JWT_SECRET or SESSION_SECRET is required for token generation');
   }
@@ -103,6 +103,7 @@ export function generateJwtToken(user: any): string {
     firstName: user.claims?.first_name || user.firstName,
     lastName: user.claims?.last_name || user.lastName,
     profileImageUrl: user.claims?.profile_image_url || user.profileImageUrl,
+    activeRole: activeRole || user.role || 'traveler',
   };
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 }
@@ -484,12 +485,17 @@ export async function setupAuth(app: Express) {
           res.clearCookie('requested_active_role');
         }
         
-        // Redirect with token
+        // Get the final activeRole for this session
+        const finalActiveRole = (req.session as any).activeRole || userRole;
+        
+        // Redirect with token (include activeRole in JWT)
         if (externalRedirectUri) {
           clearExternalRedirectUri();
-          const token = generateJwtToken(user);
+          const token = generateJwtToken(user, finalActiveRole);
           const separator = externalRedirectUri.includes('?') ? '&' : '?';
-          const targetUrl = `${externalRedirectUri}${separator}token=${token}`;
+          const targetUrl = `${externalRedirectUri}${separator}token=${token}&activeRole=${finalActiveRole}`;
+          
+          console.log(`[OAuth] Redirecting with activeRole: ${finalActiveRole}`);
           
           if (isCustomScheme(externalRedirectUri)) {
             return redirectWithBouncePage(targetUrl, '登入成功！');
