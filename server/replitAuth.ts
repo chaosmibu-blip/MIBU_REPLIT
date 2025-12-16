@@ -218,6 +218,8 @@ export async function setupAuth(app: Express) {
 
   const loginHandler = (req: any, res: any, next: any) => {
     const redirectUri = req.query.redirect_uri as string | undefined;
+    const portal = req.query.portal as string | undefined; // merchant, specialist, traveler, admin
+    const targetRole = req.query.target_role as string | undefined;
     
     if (redirectUri) {
       if (!isAllowedRedirectUri(redirectUri)) {
@@ -232,6 +234,19 @@ export async function setupAuth(app: Express) {
         sameSite: 'none' as const,
         maxAge: 10 * 60 * 1000, // 10 minutes
       });
+    }
+    
+    // Store portal/target_role for setting activeRole after login
+    const requestedRole = portal || targetRole;
+    if (requestedRole && ['traveler', 'merchant', 'specialist', 'admin'].includes(requestedRole)) {
+      (req.session as any).requestedActiveRole = requestedRole;
+      res.cookie('requested_active_role', requestedRole, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none' as const,
+        maxAge: 10 * 60 * 1000, // 10 minutes
+      });
+      console.log(`[OAuth] Login requested with portal/target_role: ${requestedRole}`);
     }
     
     ensureStrategy(req.hostname);
@@ -341,10 +356,62 @@ export async function setupAuth(app: Express) {
         return res.redirect("/");
       }
       
-      req.logIn(user, (loginErr) => {
+      req.logIn(user, async (loginErr) => {
         if (loginErr) {
           console.error("Login error:", loginErr);
           return res.redirect("/");
+        }
+        
+        // Get requested activeRole from session or cookie
+        const requestedActiveRole = (req.session as any)?.requestedActiveRole || req.cookies?.requested_active_role;
+        
+        // Set activeRole in session if requested and valid
+        if (requestedActiveRole && ['traveler', 'merchant', 'specialist', 'admin'].includes(requestedActiveRole)) {
+          // Check if user can access this role (super admin can access any role)
+          const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
+          const userId = user.claims?.sub;
+          const dbUser = userId ? await storage.getUser(userId) : null;
+          const isSuperAdmin = dbUser?.email === SUPER_ADMIN_EMAIL;
+          
+          if (isSuperAdmin || dbUser?.role === requestedActiveRole) {
+            (req.session as any).activeRole = requestedActiveRole;
+            console.log(`[OAuth] Set activeRole to ${requestedActiveRole} for user ${userId}`);
+            
+            // Auto-seed merchant/specialist data for super admin
+            if (isSuperAdmin && dbUser) {
+              if (requestedActiveRole === 'merchant') {
+                let merchant = await storage.getMerchantByUserId(dbUser.id);
+                if (!merchant) {
+                  const crypto = await import('crypto');
+                  merchant = await storage.createMerchant({
+                    userId: dbUser.id,
+                    name: `${dbUser.firstName || 'Admin'}'s Test Store`,
+                    email: dbUser.email!,
+                    subscriptionPlan: 'premium',
+                    dailySeedCode: crypto.randomBytes(4).toString('hex').toUpperCase(),
+                    creditBalance: 10000,
+                  });
+                  console.log(`[GOD MODE] Auto-created merchant for super admin: ${merchant.id}`);
+                }
+              } else if (requestedActiveRole === 'specialist') {
+                let specialist = await storage.getSpecialistByUserId(dbUser.id);
+                if (!specialist) {
+                  specialist = await storage.createSpecialist({
+                    userId: dbUser.id,
+                    name: `${dbUser.firstName || 'Admin'} Specialist`,
+                    serviceRegion: 'taipei',
+                    isAvailable: true,
+                    maxTravelers: 10,
+                  });
+                  console.log(`[GOD MODE] Auto-created specialist for super admin: ${specialist.id}`);
+                }
+              }
+            }
+          }
+          
+          // Clear the requested role from session and cookie
+          delete (req.session as any).requestedActiveRole;
+          res.clearCookie('requested_active_role');
         }
         
         const externalRedirectUri = getExternalRedirectUri();
