@@ -363,23 +363,46 @@ export async function setupAuth(app: Express) {
         }
         
         // Get requested activeRole from session or cookie
-        const requestedActiveRole = (req.session as any)?.requestedActiveRole || req.cookies?.requested_active_role;
+        const requestedPortal = (req.session as any)?.requestedActiveRole || req.cookies?.requested_active_role;
+        const externalRedirectUri = getExternalRedirectUri();
         
-        // Set activeRole in session if requested and valid
-        if (requestedActiveRole && ['traveler', 'merchant', 'specialist', 'admin'].includes(requestedActiveRole)) {
-          // Check if user can access this role (super admin can access any role)
-          const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
-          const userId = user.claims?.sub;
-          const dbUser = userId ? await storage.getUser(userId) : null;
-          const isSuperAdmin = dbUser?.email === SUPER_ADMIN_EMAIL;
+        // Helper to redirect with error
+        const redirectWithError = (errorCode: string, errorMessage: string) => {
+          // Clear cookies
+          delete (req.session as any).requestedActiveRole;
+          res.clearCookie('requested_active_role');
+          clearExternalRedirectUri();
           
-          if (isSuperAdmin || dbUser?.role === requestedActiveRole) {
-            (req.session as any).activeRole = requestedActiveRole;
-            console.log(`[OAuth] Set activeRole to ${requestedActiveRole} for user ${userId}`);
+          if (externalRedirectUri) {
+            const separator = externalRedirectUri.includes('?') ? '&' : '?';
+            const targetUrl = `${externalRedirectUri}${separator}error=${errorCode}&message=${encodeURIComponent(errorMessage)}`;
+            if (isCustomScheme(externalRedirectUri)) {
+              return redirectWithBouncePage(targetUrl, errorMessage);
+            }
+            return res.redirect(targetUrl);
+          }
+          return res.redirect(`/?error=${errorCode}&message=${encodeURIComponent(errorMessage)}`);
+        };
+        
+        // ===== Login Permission Matrix =====
+        const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
+        const userId = user.claims?.sub;
+        const dbUser = userId ? await storage.getUser(userId) : null;
+        const userRole = dbUser?.role || 'traveler';
+        const isSuperAdmin = dbUser?.email === SUPER_ADMIN_EMAIL;
+        
+        // If portal is specified, validate permissions
+        if (requestedPortal && ['traveler', 'merchant', 'specialist', 'admin'].includes(requestedPortal)) {
+          console.log(`[OAuth] User ${userId} (role: ${userRole}, superAdmin: ${isSuperAdmin}) requested portal: ${requestedPortal}`);
+          
+          // Super Admin can access ANY portal (God Mode)
+          if (isSuperAdmin) {
+            (req.session as any).activeRole = requestedPortal;
+            console.log(`[GOD MODE] Super admin accessing portal: ${requestedPortal}`);
             
             // Auto-seed merchant/specialist data for super admin
-            if (isSuperAdmin && dbUser) {
-              if (requestedActiveRole === 'merchant') {
+            if (dbUser) {
+              if (requestedPortal === 'merchant') {
                 let merchant = await storage.getMerchantByUserId(dbUser.id);
                 if (!merchant) {
                   const crypto = await import('crypto');
@@ -391,9 +414,9 @@ export async function setupAuth(app: Express) {
                     dailySeedCode: crypto.randomBytes(4).toString('hex').toUpperCase(),
                     creditBalance: 10000,
                   });
-                  console.log(`[GOD MODE] Auto-created merchant for super admin: ${merchant.id}`);
+                  console.log(`[GOD MODE] Auto-created merchant: ${merchant.id}`);
                 }
-              } else if (requestedActiveRole === 'specialist') {
+              } else if (requestedPortal === 'specialist') {
                 let specialist = await storage.getSpecialistByUserId(dbUser.id);
                 if (!specialist) {
                   specialist = await storage.createSpecialist({
@@ -403,8 +426,55 @@ export async function setupAuth(app: Express) {
                     isAvailable: true,
                     maxTravelers: 10,
                   });
-                  console.log(`[GOD MODE] Auto-created specialist for super admin: ${specialist.id}`);
+                  console.log(`[GOD MODE] Auto-created specialist: ${specialist.id}`);
                 }
+              }
+            }
+          }
+          // Regular users - strict permission checking
+          else {
+            // TRAVELER trying to access different portals
+            if (userRole === 'traveler') {
+              if (requestedPortal === 'traveler') {
+                (req.session as any).activeRole = 'traveler';
+              } else if (requestedPortal === 'merchant') {
+                return redirectWithError('NO_MERCHANT_DATA', '您尚未註冊為商家，請先申請商家帳號');
+              } else if (requestedPortal === 'specialist') {
+                return redirectWithError('NO_SPECIALIST_DATA', '您尚未註冊為專員，請先申請專員帳號');
+              } else if (requestedPortal === 'admin') {
+                return redirectWithError('PERMISSION_DENIED', '權限不符，無法進入管理後台');
+              }
+            }
+            // MERCHANT trying to access different portals
+            else if (userRole === 'merchant') {
+              if (requestedPortal === 'merchant') {
+                (req.session as any).activeRole = 'merchant';
+              } else if (requestedPortal === 'traveler') {
+                return redirectWithError('WRONG_PORTAL', '請切換至商家入口登入');
+              } else if (requestedPortal === 'specialist') {
+                return redirectWithError('PERMISSION_DENIED', '權限不符，無法進入專員後台');
+              } else if (requestedPortal === 'admin') {
+                return redirectWithError('PERMISSION_DENIED', '權限不符，無法進入管理後台');
+              }
+            }
+            // SPECIALIST trying to access different portals
+            else if (userRole === 'specialist') {
+              if (requestedPortal === 'specialist') {
+                (req.session as any).activeRole = 'specialist';
+              } else if (requestedPortal === 'traveler') {
+                return redirectWithError('WRONG_PORTAL', '請切換至專員入口登入');
+              } else if (requestedPortal === 'merchant') {
+                return redirectWithError('PERMISSION_DENIED', '權限不符，無法進入商家後台');
+              } else if (requestedPortal === 'admin') {
+                return redirectWithError('PERMISSION_DENIED', '權限不符，無法進入管理後台');
+              }
+            }
+            // ADMIN trying to access different portals
+            else if (userRole === 'admin') {
+              if (requestedPortal === 'admin') {
+                (req.session as any).activeRole = 'admin';
+              } else {
+                return redirectWithError('WRONG_PORTAL', '請使用管理入口登入');
               }
             }
           }
@@ -414,7 +484,7 @@ export async function setupAuth(app: Express) {
           res.clearCookie('requested_active_role');
         }
         
-        const externalRedirectUri = getExternalRedirectUri();
+        // Redirect with token
         if (externalRedirectUri) {
           clearExternalRedirectUri();
           const token = generateJwtToken(user);
