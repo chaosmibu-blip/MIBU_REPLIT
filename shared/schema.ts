@@ -1199,3 +1199,356 @@ export const insertSosEventSchema = createInsertSchema(sosEvents).omit({
 
 export type SosEvent = typeof sosEvents.$inferSelect;
 export type InsertSosEvent = z.infer<typeof insertSosEventSchema>;
+
+// ============ Announcements & Events System ============
+
+// Announcement types: announcement (公告), flash_event (快閃活動), holiday_event (節日限定活動)
+export type AnnouncementType = 'announcement' | 'flash_event' | 'holiday_event';
+
+export const announcements = pgTable("announcements", {
+  id: serial("id").primaryKey(),
+  type: varchar("type", { length: 20 }).default('announcement').notNull(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  imageUrl: text("image_url"),
+  linkUrl: text("link_url"),
+  startDate: timestamp("start_date").defaultNow().notNull(),
+  endDate: timestamp("end_date"), // null = permanent (for regular announcements)
+  isActive: boolean("is_active").default(true).notNull(),
+  priority: integer("priority").default(0).notNull(), // Higher = show first
+  createdBy: varchar("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_announcements_type").on(table.type),
+  index("IDX_announcements_dates").on(table.startDate, table.endDate),
+  index("IDX_announcements_active").on(table.isActive),
+]);
+
+export const announcementsRelations = relations(announcements, ({ one }) => ({
+  creator: one(users, {
+    fields: [announcements.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const insertAnnouncementSchema = createInsertSchema(announcements).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type Announcement = typeof announcements.$inferSelect;
+export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
+
+// ============ Enhanced Coupon System with Tiers ============
+
+// Coupon tier: SP (2%), SSR (8%), SR (15%), S (23%), R (32%)
+export type CouponTier = 'SP' | 'SSR' | 'SR' | 'S' | 'R';
+
+export const couponTierProbabilities: Record<CouponTier, number> = {
+  SP: 0.02,
+  SSR: 0.08,
+  SR: 0.15,
+  S: 0.23,
+  R: 0.32,
+};
+
+// Enhanced coupons table (extends existing coupons)
+export const merchantCoupons = pgTable("merchant_coupons", {
+  id: serial("id").primaryKey(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  merchantPlaceLinkId: integer("merchant_place_link_id").references(() => merchantPlaceLinks.id),
+  name: text("name").notNull(),
+  tier: varchar("tier", { length: 10 }).default('R').notNull(), // SP, SSR, SR, S, R
+  terms: text("terms"), // 使用條款
+  content: text("content").notNull(), // 優惠內容
+  quantity: integer("quantity").default(-1).notNull(), // -1 = unlimited
+  usedCount: integer("used_count").default(0).notNull(),
+  validFrom: timestamp("valid_from").defaultNow().notNull(),
+  validUntil: timestamp("valid_until"), // null = no expiry
+  backgroundImageUrl: text("background_image_url"),
+  inventoryImageUrl: text("inventory_image_url"), // For S+ tiers
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_merchant_coupons_merchant").on(table.merchantId),
+  index("IDX_merchant_coupons_tier").on(table.tier),
+  index("IDX_merchant_coupons_active").on(table.isActive),
+]);
+
+export const insertMerchantCouponSchema = createInsertSchema(merchantCoupons).omit({
+  id: true,
+  usedCount: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type MerchantCoupon = typeof merchantCoupons.$inferSelect;
+export type InsertMerchantCoupon = z.infer<typeof insertMerchantCouponSchema>;
+
+// ============ User Inventory System (道具箱) ============
+
+export type InventoryItemType = 'coupon' | 'badge' | 'item';
+
+export const userInventory = pgTable("user_inventory", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  itemType: varchar("item_type", { length: 20 }).default('coupon').notNull(),
+  merchantCouponId: integer("merchant_coupon_id").references(() => merchantCoupons.id), // Link to coupon template
+  itemName: text("item_name").notNull(),
+  itemDescription: text("item_description"),
+  imageUrl: text("image_url"),
+  tier: varchar("tier", { length: 10 }), // For coupons: SP, SSR, SR, S, R
+  merchantId: integer("merchant_id").references(() => merchants.id),
+  merchantName: text("merchant_name"),
+  terms: text("terms"),
+  content: text("content"),
+  validUntil: timestamp("valid_until"),
+  isRedeemed: boolean("is_redeemed").default(false).notNull(),
+  redeemedAt: timestamp("redeemed_at"),
+  isExpired: boolean("is_expired").default(false).notNull(),
+  isRead: boolean("is_read").default(false).notNull(), // For notification dot
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_inventory_user").on(table.userId),
+  index("IDX_user_inventory_type").on(table.itemType),
+  index("IDX_user_inventory_read").on(table.isRead),
+]);
+
+export const userInventoryRelations = relations(userInventory, ({ one }) => ({
+  user: one(users, {
+    fields: [userInventory.userId],
+    references: [users.id],
+  }),
+  merchantCoupon: one(merchantCoupons, {
+    fields: [userInventory.merchantCouponId],
+    references: [merchantCoupons.id],
+  }),
+  merchant: one(merchants, {
+    fields: [userInventory.merchantId],
+    references: [merchants.id],
+  }),
+}));
+
+export const insertUserInventorySchema = createInsertSchema(userInventory).omit({
+  id: true,
+  isRedeemed: true,
+  redeemedAt: true,
+  isExpired: true,
+  isRead: true,
+  createdAt: true,
+});
+
+export type UserInventoryItem = typeof userInventory.$inferSelect;
+export type InsertUserInventoryItem = z.infer<typeof insertUserInventorySchema>;
+
+// ============ Extended User Profile ============
+
+export const userProfiles = pgTable("user_profiles", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull().unique(),
+  gender: varchar("gender", { length: 20 }),
+  birthDate: timestamp("birth_date"),
+  phone: varchar("phone", { length: 50 }),
+  dietaryRestrictions: text("dietary_restrictions").array(), // 飲食禁忌 (array of tags)
+  medicalHistory: text("medical_history").array(), // 疾病史 (array of tags)
+  emergencyContactName: text("emergency_contact_name"),
+  emergencyContactPhone: text("emergency_contact_phone"),
+  emergencyContactRelation: text("emergency_contact_relation"),
+  preferredLanguage: varchar("preferred_language", { length: 10 }).default('zh'),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_profiles_user").on(table.userId),
+]);
+
+export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
+  user: one(users, {
+    fields: [userProfiles.userId],
+    references: [users.id],
+  }),
+}));
+
+export const insertUserProfileSchema = createInsertSchema(userProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type UserProfile = typeof userProfiles.$inferSelect;
+export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
+
+// ============ Extended Merchant Profile ============
+
+export type MerchantTier = 'free' | 'pro' | 'premium';
+export type TripCardTier = 'free' | 'pro' | 'premium';
+
+export const merchantProfiles = pgTable("merchant_profiles", {
+  id: serial("id").primaryKey(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull().unique(),
+  ownerName: text("owner_name").notNull(), // 管理者姓名
+  businessName: text("business_name").notNull(), // 商家名稱
+  taxId: text("tax_id"), // 統編（選填）
+  businessCategory: text("business_category").notNull(), // 營業類別
+  address: text("address").notNull(), // 地址
+  phone: text("phone"), // 電話
+  mobile: text("mobile"), // 手機
+  email: text("email").notNull(),
+  merchantTier: varchar("merchant_tier", { length: 20 }).default('free').notNull(), // free, pro, premium
+  tripCardTier: varchar("trip_card_tier", { length: 20 }).default('free').notNull(), // free, pro, premium
+  maxTripCards: integer("max_trip_cards").default(1).notNull(), // Based on merchant tier
+  maxCouponSchemes: integer("max_coupon_schemes").default(1).notNull(), // Based on trip card tier
+  isApproved: boolean("is_approved").default(false).notNull(), // 審核狀態
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_merchant_profiles_merchant").on(table.merchantId),
+  index("IDX_merchant_profiles_approved").on(table.isApproved),
+]);
+
+export const merchantProfilesRelations = relations(merchantProfiles, ({ one }) => ({
+  merchant: one(merchants, {
+    fields: [merchantProfiles.merchantId],
+    references: [merchants.id],
+  }),
+  approver: one(users, {
+    fields: [merchantProfiles.approvedBy],
+    references: [users.id],
+  }),
+}));
+
+export const insertMerchantProfileSchema = createInsertSchema(merchantProfiles).omit({
+  id: true,
+  isApproved: true,
+  approvedBy: true,
+  approvedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type MerchantProfile = typeof merchantProfiles.$inferSelect;
+export type InsertMerchantProfile = z.infer<typeof insertMerchantProfileSchema>;
+
+// ============ Collection Enhancements ============
+
+// Add read status to collections for notification
+export const collectionReadStatus = pgTable("collection_read_status", {
+  id: serial("id").primaryKey(),
+  collectionId: integer("collection_id").references(() => collections.id).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  isRead: boolean("is_read").default(false).notNull(),
+  hasPromo: boolean("has_promo").default(false).notNull(), // 商家有優惠資訊
+  lastPromoUpdate: timestamp("last_promo_update"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_collection_read_user").on(table.userId),
+  index("IDX_collection_read_status").on(table.isRead),
+]);
+
+// ============ Coupon Probability Settings (Global) ============
+
+export const couponProbabilitySettings = pgTable("coupon_probability_settings", {
+  id: serial("id").primaryKey(),
+  tier: varchar("tier", { length: 10 }).notNull().unique(), // SP, SSR, SR, S, R
+  probability: doublePrecision("probability").notNull(), // 0.02, 0.08, 0.15, 0.23, 0.32
+  updatedBy: varchar("updated_by").references(() => users.id),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCouponProbabilitySettingSchema = createInsertSchema(couponProbabilitySettings).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type CouponProbabilitySetting = typeof couponProbabilitySettings.$inferSelect;
+
+// ============ Merchant Analytics Tracking ============
+
+export const merchantAnalytics = pgTable("merchant_analytics", {
+  id: serial("id").primaryKey(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  merchantPlaceLinkId: integer("merchant_place_link_id").references(() => merchantPlaceLinks.id),
+  date: timestamp("date").notNull(),
+  collectionsToday: integer("collections_today").default(0).notNull(), // 今日被收錄人數
+  totalCollectors: integer("total_collectors").default(0).notNull(), // 已收錄總人數
+  collectionViews: integer("collection_views").default(0).notNull(), // 圖鑑點擊次數
+  couponRedemptions: integer("coupon_redemptions").default(0).notNull(), // 優惠券使用次數
+  prizePoolViews: integer("prize_pool_views").default(0).notNull(), // 被查看獎池人數
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_merchant_analytics_merchant").on(table.merchantId),
+  index("IDX_merchant_analytics_date").on(table.date),
+]);
+
+export const merchantAnalyticsRelations = relations(merchantAnalytics, ({ one }) => ({
+  merchant: one(merchants, {
+    fields: [merchantAnalytics.merchantId],
+    references: [merchants.id],
+  }),
+}));
+
+export type MerchantAnalyticsRecord = typeof merchantAnalytics.$inferSelect;
+
+// ============ Trip Service Purchases ============
+
+export const tripServicePurchases = pgTable("trip_service_purchases", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  purchasedForUserId: varchar("purchased_for_user_id").references(() => users.id), // 為他人購買
+  countryId: integer("country_id").references(() => countries.id).notNull(),
+  regionId: integer("region_id").references(() => regions.id).notNull(),
+  arrivalDate: timestamp("arrival_date").notNull(),
+  departureDate: timestamp("departure_date").notNull(),
+  dailyPrice: integer("daily_price").default(399).notNull(), // TWD
+  totalPrice: integer("total_price").notNull(),
+  paymentStatus: varchar("payment_status", { length: 20 }).default('pending').notNull(),
+  specialistId: integer("specialist_id").references(() => specialists.id),
+  chatRoomId: text("chat_room_id"), // Twilio channel SID
+  isLocationSharingEnabled: boolean("is_location_sharing_enabled").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_trip_service_user").on(table.userId),
+  index("IDX_trip_service_specialist").on(table.specialistId),
+  index("IDX_trip_service_dates").on(table.arrivalDate, table.departureDate),
+]);
+
+export const tripServicePurchasesRelations = relations(tripServicePurchases, ({ one }) => ({
+  user: one(users, {
+    fields: [tripServicePurchases.userId],
+    references: [users.id],
+  }),
+  purchasedForUser: one(users, {
+    fields: [tripServicePurchases.purchasedForUserId],
+    references: [users.id],
+  }),
+  specialist: one(specialists, {
+    fields: [tripServicePurchases.specialistId],
+    references: [specialists.id],
+  }),
+  country: one(countries, {
+    fields: [tripServicePurchases.countryId],
+    references: [countries.id],
+  }),
+  region: one(regions, {
+    fields: [tripServicePurchases.regionId],
+    references: [regions.id],
+  }),
+}));
+
+export const insertTripServicePurchaseSchema = createInsertSchema(tripServicePurchases).omit({
+  id: true,
+  paymentStatus: true,
+  specialistId: true,
+  chatRoomId: true,
+  isLocationSharingEnabled: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type TripServicePurchase = typeof tripServicePurchases.$inferSelect;
+export type InsertTripServicePurchase = z.infer<typeof insertTripServicePurchaseSchema>;
