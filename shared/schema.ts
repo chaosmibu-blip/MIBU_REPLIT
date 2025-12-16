@@ -146,11 +146,14 @@ export const specialists = pgTable("specialists", {
 // Transactions (交易記錄)
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
 
+export type PaymentProvider = 'stripe' | 'recur';
+
 export const transactions = pgTable("transactions", {
   id: serial("id").primaryKey(),
   merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
   amount: integer("amount").notNull(), // 金額（點數）
   price: integer("price"), // 實際支付金額（TWD）
+  provider: varchar("provider", { length: 20 }), // 金流提供者: 'stripe' | 'recur'
   paymentStatus: varchar("payment_status", { length: 20 }).default('pending').notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }), // 付款方式
   externalOrderId: text("external_order_id"), // 外部金流訂單編號

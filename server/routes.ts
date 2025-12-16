@@ -261,31 +261,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Email/Password Login
+  // Super Admin Email (God Mode)
+  const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
+  const VALID_ROLES = ['traveler', 'merchant', 'specialist', 'admin'] as const;
+  type TargetRole = typeof VALID_ROLES[number];
+
+  // Email/Password Login with God Mode support
   app.post('/api/auth/login', async (req, res) => {
     try {
       const loginSchema = z.object({
         email: z.string().email('請輸入有效的電子郵件'),
         password: z.string().min(1, '請輸入密碼'),
+        target_role: z.enum(VALID_ROLES).optional(),
       });
       
       const validated = loginSchema.parse(req.body);
+      const targetRole = validated.target_role || 'traveler';
       
       // Find user by email
       const user = await storage.getUserByEmail(validated.email);
       if (!user || !user.password) {
-        return res.status(401).json({ error: '電子郵件或密碼錯誤' });
+        return res.status(401).json({ error: '電子郵件或密碼錯誤', code: 'INVALID_CREDENTIALS' });
       }
       
       // Verify password
       if (!verifyPassword(validated.password, user.password)) {
-        return res.status(401).json({ error: '電子郵件或密碼錯誤' });
+        return res.status(401).json({ error: '電子郵件或密碼錯誤', code: 'INVALID_CREDENTIALS' });
+      }
+      
+      const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
+      
+      // Super Admin (God Mode) - can login as any role
+      if (isSuperAdmin) {
+        console.log(`[GOD MODE] Super admin ${user.email} logging in as ${targetRole}`);
+        
+        // Auto-seeding for merchant/specialist if needed
+        if (targetRole === 'merchant') {
+          let merchant = await storage.getMerchantByUserId(user.id);
+          if (!merchant) {
+            merchant = await storage.createMerchant({
+              userId: user.id,
+              name: `${user.firstName || 'Admin'}'s Test Store`,
+              email: user.email!,
+              subscriptionPlan: 'premium',
+              dailySeedCode: crypto.randomBytes(4).toString('hex').toUpperCase(),
+              creditBalance: 10000,
+            });
+            console.log(`[GOD MODE] Auto-created merchant for super admin: ${merchant.id}`);
+          }
+        } else if (targetRole === 'specialist') {
+          let specialist = await storage.getSpecialistByUserId(user.id);
+          if (!specialist) {
+            specialist = await storage.createSpecialist({
+              userId: user.id,
+              name: `${user.firstName || 'Admin'} Specialist`,
+              serviceRegion: 'taipei',
+              isAvailable: true,
+              maxTravelers: 10,
+              currentTravelers: 0,
+            });
+            console.log(`[GOD MODE] Auto-created specialist for super admin: ${specialist.id}`);
+          }
+        }
+        
+        // Generate token with target role (masquerading)
+        const token = generateToken(user.id, targetRole);
+        
+        return res.json({ 
+          user: { 
+            id: user.id, 
+            email: user.email, 
+            firstName: user.firstName, 
+            lastName: user.lastName,
+            role: targetRole,
+            actualRole: user.role,
+            isApproved: true,
+            isSuperAdmin: true,
+          }, 
+          token 
+        });
+      }
+      
+      // Normal User (Strict Mode) - must match target role
+      if (user.role !== targetRole) {
+        return res.status(403).json({ 
+          error: `您的帳號角色為 ${user.role}，無法從 ${targetRole} 入口登入。請使用正確的入口或註冊新帳號。`,
+          code: 'ROLE_MISMATCH',
+          currentRole: user.role,
+          targetRole: targetRole,
+        });
       }
       
       // Check approval status for non-traveler roles
       if (user.role !== 'traveler' && !user.isApproved) {
         return res.status(403).json({ 
           error: '帳號審核中，請等待管理員核准',
+          code: 'PENDING_APPROVAL',
           isApproved: user.isApproved 
         });
       }
@@ -307,9 +378,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Login error:", error);
       if (error.name === 'ZodError') {
-        return res.status(400).json({ error: '輸入資料格式錯誤' });
+        return res.status(400).json({ error: '輸入資料格式錯誤', code: 'VALIDATION_ERROR' });
       }
-      res.status(500).json({ error: '登入失敗，請稍後再試' });
+      res.status(500).json({ error: '登入失敗，請稍後再試', code: 'SERVER_ERROR' });
     }
   });
 
@@ -3566,6 +3637,377 @@ ${uncachedSkeleton.map((item, idx) => `  {
     } catch (error) {
       console.error("Delete product error:", error);
       res.status(500).json({ error: "Failed to delete product" });
+    }
+  });
+
+  // ============ Merchant Daily Code & Credits Routes ============
+  
+  // GET /api/merchant/daily-code - Get or generate daily verification code
+  app.get("/api/merchant/daily-code", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required", code: "AUTH_REQUIRED" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "商家帳號必要", code: "MERCHANT_REQUIRED" });
+      }
+
+      const existingCode = await storage.getMerchantDailySeedCode(merchant.id);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Check if code exists and was updated today
+      if (existingCode && existingCode.updatedAt) {
+        const codeDate = new Date(existingCode.updatedAt);
+        codeDate.setHours(0, 0, 0, 0);
+        
+        if (codeDate.getTime() === today.getTime()) {
+          return res.json({ 
+            seedCode: existingCode.seedCode,
+            updatedAt: existingCode.updatedAt,
+            expiresAt: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+          });
+        }
+      }
+
+      // Generate new daily code
+      const newCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+      const updated = await storage.updateMerchantDailySeedCode(merchant.id, newCode);
+      
+      res.json({
+        seedCode: newCode,
+        updatedAt: updated?.codeUpdatedAt || new Date(),
+        expiresAt: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+      });
+    } catch (error) {
+      console.error("Get daily code error:", error);
+      res.status(500).json({ error: "取得核銷碼失敗", code: "SERVER_ERROR" });
+    }
+  });
+
+  // POST /api/merchant/verify - Verify a daily code
+  app.post("/api/merchant/verify", async (req, res) => {
+    try {
+      const verifySchema = z.object({
+        merchantId: z.number(),
+        code: z.string().min(1),
+      });
+      
+      const validated = verifySchema.parse(req.body);
+      
+      const merchant = await storage.getMerchantById(validated.merchantId);
+      if (!merchant) {
+        return res.status(404).json({ error: "商家不存在", code: "MERCHANT_NOT_FOUND", valid: false });
+      }
+
+      const existingCode = await storage.getMerchantDailySeedCode(merchant.id);
+      if (!existingCode) {
+        return res.status(400).json({ error: "商家尚未設定核銷碼", code: "NO_CODE_SET", valid: false });
+      }
+
+      // Check if code is expired (not from today)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const codeDate = new Date(existingCode.updatedAt);
+      codeDate.setHours(0, 0, 0, 0);
+      
+      if (codeDate.getTime() !== today.getTime()) {
+        return res.status(400).json({ error: "核銷碼已過期", code: "CODE_EXPIRED", valid: false });
+      }
+
+      // Verify the code
+      const isValid = existingCode.seedCode.toUpperCase() === validated.code.toUpperCase();
+      
+      if (isValid) {
+        res.json({ 
+          valid: true, 
+          merchantName: merchant.name,
+          message: "核銷碼驗證成功" 
+        });
+      } else {
+        res.status(400).json({ 
+          error: "核銷碼錯誤", 
+          code: "INVALID_CODE", 
+          valid: false 
+        });
+      }
+    } catch (error: any) {
+      console.error("Verify code error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: "輸入資料格式錯誤", code: "VALIDATION_ERROR", valid: false });
+      }
+      res.status(500).json({ error: "驗證失敗", code: "SERVER_ERROR", valid: false });
+    }
+  });
+
+  // POST /api/merchant/credits/purchase - Purchase credits with dual payment support
+  app.post("/api/merchant/credits/purchase", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required", code: "AUTH_REQUIRED" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "商家帳號必要", code: "MERCHANT_REQUIRED" });
+      }
+
+      const purchaseSchema = z.object({
+        amount: z.number().min(100).max(100000), // Credits to purchase
+        provider: z.enum(['stripe', 'recur']),
+        successUrl: z.string().url().optional(),
+        cancelUrl: z.string().url().optional(),
+      });
+
+      const validated = purchaseSchema.parse(req.body);
+      
+      // Calculate price (1 TWD = 1 credit for simplicity)
+      const price = validated.amount;
+
+      if (validated.provider === 'stripe') {
+        // Stripe payment flow
+        const { stripeService } = await import('./stripeService');
+        const { getStripePublishableKey } = await import('./stripeClient');
+        
+        const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+          : process.env.REPLIT_DOMAINS?.split(',')[0] 
+            ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+            : 'https://localhost:5000';
+
+        const successUrl = validated.successUrl || `${baseUrl}/merchant/credits/success?session_id={CHECKOUT_SESSION_ID}`;
+        const cancelUrl = validated.cancelUrl || `${baseUrl}/merchant/credits`;
+
+        // Create a transaction record
+        const transaction = await storage.createTransaction({
+          merchantId: merchant.id,
+          amount: validated.amount,
+          price: price,
+          provider: 'stripe',
+          paymentStatus: 'pending',
+          paymentMethod: 'stripe_checkout',
+        });
+
+        // Create Stripe payment intent
+        const paymentIntent = await stripeService.createPaymentIntent(
+          price * 100, // Stripe uses cents
+          'twd',
+          merchant.userId,
+          { 
+            transactionId: transaction.id.toString(),
+            merchantId: merchant.id.toString(),
+            credits: validated.amount.toString(),
+          }
+        );
+
+        res.json({
+          provider: 'stripe',
+          transactionId: transaction.id,
+          clientSecret: paymentIntent.client_secret,
+          publishableKey: await getStripePublishableKey(),
+          amount: validated.amount,
+          price: price,
+        });
+      } else if (validated.provider === 'recur') {
+        // Recur payment flow - placeholder for actual Recur integration
+        // Create a transaction record
+        const transaction = await storage.createTransaction({
+          merchantId: merchant.id,
+          amount: validated.amount,
+          price: price,
+          provider: 'recur',
+          paymentStatus: 'pending',
+          paymentMethod: 'recur_pay',
+        });
+
+        // TODO: Integrate with Recur Helper function when available
+        // For now, return the transaction details for frontend to handle
+        res.json({
+          provider: 'recur',
+          transactionId: transaction.id,
+          amount: validated.amount,
+          price: price,
+          message: "請使用 Recur 支付介面完成付款",
+          // recurPaymentUrl would be generated here when Recur is integrated
+        });
+      }
+    } catch (error: any) {
+      console.error("Purchase credits error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: "輸入資料格式錯誤", code: "VALIDATION_ERROR" });
+      }
+      res.status(500).json({ error: "購買失敗", code: "SERVER_ERROR" });
+    }
+  });
+
+  // POST /api/merchant/credits/confirm - Confirm payment and add credits
+  app.post("/api/merchant/credits/confirm", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "商家帳號必要" });
+      }
+
+      const { transactionId, externalOrderId } = req.body;
+      
+      const transaction = await storage.getTransactionById(transactionId);
+      if (!transaction || transaction.merchantId !== merchant.id) {
+        return res.status(404).json({ error: "交易不存在" });
+      }
+
+      if (transaction.paymentStatus === 'paid') {
+        return res.status(400).json({ error: "此交易已完成" });
+      }
+
+      // Update transaction status
+      await storage.updateTransactionStatus(transactionId, 'paid');
+      
+      // Add credits to merchant
+      await storage.updateMerchantCreditBalance(merchant.id, transaction.amount);
+
+      res.json({
+        success: true,
+        creditsAdded: transaction.amount,
+        newBalance: (merchant.creditBalance || 0) + transaction.amount,
+      });
+    } catch (error) {
+      console.error("Confirm credits error:", error);
+      res.status(500).json({ error: "確認付款失敗" });
+    }
+  });
+
+  // ============ Specialist Auto-Matching Routes ============
+  
+  // POST /api/specialist/match - Auto-match traveler with available specialist
+  app.post("/api/specialist/match", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required", code: "AUTH_REQUIRED" });
+      }
+
+      const matchSchema = z.object({
+        region: z.string().min(1),
+      });
+
+      const validated = matchSchema.parse(req.body);
+      
+      // Check if traveler already has an active service
+      const existingService = await storage.getActiveServiceRelationByTraveler(userId);
+      if (existingService) {
+        const specialist = await storage.getSpecialistById(existingService.specialistId);
+        return res.json({
+          matched: true,
+          existing: true,
+          serviceId: existingService.id,
+          specialist: specialist ? {
+            id: specialist.id,
+            name: specialist.name,
+            region: specialist.serviceRegion,
+          } : null,
+          twilioChannelSid: existingService.twilioChannelSid,
+        });
+      }
+
+      // Find available specialist in the region
+      const specialist = await storage.findAvailableSpecialist(validated.region);
+      
+      if (!specialist) {
+        return res.status(404).json({ 
+          error: `目前 ${validated.region} 地區沒有可用的專員，請稍後再試`, 
+          code: "NO_SPECIALIST_AVAILABLE",
+          matched: false,
+        });
+      }
+
+      // Create service relation
+      const serviceRelation = await storage.createServiceRelation({
+        specialistId: specialist.id,
+        travelerId: userId,
+        region: validated.region,
+        status: 'active',
+      });
+
+      // Update specialist's current traveler count
+      await storage.updateSpecialist(specialist.id, {
+        currentTravelers: specialist.currentTravelers + 1,
+      });
+
+      res.json({
+        matched: true,
+        existing: false,
+        serviceId: serviceRelation.id,
+        specialist: {
+          id: specialist.id,
+          name: specialist.name,
+          region: specialist.serviceRegion,
+        },
+        message: `已成功媒合專員 ${specialist.name}`,
+      });
+    } catch (error: any) {
+      console.error("Specialist match error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: "輸入資料格式錯誤", code: "VALIDATION_ERROR" });
+      }
+      res.status(500).json({ error: "媒合失敗", code: "SERVER_ERROR" });
+    }
+  });
+
+  // POST /api/specialist/service/:serviceId/end - End a service relation
+  app.post("/api/specialist/service/:serviceId/end", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const serviceId = parseInt(req.params.serviceId);
+      const { rating } = req.body;
+
+      const service = await storage.getServiceRelationById(serviceId);
+      if (!service) {
+        return res.status(404).json({ error: "服務不存在" });
+      }
+
+      // Verify user is part of this service
+      const specialist = await storage.getSpecialistByUserId(userId);
+      const isSpecialist = specialist && specialist.id === service.specialistId;
+      const isTraveler = service.travelerId === userId;
+
+      if (!isSpecialist && !isTraveler) {
+        return res.status(403).json({ error: "無權限結束此服務" });
+      }
+
+      // End the service
+      const endedService = await storage.endServiceRelation(serviceId, rating);
+
+      // Decrease specialist's current traveler count
+      if (specialist || service.specialistId) {
+        const sp = specialist || await storage.getSpecialistById(service.specialistId);
+        if (sp && sp.currentTravelers > 0) {
+          await storage.updateSpecialist(sp.id, {
+            currentTravelers: sp.currentTravelers - 1,
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        service: endedService,
+        message: "服務已結束",
+      });
+    } catch (error) {
+      console.error("End service error:", error);
+      res.status(500).json({ error: "結束服務失敗" });
     }
   });
 
