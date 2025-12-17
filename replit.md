@@ -16,9 +16,13 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) designed to gamify trav
 | 提供 Expo App 程式碼 | 使用 React Native 原生組件 (`<View>`, `<Text>`, `<FlatList>`) | ❌ 參考 `client/` 資料夾、❌ 使用 HTML 標籤 |
 
 ### 2. API 變更同步 (Sync Protocol)
-任何後端 API 修改，必須在回覆最後附上 **「📱 Expo 前端同步指令」**，包含：
-- 更新後的 TypeScript Interface
-- API 呼叫範例（含 headers 和 body）
+任何後端 API 修改，必須：
+1. 更新 `docs/API_CONTRACT.md` 契約文件
+2. 在回覆最後附上 **「📱 Expo 前端同步指令」**，包含：
+   - 更新後的 TypeScript Interface
+   - API 呼叫範例（含 headers 和 body）
+
+> **重要文件**: `docs/API_CONTRACT.md` 是前後端 Agent 共同遵守的 API 契約
 
 ### 3. 依賴鎖定
 - 除非用戶明確允許，**禁止**修改 `package.json` 或安裝新套件
