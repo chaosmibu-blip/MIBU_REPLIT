@@ -52,7 +52,7 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) designed to gamify trav
 | 項目 | 路徑 | 說明 |
 |------|------|------|
 | 後端 API | `server/` | Express.js API 伺服器，提供所有業務邏輯 |
-| Web 管理後台 | `client/` | React + Vite 網頁，僅供管理員/商家後台使用 |
+| Web 管理後台 | `client/` | React + Vite 網頁，僅供管理員後台使用 |
 | 共享類型 | `shared/` | 前後端共用的 TypeScript 類型和 Schema |
 | 模組系統 | `modules/` | 功能模組（旅程策畫、行程扭蛋、管理後台） |
 
