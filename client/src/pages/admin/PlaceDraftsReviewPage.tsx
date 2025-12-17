@@ -1104,12 +1104,22 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-slate-800 truncate">{draft.placeName}</p>
-                        {draft.description && (
+                        {draft.description?.startsWith('[AI審核不通過]') && (
+                          <p className="text-xs text-red-600 mt-1 font-medium">
+                            {draft.description.split('\n')[0]}
+                          </p>
+                        )}
+                        {draft.description && !draft.description.startsWith('[AI審核不通過]') && (
                           <p className="text-xs text-slate-500 mt-1 line-clamp-1">
                             {draft.description}
                           </p>
                         )}
                         <div className="flex gap-1 mt-2 flex-wrap">
+                          {draft.description?.startsWith('[AI審核不通過]') && (
+                            <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                              🚫 AI退回
+                            </span>
+                          )}
                           <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${getStatusColor(draft.status)}`}>
                             {getStatusLabel(draft.status)}
                           </span>
