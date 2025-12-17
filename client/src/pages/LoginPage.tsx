@@ -74,7 +74,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             className={`w-full px-4 py-3 text-left hover:bg-slate-50 text-sm font-medium ${selectedRole === 'merchant' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-700'}`}
             data-testid="role-merchant"
           >
-            {t.roleMerchant || '企業端'}
+            {t.roleMerchant || '商家端'}
           </button>
           <button
             onClick={() => { setSelectedRole('agent'); setShowRoleMenu(false); }}
