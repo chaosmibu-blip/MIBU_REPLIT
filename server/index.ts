@@ -31,10 +31,15 @@ export function log(message: string, source = "express") {
 }
 
 async function initStripe() {
-  const databaseUrl = process.env.DATABASE_URL;
+  let databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     console.log('DATABASE_URL not set, skipping Stripe initialization');
     return;
+  }
+
+  // Add SSL mode to database URL if not present
+  if (!databaseUrl.includes('sslmode=')) {
+    databaseUrl += databaseUrl.includes('?') ? '&sslmode=require' : '?sslmode=require';
   }
 
   try {
