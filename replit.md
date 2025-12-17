@@ -19,6 +19,12 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) that gamifies travel pl
 3. **確認連動影響** - 如果有潛在的連動影響，先詢問使用者再執行
 4. **避免破壞性操作** - 刪除、修改資料前，先確認不會影響其他功能
 
+### 前後端分離同步規範
+這是一個前後端分離專案，有外部的 Expo App 前端：
+1. **完成後端工作後** - 必須檢查是否需要同步更新外部前端
+2. **如有 API 變更** - 產生「前端同步指令」並記錄到本文件的「前端同步指令記錄」章節
+3. **內建 Web 前端用途** - 僅供管理後台、商戶後台、開發測試使用，非消費者端
+
 ## System Architecture
 
 ### UI/UX Decisions
@@ -290,6 +296,46 @@ const response = await fetch('https://gacha-travel--s8869420.replit.app/api/loca
   headers: { 'Authorization': `Bearer ${token}` }
 });
 // 回傳格式：UserLocation | null
+
+=== 指令結束 ===
+```
+
+### 2025-12-17：查看獎池功能
+
+```
+=== 前端同步指令 ===
+
+【後端更新摘要】
+新增「查看獎池」功能，可查詢指定區域的 SP/SSR 稀有優惠券
+
+【API 變更】
+- 新增 API：GET /api/coupons/region/:regionId/pool - 取得區域獎池優惠券
+
+【資料結構變更】
+回傳陣列，每個元素格式：
+{
+  id: number,
+  title: string,
+  description: string | null,
+  rarity: 'SP' | 'SSR',
+  merchantName: string,
+  discount: string | null,
+  merchantId: number
+}
+
+【前端需要的改動】
+1. 在扭蛋頁面選擇區域後，新增「查看獎池」按鈕
+2. 點擊後呼叫 API 取得該區域的 SP/SSR 優惠券
+3. 以彈窗顯示獎池內容（SP 紫色、SSR 金色）
+
+【API 呼叫範例】
+const response = await fetch(`https://gacha-travel--s8869420.replit.app/api/coupons/region/${regionId}/pool`, {
+  headers: {
+    'Authorization': `Bearer ${token}`
+  }
+});
+const coupons = await response.json();
+// coupons: Array<{ id, title, description, rarity, merchantName, discount, merchantId }>
 
 === 指令結束 ===
 ```
