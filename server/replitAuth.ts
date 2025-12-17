@@ -142,6 +142,12 @@ export function getSession() {
     ttl: sessionTtl,
     tableName: "sessions",
   });
+  
+  // Log any session store errors
+  sessionStore.on('error', (error) => {
+    console.error('[Session Store Error]', error);
+  });
+  
   return session({
     secret: process.env.SESSION_SECRET!,
     store: sessionStore,
@@ -268,9 +274,14 @@ export async function setupAuth(app: Express) {
   app.get("/api/login", loginHandler);
   app.get("/api/auth/login", loginHandler);
 
-  app.get("/api/callback", (req, res, next) => {
-    console.log(`[OAuth Callback] ========== CALLBACK RECEIVED ==========`);
-    console.log(`[OAuth Callback] hostname: ${req.hostname}, query: ${JSON.stringify(req.query)}`);
+  app.get("/api/callback", async (req, res, next) => {
+    try {
+      console.log(`[OAuth Callback] ========== CALLBACK RECEIVED ==========`);
+      console.log(`[OAuth Callback] hostname: ${req.hostname}, query: ${JSON.stringify(req.query)}`);
+      console.log(`[OAuth Callback] session id: ${req.sessionID}, session exists: ${!!req.session}`);
+    } catch (e) {
+      console.error('[OAuth Callback] Initial logging error:', e);
+    }
     
     // Helper to get redirect URI from session or cookie
     const getExternalRedirectUri = () => {
