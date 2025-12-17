@@ -1140,6 +1140,7 @@ export const placeDrafts = pgTable("place_drafts", {
   address: text("address"),
   googlePlaceId: text("google_place_id"),
   googleRating: doublePrecision("google_rating"),
+  googleReviewCount: integer("google_review_count"), // 評論數
   locationLat: text("location_lat"),
   locationLng: text("location_lng"),
   status: varchar("status", { length: 20 }).default('pending').notNull(),

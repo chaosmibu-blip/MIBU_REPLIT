@@ -38,7 +38,7 @@ import {
   type MerchantAnalytics, type InsertMerchantAnalytics
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, ilike, or, isNull, lt, gt, gte, lte } from "drizzle-orm";
+import { eq, and, desc, sql, ilike, or, isNull, lt, gt, gte, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // Users (mandatory for Replit Auth)
@@ -152,8 +152,10 @@ export interface IStorage {
   getPlaceDraftById(id: number): Promise<PlaceDraft | undefined>;
   getPlaceDraftsByMerchant(merchantId: number): Promise<PlaceDraft[]>;
   getAllPlaceDrafts(): Promise<PlaceDraft[]>;
+  getFilteredPlaceDrafts(filters: { minRating?: number; minReviewCount?: number; status?: string }): Promise<PlaceDraft[]>;
   updatePlaceDraft(id: number, data: Partial<PlaceDraft>): Promise<PlaceDraft>;
   deletePlaceDraft(id: number): Promise<void>;
+  batchDeletePlaceDrafts(ids: number[]): Promise<number>;
 
   // Place Applications (地點申請紀錄)
   createPlaceApplication(application: InsertPlaceApplication): Promise<PlaceApplication>;
@@ -1111,6 +1113,28 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(placeDrafts.createdAt));
   }
 
+  async getFilteredPlaceDrafts(filters: { minRating?: number; minReviewCount?: number; status?: string }): Promise<PlaceDraft[]> {
+    const conditions = [];
+    
+    if (filters.status) {
+      conditions.push(eq(placeDrafts.status, filters.status));
+    }
+    if (filters.minRating !== undefined) {
+      conditions.push(gte(placeDrafts.googleRating, filters.minRating));
+    }
+    if (filters.minReviewCount !== undefined) {
+      conditions.push(gte(placeDrafts.googleReviewCount, filters.minReviewCount));
+    }
+    
+    if (conditions.length === 0) {
+      return db.select().from(placeDrafts).orderBy(desc(placeDrafts.googleRating));
+    }
+    
+    return db.select().from(placeDrafts)
+      .where(and(...conditions))
+      .orderBy(desc(placeDrafts.googleRating));
+  }
+
   async updatePlaceDraft(id: number, data: Partial<PlaceDraft>): Promise<PlaceDraft> {
     const [updated] = await db.update(placeDrafts)
       .set({ ...data, updatedAt: new Date() })
@@ -1121,6 +1145,12 @@ export class DatabaseStorage implements IStorage {
 
   async deletePlaceDraft(id: number): Promise<void> {
     await db.delete(placeDrafts).where(eq(placeDrafts.id, id));
+  }
+
+  async batchDeletePlaceDrafts(ids: number[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const result = await db.delete(placeDrafts).where(inArray(placeDrafts.id, ids));
+    return ids.length;
   }
 
   // Place Applications (地點申請紀錄)

@@ -5564,6 +5564,123 @@ ${draft.address ? `地址：${draft.address}` : ''}
     }
   });
 
+  // 管理員：篩選草稿地點（支援星級/評論數篩選）
+  app.get("/api/admin/place-drafts/filter", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const minRating = req.query.minRating ? parseFloat(req.query.minRating) : undefined;
+      const minReviewCount = req.query.minReviewCount ? parseInt(req.query.minReviewCount) : undefined;
+      const status = req.query.status || 'pending';
+
+      const drafts = await storage.getFilteredPlaceDrafts({ minRating, minReviewCount, status });
+      
+      res.json({ 
+        drafts,
+        filters: { minRating, minReviewCount, status },
+        count: drafts.length
+      });
+    } catch (error) {
+      console.error("Admin filter place drafts error:", error);
+      res.status(500).json({ error: "Failed to filter place drafts" });
+    }
+  });
+
+  // 管理員：一鍵批次發布（支援篩選條件）
+  app.post("/api/admin/place-drafts/batch-publish", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const batchPublishSchema = z.object({
+        minRating: z.number().min(0).max(5).optional(),
+        minReviewCount: z.number().min(0).optional(),
+        ids: z.array(z.number()).optional(), // 可選：指定 ID 列表
+      });
+
+      const validated = batchPublishSchema.parse(req.body);
+      
+      // 取得符合條件的草稿
+      let draftsToPublish;
+      if (validated.ids && validated.ids.length > 0) {
+        // 使用指定的 ID 列表
+        const allDrafts = await storage.getFilteredPlaceDrafts({ status: 'pending' });
+        draftsToPublish = allDrafts.filter(d => validated.ids!.includes(d.id));
+      } else {
+        // 使用篩選條件
+        draftsToPublish = await storage.getFilteredPlaceDrafts({
+          minRating: validated.minRating,
+          minReviewCount: validated.minReviewCount,
+          status: 'pending'
+        });
+      }
+
+      if (draftsToPublish.length === 0) {
+        return res.json({ success: true, published: 0, message: "No drafts match the criteria" });
+      }
+
+      const categories = await storage.getCategories();
+      const publishedIds: number[] = [];
+      const errors: Array<{ id: number; placeName: string; error: string }> = [];
+
+      for (const draft of draftsToPublish) {
+        try {
+          const districtInfo = await storage.getDistrictWithParents(draft.districtId);
+          if (!districtInfo) {
+            errors.push({ id: draft.id, placeName: draft.placeName, error: "Invalid district" });
+            continue;
+          }
+
+          const category = categories.find(c => c.id === draft.categoryId);
+          const subcategories = await storage.getSubcategoriesByCategory(draft.categoryId);
+          const subcategory = subcategories.find(s => s.id === draft.subcategoryId);
+
+          await storage.savePlaceToCache({
+            placeName: draft.placeName,
+            description: draft.description || '',
+            category: category?.nameZh || '',
+            subCategory: subcategory?.nameZh || '',
+            district: districtInfo.district.nameZh,
+            city: districtInfo.region.nameZh,
+            country: districtInfo.country.nameZh,
+            placeId: draft.googlePlaceId || undefined,
+            locationLat: draft.locationLat || undefined,
+            locationLng: draft.locationLng || undefined,
+            verifiedAddress: draft.address || undefined,
+          });
+
+          publishedIds.push(draft.id);
+        } catch (e: any) {
+          errors.push({ id: draft.id, placeName: draft.placeName, error: e.message });
+        }
+      }
+
+      // 批次刪除已發布的草稿
+      if (publishedIds.length > 0) {
+        await storage.batchDeletePlaceDrafts(publishedIds);
+      }
+
+      res.json({
+        success: true,
+        published: publishedIds.length,
+        failed: errors.length,
+        errors: errors.length > 0 ? errors : undefined,
+        message: `Successfully published ${publishedIds.length} places`
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      console.error("Admin batch publish error:", error);
+      res.status(500).json({ error: "Failed to batch publish" });
+    }
+  });
+
   // ============ Admin User Management Routes ============
 
   // 管理員：取得待審核用戶
