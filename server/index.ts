@@ -431,6 +431,7 @@ async function startServer() {
             address: verification.verifiedAddress,
             googlePlaceId: verification.placeId,
             googleRating: verification.rating,
+            googleReviewCount: verification.reviewCount,
             locationLat: verification.location?.lat?.toString(),
             locationLng: verification.location?.lng?.toString(),
           });

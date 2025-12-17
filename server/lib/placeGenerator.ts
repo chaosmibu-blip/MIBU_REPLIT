@@ -124,6 +124,7 @@ export async function verifyPlaceWithGoogle(
   verifiedName?: string;
   verifiedAddress?: string;
   rating?: number;
+  reviewCount?: number;
   location?: { lat: number; lng: number };
   googleTypes?: string[];
   primaryType?: string;
@@ -173,6 +174,7 @@ export async function verifyPlaceWithGoogle(
         verifiedName: place.name,
         verifiedAddress: address,
         rating: place.rating,
+        reviewCount: place.user_ratings_total,
         location: place.geometry?.location,
         googleTypes,
         primaryType

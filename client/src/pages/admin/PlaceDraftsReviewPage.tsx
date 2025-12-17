@@ -102,6 +102,8 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
   const [loadingFilteredCount, setLoadingFilteredCount] = useState(false);
   const [batchRegenerating, setBatchRegenerating] = useState(false);
   const [regenerateResult, setRegenerateResult] = useState<{ regenerated: number; failed: number; errors?: { id: number; placeName: string; error: string }[] } | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<{ updated: number; failed: number; remaining: number } | null>(null);
 
   const [draftForm, setDraftForm] = useState({
     placeName: '',
@@ -484,6 +486,36 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
     }
   };
 
+  const handleBackfillReviewCount = async () => {
+    const confirmMsg = '確定要回填現有草稿的 Google 評論數嗎？這會從 Google API 取得評論數資料（每次最多 50 筆）。';
+    if (!window.confirm(confirmMsg)) return;
+    
+    setBackfilling(true);
+    setBackfillResult(null);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/place-drafts/backfill-review-count', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 50 })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || '回填評論數失敗');
+      }
+      
+      const result = await response.json();
+      setBackfillResult(result);
+      await fetchAllDrafts();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
   const getSourceLabel = (source: string) => {
     const labels: Record<string, string> = {
       'ai': 'AI 生成',
@@ -555,7 +587,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <button
-          onClick={() => { setShowBatchPanel(!showBatchPanel); setBatchResult(null); setRegenerateResult(null); setFilteredCount(null); }}
+          onClick={() => { setShowBatchPanel(!showBatchPanel); setBatchResult(null); setRegenerateResult(null); setBackfillResult(null); setFilteredCount(null); }}
           className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
           data-testid="button-toggle-batch-panel"
         >
@@ -698,6 +730,34 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
                 </div>
               </div>
             )}
+            
+            {/* 回填評論數區塊 */}
+            <div className="pt-4 border-t border-slate-200">
+              <h4 className="text-sm font-medium text-slate-700 mb-2">回填 Google 評論數</h4>
+              <p className="text-xs text-slate-500 mb-3">
+                現有草稿可能沒有 Google 評論數資料。點擊下方按鈕從 Google API 取得評論數（每次最多 50 筆）。
+              </p>
+              <button
+                onClick={handleBackfillReviewCount}
+                disabled={backfilling || batchPublishing || batchRegenerating}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                data-testid="button-backfill-review-count"
+              >
+                {backfilling ? '回填中...' : '回填評論數（每次 50 筆）'}
+              </button>
+              
+              {backfillResult && (
+                <div className={`mt-3 p-3 rounded-xl border ${backfillResult.failed > 0 ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-200'}`}>
+                  <div className="text-sm space-y-1">
+                    <p className="text-blue-700">成功回填：{backfillResult.updated} 筆</p>
+                    {backfillResult.failed > 0 && (
+                      <p className="text-red-600">失敗：{backfillResult.failed} 筆</p>
+                    )}
+                    <p className="text-slate-600">剩餘待回填：{backfillResult.remaining} 筆</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

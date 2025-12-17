@@ -5778,6 +5778,84 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     }
   });
 
+  // 管理員：回填現有草稿的 Google 評論數
+  app.post("/api/admin/place-drafts/backfill-review-count", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const { limit = 50 } = req.body as { limit?: number };
+
+      // 取得沒有評論數的待審核草稿
+      const allDrafts = await storage.getAllPlaceDrafts();
+      const draftsToUpdate = allDrafts.filter(d => 
+        d.status === 'pending' && 
+        d.googleReviewCount === null && 
+        d.googlePlaceId
+      ).slice(0, limit);
+
+      if (draftsToUpdate.length === 0) {
+        return res.json({ success: true, updated: 0, failed: 0, message: "沒有需要回填的草稿" });
+      }
+
+      const updatedIds: number[] = [];
+      const errors: { id: number; placeName: string; error: string }[] = [];
+
+      for (const draft of draftsToUpdate) {
+        try {
+          // 使用 Place Details API 取得評論數
+          const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+          if (!GOOGLE_MAPS_API_KEY) {
+            throw new Error("GOOGLE_MAPS_API_KEY not configured");
+          }
+
+          const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${draft.googlePlaceId}&fields=user_ratings_total,rating&key=${GOOGLE_MAPS_API_KEY}&language=zh-TW`;
+          const response = await fetch(url);
+          const data = await response.json();
+
+          if (data.status === 'OK' && data.result) {
+            const updateData: any = {};
+            if (data.result.user_ratings_total !== undefined) {
+              updateData.googleReviewCount = data.result.user_ratings_total;
+            }
+            if (data.result.rating !== undefined && draft.googleRating === null) {
+              updateData.googleRating = data.result.rating;
+            }
+
+            if (Object.keys(updateData).length > 0) {
+              await storage.updatePlaceDraft(draft.id, updateData);
+              updatedIds.push(draft.id);
+              console.log(`[BackfillReviewCount] Updated ${draft.placeName}: reviewCount=${updateData.googleReviewCount}`);
+            }
+          } else {
+            console.log(`[BackfillReviewCount] No data for ${draft.placeName}: ${data.status}`);
+          }
+
+          // 避免 API 速率限制
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (e: any) {
+          console.error(`[BackfillReviewCount] Failed for ${draft.placeName}:`, e.message);
+          errors.push({ id: draft.id, placeName: draft.placeName, error: e.message });
+        }
+      }
+
+      res.json({
+        success: true,
+        updated: updatedIds.length,
+        failed: errors.length,
+        remaining: allDrafts.filter(d => d.status === 'pending' && d.googleReviewCount === null && d.googlePlaceId).length - updatedIds.length,
+        errors: errors.length > 0 ? errors : undefined,
+        message: `成功回填 ${updatedIds.length} 筆評論數`
+      });
+    } catch (error) {
+      console.error("Admin backfill review count error:", error);
+      res.status(500).json({ error: "回填評論數失敗" });
+    }
+  });
+
   // ============ Admin User Management Routes ============
 
   // 管理員：取得待審核用戶
