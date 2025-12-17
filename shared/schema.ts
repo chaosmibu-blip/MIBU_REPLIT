@@ -1222,9 +1222,9 @@ export const placeApplicationsRelations = relations(placeApplications, ({ one })
 }));
 
 // Insert schemas for Place Application System
+// status 保留可傳入，預設為 'pending'，AutoDraft 會傳 'auto_generated'
 export const insertPlaceDraftSchema = createInsertSchema(placeDrafts).omit({
   id: true,
-  status: true,
   createdAt: true,
   updatedAt: true,
 });

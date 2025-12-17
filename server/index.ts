@@ -10,7 +10,7 @@ import { WebhookHandlers } from "./webhookHandlers";
 import { storage } from "./storage";
 import { verifyJwtToken, initializeSuperAdmin } from "./replitAuth";
 import { checkGeofence } from "./lib/geofencing";
-import { generatePlaceWithAI, verifyPlaceWithGoogle } from "./lib/placeGenerator";
+import { generatePlaceWithAI, verifyPlaceWithGoogle, reviewPlaceWithAI } from "./lib/placeGenerator";
 import { setupSocketIO } from "./socketHandler";
 import { z } from "zod";
 
@@ -448,7 +448,88 @@ async function startServer() {
       console.log('[AutoDraft] Automatic draft generation scheduled (every 1 minute)');
 
       // ============================================================
-      // 7. 每小時自動清除過期活動 (快閃活動、節日限定活動)
+      // 7. AI 自動審查 auto_generated 草稿 (每 2 分鐘)
+      // ============================================================
+      let isAIReviewRunning = false;
+      
+      setInterval(async () => {
+        if (isAIReviewRunning) {
+          console.log('[AIReview] Previous run still in progress, skipping...');
+          return;
+        }
+        
+        isAIReviewRunning = true;
+        try {
+          // 取得一筆 auto_generated 狀態的草稿
+          const drafts = await storage.getFilteredPlaceDrafts({ status: 'auto_generated' });
+          if (drafts.length === 0) {
+            return; // 沒有待審查的草稿
+          }
+          
+          // 每次處理一筆
+          const draft = drafts[0];
+          console.log(`[AIReview] Reviewing: ${draft.placeName} (ID: ${draft.id})`);
+          
+          // 取得分類資訊
+          const categories = await storage.getCategories();
+          const category = categories.find(c => c.id === draft.categoryId);
+          const subcategories = await storage.getSubcategoriesByCategory(draft.categoryId);
+          const subcategory = subcategories.find(s => s.id === draft.subcategoryId);
+          const districtInfo = await storage.getDistrictWithParents(draft.districtId);
+          
+          if (!category || !subcategory || !districtInfo) {
+            console.log(`[AIReview] Missing category/district info for draft ${draft.id}, moving to pending`);
+            await storage.updatePlaceDraft(draft.id, { status: 'pending' });
+            return;
+          }
+          
+          // 呼叫 AI 審查
+          const reviewResult = await reviewPlaceWithAI(
+            draft.placeName,
+            draft.description || '',
+            category.nameZh,
+            subcategory.nameZh,
+            districtInfo.district.nameZh,
+            districtInfo.region.nameZh
+          );
+          
+          console.log(`[AIReview] Result: ${reviewResult.passed ? 'PASS' : 'FAIL'} - ${reviewResult.reason} (confidence: ${reviewResult.confidence})`);
+          
+          if (reviewResult.passed && reviewResult.confidence >= 0.7) {
+            // 通過審查 → 直接發布到 place_cache
+            await storage.savePlaceToCache({
+              placeName: draft.placeName,
+              description: draft.description || '',
+              category: category.nameZh,
+              subCategory: subcategory.nameZh,
+              district: districtInfo.district.nameZh,
+              city: districtInfo.region.nameZh,
+              country: districtInfo.country.nameZh,
+              placeId: draft.googlePlaceId || undefined,
+              locationLat: draft.locationLat || undefined,
+              locationLng: draft.locationLng || undefined,
+              verifiedAddress: draft.address || undefined,
+            });
+            
+            // 刪除草稿
+            await storage.deletePlaceDraft(draft.id);
+            console.log(`[AIReview] Draft ${draft.id} published to cache and deleted`);
+          } else {
+            // 未通過審查 → 改為 pending 狀態，等待人工審核
+            await storage.updatePlaceDraft(draft.id, { status: 'pending' });
+            console.log(`[AIReview] Draft ${draft.id} moved to pending for manual review`);
+          }
+        } catch (error) {
+          console.error('[AIReview] Error:', error);
+        } finally {
+          isAIReviewRunning = false;
+        }
+      }, 120000); // 120秒 = 2分鐘
+      
+      console.log('[AIReview] AI review scheduler started (every 2 minutes)');
+
+      // ============================================================
+      // 8. 每小時自動清除過期活動 (快閃活動、節日限定活動)
       // ============================================================
       setInterval(async () => {
         try {

@@ -187,3 +187,67 @@ export async function verifyPlaceWithGoogle(
     return { verified: false };
   }
 }
+
+export interface AIReviewResult {
+  passed: boolean;
+  reason: string;
+  confidence: number;
+}
+
+export async function reviewPlaceWithAI(
+  placeName: string,
+  description: string,
+  categoryName: string,
+  subcategoryName: string,
+  districtName: string,
+  regionName: string
+): Promise<AIReviewResult> {
+  try {
+    const prompt = `你是旅遊內容品質審核專家。請評估以下地點資料是否適合推薦給遊客。
+
+地點名稱：${placeName}
+分類：${categoryName} / ${subcategoryName}
+地區：${regionName}${districtName}
+描述：${description}
+
+【審核標準】
+1. 描述與地點不符 → 不通過（例如：描述講的是另一個地方）
+2. 包含否定詞 → 不通過（例如：「無此類型」「非專營」「尚無」「並無符合」「無法找到」）
+3. 建議去別處 → 不通過（例如：「建議體驗當地其他」「建議前往」）
+4. 通用/空泛描述 → 不通過（可套用在任何地點的描述）
+5. 分類錯誤 → 不通過（例如：麵包店歸類為溫泉）
+6. 非旅遊性質 → 不通過（政府機關、銀行、超商等日常服務）
+
+【通過標準】
+- 描述具體且與地點相關
+- 分類正確
+- 適合推薦給遊客
+
+請以 JSON 格式回答：
+{
+  "passed": true或false,
+  "reason": "簡短說明原因（10字以內）",
+  "confidence": 0到1之間的數字
+}
+
+只回答 JSON，不要有其他文字。`;
+
+    const responseText = await callGemini(prompt);
+    
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error("[AIReview] Failed to parse response:", responseText);
+      return { passed: false, reason: "AI 回應解析失敗", confidence: 0 };
+    }
+    
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      passed: !!parsed.passed,
+      reason: parsed.reason || "未提供原因",
+      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5
+    };
+  } catch (error) {
+    console.error("[AIReview] Error:", error);
+    return { passed: false, reason: "AI 審查發生錯誤", confidence: 0 };
+  }
+}
