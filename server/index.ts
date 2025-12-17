@@ -297,11 +297,11 @@ async function startServer() {
   setupSocketIO(httpServer);
 
   // 錯誤處理
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
+    console.error(`[Express Error] ${req.method} ${req.path}:`, err.stack || err);
     res.status(status).json({ message });
-    throw err;
   });
 
   // API 404 fallback - 防止未知 API 路由回傳 HTML

@@ -342,8 +342,19 @@ export async function setupAuth(app: Express) {
       return res.redirect("/");
     }
     
-    ensureStrategy(req.hostname);
+    try {
+      console.log(`[OAuth Callback] Processing callback for hostname: ${req.hostname}`);
+      ensureStrategy(req.hostname);
+    } catch (strategyError) {
+      console.error('[OAuth Callback] ensureStrategy failed:', strategyError);
+      return res.status(500).json({ message: 'OAuth configuration error' });
+    }
+    
     passport.authenticate(`replitauth:${req.hostname}`, (err: any, user: any) => {
+      console.log(`[OAuth Callback] passport.authenticate result - err: ${err}, user: ${user?.claims?.sub || 'null'}`);
+      if (err) {
+        console.error('[OAuth Callback] Passport authentication error:', err);
+      }
       if (err || !user) {
         const externalRedirectUri = getExternalRedirectUri();
         if (externalRedirectUri) {
