@@ -403,32 +403,39 @@ export async function setupAuth(app: Express) {
             
             // Auto-seed merchant/specialist data for super admin
             if (dbUser) {
-              if (requestedPortal === 'merchant') {
-                let merchant = await storage.getMerchantByUserId(dbUser.id);
-                if (!merchant) {
-                  const crypto = await import('crypto');
-                  merchant = await storage.createMerchant({
-                    userId: dbUser.id,
-                    name: `${dbUser.firstName || 'Admin'}'s Test Store`,
-                    email: dbUser.email!,
-                    subscriptionPlan: 'premium',
-                    dailySeedCode: crypto.randomBytes(4).toString('hex').toUpperCase(),
-                    creditBalance: 10000,
-                  });
-                  console.log(`[GOD MODE] Auto-created merchant: ${merchant.id}`);
+              try {
+                if (requestedPortal === 'merchant') {
+                  let merchant = await storage.getMerchantByUserId(dbUser.id);
+                  if (!merchant && dbUser.email) {
+                    const crypto = await import('crypto');
+                    merchant = await storage.createMerchant({
+                      userId: dbUser.id,
+                      name: `${dbUser.firstName || 'Admin'}'s Test Store`,
+                      email: dbUser.email,
+                      subscriptionPlan: 'premium',
+                      dailySeedCode: crypto.randomBytes(4).toString('hex').toUpperCase(),
+                      creditBalance: 10000,
+                    });
+                    console.log(`[GOD MODE] Auto-created merchant: ${merchant.id}`);
+                  } else if (!merchant) {
+                    console.log(`[GOD MODE] Cannot auto-create merchant: user has no email`);
+                  }
+                } else if (requestedPortal === 'specialist') {
+                  let specialist = await storage.getSpecialistByUserId(dbUser.id);
+                  if (!specialist) {
+                    specialist = await storage.createSpecialist({
+                      userId: dbUser.id,
+                      name: `${dbUser.firstName || 'Admin'} Specialist`,
+                      serviceRegion: 'taipei',
+                      isAvailable: true,
+                      maxTravelers: 10,
+                    });
+                    console.log(`[GOD MODE] Auto-created specialist: ${specialist.id}`);
+                  }
                 }
-              } else if (requestedPortal === 'specialist') {
-                let specialist = await storage.getSpecialistByUserId(dbUser.id);
-                if (!specialist) {
-                  specialist = await storage.createSpecialist({
-                    userId: dbUser.id,
-                    name: `${dbUser.firstName || 'Admin'} Specialist`,
-                    serviceRegion: 'taipei',
-                    isAvailable: true,
-                    maxTravelers: 10,
-                  });
-                  console.log(`[GOD MODE] Auto-created specialist: ${specialist.id}`);
-                }
+              } catch (seedError) {
+                console.error(`[GOD MODE] Failed to auto-seed ${requestedPortal} data:`, seedError);
+                // Continue anyway - super admin can still access the portal
               }
             }
           }
