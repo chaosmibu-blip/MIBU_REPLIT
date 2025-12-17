@@ -515,9 +515,17 @@ async function startServer() {
             await storage.deletePlaceDraft(draft.id);
             console.log(`[AIReview] Draft ${draft.id} published to cache and deleted`);
           } else {
-            // 未通過審查 → 改為 pending 狀態，等待人工審核
-            await storage.updatePlaceDraft(draft.id, { status: 'pending' });
-            console.log(`[AIReview] Draft ${draft.id} moved to pending for manual review`);
+            // 未通過審查 → 改為 pending 狀態，等待人工審核，並加上退件原因
+            const rejectionPrefix = `[AI審核不通過] ${reviewResult.reason} (信心度: ${Math.round(reviewResult.confidence * 100)}%)`;
+            const newDescription = draft.description 
+              ? `${rejectionPrefix}\n\n原描述：${draft.description}`
+              : rejectionPrefix;
+            
+            await storage.updatePlaceDraft(draft.id, { 
+              status: 'pending',
+              description: newDescription
+            });
+            console.log(`[AIReview] Draft ${draft.id} moved to pending for manual review: ${reviewResult.reason}`);
           }
         } catch (error) {
           console.error('[AIReview] Error:', error);
