@@ -83,6 +83,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const [subcategoriesAll, setSubcategoriesAll] = useState<Subcategory[]>([]);
   const [countries, setCountries] = useState<Country[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
@@ -91,7 +92,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
   const [publishingDraft, setPublishingDraft] = useState<number | null>(null);
   const [deletingDraft, setDeletingDraft] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ placeName: '', description: '' });
+  const [editForm, setEditForm] = useState({ placeName: '', description: '', categoryId: '', subcategoryId: '' });
   const [savingEdit, setSavingEdit] = useState(false);
   const [regeneratingDesc, setRegeneratingDesc] = useState(false);
   const [showBatchPanel, setShowBatchPanel] = useState(false);
@@ -179,6 +180,17 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
       setSubcategories([]);
     }
   }, [draftForm.categoryId]);
+
+  useEffect(() => {
+    if (editForm.categoryId) {
+      fetch(`/api/categories/${editForm.categoryId}/subcategories`)
+        .then(res => res.json())
+        .then(data => setSubcategoriesAll(data.subcategories || []))
+        .catch(() => { /* preserve existing subcategoriesAll on error */ });
+    } else {
+      setSubcategoriesAll([]);
+    }
+  }, [editForm.categoryId]);
 
   useEffect(() => {
     if (draftForm.countryId) {
@@ -324,7 +336,9 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
     if (selectedDraft) {
       setEditForm({
         placeName: selectedDraft.placeName,
-        description: selectedDraft.description || ''
+        description: selectedDraft.description || '',
+        categoryId: selectedDraft.categoryId ? selectedDraft.categoryId.toString() : '',
+        subcategoryId: selectedDraft.subcategoryId ? selectedDraft.subcategoryId.toString() : ''
       });
       setIsEditing(true);
     }
@@ -332,7 +346,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
 
   const cancelEditing = () => {
     setIsEditing(false);
-    setEditForm({ placeName: '', description: '' });
+    setEditForm({ placeName: '', description: '', categoryId: '', subcategoryId: '' });
   };
 
   const handleSaveEdit = async () => {
@@ -346,7 +360,9 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           placeName: editForm.placeName,
-          description: editForm.description
+          description: editForm.description,
+          categoryId: editForm.categoryId ? parseInt(editForm.categoryId) : undefined,
+          subcategoryId: editForm.subcategoryId ? parseInt(editForm.subcategoryId) : undefined
         })
       });
       if (!response.ok) {
@@ -1061,6 +1077,37 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
                         rows={3}
                         data-testid="input-edit-description"
                       />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">分類</label>
+                        <select
+                          value={editForm.categoryId}
+                          onChange={(e) => setEditForm(f => ({ ...f, categoryId: e.target.value, subcategoryId: '' }))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          data-testid="select-edit-category"
+                        >
+                          <option value="">選擇分類</option>
+                          {categories.map(cat => (
+                            <option key={cat.id} value={cat.id}>{cat.nameZh}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">子分類</label>
+                        <select
+                          value={editForm.subcategoryId}
+                          onChange={(e) => setEditForm(f => ({ ...f, subcategoryId: e.target.value }))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          disabled={!editForm.categoryId}
+                          data-testid="select-edit-subcategory"
+                        >
+                          <option value="">選擇子分類</option>
+                          {subcategoriesAll.map(sub => (
+                            <option key={sub.id} value={sub.id}>{sub.nameZh}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <button
