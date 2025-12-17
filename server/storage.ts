@@ -3,7 +3,7 @@ import {
   countries, regions, districts, categories, subcategories, chatInvites,
   placeProducts, cartItems, commerceOrders, klookProducts, messageHighlights,
   placeDrafts, placeApplications, userLocations, planners, serviceOrders, places,
-  specialists, transactions, serviceRelations,
+  specialists, transactions, serviceRelations, announcements,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -25,10 +25,11 @@ import {
   type Place,
   type Specialist, type InsertSpecialist,
   type Transaction, type InsertTransaction,
-  type ServiceRelation, type InsertServiceRelation
+  type ServiceRelation, type InsertServiceRelation,
+  type Announcement, type InsertAnnouncement, type AnnouncementType
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, ilike, or, isNull } from "drizzle-orm";
+import { eq, and, desc, sql, ilike, or, isNull, lt, gt, gte, lte } from "drizzle-orm";
 
 export interface IStorage {
   // Users (mandatory for Replit Auth)
@@ -199,6 +200,15 @@ export interface IStorage {
   updateMerchantDailySeedCode(merchantId: number, seedCode: string): Promise<Merchant | undefined>;
   updateMerchantCreditBalance(merchantId: number, amount: number): Promise<Merchant | undefined>;
   getMerchantDailySeedCode(merchantId: number): Promise<{ seedCode: string; updatedAt: Date } | undefined>;
+
+  // Announcements & Events (公告與活動系統)
+  createAnnouncement(announcement: InsertAnnouncement): Promise<Announcement>;
+  getAnnouncementById(id: number): Promise<Announcement | undefined>;
+  getAllAnnouncements(): Promise<Announcement[]>;
+  getActiveAnnouncements(type?: AnnouncementType): Promise<Announcement[]>;
+  updateAnnouncement(id: number, data: Partial<Announcement>): Promise<Announcement | undefined>;
+  deleteAnnouncement(id: number): Promise<void>;
+  deleteExpiredEvents(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1511,6 +1521,72 @@ export class DatabaseStorage implements IStorage {
       return { seedCode: merchant.dailySeedCode, updatedAt: merchant.codeUpdatedAt };
     }
     return undefined;
+  }
+
+  // Announcements & Events (公告與活動系統)
+  async createAnnouncement(announcement: InsertAnnouncement): Promise<Announcement> {
+    const [created] = await db.insert(announcements).values(announcement).returning();
+    return created;
+  }
+
+  async getAnnouncementById(id: number): Promise<Announcement | undefined> {
+    const [announcement] = await db.select().from(announcements).where(eq(announcements.id, id));
+    return announcement || undefined;
+  }
+
+  async getAllAnnouncements(): Promise<Announcement[]> {
+    return db.select().from(announcements).orderBy(desc(announcements.priority), desc(announcements.createdAt));
+  }
+
+  async getActiveAnnouncements(type?: AnnouncementType): Promise<Announcement[]> {
+    const now = new Date();
+    const conditions = [
+      eq(announcements.isActive, true),
+      lte(announcements.startDate, now),
+      or(
+        isNull(announcements.endDate),
+        gte(announcements.endDate, now)
+      )
+    ];
+    
+    if (type) {
+      conditions.push(eq(announcements.type, type));
+    }
+    
+    return db.select()
+      .from(announcements)
+      .where(and(...conditions))
+      .orderBy(desc(announcements.priority), desc(announcements.createdAt));
+  }
+
+  async updateAnnouncement(id: number, data: Partial<Announcement>): Promise<Announcement | undefined> {
+    const [updated] = await db
+      .update(announcements)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(announcements.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteAnnouncement(id: number): Promise<void> {
+    await db.delete(announcements).where(eq(announcements.id, id));
+  }
+
+  async deleteExpiredEvents(): Promise<number> {
+    const now = new Date();
+    const result = await db
+      .delete(announcements)
+      .where(
+        and(
+          or(
+            eq(announcements.type, 'flash_event'),
+            eq(announcements.type, 'holiday_event')
+          ),
+          lt(announcements.endDate, now)
+        )
+      )
+      .returning();
+    return result.length;
   }
 }
 
