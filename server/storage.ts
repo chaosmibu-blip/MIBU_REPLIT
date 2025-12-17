@@ -1120,10 +1120,20 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(placeDrafts.status, filters.status));
     }
     if (filters.minRating !== undefined) {
-      conditions.push(gte(placeDrafts.googleRating, filters.minRating));
+      conditions.push(
+        or(
+          gte(placeDrafts.googleRating, filters.minRating),
+          isNull(placeDrafts.googleRating)
+        )
+      );
     }
     if (filters.minReviewCount !== undefined) {
-      conditions.push(gte(placeDrafts.googleReviewCount, filters.minReviewCount));
+      conditions.push(
+        or(
+          gte(placeDrafts.googleReviewCount, filters.minReviewCount),
+          isNull(placeDrafts.googleReviewCount)
+        )
+      );
     }
     
     if (conditions.length === 0) {
