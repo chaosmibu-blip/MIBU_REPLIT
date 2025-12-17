@@ -4020,19 +4020,28 @@ ${uncachedSkeleton.map((item, idx) => `  {
 
   app.post("/api/merchant/places/claim", isAuthenticated, async (req: any, res) => {
     try {
+      console.log("[ClaimAPI] Request body:", JSON.stringify(req.body));
+      
       const userId = req.user?.claims?.sub;
       if (!userId) {
+        console.log("[ClaimAPI] No userId found");
         return res.status(401).json({ error: "Authentication required" });
       }
+      console.log("[ClaimAPI] userId:", userId);
 
       const merchant = await storage.getMerchantByUserId(userId);
       if (!merchant) {
+        console.log("[ClaimAPI] No merchant found for userId:", userId);
         return res.status(403).json({ error: "You must be a registered merchant to claim places" });
       }
+      console.log("[ClaimAPI] merchant:", merchant.id, merchant.businessName);
 
       const { placeName, district, city, country, placeCacheId, googlePlaceId } = req.body;
+      console.log("[ClaimAPI] Parsed fields:", { placeName, district, city, country, placeCacheId, googlePlaceId });
+      
       if (!placeName || !district || !city || !country) {
-        return res.status(400).json({ error: "Missing required fields" });
+        console.log("[ClaimAPI] Missing fields:", { placeName: !!placeName, district: !!district, city: !!city, country: !!country });
+        return res.status(400).json({ error: "Missing required fields", details: { placeName: !!placeName, district: !!district, city: !!city, country: !!country } });
       }
 
       // Check if place is already claimed - prefer Google Place ID check
@@ -4045,9 +4054,11 @@ ${uncachedSkeleton.map((item, idx) => `  {
       }
       
       if (existingLink) {
+        console.log("[ClaimAPI] Place already claimed:", existingLink.id);
         return res.status(409).json({ error: "This place is already claimed by another merchant" });
       }
 
+      console.log("[ClaimAPI] Creating link with:", { merchantId: merchant.id, placeCacheId, googlePlaceId, placeName, district, city, country });
       const link = await storage.createMerchantPlaceLink({
         merchantId: merchant.id,
         placeCacheId: placeCacheId || null,
@@ -4059,10 +4070,11 @@ ${uncachedSkeleton.map((item, idx) => `  {
         status: 'approved'
       });
 
+      console.log("[ClaimAPI] Link created:", link.id);
       res.json({ success: true, link });
-    } catch (error) {
-      console.error("Place claim error:", error);
-      res.status(500).json({ error: "Failed to claim place" });
+    } catch (error: any) {
+      console.error("[ClaimAPI] Error:", error.message, error.stack);
+      res.status(500).json({ error: "Failed to claim place", details: error.message });
     }
   });
 
