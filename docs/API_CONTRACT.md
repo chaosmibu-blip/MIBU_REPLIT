@@ -215,8 +215,33 @@ headers: {
 }
 ```
 
+#### GET /api/gacha/pool/:city
+取得特定城市的獎池預覽
+
+**Path Parameters**:
+- `city` (string): 城市名稱（需 URL encode，如 `台北市` → `%E5%8F%B0%E5%8C%97%E5%B8%82`）
+
+**Response**:
+```typescript
+{
+  success: boolean;
+  pool: {
+    city: string;
+    jackpots: Array<{
+      id: number;
+      placeName: string;
+      category: string;
+      subCategory: string;
+      rating: string | null;
+    }>;
+    totalInPool: number;
+    jackpotCount: number;
+  };
+}
+```
+
 #### GET /api/gacha/pool
-取得獎池資訊
+取得獎池資訊（Query 參數版本）
 
 **Query Parameters**:
 - `regionId` (number): 縣市 ID
@@ -225,15 +250,19 @@ headers: {
 **Response**:
 ```typescript
 {
-  places: Array<{
-    id: number;
-    placeName: string;
-    category: string;
-    subcategory: string;
+  success: boolean;
+  pool: {
     city: string;
-    district: string;
-  }>;
-  total: number;
+    jackpots: Array<{
+      id: number;
+      placeName: string;
+      category: string;
+      subCategory: string;
+      rating: string | null;
+    }>;
+    totalInPool: number;
+    jackpotCount: number;
+  };
 }
 ```
 

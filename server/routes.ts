@@ -2903,6 +2903,42 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // GET /api/gacha/pool/:city - 用城市名稱查詢獎池預覽
+  app.get("/api/gacha/pool/:city", async (req, res) => {
+    try {
+      const { city } = req.params;
+      const decodedCity = decodeURIComponent(city);
+      
+      // 取得該城市的所有快取地點作為獎池
+      const places = await storage.getPlaceCacheByCity(decodedCity);
+      
+      // 篩選高評分的地點作為大獎
+      const jackpots = places.filter(p => {
+        const rating = p.googleRating ? parseFloat(p.googleRating) : 0;
+        return rating >= 4.5;
+      }).slice(0, 20);
+
+      res.json({
+        success: true,
+        pool: {
+          city: decodedCity,
+          jackpots: jackpots.map(p => ({
+            id: p.id,
+            placeName: p.placeName,
+            category: p.category,
+            subCategory: p.subCategory,
+            rating: p.googleRating,
+          })),
+          totalInPool: places.length,
+          jackpotCount: jackpots.length,
+        }
+      });
+    } catch (error) {
+      console.error("Gacha pool by city error:", error);
+      res.status(500).json({ error: "Failed to get gacha pool" });
+    }
+  });
+
   // GET /api/gacha/pool - 用 regionId 查詢獎池
   app.get("/api/gacha/pool", async (req, res) => {
     try {
