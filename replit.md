@@ -22,8 +22,9 @@ Mibu 旅行扭dan is a Progressive Web Application (PWA) that gamifies travel pl
 ### 前後端分離同步規範
 這是一個前後端分離專案，有外部的 Expo App 前端：
 1. **完成後端工作後** - 必須檢查是否需要同步更新外部前端
-2. **如有 API 變更** - 產生「前端同步指令」並記錄到本文件的「前端同步指令記錄」章節
+2. **如有 API 變更** - 直接在對話中輸出「前端同步指令」（用 code block 方便複製貼上）
 3. **內建 Web 前端用途** - 僅供管理後台、商戶後台、開發測試使用，非消費者端
+4. **同步指令格式** - 包含：用戶需求、API 變更、資料結構、前端修改建議、程式碼範例
 
 ## System Architecture
 
