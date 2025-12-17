@@ -70,6 +70,16 @@ async function startServer() {
   const app = express();
 
   // ============================================================
+  // 0. 最最優先：全域請求日誌 (Debug 用)
+  // ============================================================
+  app.use((req, res, next) => {
+    if (req.path.includes('callback') || req.path.includes('login')) {
+      console.log(`[GLOBAL_DEBUG] ${req.method} ${req.path} | Query: ${JSON.stringify(req.query)}`);
+    }
+    next();
+  });
+
+  // ============================================================
   // 1. 最優先：Body Parser (必須在所有路由之前!)
   // ============================================================
   app.use(express.json({
