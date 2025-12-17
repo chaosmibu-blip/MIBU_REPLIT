@@ -79,7 +79,9 @@ export interface IStorage {
 
   // Location hierarchy
   getCountries(): Promise<Country[]>;
+  getRegionById(regionId: number): Promise<Region | null>;
   getRegionsByCountry(countryId: number): Promise<Region[]>;
+  getPlaceCacheByCity(city: string): Promise<PlaceCache[]>;
   getDistrictsByRegion(regionId: number): Promise<District[]>;
   getDistrictsByCountry(countryId: number): Promise<District[]>;
   getRandomDistrictByCountry(countryId: number): Promise<District | undefined>;
@@ -605,11 +607,26 @@ export class DatabaseStorage implements IStorage {
       .where(eq(countries.isActive, true));
   }
 
+  async getRegionById(regionId: number): Promise<Region | null> {
+    const [region] = await db
+      .select()
+      .from(regions)
+      .where(eq(regions.id, regionId));
+    return region || null;
+  }
+
   async getRegionsByCountry(countryId: number): Promise<Region[]> {
     return await db
       .select()
       .from(regions)
       .where(and(eq(regions.countryId, countryId), eq(regions.isActive, true)));
+  }
+
+  async getPlaceCacheByCity(city: string): Promise<PlaceCache[]> {
+    return await db
+      .select()
+      .from(placeCache)
+      .where(eq(placeCache.city, city));
   }
 
   async getDistrictsByRegion(regionId: number): Promise<District[]> {

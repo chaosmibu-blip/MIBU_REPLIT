@@ -2903,6 +2903,60 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // GET /api/gacha/pool - 用 regionId 查詢獎池
+  app.get("/api/gacha/pool", async (req, res) => {
+    try {
+      const { regionId, city } = req.query;
+      
+      if (!regionId && !city) {
+        return res.status(400).json({ error: "regionId or city is required" });
+      }
+
+      let cityName = city as string;
+      
+      // 如果提供 regionId，查詢對應的城市名稱
+      if (regionId && !city) {
+        const parsedRegionId = parseInt(regionId as string);
+        if (isNaN(parsedRegionId)) {
+          return res.status(400).json({ error: "Invalid regionId" });
+        }
+        const region = await storage.getRegionById(parsedRegionId);
+        if (!region) {
+          return res.status(404).json({ error: "Region not found" });
+        }
+        cityName = region.nameZh;
+      }
+
+      // 取得該城市的所有快取地點作為獎池
+      const places = await storage.getPlaceCacheByCity(cityName);
+      
+      // 篩選高評分或有商家的地點作為大獎
+      const jackpots = places.filter(p => {
+        const rating = p.googleRating ? parseFloat(p.googleRating) : 0;
+        return rating >= 4.5;
+      }).slice(0, 20);
+
+      res.json({
+        success: true,
+        pool: {
+          city: cityName,
+          jackpots: jackpots.map(p => ({
+            id: p.id,
+            placeName: p.placeName,
+            category: p.category,
+            subCategory: p.subCategory,
+            rating: p.googleRating,
+          })),
+          totalInPool: places.length,
+          jackpotCount: jackpots.length,
+        }
+      });
+    } catch (error) {
+      console.error("Gacha pool by region error:", error);
+      res.status(500).json({ error: "Failed to get gacha pool" });
+    }
+  });
+
   // GET /api/gacha/prize-pool - 查看獎池（高稀有度優惠券）
   app.get("/api/gacha/prize-pool", async (req, res) => {
     try {
