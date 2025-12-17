@@ -72,6 +72,10 @@ export interface IStorage {
   getCachedPlaces(district: string, city: string, country: string): Promise<PlaceCache[]>;
   savePlaceToCache(place: InsertPlaceCache): Promise<PlaceCache>;
   savePlacesToCache(places: InsertPlaceCache[]): Promise<PlaceCache[]>;
+  getUnreviewedPlaceCache(limit: number): Promise<PlaceCache[]>;
+  markPlaceCacheReviewed(id: number, reviewed: boolean): Promise<void>;
+  deletePlaceCache(id: number): Promise<void>;
+  getPlaceCacheReviewStats(): Promise<{ total: number; reviewed: number; unreviewed: number }>;
 
   // Location hierarchy
   getCountries(): Promise<Country[]>;
@@ -553,6 +557,43 @@ export class DatabaseStorage implements IStorage {
       .insert(placeCache)
       .values(places)
       .returning();
+  }
+
+  async getUnreviewedPlaceCache(limit: number): Promise<PlaceCache[]> {
+    return await db
+      .select()
+      .from(placeCache)
+      .where(or(eq(placeCache.aiReviewed, false), isNull(placeCache.aiReviewed)))
+      .limit(limit);
+  }
+
+  async markPlaceCacheReviewed(id: number, reviewed: boolean): Promise<void> {
+    await db
+      .update(placeCache)
+      .set({ 
+        aiReviewed: reviewed, 
+        aiReviewedAt: new Date() 
+      })
+      .where(eq(placeCache.id, id));
+  }
+
+  async deletePlaceCache(id: number): Promise<void> {
+    await db.delete(placeCache).where(eq(placeCache.id, id));
+  }
+
+  async getPlaceCacheReviewStats(): Promise<{ total: number; reviewed: number; unreviewed: number }> {
+    const [stats] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        reviewed: sql<number>`count(*) filter (where ${placeCache.aiReviewed} = true)::int`,
+        unreviewed: sql<number>`count(*) filter (where ${placeCache.aiReviewed} = false or ${placeCache.aiReviewed} is null)::int`
+      })
+      .from(placeCache);
+    return {
+      total: stats?.total ?? 0,
+      reviewed: stats?.reviewed ?? 0,
+      unreviewed: stats?.unreviewed ?? 0
+    };
   }
 
   // Location hierarchy

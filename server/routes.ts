@@ -11,7 +11,7 @@ import { createPlannerServiceRoutes } from "../modules/trip-planner/server/plann
 import { registerStripeRoutes } from "./stripeRoutes";
 import { getUncachableStripeClient } from "./stripeClient";
 import { checkGeofence } from "./lib/geofencing";
-import { callGemini, generatePlaceWithAI, verifyPlaceWithGoogle } from "./lib/placeGenerator";
+import { callGemini, generatePlaceWithAI, verifyPlaceWithGoogle, reviewPlaceWithAI } from "./lib/placeGenerator";
 import twilio from "twilio";
 const { AccessToken } = twilio.jwt;
 const ChatGrant = AccessToken.ChatGrant;
@@ -5853,6 +5853,104 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     } catch (error) {
       console.error("Admin backfill review count error:", error);
       res.status(500).json({ error: "回填評論數失敗" });
+    }
+  });
+
+  // 管理員：批次 AI 審核快取資料
+  app.post("/api/admin/place-cache/batch-review", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const { limit = 50 } = req.body as { limit?: number };
+
+      // 取得尚未審核的快取資料
+      const unreviewed = await storage.getUnreviewedPlaceCache(limit);
+      
+      if (unreviewed.length === 0) {
+        const stats = await storage.getPlaceCacheReviewStats();
+        return res.json({ 
+          success: true, 
+          reviewed: 0, 
+          passed: 0,
+          deleted: 0,
+          remaining: 0,
+          stats,
+          message: "所有快取資料都已審核完成" 
+        });
+      }
+
+      const passedIds: number[] = [];
+      const deletedIds: number[] = [];
+      const errors: { id: number; placeName: string; error: string }[] = [];
+
+      for (const place of unreviewed) {
+        try {
+          const reviewResult = await reviewPlaceWithAI(
+            place.placeName,
+            place.description,
+            place.category,
+            place.subCategory,
+            place.district,
+            place.city
+          );
+
+          console.log(`[CacheReview] ${place.placeName}: ${reviewResult.passed ? 'PASS' : 'FAIL'} - ${reviewResult.reason} (confidence: ${reviewResult.confidence})`);
+
+          if (reviewResult.passed && reviewResult.confidence >= 0.6) {
+            // 通過審核，標記為已審核
+            await storage.markPlaceCacheReviewed(place.id, true);
+            passedIds.push(place.id);
+          } else {
+            // 未通過審核，刪除
+            await storage.deletePlaceCache(place.id);
+            deletedIds.push(place.id);
+            console.log(`[CacheReview] Deleted: ${place.placeName} - ${reviewResult.reason}`);
+          }
+
+          // 避免 API 速率限制
+          await new Promise(resolve => setTimeout(resolve, 200));
+        } catch (e: any) {
+          console.error(`[CacheReview] Error for ${place.placeName}:`, e.message);
+          errors.push({ id: place.id, placeName: place.placeName, error: e.message });
+        }
+      }
+
+      const stats = await storage.getPlaceCacheReviewStats();
+
+      res.json({
+        success: true,
+        reviewed: passedIds.length + deletedIds.length,
+        passed: passedIds.length,
+        deleted: deletedIds.length,
+        remaining: stats.unreviewed,
+        stats,
+        errors: errors.length > 0 ? errors : undefined,
+        message: `審核完成：${passedIds.length} 筆通過，${deletedIds.length} 筆刪除`
+      });
+    } catch (error) {
+      console.error("Admin cache review error:", error);
+      res.status(500).json({ error: "快取審核失敗" });
+    }
+  });
+
+  // 管理員：取得快取審核統計
+  app.get("/api/admin/place-cache/review-stats", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const stats = await storage.getPlaceCacheReviewStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Get cache review stats error:", error);
+      res.status(500).json({ error: "Failed to get review stats" });
     }
   });
 

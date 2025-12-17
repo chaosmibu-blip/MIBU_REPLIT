@@ -235,6 +235,8 @@ export const placeCache = pgTable("place_cache", {
   isLocationVerified: boolean("is_location_verified").default(false),
   businessStatus: varchar("business_status", { length: 50 }),
   lastVerifiedAt: timestamp("last_verified_at"),
+  aiReviewed: boolean("ai_reviewed").default(false),
+  aiReviewedAt: timestamp("ai_reviewed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_place_cache_lookup").on(table.subCategory, table.district, table.city, table.country),

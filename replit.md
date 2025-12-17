@@ -66,7 +66,7 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) designed to gamify trav
 - **Modular Architecture**: Code organized into `modules/` and `core/`.
 - **PWA Features**: Offline access via Service Worker + IndexedDB with caching strategies and offline itinerary saving.
 - **Real-time Communication**: Multiplayer Companion System, Twilio Chat, and Socket.IO for real-time location tracking.
-- **AI Integration**: AI-generated itineraries using Gemini API, with a Place Cache System.
+- **AI Integration**: AI-generated itineraries using Gemini API, with a Place Cache System featuring automated quality review (AI Review Scheduler for drafts, batch cache review for existing records).
 - **Location & Category Systems**: Three-tiered location hierarchy and two-tiered category system, both multi-language.
 - **Gacha Itinerary Logic**: Random district selection, diverse categories, duplicate avoidance, AI descriptions, and location validation.
 - **Trip Planning Service**: Manages planners, service plans, orders, auto-matching, and chat room creation.

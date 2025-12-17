@@ -105,6 +105,9 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
   const [regenerateResult, setRegenerateResult] = useState<{ regenerated: number; failed: number; errors?: { id: number; placeName: string; error: string }[] } | null>(null);
   const [backfilling, setBackfilling] = useState(false);
   const [backfillResult, setBackfillResult] = useState<{ updated: number; failed: number; remaining: number } | null>(null);
+  const [cacheReviewing, setCacheReviewing] = useState(false);
+  const [cacheReviewResult, setCacheReviewResult] = useState<{ passed: number; deleted: number; remaining: number } | null>(null);
+  const [cacheStats, setCacheStats] = useState<{ total: number; reviewed: number; unreviewed: number } | null>(null);
 
   const [draftForm, setDraftForm] = useState({
     placeName: '',
@@ -532,6 +535,52 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
     }
   };
 
+  const fetchCacheStats = async () => {
+    try {
+      const response = await fetch('/api/admin/place-cache/review-stats', {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCacheStats(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch cache stats', err);
+    }
+  };
+
+  const handleCacheReview = async () => {
+    const confirmMsg = '確定要用 AI 審核現有快取資料嗎？不合格的資料會被刪除（每次最多 50 筆）。';
+    if (!window.confirm(confirmMsg)) return;
+    
+    setCacheReviewing(true);
+    setCacheReviewResult(null);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/place-cache/batch-review', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 50 })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || '快取審核失敗');
+      }
+      
+      const result = await response.json();
+      setCacheReviewResult(result);
+      if (result.stats) {
+        setCacheStats(result.stats);
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setCacheReviewing(false);
+    }
+  };
+
   const getSourceLabel = (source: string) => {
     const labels: Record<string, string> = {
       'ai': 'AI 生成',
@@ -606,7 +655,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <button
-          onClick={() => { setShowBatchPanel(!showBatchPanel); setBatchResult(null); setRegenerateResult(null); setBackfillResult(null); setFilteredCount(null); }}
+          onClick={() => { setShowBatchPanel(!showBatchPanel); setBatchResult(null); setRegenerateResult(null); setBackfillResult(null); setCacheReviewResult(null); setFilteredCount(null); }}
           className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
           data-testid="button-toggle-batch-panel"
         >
@@ -773,6 +822,63 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
                       <p className="text-red-600">失敗：{backfillResult.failed} 筆</p>
                     )}
                     <p className="text-slate-600">剩餘待回填：{backfillResult.remaining} 筆</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <h4 className="font-medium text-slate-700 mb-2 flex items-center gap-2">
+                <span className="text-lg">🔍</span>
+                AI 審核快取資料
+              </h4>
+              <p className="text-sm text-slate-500 mb-3">
+                用 AI 審核現有的快取資料（place_cache），不合格的會被刪除。
+              </p>
+              
+              {cacheStats && (
+                <div className="mb-3 p-3 bg-slate-50 rounded-xl text-sm">
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <div className="text-lg font-bold text-slate-700">{cacheStats.total}</div>
+                      <div className="text-xs text-slate-500">總計</div>
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-emerald-600">{cacheStats.reviewed}</div>
+                      <div className="text-xs text-slate-500">已審核</div>
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-amber-600">{cacheStats.unreviewed}</div>
+                      <div className="text-xs text-slate-500">待審核</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex gap-2">
+                <button
+                  onClick={fetchCacheStats}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 transition-colors text-sm"
+                  data-testid="button-fetch-cache-stats"
+                >
+                  刷新統計
+                </button>
+                <button
+                  onClick={handleCacheReview}
+                  disabled={cacheReviewing || batchPublishing || batchRegenerating || backfilling}
+                  className="px-4 py-2 bg-purple-500 text-white rounded-lg font-medium hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                  data-testid="button-cache-review"
+                >
+                  {cacheReviewing ? 'AI 審核中...' : '開始 AI 審核（每次 50 筆）'}
+                </button>
+              </div>
+              
+              {cacheReviewResult && (
+                <div className={`mt-3 p-3 rounded-xl border ${cacheReviewResult.deleted > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                  <div className="text-sm space-y-1">
+                    <p className="text-emerald-700">通過審核：{cacheReviewResult.passed} 筆</p>
+                    <p className="text-red-600">已刪除：{cacheReviewResult.deleted} 筆</p>
+                    <p className="text-slate-600">剩餘待審核：{cacheReviewResult.remaining} 筆</p>
                   </div>
                 </div>
               )}
