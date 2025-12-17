@@ -53,9 +53,18 @@ interface PlaceDraft {
   address: string | null;
   googlePlaceId: string | null;
   googleRating: number | null;
+  googleReviewCount: number | null;
   locationLat: number | null;
   locationLng: number | null;
   createdAt: string;
+}
+
+interface BatchPublishResult {
+  success: boolean;
+  published: number;
+  failed: number;
+  publishedIds: number[];
+  errors: { id: number; message: string }[];
 }
 
 type TabType = 'create_draft' | 'all_drafts';
@@ -85,6 +94,12 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
   const [editForm, setEditForm] = useState({ placeName: '', description: '' });
   const [savingEdit, setSavingEdit] = useState(false);
   const [regeneratingDesc, setRegeneratingDesc] = useState(false);
+  const [showBatchPanel, setShowBatchPanel] = useState(false);
+  const [batchFilter, setBatchFilter] = useState({ minRating: '', minReviewCount: '' });
+  const [batchPublishing, setBatchPublishing] = useState(false);
+  const [batchResult, setBatchResult] = useState<BatchPublishResult | null>(null);
+  const [filteredCount, setFilteredCount] = useState<number | null>(null);
+  const [loadingFilteredCount, setLoadingFilteredCount] = useState(false);
 
   const [draftForm, setDraftForm] = useState({
     placeName: '',
@@ -369,6 +384,67 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
     }
   };
 
+  const handlePreviewBatchFilter = async () => {
+    setLoadingFilteredCount(true);
+    setBatchResult(null);
+    try {
+      const params = new URLSearchParams();
+      if (batchFilter.minRating) params.append('minRating', batchFilter.minRating);
+      if (batchFilter.minReviewCount) params.append('minReviewCount', batchFilter.minReviewCount);
+      params.append('status', 'pending');
+      
+      const response = await fetch(`/api/admin/place-drafts/filter?${params.toString()}`, {
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        throw new Error('無法查詢符合條件的草稿');
+      }
+      const data = await response.json();
+      setFilteredCount(data.total || 0);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoadingFilteredCount(false);
+    }
+  };
+
+  const handleBatchPublish = async () => {
+    if (filteredCount === 0) return;
+    
+    const confirmMsg = `確定要批次發布 ${filteredCount} 筆草稿嗎？`;
+    if (!window.confirm(confirmMsg)) return;
+    
+    setBatchPublishing(true);
+    setBatchResult(null);
+    setError(null);
+    try {
+      const filter: { minRating?: number; minReviewCount?: number } = {};
+      if (batchFilter.minRating) filter.minRating = parseFloat(batchFilter.minRating);
+      if (batchFilter.minReviewCount) filter.minReviewCount = parseInt(batchFilter.minReviewCount);
+      
+      const response = await fetch('/api/admin/place-drafts/batch-publish', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filter })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || '批次發布失敗');
+      }
+      
+      const result = await response.json();
+      setBatchResult(result);
+      setFilteredCount(null);
+      await fetchAllDrafts();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setBatchPublishing(false);
+    }
+  };
+
   const getSourceLabel = (source: string) => {
     const labels: Record<string, string> = {
       'ai': 'AI 生成',
@@ -436,6 +512,118 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
           <div className="text-2xl font-bold text-red-600 mb-1">{allDrafts.filter(d => d.status === 'rejected').length}</div>
           <div className="text-sm text-slate-500">已退回</div>
         </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <button
+          onClick={() => { setShowBatchPanel(!showBatchPanel); setBatchResult(null); setFilteredCount(null); }}
+          className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
+          data-testid="button-toggle-batch-panel"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">⚡</span>
+            <span className="font-medium text-slate-800">批次發布工具</span>
+          </div>
+          <svg 
+            className={`w-5 h-5 text-slate-400 transition-transform ${showBatchPanel ? 'rotate-180' : ''}`} 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        
+        {showBatchPanel && (
+          <div className="px-5 py-4 border-t border-slate-100 space-y-4">
+            <p className="text-sm text-slate-600">
+              根據 Google 評分和評論數篩選，一次發布多筆草稿到行程卡池。
+            </p>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">最低評分 (0-5)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="5"
+                  step="0.1"
+                  value={batchFilter.minRating}
+                  onChange={(e) => { setBatchFilter(f => ({ ...f, minRating: e.target.value })); setFilteredCount(null); }}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder="例：4.0"
+                  data-testid="input-batch-min-rating"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">最少評論數</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={batchFilter.minReviewCount}
+                  onChange={(e) => { setBatchFilter(f => ({ ...f, minReviewCount: e.target.value })); setFilteredCount(null); }}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  placeholder="例：100"
+                  data-testid="input-batch-min-review-count"
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={handlePreviewBatchFilter}
+                disabled={loadingFilteredCount}
+                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors text-sm"
+                data-testid="button-preview-batch-filter"
+              >
+                {loadingFilteredCount ? '查詢中...' : '預覽符合條件數量'}
+              </button>
+              
+              {filteredCount !== null && (
+                <button
+                  onClick={handleBatchPublish}
+                  disabled={batchPublishing || filteredCount === 0}
+                  className="px-4 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                  data-testid="button-batch-publish"
+                >
+                  {batchPublishing ? '發布中...' : `批次發布 ${filteredCount} 筆`}
+                </button>
+              )}
+            </div>
+            
+            {filteredCount !== null && !batchResult && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-700 text-sm">
+                找到 <strong>{filteredCount}</strong> 筆符合條件的待發布草稿
+                {filteredCount === 0 && '，請調整篩選條件'}
+              </div>
+            )}
+            
+            {batchResult && (
+              <div className={`p-4 rounded-xl border ${batchResult.failed > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xl">{batchResult.failed > 0 ? '⚠️' : '✅'}</span>
+                  <span className="font-medium text-slate-800">批次發布完成</span>
+                </div>
+                <div className="text-sm space-y-1">
+                  <p className="text-emerald-700">成功發布：{batchResult.published} 筆</p>
+                  {batchResult.failed > 0 && (
+                    <>
+                      <p className="text-red-600">發布失敗：{batchResult.failed} 筆</p>
+                      <div className="mt-2 text-xs text-red-500">
+                        {batchResult.errors.slice(0, 5).map((err, i) => (
+                          <p key={i}>ID {err.id}: {err.message}</p>
+                        ))}
+                        {batchResult.errors.length > 5 && (
+                          <p>...還有 {batchResult.errors.length - 5} 筆錯誤</p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex gap-2 mb-4">
@@ -670,6 +858,11 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
                           {draft.googleRating && (
                             <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
                               ⭐ {draft.googleRating}
+                            </span>
+                          )}
+                          {draft.googleReviewCount && (
+                            <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                              💬 {draft.googleReviewCount}
                             </span>
                           )}
                         </div>
