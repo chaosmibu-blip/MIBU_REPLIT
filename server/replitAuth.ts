@@ -275,10 +275,29 @@ export async function setupAuth(app: Express) {
   app.get("/api/auth/login", loginHandler);
 
   app.get("/api/callback", async (req, res, next) => {
+    // Global error handler wrapper for the entire callback
+    const handleCallbackError = (error: any, context: string) => {
+      console.error(`[OAuth Callback ERROR] ${context}:`, error);
+      const redirectUri = req.cookies?.app_redirect_uri || (req.session as any)?.externalRedirectUri;
+      if (redirectUri) {
+        res.clearCookie('app_redirect_uri');
+        res.clearCookie('requested_active_role');
+        const isCustom = redirectUri.startsWith('exp://') || redirectUri.startsWith('mibu://') || redirectUri.startsWith('myapp://');
+        const targetUrl = `${redirectUri}?error=CALLBACK_ERROR&message=${encodeURIComponent(context)}`;
+        if (isCustom) {
+          return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${targetUrl}"><title>錯誤</title></head><body><script>window.location.href="${targetUrl}";</script></body></html>`);
+        }
+        return res.redirect(targetUrl);
+      }
+      return res.status(500).json({ error: 'Callback processing failed', context });
+    };
+
     try {
       console.log(`[OAuth Callback] ========== CALLBACK RECEIVED ==========`);
-      console.log(`[OAuth Callback] hostname: ${req.hostname}, query: ${JSON.stringify(req.query)}`);
+      console.log(`[OAuth Callback] hostname: ${req.hostname}, REPLIT_DOMAINS: ${process.env.REPLIT_DOMAINS}`);
+      console.log(`[OAuth Callback] query: ${JSON.stringify(req.query)}`);
       console.log(`[OAuth Callback] session id: ${req.sessionID}, session exists: ${!!req.session}`);
+      console.log(`[OAuth Callback] cookies: app_redirect_uri=${req.cookies?.app_redirect_uri}, requested_active_role=${req.cookies?.requested_active_role}`);
     } catch (e) {
       console.error('[OAuth Callback] Initial logging error:', e);
     }
