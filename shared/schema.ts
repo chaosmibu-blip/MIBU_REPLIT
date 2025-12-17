@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, index, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, index, doublePrecision, date } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -112,6 +112,16 @@ export const users = pgTable("users", {
   stripeCustomerId: varchar("stripe_customer_id"),
   sosSecretKey: varchar("sos_secret_key", { length: 64 }), // Long-lived SOS webhook key
   isActive: boolean("is_active").default(true).notNull(),
+  // 個人資料擴展欄位
+  gender: varchar("gender", { length: 10 }), // 'male' | 'female' | 'other'
+  birthDate: date("birth_date"),
+  phone: varchar("phone", { length: 20 }),
+  dietaryRestrictions: text("dietary_restrictions").array(), // 飲食禁忌 (標籤陣列)
+  medicalHistory: text("medical_history").array(), // 疾病史 (標籤陣列)
+  emergencyContactName: varchar("emergency_contact_name", { length: 100 }),
+  emergencyContactPhone: varchar("emergency_contact_phone", { length: 20 }),
+  emergencyContactRelation: varchar("emergency_contact_relation", { length: 50 }),
+  preferredLanguage: varchar("preferred_language", { length: 10 }).default('zh-TW'), // 'zh-TW' | 'en' | 'ja' | 'ko'
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -405,17 +415,30 @@ export const placesRelations = relations(places, ({ one, many }) => ({
 export const upsertUserSchema = createInsertSchema(users);
 
 // Registration schema for email/password signup
-export const registerUserSchema = createInsertSchema(users).pick({
-  email: true,
-  password: true,
-  firstName: true,
-  lastName: true,
-  role: true,
-}).extend({
+export const registerUserSchema = z.object({
   email: z.string().email("請輸入有效的電子郵件"),
   password: z.string().min(8, "密碼至少需要 8 個字元"),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
   role: z.enum(['traveler', 'merchant', 'specialist', 'admin']).default('traveler'),
 });
+
+// Profile update schema (for settings page)
+export const updateProfileSchema = z.object({
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  gender: z.enum(['male', 'female', 'other']).optional(),
+  birthDate: z.string().optional(), // ISO date string
+  phone: z.string().optional(),
+  dietaryRestrictions: z.array(z.string()).optional(),
+  medicalHistory: z.array(z.string()).optional(),
+  emergencyContactName: z.string().optional(),
+  emergencyContactPhone: z.string().optional(),
+  emergencyContactRelation: z.string().optional(),
+  preferredLanguage: z.enum(['zh-TW', 'en', 'ja', 'ko']).optional(),
+});
+
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
 export const insertCollectionSchema = createInsertSchema(collections).omit({
   id: true,
@@ -1376,6 +1399,48 @@ export const insertCouponRarityConfigSchema = createInsertSchema(couponRarityCon
 
 export type CouponRarityConfig = typeof couponRarityConfigs.$inferSelect;
 export type InsertCouponRarityConfig = z.infer<typeof insertCouponRarityConfigSchema>;
+
+// ============ SOS Alerts (安全中心求救) ============
+
+export type SosAlertStatus = 'pending' | 'acknowledged' | 'resolved' | 'cancelled';
+
+export const sosAlerts = pgTable("sos_alerts", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  serviceOrderId: integer("service_order_id"), // 關聯的旅程訂單 ID (from trip-planner)
+  plannerId: integer("planner_id"), // 負責的旅程策畫師 ID
+  location: text("location"), // GPS 座標 (e.g., "25.0330,121.5654")
+  locationAddress: text("location_address"), // 可讀地址
+  message: text("message"), // 用戶附加訊息
+  status: varchar("status", { length: 20 }).default('pending').notNull(), // 'pending' | 'acknowledged' | 'resolved' | 'cancelled'
+  acknowledgedBy: varchar("acknowledged_by"), // 處理人員 ID
+  acknowledgedAt: timestamp("acknowledged_at"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_sos_alerts_user").on(table.userId),
+  index("IDX_sos_alerts_planner").on(table.plannerId),
+  index("IDX_sos_alerts_status").on(table.status),
+]);
+
+export const sosAlertsRelations = relations(sosAlerts, ({ one }) => ({
+  user: one(users, {
+    fields: [sosAlerts.userId],
+    references: [users.id],
+  }),
+}));
+
+export const insertSosAlertSchema = createInsertSchema(sosAlerts).omit({
+  id: true,
+  status: true,
+  acknowledgedBy: true,
+  acknowledgedAt: true,
+  resolvedAt: true,
+  createdAt: true,
+});
+
+export type SosAlert = typeof sosAlerts.$inferSelect;
+export type InsertSosAlert = z.infer<typeof insertSosAlertSchema>;
 
 // ============ Extended User Profile ============
 
