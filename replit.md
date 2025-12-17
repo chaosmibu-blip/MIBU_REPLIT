@@ -112,6 +112,9 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) that gamifies travel pl
 ```
 === 前端同步指令 ===
 
+【用戶需求說明】
+{用戶對這個功能的原始需求描述，讓前端了解背景}
+
 【後端更新摘要】
 {簡述這次後端做了什麼更動}
 
@@ -126,6 +129,9 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) that gamifies travel pl
 【前端需要的改動】
 1. {具體描述前端需要做什麼}
 2. {...}
+
+【UI/UX 建議】
+{如果有特定的介面設計建議，例如顏色、位置、動畫等}
 
 【API 呼叫範例】
 // {API 名稱}
@@ -305,6 +311,9 @@ const response = await fetch('https://gacha-travel--s8869420.replit.app/api/loca
 ```
 === 前端同步指令 ===
 
+【用戶需求說明】
+用戶希望在扭蛋頁面選擇區域後，能夠查看該區域的獎池內容，了解有哪些 SP/SSR 稀有優惠券可以抽到。
+
 【後端更新摘要】
 新增「查看獎池」功能，可查詢指定區域的 SP/SSR 稀有優惠券
 
@@ -327,6 +336,12 @@ const response = await fetch('https://gacha-travel--s8869420.replit.app/api/loca
 1. 在扭蛋頁面選擇區域後，新增「查看獎池」按鈕
 2. 點擊後呼叫 API 取得該區域的 SP/SSR 優惠券
 3. 以彈窗顯示獎池內容（SP 紫色、SSR 金色）
+
+【UI/UX 建議】
+- 按鈕使用金橘色漸層背景 (from-amber-400 to-orange-400)
+- SP 優惠券卡片使用紫色系 (purple-50 到 pink-50 漸層背景，purple-200 邊框)
+- SSR 優惠券卡片使用金色系 (amber-50 到 orange-50 漸層背景，amber-200 邊框)
+- 稀有度標籤：SP 紫色底白字，SSR 金色底白字
 
 【API 呼叫範例】
 const response = await fetch(`https://gacha-travel--s8869420.replit.app/api/coupons/region/${regionId}/pool`, {
