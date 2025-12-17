@@ -5,7 +5,7 @@ import {
   placeDrafts, placeApplications, userLocations, planners, serviceOrders, places,
   specialists, transactions, serviceRelations, announcements,
   adPlacements, userNotifications, couponRedemptions, userInventory, merchantCoupons,
-  couponRarityConfigs, sosAlerts, INVENTORY_MAX_SLOTS,
+  couponRarityConfigs, sosAlerts, merchantAnalytics, INVENTORY_MAX_SLOTS,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -34,7 +34,8 @@ import {
   type UserInventoryItem, type InsertUserInventoryItem,
   type MerchantCoupon, type InsertMerchantCoupon,
   type CouponRarityConfig, type InsertCouponRarityConfig,
-  type SosAlert, type InsertSosAlert, type SosAlertStatus
+  type SosAlert, type InsertSosAlert, type SosAlertStatus,
+  type MerchantAnalytics, type InsertMerchantAnalytics
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike, or, isNull, lt, gt, gte, lte } from "drizzle-orm";
@@ -218,6 +219,19 @@ export interface IStorage {
   updateAnnouncement(id: number, data: Partial<Announcement>): Promise<Announcement | undefined>;
   deleteAnnouncement(id: number): Promise<void>;
   deleteExpiredEvents(): Promise<number>;
+
+  // Merchant Analytics (商家數據分析)
+  recordMerchantAnalytics(data: InsertMerchantAnalytics): Promise<MerchantAnalytics>;
+  getMerchantAnalytics(merchantId: number, startDate?: string, endDate?: string): Promise<MerchantAnalytics[]>;
+  getMerchantAnalyticsSummary(merchantId: number): Promise<{
+    totalCollectors: number;
+    totalClicks: number;
+    totalCouponUsage: number;
+    totalCouponIssued: number;
+    totalPrizePoolViews: number;
+    todayCollected: number;
+  }>;
+  incrementAnalyticsCounter(merchantId: number, placeId: number | null, field: 'collectedCount' | 'clickCount' | 'couponUsageCount' | 'couponIssuedCount' | 'prizePoolViews'): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2037,6 +2051,106 @@ export class DatabaseStorage implements IStorage {
         eq(serviceOrders.status, 'completed')
       ));
     return !!order;
+  }
+
+  // ============ Merchant Analytics (商家數據分析) ============
+
+  async recordMerchantAnalytics(data: InsertMerchantAnalytics): Promise<MerchantAnalytics> {
+    const [record] = await db.insert(merchantAnalytics).values(data).returning();
+    return record;
+  }
+
+  async getMerchantAnalytics(merchantId: number, startDate?: string, endDate?: string): Promise<MerchantAnalytics[]> {
+    const conditions = [eq(merchantAnalytics.merchantId, merchantId)];
+    
+    if (startDate) {
+      conditions.push(gte(merchantAnalytics.date, startDate));
+    }
+    if (endDate) {
+      conditions.push(lte(merchantAnalytics.date, endDate));
+    }
+    
+    return db.select().from(merchantAnalytics)
+      .where(and(...conditions))
+      .orderBy(desc(merchantAnalytics.date));
+  }
+
+  async getMerchantAnalyticsSummary(merchantId: number): Promise<{
+    totalCollectors: number;
+    totalClicks: number;
+    totalCouponUsage: number;
+    totalCouponIssued: number;
+    totalPrizePoolViews: number;
+    todayCollected: number;
+  }> {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const result = await db.select({
+      totalCollectors: sql<number>`COALESCE(SUM(${merchantAnalytics.totalCollectors}), 0)`,
+      totalClicks: sql<number>`COALESCE(SUM(${merchantAnalytics.clickCount}), 0)`,
+      totalCouponUsage: sql<number>`COALESCE(SUM(${merchantAnalytics.couponUsageCount}), 0)`,
+      totalCouponIssued: sql<number>`COALESCE(SUM(${merchantAnalytics.couponIssuedCount}), 0)`,
+      totalPrizePoolViews: sql<number>`COALESCE(SUM(${merchantAnalytics.prizePoolViews}), 0)`,
+    }).from(merchantAnalytics)
+      .where(eq(merchantAnalytics.merchantId, merchantId));
+
+    const todayResult = await db.select({
+      todayCollected: sql<number>`COALESCE(SUM(${merchantAnalytics.collectedCount}), 0)`,
+    }).from(merchantAnalytics)
+      .where(and(
+        eq(merchantAnalytics.merchantId, merchantId),
+        eq(merchantAnalytics.date, today)
+      ));
+
+    return {
+      totalCollectors: Number(result[0]?.totalCollectors) || 0,
+      totalClicks: Number(result[0]?.totalClicks) || 0,
+      totalCouponUsage: Number(result[0]?.totalCouponUsage) || 0,
+      totalCouponIssued: Number(result[0]?.totalCouponIssued) || 0,
+      totalPrizePoolViews: Number(result[0]?.totalPrizePoolViews) || 0,
+      todayCollected: Number(todayResult[0]?.todayCollected) || 0,
+    };
+  }
+
+  async incrementAnalyticsCounter(
+    merchantId: number, 
+    placeId: number | null, 
+    field: 'collectedCount' | 'clickCount' | 'couponUsageCount' | 'couponIssuedCount' | 'prizePoolViews'
+  ): Promise<void> {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const existing = await db.select().from(merchantAnalytics)
+      .where(and(
+        eq(merchantAnalytics.merchantId, merchantId),
+        placeId ? eq(merchantAnalytics.placeId, placeId) : isNull(merchantAnalytics.placeId),
+        eq(merchantAnalytics.date, today)
+      ));
+
+    if (existing.length > 0) {
+      const updateData: Record<string, any> = { updatedAt: new Date() };
+      updateData[field] = sql`${merchantAnalytics[field]} + 1`;
+      
+      if (field === 'collectedCount') {
+        updateData.totalCollectors = sql`${merchantAnalytics.totalCollectors} + 1`;
+      }
+
+      await db.update(merchantAnalytics)
+        .set(updateData)
+        .where(eq(merchantAnalytics.id, existing[0].id));
+    } else {
+      const insertData: InsertMerchantAnalytics = {
+        merchantId,
+        placeId,
+        date: today,
+        collectedCount: field === 'collectedCount' ? 1 : 0,
+        totalCollectors: field === 'collectedCount' ? 1 : 0,
+        clickCount: field === 'clickCount' ? 1 : 0,
+        couponUsageCount: field === 'couponUsageCount' ? 1 : 0,
+        couponIssuedCount: field === 'couponIssuedCount' ? 1 : 0,
+        prizePoolViews: field === 'prizePoolViews' ? 1 : 0,
+      };
+      await db.insert(merchantAnalytics).values(insertData);
+    }
   }
 }
 

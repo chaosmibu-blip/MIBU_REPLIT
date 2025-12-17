@@ -2903,6 +2903,51 @@ ${uncachedSkeleton.map((item, idx) => `  {
     }
   });
 
+  // GET /api/gacha/prize-pool - 查看獎池（高稀有度優惠券）
+  app.get("/api/gacha/prize-pool", async (req, res) => {
+    try {
+      const { regionId } = req.query;
+      
+      if (!regionId) {
+        return res.status(400).json({ error: "regionId is required" });
+      }
+
+      const parsedRegionId = parseInt(regionId as string);
+      if (isNaN(parsedRegionId)) {
+        return res.status(400).json({ error: "Invalid regionId" });
+      }
+
+      // 取得該地區的高稀有度優惠券 (SP, SSR)
+      const prizePoolCoupons = await storage.getRegionPrizePoolCoupons(parsedRegionId);
+
+      // 追蹤獎池查看數據
+      for (const coupon of prizePoolCoupons) {
+        if (coupon.merchantId) {
+          try {
+            await storage.incrementAnalyticsCounter(coupon.merchantId, coupon.placeLinkId, 'prizePoolViews');
+          } catch (e) {
+            console.error("Failed to track prize pool view:", e);
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        coupons: prizePoolCoupons.map(c => ({
+          id: c.id,
+          tier: c.rarity || c.tier || 'R',
+          name: c.title || c.name,
+          merchantName: c.merchantName || c.businessName,
+          placeName: c.placeName,
+          terms: c.terms,
+        }))
+      });
+    } catch (error) {
+      console.error("Get prize pool error:", error);
+      res.status(500).json({ error: "Failed to get prize pool" });
+    }
+  });
+
   // Gacha pull V2 - from verified places pool with weighted selection
   app.post("/api/gacha/pull/v2", isAuthenticated, async (req: any, res) => {
     try {
@@ -3136,6 +3181,13 @@ ${uncachedSkeleton.map((item, idx) => `  {
           
           const dropRate = claimInfo.claim.couponDropRate ?? 0.1;
           
+          // 追蹤圖鑑收錄
+          try {
+            await storage.incrementAnalyticsCounter(claimInfo.claim.merchantId, claimInfo.claim.id, 'collectedCount');
+          } catch (e) {
+            console.error("Failed to track collection:", e);
+          }
+          
           if (Math.random() < dropRate && claimInfo.coupons.length > 0) {
             const randomIndex = Math.floor(Math.random() * claimInfo.coupons.length);
             const wonCoupon = claimInfo.coupons[randomIndex];
@@ -3150,6 +3202,13 @@ ${uncachedSkeleton.map((item, idx) => `  {
             };
             
             couponsWon.push(couponWon);
+            
+            // 追蹤優惠券發放
+            try {
+              await storage.incrementAnalyticsCounter(claimInfo.claim.merchantId, claimInfo.claim.id, 'couponIssuedCount');
+            } catch (e) {
+              console.error("Failed to track coupon issue:", e);
+            }
             
             await storage.saveToCollectionWithCoupon(userId, place, wonCoupon);
           } else {
@@ -6175,6 +6234,13 @@ ${draft.address ? `地址：${draft.address}` : ''}
         expiresAt
       });
 
+      // 追蹤優惠券使用
+      try {
+        await storage.incrementAnalyticsCounter(item.merchantId, null, 'couponUsageCount');
+      } catch (e) {
+        console.error("Failed to track coupon usage:", e);
+      }
+
       res.json({ 
         success: true, 
         message: "Coupon redeemed! It will be removed in 3 minutes.",
@@ -6415,8 +6481,10 @@ ${draft.address ? `地址：${draft.address}` : ''}
       // 取得商家認領的行程卡列表
       const placeLinks = await storage.getMerchantPlaceLinks(merchant.id);
       
+      // 取得追蹤數據統計
+      const analyticsSummary = await storage.getMerchantAnalyticsSummary(merchant.id);
+      
       // 計算統計數據
-      const today = new Date().toISOString().split('T')[0];
       const stats = {
         totalPlaces: placeLinks.length,
         activePlaces: placeLinks.filter(p => p.status === 'approved').length,
@@ -6426,6 +6494,16 @@ ${draft.address ? `地址：${draft.address}` : ''}
         subscriptionPlan: merchant.subscriptionPlan,
         status: merchant.status || 'pending',
         creditBalance: merchant.creditBalance || 0,
+        // 擴展統計指標
+        dailyCollectionCount: analyticsSummary.todayCollected,
+        totalCollectionUsers: analyticsSummary.totalCollectors,
+        collectionClickCount: analyticsSummary.totalClicks,
+        couponUsageRate: analyticsSummary.totalCouponIssued > 0 
+          ? Math.round((analyticsSummary.totalCouponUsage / analyticsSummary.totalCouponIssued) * 100) 
+          : 0,
+        couponTotalUsed: analyticsSummary.totalCouponUsage,
+        couponTotalIssued: analyticsSummary.totalCouponIssued,
+        prizePoolViewCount: analyticsSummary.totalPrizePoolViews,
       };
 
       res.json({
