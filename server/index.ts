@@ -443,9 +443,9 @@ async function startServer() {
         } finally {
           isAutoDraftRunning = false;
         }
-      }, 60000); // 60秒 = 1分鐘
+      }, 15000); // 15秒
       
-      console.log('[AutoDraft] Automatic draft generation scheduled (every 1 minute)');
+      console.log('[AutoDraft] Automatic draft generation scheduled (every 15 seconds)');
 
       // ============================================================
       // 7. AI 自動審查 auto_generated 草稿 (每 2 分鐘)
@@ -524,9 +524,9 @@ async function startServer() {
         } finally {
           isAIReviewRunning = false;
         }
-      }, 120000); // 120秒 = 2分鐘
+      }, 30000); // 30秒
       
-      console.log('[AIReview] AI review scheduler started (every 2 minutes)');
+      console.log('[AIReview] AI review scheduler started (every 30 seconds)');
 
       // ============================================================
       // 8. 每小時自動清除過期活動 (快閃活動、節日限定活動)
