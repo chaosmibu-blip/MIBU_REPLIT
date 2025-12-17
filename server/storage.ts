@@ -1120,10 +1120,11 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(placeDrafts.status, filters.status));
     }
     if (filters.minRating !== undefined) {
+      // 只選擇有 Google 評分且 >= 門檻的草稿（排除 NULL）
       conditions.push(
-        or(
-          gte(placeDrafts.googleRating, filters.minRating),
-          isNull(placeDrafts.googleRating)
+        and(
+          isNotNull(placeDrafts.googleRating),
+          gte(placeDrafts.googleRating, filters.minRating)
         )
       );
     }
