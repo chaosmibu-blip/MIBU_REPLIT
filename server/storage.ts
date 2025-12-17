@@ -85,6 +85,7 @@ export interface IStorage {
   getRandomDistrictByCountry(countryId: number): Promise<District | undefined>;
   getRandomDistrictByRegion(regionId: number): Promise<District | undefined>;
   getDistrictWithParents(districtId: number): Promise<{ district: District; region: Region; country: Country } | undefined>;
+  getDistrictByNames(districtName: string, regionName: string, countryName: string): Promise<{ district: District; region: Region; country: Country } | undefined>;
 
   // Categories
   getCategories(): Promise<Category[]>;
@@ -659,6 +660,25 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(regions, eq(districts.regionId, regions.id))
       .innerJoin(countries, eq(regions.countryId, countries.id))
       .where(eq(districts.id, districtId))
+      .limit(1);
+    return result[0];
+  }
+
+  async getDistrictByNames(districtName: string, regionName: string, countryName: string): Promise<{ district: District; region: Region; country: Country } | undefined> {
+    const result = await db
+      .select({
+        district: districts,
+        region: regions,
+        country: countries
+      })
+      .from(districts)
+      .innerJoin(regions, eq(districts.regionId, regions.id))
+      .innerJoin(countries, eq(regions.countryId, countries.id))
+      .where(and(
+        eq(districts.nameZh, districtName),
+        eq(regions.nameZh, regionName),
+        eq(countries.nameZh, countryName)
+      ))
       .limit(1);
     return result[0];
   }

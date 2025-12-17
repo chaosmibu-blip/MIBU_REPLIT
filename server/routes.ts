@@ -5884,8 +5884,12 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
       }
 
       const passedIds: number[] = [];
-      const deletedIds: number[] = [];
+      const movedToDraftIds: number[] = [];
       const errors: { id: number; placeName: string; error: string }[] = [];
+
+      // 預載分類和地區資料以提高效率
+      const categories = await storage.getCategories();
+      const allSubcategories = await storage.getAllSubcategoriesWithCategory();
 
       for (const place of unreviewed) {
         try {
@@ -5905,10 +5909,44 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
             await storage.markPlaceCacheReviewed(place.id, true);
             passedIds.push(place.id);
           } else {
-            // 未通過審核，刪除
-            await storage.deletePlaceCache(place.id);
-            deletedIds.push(place.id);
-            console.log(`[CacheReview] Deleted: ${place.placeName} - ${reviewResult.reason}`);
+            // 未通過審核，移至草稿表並記錄原因
+            // 查找對應的分類 ID
+            const category = categories.find(c => c.nameZh === place.category);
+            const subcategory = allSubcategories.find(s => s.nameZh === place.subCategory);
+            
+            // 查找對應的地區 ID
+            const districtInfo = await storage.getDistrictByNames(place.district, place.city, place.country);
+            
+            if (districtInfo) {
+              // 建立草稿，包含退回原因
+              const rejectionNote = `[AI審核不通過] ${reviewResult.reason} (信心度: ${(reviewResult.confidence * 100).toFixed(0)}%)`;
+              
+              await storage.createPlaceDraft({
+                source: 'ai',
+                placeName: place.placeName,
+                description: `${rejectionNote}\n\n原描述：${place.description}`,
+                categoryId: category?.id || 1,
+                subcategoryId: subcategory?.id || 1,
+                districtId: districtInfo.district.id,
+                regionId: districtInfo.region.id,
+                countryId: districtInfo.country.id,
+                address: place.verifiedAddress || undefined,
+                googlePlaceId: place.placeId || undefined,
+                googleRating: place.googleRating ? parseFloat(place.googleRating) : undefined,
+                locationLat: place.locationLat || undefined,
+                locationLng: place.locationLng || undefined,
+                status: 'pending', // 設為人工待審
+              });
+              
+              // 刪除快取中的記錄
+              await storage.deletePlaceCache(place.id);
+              movedToDraftIds.push(place.id);
+              console.log(`[CacheReview] Moved to drafts: ${place.placeName} - ${reviewResult.reason}`);
+            } else {
+              // 找不到地區資訊，標記為已審核但失敗
+              await storage.markPlaceCacheReviewed(place.id, true);
+              errors.push({ id: place.id, placeName: place.placeName, error: `找不到地區資訊: ${place.district}, ${place.city}` });
+            }
           }
 
           // 避免 API 速率限制
@@ -5923,13 +5961,13 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
 
       res.json({
         success: true,
-        reviewed: passedIds.length + deletedIds.length,
+        reviewed: passedIds.length + movedToDraftIds.length,
         passed: passedIds.length,
-        deleted: deletedIds.length,
+        movedToDraft: movedToDraftIds.length,
         remaining: stats.unreviewed,
         stats,
         errors: errors.length > 0 ? errors : undefined,
-        message: `審核完成：${passedIds.length} 筆通過，${deletedIds.length} 筆刪除`
+        message: `審核完成：${passedIds.length} 筆通過，${movedToDraftIds.length} 筆移至草稿`
       });
     } catch (error) {
       console.error("Admin cache review error:", error);

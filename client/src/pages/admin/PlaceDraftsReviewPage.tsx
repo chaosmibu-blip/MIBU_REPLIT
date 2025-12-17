@@ -106,7 +106,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
   const [backfilling, setBackfilling] = useState(false);
   const [backfillResult, setBackfillResult] = useState<{ updated: number; failed: number; remaining: number } | null>(null);
   const [cacheReviewing, setCacheReviewing] = useState(false);
-  const [cacheReviewResult, setCacheReviewResult] = useState<{ passed: number; deleted: number; remaining: number } | null>(null);
+  const [cacheReviewResult, setCacheReviewResult] = useState<{ passed: number; movedToDraft: number; remaining: number } | null>(null);
   const [cacheStats, setCacheStats] = useState<{ total: number; reviewed: number; unreviewed: number } | null>(null);
 
   const [draftForm, setDraftForm] = useState({
@@ -874,10 +874,10 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
               </div>
               
               {cacheReviewResult && (
-                <div className={`mt-3 p-3 rounded-xl border ${cacheReviewResult.deleted > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                <div className={`mt-3 p-3 rounded-xl border ${cacheReviewResult.movedToDraft > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
                   <div className="text-sm space-y-1">
                     <p className="text-emerald-700">通過審核：{cacheReviewResult.passed} 筆</p>
-                    <p className="text-red-600">已刪除：{cacheReviewResult.deleted} 筆</p>
+                    <p className="text-amber-600">移至草稿：{cacheReviewResult.movedToDraft} 筆</p>
                     <p className="text-slate-600">剩餘待審核：{cacheReviewResult.remaining} 筆</p>
                   </div>
                 </div>
