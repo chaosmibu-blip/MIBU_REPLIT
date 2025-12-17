@@ -218,43 +218,51 @@ export async function setupAuth(app: Express) {
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   const loginHandler = (req: any, res: any, next: any) => {
-    const redirectUri = req.query.redirect_uri as string | undefined;
-    const portal = req.query.portal as string | undefined; // merchant, specialist, traveler, admin
-    const targetRole = req.query.target_role as string | undefined;
-    
-    if (redirectUri) {
-      if (!isAllowedRedirectUri(redirectUri)) {
-        return res.status(400).json({ error: 'Invalid redirect_uri' });
-      }
-      (req.session as any).externalRedirectUri = redirectUri;
+    try {
+      console.log(`[OAuth Login] Starting login for hostname: ${req.hostname}`);
+      const redirectUri = req.query.redirect_uri as string | undefined;
+      const portal = req.query.portal as string | undefined; // merchant, specialist, traveler, admin
+      const targetRole = req.query.target_role as string | undefined;
       
-      // Also set a cookie as backup (session might be lost during OAuth flow)
-      res.cookie('app_redirect_uri', redirectUri, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none' as const,
-        maxAge: 10 * 60 * 1000, // 10 minutes
-      });
+      if (redirectUri) {
+        if (!isAllowedRedirectUri(redirectUri)) {
+          return res.status(400).json({ error: 'Invalid redirect_uri' });
+        }
+        (req.session as any).externalRedirectUri = redirectUri;
+        
+        // Also set a cookie as backup (session might be lost during OAuth flow)
+        res.cookie('app_redirect_uri', redirectUri, {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'none' as const,
+          maxAge: 10 * 60 * 1000, // 10 minutes
+        });
+      }
+      
+      // Store portal/target_role for setting activeRole after login
+      const requestedRole = portal || targetRole;
+      if (requestedRole && ['traveler', 'merchant', 'specialist', 'admin'].includes(requestedRole)) {
+        (req.session as any).requestedActiveRole = requestedRole;
+        res.cookie('requested_active_role', requestedRole, {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'none' as const,
+          maxAge: 10 * 60 * 1000, // 10 minutes
+        });
+        console.log(`[OAuth] Login requested with portal/target_role: ${requestedRole}`);
+      }
+      
+      console.log(`[OAuth Login] Calling ensureStrategy for: ${req.hostname}`);
+      ensureStrategy(req.hostname);
+      console.log(`[OAuth Login] Starting passport.authenticate for: replitauth:${req.hostname}`);
+      passport.authenticate(`replitauth:${req.hostname}`, {
+        prompt: "login consent",
+        scope: ["openid", "email", "profile", "offline_access"],
+      })(req, res, next);
+    } catch (error) {
+      console.error('[OAuth Login] Error in loginHandler:', error);
+      res.status(500).json({ error: 'Login initialization failed', details: String(error) });
     }
-    
-    // Store portal/target_role for setting activeRole after login
-    const requestedRole = portal || targetRole;
-    if (requestedRole && ['traveler', 'merchant', 'specialist', 'admin'].includes(requestedRole)) {
-      (req.session as any).requestedActiveRole = requestedRole;
-      res.cookie('requested_active_role', requestedRole, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none' as const,
-        maxAge: 10 * 60 * 1000, // 10 minutes
-      });
-      console.log(`[OAuth] Login requested with portal/target_role: ${requestedRole}`);
-    }
-    
-    ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      prompt: "login consent",
-      scope: ["openid", "email", "profile", "offline_access"],
-    })(req, res, next);
   };
 
   app.get("/api/login", loginHandler);
