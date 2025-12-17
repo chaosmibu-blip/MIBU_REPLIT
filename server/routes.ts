@@ -6640,6 +6640,394 @@ ${draft.address ? `地址：${draft.address}` : ''}
     }
   });
 
+  // ============ Merchant Subscription Upgrade APIs ============
+  
+  // Subscription plan pricing (monthly, in TWD)
+  const MERCHANT_PLAN_PRICES = {
+    free: 0,
+    pro: 999,      // NT$999/month
+    premium: 2999, // NT$2,999/month
+  };
+  
+  const PLACE_CARD_LEVEL_PRICES = {
+    free: 0,
+    pro: 299,      // NT$299/month per place card
+    premium: 599,  // NT$599/month per place card
+  };
+
+  // GET /api/merchant/subscription/plans - 取得訂閱方案列表和價格
+  app.get("/api/merchant/subscription/plans", async (req, res) => {
+    try {
+      res.json({
+        merchantPlans: [
+          {
+            id: 'free',
+            name: '免費版',
+            nameEn: 'Free',
+            price: MERCHANT_PLAN_PRICES.free,
+            features: ['基本商家資料', '1張免費行程卡', '基本優惠券'],
+          },
+          {
+            id: 'pro',
+            name: '專業版',
+            nameEn: 'Pro',
+            price: MERCHANT_PLAN_PRICES.pro,
+            features: ['所有免費版功能', '最多5張行程卡', 'SR等級優惠券', '基本數據分析'],
+          },
+          {
+            id: 'premium',
+            name: '旗艦版',
+            nameEn: 'Premium',
+            price: MERCHANT_PLAN_PRICES.premium,
+            features: ['所有專業版功能', '無限行程卡', 'SP/SSR等級優惠券', '進階數據分析', '優先客服支援'],
+          },
+        ],
+        placeCardLevels: [
+          {
+            id: 'free',
+            name: '基礎版',
+            nameEn: 'Basic',
+            price: PLACE_CARD_LEVEL_PRICES.free,
+            features: ['基本展示', '標準曝光'],
+          },
+          {
+            id: 'pro',
+            name: '進階版',
+            nameEn: 'Pro',
+            price: PLACE_CARD_LEVEL_PRICES.pro,
+            features: ['優先曝光', '自訂圖片', '促銷標籤'],
+          },
+          {
+            id: 'premium',
+            name: '旗艦版',
+            nameEn: 'Premium',
+            price: PLACE_CARD_LEVEL_PRICES.premium,
+            features: ['最高曝光', '影片展示', '專屬推薦', '數據報表'],
+          },
+        ],
+      });
+    } catch (error) {
+      console.error("Get subscription plans error:", error);
+      res.status(500).json({ error: "Failed to get subscription plans" });
+    }
+  });
+
+  // POST /api/merchant/subscription/upgrade - 建立商家等級升級支付
+  app.post("/api/merchant/subscription/upgrade", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      const { targetPlan, provider = 'stripe' } = req.body;
+      
+      if (!['pro', 'premium'].includes(targetPlan)) {
+        return res.status(400).json({ error: "Invalid target plan" });
+      }
+
+      const currentPlan = merchant.merchantLevel || 'free';
+      const planOrder = { free: 0, pro: 1, premium: 2 };
+      
+      if (planOrder[targetPlan as keyof typeof planOrder] <= planOrder[currentPlan as keyof typeof planOrder]) {
+        return res.status(400).json({ error: "Can only upgrade to a higher plan" });
+      }
+
+      const price = MERCHANT_PLAN_PRICES[targetPlan as keyof typeof MERCHANT_PLAN_PRICES];
+      
+      if (provider === 'stripe') {
+        const stripeClient = await getUncachableStripeClient();
+        const baseUrl = `https://${req.hostname}`;
+        
+        const session = await stripeClient.checkout.sessions.create({
+          payment_method_types: ['card'],
+          line_items: [{
+            price_data: {
+              currency: 'twd',
+              product_data: {
+                name: `商家等級升級 - ${targetPlan === 'pro' ? '專業版' : '旗艦版'}`,
+                description: `從 ${currentPlan} 升級到 ${targetPlan}`,
+              },
+              unit_amount: price,
+              recurring: {
+                interval: 'month',
+              },
+            },
+            quantity: 1,
+          }],
+          mode: 'subscription',
+          success_url: `${baseUrl}/merchant/subscription/success?session_id={CHECKOUT_SESSION_ID}&plan=${targetPlan}`,
+          cancel_url: `${baseUrl}/merchant/subscription`,
+          metadata: {
+            merchantId: merchant.id.toString(),
+            upgradeType: 'merchant_plan',
+            targetPlan,
+            currentPlan,
+          },
+        });
+
+        return res.json({
+          provider: 'stripe',
+          checkoutUrl: session.url,
+          sessionId: session.id,
+        });
+      }
+      
+      // Recur payment (for Taiwan local payment)
+      return res.json({
+        provider: 'recur',
+        price,
+        merchantId: merchant.id,
+        targetPlan,
+        message: 'Recur payment integration pending',
+      });
+    } catch (error) {
+      console.error("Merchant subscription upgrade error:", error);
+      res.status(500).json({ error: "Failed to create upgrade session" });
+    }
+  });
+
+  // POST /api/merchant/subscription/confirm - 確認升級 (webhook 或手動確認)
+  app.post("/api/merchant/subscription/confirm", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      const { sessionId, targetPlan } = req.body;
+      
+      if (!['pro', 'premium'].includes(targetPlan)) {
+        return res.status(400).json({ error: "Invalid target plan" });
+      }
+
+      // Verify Stripe session if provided
+      if (sessionId) {
+        const stripeClient = await getUncachableStripeClient();
+        const session = await stripeClient.checkout.sessions.retrieve(sessionId);
+        
+        if (session.payment_status !== 'paid') {
+          return res.status(400).json({ error: "Payment not completed" });
+        }
+        
+        // Verify session belongs to this merchant
+        if (session.metadata?.merchantId !== merchant.id.toString()) {
+          return res.status(403).json({ error: "Session does not belong to this merchant" });
+        }
+      }
+
+      // Update merchant plan
+      const updatedMerchant = await storage.updateMerchant(merchant.id, {
+        merchantLevel: targetPlan,
+        subscriptionPlan: targetPlan,
+      });
+
+      res.json({
+        success: true,
+        merchant: updatedMerchant,
+        message: `Successfully upgraded to ${targetPlan} plan`,
+      });
+    } catch (error) {
+      console.error("Confirm subscription upgrade error:", error);
+      res.status(500).json({ error: "Failed to confirm upgrade" });
+    }
+  });
+
+  // POST /api/merchant/places/:linkId/upgrade - 升級行程卡等級
+  app.post("/api/merchant/places/:linkId/upgrade", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      const linkId = parseInt(req.params.linkId);
+      const { targetLevel, provider = 'stripe' } = req.body;
+      
+      if (!['pro', 'premium'].includes(targetLevel)) {
+        return res.status(400).json({ error: "Invalid target level" });
+      }
+
+      // Get current place card
+      const placeLinks = await storage.getMerchantPlaceLinks(merchant.id);
+      const placeLink = placeLinks.find(link => link.id === linkId);
+      if (!placeLink) {
+        return res.status(404).json({ error: "Place card not found" });
+      }
+
+      const currentLevel = placeLink.cardLevel || 'free';
+      const levelOrder = { free: 0, pro: 1, premium: 2 };
+      
+      if (levelOrder[targetLevel as keyof typeof levelOrder] <= levelOrder[currentLevel as keyof typeof levelOrder]) {
+        return res.status(400).json({ error: "Can only upgrade to a higher level" });
+      }
+
+      const price = PLACE_CARD_LEVEL_PRICES[targetLevel as keyof typeof PLACE_CARD_LEVEL_PRICES];
+      
+      if (provider === 'stripe') {
+        const stripeClient = await getUncachableStripeClient();
+        const baseUrl = `https://${req.hostname}`;
+        
+        const session = await stripeClient.checkout.sessions.create({
+          payment_method_types: ['card'],
+          line_items: [{
+            price_data: {
+              currency: 'twd',
+              product_data: {
+                name: `行程卡升級 - ${targetLevel === 'pro' ? '進階版' : '旗艦版'}`,
+                description: `行程卡 #${linkId} 從 ${currentLevel} 升級到 ${targetLevel}`,
+              },
+              unit_amount: price,
+              recurring: {
+                interval: 'month',
+              },
+            },
+            quantity: 1,
+          }],
+          mode: 'subscription',
+          success_url: `${baseUrl}/merchant/places/${linkId}/success?session_id={CHECKOUT_SESSION_ID}&level=${targetLevel}`,
+          cancel_url: `${baseUrl}/merchant/places`,
+          metadata: {
+            merchantId: merchant.id.toString(),
+            placeLinkId: linkId.toString(),
+            upgradeType: 'place_card_level',
+            targetLevel,
+            currentLevel,
+          },
+        });
+
+        return res.json({
+          provider: 'stripe',
+          checkoutUrl: session.url,
+          sessionId: session.id,
+        });
+      }
+      
+      return res.json({
+        provider: 'recur',
+        price,
+        placeLinkId: linkId,
+        targetLevel,
+        message: 'Recur payment integration pending',
+      });
+    } catch (error) {
+      console.error("Place card upgrade error:", error);
+      res.status(500).json({ error: "Failed to create upgrade session" });
+    }
+  });
+
+  // POST /api/merchant/places/:linkId/upgrade/confirm - 確認行程卡升級
+  app.post("/api/merchant/places/:linkId/upgrade/confirm", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      const linkId = parseInt(req.params.linkId);
+      const { sessionId, targetLevel } = req.body;
+      
+      if (!['pro', 'premium'].includes(targetLevel)) {
+        return res.status(400).json({ error: "Invalid target level" });
+      }
+
+      // Verify place belongs to merchant
+      const allPlaceLinks = await storage.getMerchantPlaceLinks(merchant.id);
+      const placeLink = allPlaceLinks.find(link => link.id === linkId);
+      if (!placeLink) {
+        return res.status(404).json({ error: "Place card not found" });
+      }
+
+      // Verify Stripe session if provided
+      if (sessionId) {
+        const stripeClient = await getUncachableStripeClient();
+        const session = await stripeClient.checkout.sessions.retrieve(sessionId);
+        
+        if (session.payment_status !== 'paid') {
+          return res.status(400).json({ error: "Payment not completed" });
+        }
+        
+        if (session.metadata?.placeLinkId !== linkId.toString()) {
+          return res.status(403).json({ error: "Session does not belong to this place card" });
+        }
+      }
+
+      // Update place card level
+      const updatedPlaceLink = await storage.updateMerchantPlaceLink(linkId, {
+        cardLevel: targetLevel,
+      });
+
+      res.json({
+        success: true,
+        placeLink: updatedPlaceLink,
+        message: `Successfully upgraded place card to ${targetLevel} level`,
+      });
+    } catch (error) {
+      console.error("Confirm place card upgrade error:", error);
+      res.status(500).json({ error: "Failed to confirm upgrade" });
+    }
+  });
+
+  // GET /api/merchant/subscription - 取得當前訂閱狀態
+  app.get("/api/merchant/subscription", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      // Get place cards with their levels
+      const placeLinks = await storage.getMerchantPlaceLinks(merchant.id);
+      
+      res.json({
+        merchantId: merchant.id,
+        merchantLevel: merchant.merchantLevel || 'free',
+        subscriptionPlan: merchant.subscriptionPlan || 'free',
+        placeCards: placeLinks.map(link => ({
+          id: link.id,
+          placeName: link.placeName,
+          cardLevel: link.cardLevel || 'free',
+        })),
+        limits: {
+          maxPlaceCards: merchant.merchantLevel === 'premium' ? Infinity : 
+                         merchant.merchantLevel === 'pro' ? 5 : 1,
+          currentPlaceCards: placeLinks.length,
+          canAddMoreCards: merchant.merchantLevel === 'premium' || 
+                          (merchant.merchantLevel === 'pro' && placeLinks.length < 5) ||
+                          (merchant.merchantLevel === 'free' && placeLinks.length < 1),
+        },
+      });
+    } catch (error) {
+      console.error("Get merchant subscription error:", error);
+      res.status(500).json({ error: "Failed to get subscription status" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
