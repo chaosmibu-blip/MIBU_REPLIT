@@ -1,7 +1,7 @@
 # Mibu 旅行扭蛋
 
 ## Overview
-Mibu 旅行扭蛋 is a Progressive Web Application (PWA) that gamifies travel planning. Users input a destination and pace, and an AI generates verified local itineraries. The app includes a collection system for saving locations, organized by region and category. A merchant backend allows businesses to claim locations, manage offers, and utilize subscription plans. The project aims to combine innovative travel planning with a gamified experience, offering market potential for personalized and engaging travel.
+Mibu 旅行扭dan is a Progressive Web Application (PWA) that gamifies travel planning. Users input a destination and pace, and an AI generates verified local itineraries. The app includes a collection system for saving locations, organized by region and category. A merchant backend allows businesses to claim locations, manage offers, and utilize subscription plans. The project aims to combine innovative travel planning with a gamified experience, offering market potential for personalized and engaging travel.
 
 ## User Preferences
 偏好的溝通方式：簡單、日常用語。
@@ -38,37 +38,26 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) that gamifies travel pl
 - **Backend**: Node.js + Express with TypeScript (ES modules).
 - **API Pattern**: RESTful APIs, prefixed with `/api/`.
 - **State Management**: React Query + React useState.
-- **Authentication**: Replit Auth (OpenID Connect) for login verification.
+- **Authentication**: Replit Auth (OpenID Connect) for login verification; JWT Token issued by backend for API authentication.
 - **Role-Based Access Control (RBAC)**: `consumer`, `merchant`, `admin` roles with API differentiation (`/api/consumer/*`, `/api/merchant/*`).
 - **Data Storage**: PostgreSQL with Drizzle ORM. Schema defined in `shared/schema.ts`.
-- **Location Hierarchy**: Three-tiered structure (Country → Region → District) with multi-language support (nameEn, nameZh, nameJa, nameKo).
-- **Category System**: Two-tiered structure (Category → Subcategory) with 8 main categories.
-- **Place Cache System**: Caches AI-generated locations to reduce Gemini API calls. Checks cache first, then calls Gemini if not found or excluded by user, validating with Google Maps.
 - **Modular Architecture**: Organized into `modules/` (e.g., trip-planner, travel-gacha, admin) and `core/` for shared code.
-- **Offline Access (PWA)**: Utilizes Service Worker + IndexedDB.
-    - **Caching Strategies**: Stale-While-Revalidate for static resources, Network First for API responses, Cache First for map tiles.
-    - **Offline Features**: Offline indicator, map tile downloads for offline use, itinerary saving to local storage.
-- **Multiplayer Companion System**: Allows inviting companions to chat rooms via invitation links.
-- **Twilio Chat System**: Integration with Twilio Conversations API for real-time chat.
-- **Trip Planning Service System**: Manages planners, service plans (Light Consultation, In-depth Planning, Full Accompaniment), and orders, including auto-matching planners and chat room creation.
-- **Gacha Itinerary Logic**:
-    1. Randomly selects a district for all locations in an itinerary.
-    2. Generates multiple locations covering different categories.
-    3. Avoids duplicate locations across gacha pulls.
-    4. Provides AI-generated tourist-oriented descriptions.
-    5. Validates location existence within the chosen district.
-- **Frontend/Backend Collaboration**: Backend provides "Frontend Sync Instructions" after updates, including API changes, data structure changes, and required frontend modifications with API call examples and return data formats.
-    - **Backend Base URL**: `https://gacha-travel--s8869420.replit.app`
-    - **Authentication**: JWT Token issued by backend after Replit OAuth login, used in `Authorization: Bearer {token}` header.
+- **PWA Features**: Offline access via Service Worker + IndexedDB with caching strategies (Stale-While-Revalidate, Network First, Cache First) and offline itinerary saving.
+- **Real-time Communication**: Multiplayer Companion System and Twilio Chat System integration for real-time chat. Socket.IO for real-time location tracking.
+- **AI Integration**: AI-generated itineraries using Gemini API, with a Place Cache System to reduce API calls.
+- **Location & Category Systems**: Three-tiered location hierarchy (Country → Region → District) and two-tiered category system, both with multi-language support.
+- **Gacha Itinerary Logic**: Random district selection, diverse location categories, duplicate avoidance, AI-generated descriptions, and location validation.
+- **Trip Planning Service**: Manages planners, service plans, orders, auto-matching, and chat room creation.
+- **Announcement & Event System**: Supports `announcement`, `flash_event`, `holiday_event` types with auto-deletion for temporary events.
+- **Coupon Redemption System**: User-facing coupon redemption with merchant-provided codes and a 3-minute validity window.
+- **AdMob Integration**: Support for AdMob advertisements across multiple platforms and configurable display frequencies.
+- **Itembox System**: Manages user-obtained coupons and items, with read/redeem functionalities.
+- **Collection Optimization**: Automatic saving of generated itinerary places to user collection, with indicators for new items and merchant promotions.
 
 ### Feature Specifications
-- **Mibu Backend Responsibilities**: User authentication/authorization, AI itinerary generation, location data management, collection/feedback systems, merchant system, trip planning services, real-time chat, payment processing (Stripe).
-- **Announcement & Event System** (2025-12-17):
-    - Three types: `announcement` (permanent), `flash_event` (auto-delete), `holiday_event` (auto-delete)
-    - Admin API endpoints: GET/POST/PATCH/DELETE `/api/admin/announcements`
-    - Public API: GET `/api/announcements` (active only)
-    - Auto-deletion scheduler runs hourly for expired flash/holiday events
-    - Authorization uses `hasAdminAccess` helper checking JWT activeRole + super admin email
+- **Mibu Backend Responsibilities**: User authentication/authorization, AI itinerary generation, location data management, collection/feedback systems, merchant system, trip planning services, real-time chat, payment processing (Stripe), AdMob integration, Itembox, and coupon redemption.
+- **Frontend/Backend Collaboration**: Backend provides "Frontend Sync Instructions" for API and data structure changes.
+    - **Backend Base URL**: `https://gacha-travel--s8869420.replit.app`
 
 ## External Dependencies
 
@@ -77,6 +66,8 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) that gamifies travel pl
 - **Google Gemini API**: AI-powered itinerary generation.
 - **Twilio Conversations API**: Real-time chat system.
 - **Recur (via PAYUNi)**: Payment gateway for merchant subscriptions.
+- **Socket.IO**: Real-time bidirectional event-based communication.
+- **AdMob**: Mobile advertising platform.
 
 ### Databases
 - **PostgreSQL**: Primary database for all project data.
@@ -92,269 +83,3 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) that gamifies travel pl
 - `TWILIO_API_KEY_SID`
 - `TWILIO_API_KEY_SECRET`
 - `TWILIO_CONVERSATIONS_SERVICE_SID`
-
----
-
-## 前後端分離協作規範 (2025-12-15 新增)
-
-### 專案架構
-這是一個前後端分離的專案：
-- **後端**（本專案）：Mibu 旅行扭蛋 - Node.js + Express + PostgreSQL
-- **前端**：Mibu Expo App - React Native + Expo
-- **後端正式網址**：`https://gacha-travel--s8869420.replit.app`
-
-### 技術長模式（CTO Mode）
-當後端 Agent 完成功能更新有牽動到前端時，必須產生「前端同步指令」，讓使用者可以直接貼給前端 Agent。
-
-#### 指令格式模板
-每次後端更新完成後，產生以下格式的指令：
-
-```
-=== 前端同步指令 ===
-
-【用戶需求說明】
-{用戶對這個功能的原始需求描述，讓前端了解背景}
-
-【後端更新摘要】
-{簡述這次後端做了什麼更動}
-
-【API 變更】
-- 新增 API：{方法} {路徑} - {用途}
-- 修改 API：{方法} {路徑} - {變更內容}
-- 移除 API：{方法} {路徑}
-
-【資料結構變更】
-{如果有新增或修改資料欄位，列出來}
-
-【前端需要的改動】
-1. {具體描述前端需要做什麼}
-2. {...}
-
-【UI/UX 建議】
-{如果有特定的介面設計建議，例如顏色、位置、動畫等}
-
-【API 呼叫範例】
-// {API 名稱}
-const response = await fetch('https://gacha-travel--s8869420.replit.app/api/{路徑}', {
-  method: '{方法}',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}` // 如需登入驗證
-  },
-  body: JSON.stringify({...}) // 如需傳送資料
-});
-const data = await response.json();
-
-【回傳資料格式】
-{
-  // TypeScript 型別定義
-}
-
-=== 指令結束 ===
-```
-
-### API 基礎網址
-前端應使用以下基礎網址連接後端：
-- 開發環境：使用環境變數 `EXPO_PUBLIC_API_URL`
-- 正式環境：`https://gacha-travel--s8869420.replit.app`
-
-### 認證方式
-前端使用 JWT Token 進行認證：
-1. 使用者透過 Replit OAuth 登入後端
-2. 後端發放 JWT Token
-3. 前端在每次請求的 Header 加入 `Authorization: Bearer {token}`
-
----
-
-## 前端同步指令記錄
-
-### 2025-12-15：即時位置追蹤功能
-
-```
-=== 前端同步指令 ===
-
-【後端更新摘要】
-新增 Socket.IO 即時位置追蹤功能，旅客可透過 WebSocket 即時上報位置，後端會自動轉發給對應的專員。
-
-【API 變更】
-- 現有 API：POST /api/location/update - HTTP 位置更新（保留，用於非即時場景）
-- 現有 API：GET /api/location/me - 取得我的位置
-- 新增 Socket.IO 事件：location_update - 即時位置串流（取代頻繁 HTTP 請求）
-- 新增 Socket.IO 事件：traveler_location - 專員接收旅客位置
-- 新增 Socket.IO 事件：specialist_subscribe - 專員訂閱旅客位置
-
-【Socket.IO 連線設定】
-- 後端 URL：wss://gacha-travel--s8869420.replit.app
-- 傳輸方式：['websocket', 'polling']
-- 認證：handshake.auth.token = JWT Token
-
-【前端需要的改動 - 旅客端】
-1. 安裝 socket.io-client：`expo install socket.io-client`
-2. 安裝 expo-location：`expo install expo-location`
-3. 建立 Socket 連線並發送位置更新：
-
-// 連線範例
-import { io } from 'socket.io-client';
-import * as Location from 'expo-location';
-
-const socket = io('https://gacha-travel--s8869420.replit.app', {
-  auth: { token: jwtToken },
-  transports: ['websocket', 'polling'],
-});
-
-// 請求定位權限
-const { status } = await Location.requestForegroundPermissionsAsync();
-
-// 即時位置追蹤（每 5 秒或移動 10 公尺）
-Location.watchPositionAsync(
-  {
-    accuracy: Location.Accuracy.High,
-    timeInterval: 5000,
-    distanceInterval: 10,
-  },
-  (location) => {
-    socket.emit('location_update', {
-      lat: location.coords.latitude,
-      lng: location.coords.longitude,
-      timestamp: Date.now(),
-    });
-  }
-);
-
-// 監聽確認
-socket.on('location_ack', (data) => {
-  console.log('位置已更新', data);
-});
-
-【前端需要的改動 - 專員端】
-1. 連線後發送訂閱請求
-2. 監聯旅客位置更新
-
-// 訂閱旅客
-socket.emit('specialist_subscribe', {});
-
-// 接收旅客位置
-socket.on('traveler_location', (data) => {
-  // data: { travelerId, serviceId, lat, lng, timestamp }
-  updateMarkerPosition(data.travelerId, data.lat, data.lng);
-});
-
-// 接收目前服務中的旅客列表
-socket.on('active_travelers', (data) => {
-  // data: { count, travelers: [{ serviceId, travelerId, region, createdAt }] }
-});
-
-【回傳資料格式】
-// location_ack
-{ success: boolean; timestamp: number; serviceActive: boolean }
-
-// traveler_location
-{ travelerId: string; serviceId: number; lat: number; lng: number; timestamp: number }
-
-// active_travelers
-{ count: number; travelers: Array<{ serviceId: number; travelerId: string; region: string; createdAt: Date }> }
-
-=== 指令結束 ===
-```
-
-### 2025-12-15：現有定位 HTTP API
-
-```
-=== 前端同步指令 ===
-
-【後端更新摘要】
-現有的 HTTP 定位 API，適用於非即時場景（如初次定位、定期備份）
-
-【API 變更】
-- POST /api/location/update - 更新用戶位置
-- GET /api/location/me - 取得我的位置
-
-【API 呼叫範例】
-// 更新位置
-const response = await fetch('https://gacha-travel--s8869420.replit.app/api/location/update', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`
-  },
-  body: JSON.stringify({
-    lat: 25.033,
-    lon: 121.565,
-    isSharingEnabled: true,  // 可選
-    targets: [  // 可選，用於 geofencing
-      { id: 1, name: '目的地', lat: 25.04, lon: 121.57, radiusMeters: 100 }
-    ]
-  })
-});
-
-// 回傳格式
-{
-  status: "ok",
-  arrived: boolean,       // 是否抵達 geofence 目標
-  target: object | null,  // 最近的目標
-  distanceMeters: number | null,
-  location: { id, userId, lat, lon, isSharingEnabled, ... },
-  message: string
-}
-
-// 取得我的位置
-const response = await fetch('https://gacha-travel--s8869420.replit.app/api/location/me', {
-  headers: { 'Authorization': `Bearer ${token}` }
-});
-// 回傳格式：UserLocation | null
-
-=== 指令結束 ===
-```
-
-### 2025-12-17：查看獎池功能
-
-```
-=== 前端同步指令 ===
-
-【用戶需求說明】
-用戶希望在扭蛋頁面選擇區域後，能夠查看該區域的獎池內容，了解有哪些 SP/SSR 稀有優惠券可以抽到。
-
-【後端更新摘要】
-新增「查看獎池」功能，可查詢指定區域的 SP/SSR 稀有優惠券
-
-【API 變更】
-- 新增 API：GET /api/coupons/region/:regionId/pool - 取得區域獎池優惠券
-
-【資料結構變更】
-回傳陣列，每個元素格式：
-{
-  id: number,
-  title: string,
-  description: string | null,
-  rarity: 'SP' | 'SSR',
-  merchantName: string,
-  discount: string | null,
-  merchantId: number
-}
-
-【前端需要的改動】
-1. 在扭蛋頁面選擇區域後，新增「查看獎池」按鈕
-2. 點擊後呼叫 API 取得該區域的 SP/SSR 優惠券
-3. 以彈窗顯示獎池內容（SP 紫色、SSR 金色）
-
-【UI/UX 建議】
-- 按鈕使用金橘色漸層背景 (from-amber-400 to-orange-400)
-- SP 優惠券卡片使用紫色系 (purple-50 到 pink-50 漸層背景，purple-200 邊框)
-- SSR 優惠券卡片使用金色系 (amber-50 到 orange-50 漸層背景，amber-200 邊框)
-- 稀有度標籤：SP 紫色底白字，SSR 金色底白字
-
-【API 呼叫範例】
-const response = await fetch(`https://gacha-travel--s8869420.replit.app/api/coupons/region/${regionId}/pool`, {
-  headers: {
-    'Authorization': `Bearer ${token}`
-  }
-});
-const coupons = await response.json();
-// coupons: Array<{ id, title, description, rarity, merchantName, discount, merchantId }>
-
-=== 指令結束 ===
-```
-
-### 2025-12-15：全域排除功能
-
-```

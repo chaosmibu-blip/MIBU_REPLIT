@@ -4,6 +4,7 @@ import {
   placeProducts, cartItems, commerceOrders, klookProducts, messageHighlights,
   placeDrafts, placeApplications, userLocations, planners, serviceOrders, places,
   specialists, transactions, serviceRelations, announcements,
+  adPlacements, userNotifications, couponRedemptions, userInventory, merchantCoupons,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -26,7 +27,11 @@ import {
   type Specialist, type InsertSpecialist,
   type Transaction, type InsertTransaction,
   type ServiceRelation, type InsertServiceRelation,
-  type Announcement, type InsertAnnouncement, type AnnouncementType
+  type Announcement, type InsertAnnouncement, type AnnouncementType,
+  type AdPlacementRecord, type InsertAdPlacement,
+  type UserNotification, type CouponRedemption, type InsertCouponRedemption,
+  type UserInventoryItem, type InsertUserInventoryItem,
+  type MerchantCoupon, type InsertMerchantCoupon
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike, or, isNull, lt, gt, gte, lte } from "drizzle-orm";
@@ -1669,6 +1674,171 @@ export class DatabaseStorage implements IStorage {
       )
       .returning();
     return result.length;
+  }
+
+  // Ad Placements (廣告設定)
+  async getAllAdPlacements(): Promise<AdPlacementRecord[]> {
+    return db.select().from(adPlacements).orderBy(adPlacements.placementKey);
+  }
+
+  async getAdPlacement(placementKey: string, platform?: string): Promise<AdPlacementRecord | undefined> {
+    const conditions = [eq(adPlacements.placementKey, placementKey), eq(adPlacements.isActive, true)];
+    if (platform && platform !== 'all') {
+      conditions.push(or(eq(adPlacements.platform, platform), eq(adPlacements.platform, 'all'))!);
+    }
+    const [placement] = await db.select().from(adPlacements).where(and(...conditions));
+    return placement || undefined;
+  }
+
+  async createAdPlacement(placement: InsertAdPlacement): Promise<AdPlacementRecord> {
+    const [created] = await db.insert(adPlacements).values(placement).returning();
+    return created;
+  }
+
+  async updateAdPlacement(id: number, data: Partial<AdPlacementRecord>): Promise<AdPlacementRecord | undefined> {
+    const [updated] = await db.update(adPlacements).set({ ...data, updatedAt: new Date() }).where(eq(adPlacements.id, id)).returning();
+    return updated || undefined;
+  }
+
+  async deleteAdPlacement(id: number): Promise<void> {
+    await db.delete(adPlacements).where(eq(adPlacements.id, id));
+  }
+
+  // User Notifications (未讀通知)
+  async getUserNotifications(userId: string): Promise<UserNotification[]> {
+    return db.select().from(userNotifications).where(eq(userNotifications.userId, userId));
+  }
+
+  async incrementUnreadCount(userId: string, notificationType: string): Promise<void> {
+    const [existing] = await db.select().from(userNotifications)
+      .where(and(eq(userNotifications.userId, userId), eq(userNotifications.notificationType, notificationType)));
+    
+    if (existing) {
+      await db.update(userNotifications)
+        .set({ unreadCount: sql`${userNotifications.unreadCount} + 1`, lastUpdatedAt: new Date() })
+        .where(eq(userNotifications.id, existing.id));
+    } else {
+      await db.insert(userNotifications).values({ userId, notificationType, unreadCount: 1 });
+    }
+  }
+
+  async markNotificationsSeen(userId: string, notificationType: string): Promise<void> {
+    await db.update(userNotifications)
+      .set({ unreadCount: 0, lastSeenAt: new Date() })
+      .where(and(eq(userNotifications.userId, userId), eq(userNotifications.notificationType, notificationType)));
+  }
+
+  // Coupon Redemption (優惠券核銷)
+  async createCouponRedemption(redemption: InsertCouponRedemption): Promise<CouponRedemption> {
+    const [created] = await db.insert(couponRedemptions).values(redemption).returning();
+    return created;
+  }
+
+  async createAndVerifyCouponRedemption(redemption: InsertCouponRedemption): Promise<CouponRedemption> {
+    const [created] = await db.insert(couponRedemptions).values({
+      ...redemption,
+      status: 'verified',
+      verifiedAt: new Date()
+    }).returning();
+    return created;
+  }
+
+  async verifyCouponRedemption(redemptionId: number): Promise<CouponRedemption | undefined> {
+    const expiresAt = new Date(Date.now() + 3 * 60 * 1000); // 3 minutes from now
+    const [updated] = await db.update(couponRedemptions)
+      .set({ status: 'verified', verifiedAt: new Date(), expiresAt })
+      .where(eq(couponRedemptions.id, redemptionId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async expireRedemptionsAndDeleteCoupons(): Promise<number> {
+    const now = new Date();
+    const expiredRedemptions = await db.select()
+      .from(couponRedemptions)
+      .where(and(eq(couponRedemptions.status, 'verified'), lt(couponRedemptions.expiresAt, now)));
+    
+    for (const redemption of expiredRedemptions) {
+      await db.update(userInventory)
+        .set({ isRedeemed: true, redeemedAt: new Date() })
+        .where(eq(userInventory.id, redemption.userInventoryId));
+      
+      await db.update(couponRedemptions)
+        .set({ status: 'expired' })
+        .where(eq(couponRedemptions.id, redemption.id));
+    }
+    return expiredRedemptions.length;
+  }
+
+  // User Inventory (道具箱)
+  async getUserInventory(userId: string): Promise<UserInventoryItem[]> {
+    return db.select().from(userInventory)
+      .where(and(eq(userInventory.userId, userId), eq(userInventory.isRedeemed, false), eq(userInventory.isExpired, false)))
+      .orderBy(desc(userInventory.createdAt));
+  }
+
+  async addToUserInventory(item: InsertUserInventoryItem): Promise<UserInventoryItem> {
+    const [created] = await db.insert(userInventory).values(item).returning();
+    await this.incrementUnreadCount(item.userId, 'itembox');
+    return created;
+  }
+
+  async markInventoryItemRead(itemId: number): Promise<void> {
+    await db.update(userInventory).set({ isRead: true }).where(eq(userInventory.id, itemId));
+  }
+
+  async getUnreadInventoryCount(userId: string): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` })
+      .from(userInventory)
+      .where(and(eq(userInventory.userId, userId), eq(userInventory.isRead, false), eq(userInventory.isRedeemed, false)));
+    return Number(result[0]?.count || 0);
+  }
+
+  // Merchant Coupons (商家優惠券模板)
+  async getMerchantCouponsByPlaceLink(merchantPlaceLinkId: number): Promise<MerchantCoupon[]> {
+    return db.select().from(merchantCoupons)
+      .where(and(eq(merchantCoupons.merchantPlaceLinkId, merchantPlaceLinkId), eq(merchantCoupons.isActive, true)));
+  }
+
+  async getMerchantPlaceLinkByPlaceName(placeName: string, district: string, city: string): Promise<MerchantPlaceLink | undefined> {
+    const [link] = await db.select().from(merchantPlaceLinks)
+      .where(and(
+        eq(merchantPlaceLinks.placeName, placeName),
+        eq(merchantPlaceLinks.district, district),
+        eq(merchantPlaceLinks.city, city),
+        eq(merchantPlaceLinks.status, 'approved')
+      ));
+    return link || undefined;
+  }
+
+  // Collection with promo check (圖鑑新增)
+  async checkCollectionExists(userId: string, placeName: string, district: string): Promise<boolean> {
+    const [existing] = await db.select({ id: collections.id })
+      .from(collections)
+      .where(and(
+        eq(collections.userId, userId),
+        eq(collections.placeName, placeName),
+        eq(collections.district, district || '')
+      ));
+    return !!existing;
+  }
+
+  async getCollectionWithPromoStatus(userId: string): Promise<any[]> {
+    const userCollections = await db.select().from(collections).where(eq(collections.userId, userId));
+    
+    const enrichedCollections = await Promise.all(userCollections.map(async (col) => {
+      const merchantLink = await this.getMerchantPlaceLinkByPlaceName(
+        col.placeName, col.district || '', col.city
+      );
+      return {
+        ...col,
+        hasPromo: merchantLink?.isPromoActive || false,
+        promoTitle: merchantLink?.promoTitle,
+        promoDescription: merchantLink?.promoDescription
+      };
+    }));
+    
+    return enrichedCollections;
   }
 }
 

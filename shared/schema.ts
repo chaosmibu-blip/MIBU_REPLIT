@@ -1552,3 +1552,102 @@ export const insertTripServicePurchaseSchema = createInsertSchema(tripServicePur
 
 export type TripServicePurchase = typeof tripServicePurchases.$inferSelect;
 export type InsertTripServicePurchase = z.infer<typeof insertTripServicePurchaseSchema>;
+
+// ============ Ad Placements (廣告設定) ============
+
+export type AdPlatform = 'ios' | 'android' | 'web' | 'all';
+export type AdPlacement = 'gacha_start' | 'gacha_result' | 'collection_view' | 'item_use' | 'splash' | 'banner';
+
+export const adPlacements = pgTable("ad_placements", {
+  id: serial("id").primaryKey(),
+  placementKey: varchar("placement_key", { length: 50 }).notNull().unique(), // e.g., 'gacha_start', 'gacha_result'
+  platform: varchar("platform", { length: 20 }).default('all').notNull(), // ios, android, web, all
+  adUnitIdIos: text("ad_unit_id_ios"), // AdMob unit ID for iOS
+  adUnitIdAndroid: text("ad_unit_id_android"), // AdMob unit ID for Android
+  adType: varchar("ad_type", { length: 20 }).default('interstitial').notNull(), // interstitial, rewarded, banner
+  fallbackImageUrl: text("fallback_image_url"), // Fallback if no ad
+  fallbackLinkUrl: text("fallback_link_url"),
+  isActive: boolean("is_active").default(true).notNull(),
+  showFrequency: integer("show_frequency").default(1).notNull(), // Show every N times
+  metadata: jsonb("metadata"), // Additional config
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_ad_placements_key").on(table.placementKey),
+  index("IDX_ad_placements_platform").on(table.platform),
+]);
+
+export const insertAdPlacementSchema = createInsertSchema(adPlacements).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type AdPlacementRecord = typeof adPlacements.$inferSelect;
+export type InsertAdPlacement = z.infer<typeof insertAdPlacementSchema>;
+
+// ============ User Notification Badges (未讀通知) ============
+
+export const userNotifications = pgTable("user_notifications", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  notificationType: varchar("notification_type", { length: 30 }).notNull(), // 'collection', 'itembox', 'announcement'
+  unreadCount: integer("unread_count").default(0).notNull(),
+  lastSeenAt: timestamp("last_seen_at"),
+  lastUpdatedAt: timestamp("last_updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_notifications_user").on(table.userId),
+  index("IDX_user_notifications_type").on(table.notificationType),
+]);
+
+export const userNotificationsRelations = relations(userNotifications, ({ one }) => ({
+  user: one(users, {
+    fields: [userNotifications.userId],
+    references: [users.id],
+  }),
+}));
+
+export type UserNotification = typeof userNotifications.$inferSelect;
+
+// ============ Coupon Redemption Queue (核銷待處理) ============
+
+export const couponRedemptions = pgTable("coupon_redemptions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  userInventoryId: integer("user_inventory_id").references(() => userInventory.id).notNull(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  redemptionCode: varchar("redemption_code", { length: 20 }).notNull(), // 用戶輸入的核銷碼
+  status: varchar("status", { length: 20 }).default('pending').notNull(), // pending, verified, expired
+  verifiedAt: timestamp("verified_at"),
+  expiresAt: timestamp("expires_at").notNull(), // 3 minutes after verification
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_coupon_redemptions_user").on(table.userId),
+  index("IDX_coupon_redemptions_status").on(table.status),
+  index("IDX_coupon_redemptions_expires").on(table.expiresAt),
+]);
+
+export const couponRedemptionsRelations = relations(couponRedemptions, ({ one }) => ({
+  user: one(users, {
+    fields: [couponRedemptions.userId],
+    references: [users.id],
+  }),
+  userInventoryItem: one(userInventory, {
+    fields: [couponRedemptions.userInventoryId],
+    references: [userInventory.id],
+  }),
+  merchant: one(merchants, {
+    fields: [couponRedemptions.merchantId],
+    references: [merchants.id],
+  }),
+}));
+
+export const insertCouponRedemptionSchema = createInsertSchema(couponRedemptions).omit({
+  id: true,
+  status: true,
+  verifiedAt: true,
+  createdAt: true,
+});
+
+export type CouponRedemption = typeof couponRedemptions.$inferSelect;
+export type InsertCouponRedemption = z.infer<typeof insertCouponRedemptionSchema>;

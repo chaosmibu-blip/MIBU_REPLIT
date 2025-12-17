@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, generateJwtToken } from "./replitAuth";
-import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema, insertPlaceDraftSchema, insertPlaceApplicationSchema, registerUserSchema, insertSpecialistSchema, insertServiceRelationSchema } from "@shared/schema";
+import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema, insertPlaceDraftSchema, insertPlaceApplicationSchema, registerUserSchema, insertSpecialistSchema, insertServiceRelationSchema, insertAdPlacementSchema } from "@shared/schema";
 import * as crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
@@ -5529,6 +5529,388 @@ ${draft.address ? `地址：${draft.address}` : ''}
   });
 
   registerStripeRoutes(app);
+
+  // ============ Ad Placements API (廣告設定) ============
+
+  // 取得廣告設定（前端用）
+  app.get("/api/ads/placements", async (req, res) => {
+    try {
+      const { placement, platform } = req.query;
+      
+      if (placement) {
+        const ad = await storage.getAdPlacement(placement as string, platform as string);
+        if (!ad) {
+          return res.json({ ad: null });
+        }
+        return res.json({ 
+          ad: {
+            placementKey: ad.placementKey,
+            platform: ad.platform,
+            adUnitIdIos: ad.adUnitIdIos,
+            adUnitIdAndroid: ad.adUnitIdAndroid,
+            adType: ad.adType,
+            fallbackImageUrl: ad.fallbackImageUrl,
+            fallbackLinkUrl: ad.fallbackLinkUrl,
+            showFrequency: ad.showFrequency,
+            metadata: ad.metadata
+          }
+        });
+      }
+      
+      const allAds = await storage.getAllAdPlacements();
+      res.json({ ads: allAds.filter(a => a.isActive).map(ad => ({
+        placementKey: ad.placementKey,
+        platform: ad.platform,
+        adType: ad.adType,
+        showFrequency: ad.showFrequency
+      })) });
+    } catch (error) {
+      console.error("Get ad placements error:", error);
+      res.status(500).json({ error: "Failed to get ad placements" });
+    }
+  });
+
+  // Admin: 列出所有廣告設定
+  app.get("/api/admin/ads", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await hasAdminAccess(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      const ads = await storage.getAllAdPlacements();
+      res.json({ ads });
+    } catch (error) {
+      console.error("Get all ads error:", error);
+      res.status(500).json({ error: "Failed to get ads" });
+    }
+  });
+
+  // Admin: 新增廣告設定
+  app.post("/api/admin/ads", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await hasAdminAccess(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      
+      const validatedData = insertAdPlacementSchema.parse(req.body);
+      const ad = await storage.createAdPlacement(validatedData);
+      res.json({ success: true, ad });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: "Invalid ad placement data", details: error.errors });
+      }
+      console.error("Create ad error:", error);
+      res.status(500).json({ error: "Failed to create ad" });
+    }
+  });
+
+  // Admin: 更新廣告設定
+  app.patch("/api/admin/ads/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await hasAdminAccess(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      
+      if (!req.body || Object.keys(req.body).length === 0) {
+        return res.status(400).json({ error: "At least one field must be provided for update" });
+      }
+      
+      const allowedFields = ['placementKey', 'platform', 'adUnitIdIos', 'adUnitIdAndroid', 'adType', 'fallbackImageUrl', 'fallbackLinkUrl', 'isActive', 'showFrequency', 'metadata'];
+      const nullableFields = ['adUnitIdIos', 'adUnitIdAndroid', 'fallbackImageUrl', 'fallbackLinkUrl', 'metadata'];
+      const filteredBody: Record<string, any> = {};
+      for (const key of allowedFields) {
+        if (key in req.body && req.body[key] !== undefined) {
+          if (req.body[key] === null && !nullableFields.includes(key)) {
+            return res.status(400).json({ error: `Field '${key}' cannot be null` });
+          }
+          filteredBody[key] = req.body[key];
+        }
+      }
+      
+      if (Object.keys(filteredBody).length === 0) {
+        return res.status(400).json({ error: "No valid fields provided for update" });
+      }
+      
+      const partialSchema = insertAdPlacementSchema.partial();
+      const validatedData = partialSchema.parse(filteredBody);
+      
+      const ad = await storage.updateAdPlacement(parseInt(req.params.id), validatedData);
+      if (!ad) {
+        return res.status(404).json({ error: "Ad placement not found" });
+      }
+      res.json({ success: true, ad });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: "Invalid ad placement data", details: error.errors });
+      }
+      console.error("Update ad error:", error);
+      res.status(500).json({ error: "Failed to update ad" });
+    }
+  });
+
+  // Admin: 刪除廣告設定
+  app.delete("/api/admin/ads/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await hasAdminAccess(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      await storage.deleteAdPlacement(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete ad error:", error);
+      res.status(500).json({ error: "Failed to delete ad" });
+    }
+  });
+
+  // ============ User Notifications API (未讀通知) ============
+
+  // 取得使用者未讀通知狀態
+  app.get("/api/notifications", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const notifications = await storage.getUserNotifications(userId);
+      const unreadItembox = await storage.getUnreadInventoryCount(userId);
+      
+      const result: Record<string, number> = { itembox: unreadItembox };
+      notifications.forEach(n => {
+        result[n.notificationType] = n.unreadCount;
+      });
+      
+      res.json({ notifications: result });
+    } catch (error) {
+      console.error("Get notifications error:", error);
+      res.status(500).json({ error: "Failed to get notifications" });
+    }
+  });
+
+  // 標記通知已讀
+  app.post("/api/notifications/:type/seen", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      await storage.markNotificationsSeen(userId, req.params.type);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Mark notifications seen error:", error);
+      res.status(500).json({ error: "Failed to mark notifications seen" });
+    }
+  });
+
+  // ============ User Inventory API (道具箱) ============
+
+  // 取得使用者道具箱
+  app.get("/api/inventory", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const items = await storage.getUserInventory(userId);
+      res.json({ items });
+    } catch (error) {
+      console.error("Get inventory error:", error);
+      res.status(500).json({ error: "Failed to get inventory" });
+    }
+  });
+
+  // 標記道具已讀
+  app.post("/api/inventory/:id/read", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      await storage.markInventoryItemRead(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Mark inventory read error:", error);
+      res.status(500).json({ error: "Failed to mark inventory read" });
+    }
+  });
+
+  // ============ Coupon Redemption API (優惠券核銷) ============
+
+  // 提交優惠券核銷（用戶輸入核銷碼）
+  app.post("/api/inventory/:id/redeem", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const { redemptionCode } = req.body;
+      const inventoryItemId = parseInt(req.params.id);
+
+      // Get inventory item
+      const items = await storage.getUserInventory(userId);
+      const item = items.find(i => i.id === inventoryItemId);
+      if (!item) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      if (!item.merchantId) {
+        return res.status(400).json({ error: "This item cannot be redeemed" });
+      }
+
+      // Verify merchant daily seed code
+      const merchantCode = await storage.getMerchantDailySeedCode(item.merchantId);
+      if (!merchantCode) {
+        return res.status(400).json({ error: "Merchant has no active redemption code" });
+      }
+
+      // Check if code is from today
+      const today = new Date();
+      const codeDate = new Date(merchantCode.updatedAt);
+      if (today.toDateString() !== codeDate.toDateString()) {
+        return res.status(400).json({ error: "Redemption code expired, please get today's code" });
+      }
+
+      // Verify code
+      if (redemptionCode.toUpperCase() !== merchantCode.seedCode.toUpperCase()) {
+        return res.status(400).json({ error: "Invalid redemption code" });
+      }
+
+      // Create and verify redemption record with 3-minute expiry
+      const expiresAt = new Date(Date.now() + 3 * 60 * 1000);
+      const redemption = await storage.createAndVerifyCouponRedemption({
+        userId,
+        userInventoryId: inventoryItemId,
+        merchantId: item.merchantId,
+        redemptionCode: redemptionCode.toUpperCase(),
+        expiresAt
+      });
+
+      res.json({ 
+        success: true, 
+        message: "Coupon redeemed! It will be removed in 3 minutes.",
+        expiresAt: redemption.expiresAt,
+        redemptionId: redemption.id
+      });
+    } catch (error) {
+      console.error("Redeem coupon error:", error);
+      res.status(500).json({ error: "Failed to redeem coupon" });
+    }
+  });
+
+  // ============ Collection API (圖鑑) ============
+
+  // 取得圖鑑（含商家優惠狀態）
+  app.get("/api/collection/with-promo", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const collections = await storage.getCollectionWithPromoStatus(userId);
+      
+      // 按國家 -> 地區 -> 類別分組
+      const grouped: Record<string, Record<string, Record<string, any[]>>> = {};
+      
+      collections.forEach(item => {
+        const country = item.country || 'Unknown';
+        const city = item.city || 'Unknown';
+        const category = item.category || 'Other';
+        
+        if (!grouped[country]) grouped[country] = {};
+        if (!grouped[country][city]) grouped[country][city] = {};
+        if (!grouped[country][city][category]) grouped[country][city][category] = [];
+        
+        grouped[country][city][category].push(item);
+      });
+      
+      res.json({ 
+        collections,
+        grouped,
+        hasPromoItems: collections.some(c => c.hasPromo)
+      });
+    } catch (error) {
+      console.error("Get collection with promo error:", error);
+      res.status(500).json({ error: "Failed to get collection" });
+    }
+  });
+
+  // 自動存入圖鑑（行程生成後調用）
+  app.post("/api/collection/auto-save", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const { placeName, country, city, district, category, subcategory, description, address, placeId, rating, locationLat, locationLng } = req.body;
+
+      // Check if already exists
+      const exists = await storage.checkCollectionExists(userId, placeName, district || '');
+      if (exists) {
+        return res.json({ success: true, message: "Already in collection", isNew: false });
+      }
+
+      // Check for merchant promo
+      const merchantLink = await storage.getMerchantPlaceLinkByPlaceName(placeName, district || '', city);
+      
+      const collection = await storage.addToCollection({
+        userId,
+        placeName,
+        country,
+        city,
+        district,
+        category,
+        subcategory,
+        description,
+        address,
+        placeId,
+        rating,
+        locationLat,
+        locationLng
+      });
+
+      // Increment unread count for collection
+      await storage.incrementUnreadCount(userId, 'collection');
+
+      res.json({ 
+        success: true, 
+        isNew: true,
+        collection,
+        hasPromo: merchantLink?.isPromoActive || false,
+        promoTitle: merchantLink?.promoTitle,
+        promoDescription: merchantLink?.promoDescription
+      });
+    } catch (error) {
+      console.error("Auto-save collection error:", error);
+      res.status(500).json({ error: "Failed to save to collection" });
+    }
+  });
+
+  // Merchant: 取得今日核銷碼
+  app.get("/api/merchant/redemption-code", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(404).json({ error: "Merchant profile not found" });
+      }
+
+      const code = await storage.getMerchantDailySeedCode(merchant.id);
+      
+      // Check if code is from today, if not generate new one
+      const today = new Date();
+      if (!code || today.toDateString() !== new Date(code.updatedAt).toDateString()) {
+        const crypto = await import('crypto');
+        const newCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+        await storage.updateMerchantDailySeedCode(merchant.id, newCode);
+        return res.json({ 
+          code: newCode, 
+          updatedAt: new Date(),
+          expiresAt: new Date(today.setHours(23, 59, 59, 999))
+        });
+      }
+
+      res.json({ 
+        code: code.seedCode, 
+        updatedAt: code.updatedAt,
+        expiresAt: new Date(today.setHours(23, 59, 59, 999))
+      });
+    } catch (error) {
+      console.error("Get redemption code error:", error);
+      res.status(500).json({ error: "Failed to get redemption code" });
+    }
+  });
 
   const httpServer = createServer(app);
   return httpServer;
