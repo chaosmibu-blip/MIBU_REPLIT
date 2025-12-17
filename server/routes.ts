@@ -1590,12 +1590,13 @@ ${uncachedSkeleton.map((item, idx) => `  {
       // ===== Merchant Promo Overlay: 檢查商家認領並附加優惠資訊與優惠券機率 =====
       // SECURITY: 只從已驗證的 auth context 取得 userId，不接受 req.body.userId
       // 驗證 session 或 JWT 是否真正已認證
+      const reqAny = req as any;
       const isActuallyAuthenticated = !!(
-        (req.user?.claims?.sub && req.session?.userId) ||  // Replit Auth with valid session
-        (req.jwtUser?.userId && req.headers.authorization)  // Valid JWT token
+        (reqAny.user?.claims?.sub && reqAny.session?.userId) ||  // Replit Auth with valid session
+        (reqAny.jwtUser?.userId && req.headers.authorization)  // Valid JWT token
       );
       const userId = isActuallyAuthenticated 
-        ? (req.user?.claims?.sub || req.jwtUser?.userId) 
+        ? (reqAny.user?.claims?.sub || reqAny.jwtUser?.userId) 
         : null;
       let couponsWon: any[] = [];
       
@@ -1634,30 +1635,29 @@ ${uncachedSkeleton.map((item, idx) => `  {
                   const matchingCoupon = merchantCoupons.find(c => c.tier === tier) || merchantCoupons[0];
                   
                   if (matchingCoupon) {
-                    // 計算有效期限
-                    const validDays = matchingCoupon.validDays || 30;
-                    const validUntil = new Date();
-                    validUntil.setDate(validUntil.getDate() + validDays);
+                    // 計算有效期限: 使用優惠券的 validUntil 或預設 30 天
+                    const validUntil = matchingCoupon.validUntil 
+                      ? new Date(matchingCoupon.validUntil)
+                      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
                     
                     // 新增到用戶背包
                     const inventoryItem = await storage.addToUserInventory({
                       userId,
                       itemType: 'coupon',
                       itemName: matchingCoupon.name,
-                      itemDescription: matchingCoupon.description,
+                      itemDescription: matchingCoupon.content,
                       tier: tier,
                       merchantId: merchantLink.merchantId,
-                      couponTemplateId: matchingCoupon.id,
-                      placeName: item.place_name,
-                      district: item.district,
-                      city: item.city,
-                      country: item.country,
+                      merchantCouponId: matchingCoupon.id,
+                      terms: matchingCoupon.terms,
+                      content: JSON.stringify({
+                        placeName: item.place_name,
+                        district: item.district,
+                        city: item.city,
+                        country: item.country,
+                        promoTitle: merchantLink.promoTitle
+                      }),
                       validUntil,
-                      metadata: {
-                        promoTitle: merchantLink.promoTitle,
-                        discountType: matchingCoupon.discountType,
-                        discountValue: matchingCoupon.discountValue
-                      }
                     });
                     
                     if (inventoryItem) {
@@ -1666,7 +1666,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
                         inventoryId: inventoryItem.id,
                         tier: tier,
                         name: matchingCoupon.name,
-                        description: matchingCoupon.description,
+                        description: matchingCoupon.content,
                         validUntil: validUntil.toISOString(),
                         slotIndex: inventoryItem.slotIndex
                       };
@@ -6356,6 +6356,249 @@ ${draft.address ? `地址：${draft.address}` : ''}
   // 公開 API: 道具箱格數上限
   app.get("/api/inventory/config", async (req, res) => {
     res.json({ maxSlots: INVENTORY_MAX_SLOTS });
+  });
+
+  // ============ Merchant Analytics Dashboard ============
+
+  // GET /api/merchant/analytics - 取得商家分析數據
+  app.get("/api/merchant/analytics", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      // 取得商家認領的行程卡列表
+      const placeLinks = await storage.getMerchantPlaceLinks(merchant.id);
+      
+      // 計算統計數據
+      const today = new Date().toISOString().split('T')[0];
+      const stats = {
+        totalPlaces: placeLinks.length,
+        activePlaces: placeLinks.filter(p => p.status === 'approved').length,
+        pendingPlaces: placeLinks.filter(p => p.status === 'pending').length,
+        promoActivePlaces: placeLinks.filter(p => p.isPromoActive).length,
+        merchantLevel: merchant.merchantLevel || 'free',
+        subscriptionPlan: merchant.subscriptionPlan,
+        status: merchant.status || 'pending',
+        creditBalance: merchant.creditBalance || 0,
+      };
+
+      res.json({
+        success: true,
+        merchant: {
+          id: merchant.id,
+          businessName: merchant.businessName || merchant.name,
+          ownerName: merchant.ownerName,
+          status: merchant.status,
+          merchantLevel: merchant.merchantLevel,
+          subscriptionPlan: merchant.subscriptionPlan,
+          creditBalance: merchant.creditBalance,
+        },
+        stats,
+        placeLinks: placeLinks.map(p => ({
+          id: p.id,
+          placeName: p.placeName,
+          district: p.district,
+          city: p.city,
+          status: p.status,
+          cardLevel: p.cardLevel || 'free',
+          isPromoActive: p.isPromoActive,
+          promoTitle: p.promoTitle,
+        }))
+      });
+    } catch (error) {
+      console.error("Get merchant analytics error:", error);
+      res.status(500).json({ error: "Failed to get analytics" });
+    }
+  });
+
+  // POST /api/merchant/apply - 商家申請送審 (使用新的註冊資料)
+  app.post("/api/merchant/apply", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // 驗證申請資料
+      const { ownerName, businessName, taxId, businessCategory, address, phone, mobile, email } = req.body;
+      
+      if (!ownerName || !businessName || !businessCategory || !address || !mobile || !email) {
+        return res.status(400).json({ error: "請填寫所有必填欄位" });
+      }
+
+      // 檢查是否已有商家帳號
+      let merchant = await storage.getMerchantByUserId(userId);
+      
+      if (merchant) {
+        // 更新現有商家資料並重新送審
+        await storage.updateMerchant(merchant.id, {
+          ownerName,
+          businessName,
+          taxId,
+          businessCategory,
+          address,
+          phone,
+          mobile,
+          email,
+          status: 'pending',
+        });
+        merchant = await storage.getMerchantByUserId(userId);
+        return res.json({ success: true, merchant, isNew: false, message: "商家資料已更新，審核中" });
+      }
+
+      // 建立新商家
+      merchant = await storage.createMerchant({
+        userId,
+        name: businessName,
+        email,
+        ownerName,
+        businessName,
+        taxId,
+        businessCategory,
+        address,
+        phone,
+        mobile,
+        subscriptionPlan: 'free',
+      });
+
+      res.json({ success: true, merchant, isNew: true, message: "商家申請已送出，等待審核" });
+    } catch (error) {
+      console.error("Merchant apply error:", error);
+      res.status(500).json({ error: "商家申請失敗" });
+    }
+  });
+
+  // GET /api/merchant/coupons - 取得商家的優惠券模板列表
+  app.get("/api/merchant/coupons", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      const coupons = await storage.getMerchantCoupons(merchant.id);
+      res.json({ success: true, coupons });
+    } catch (error) {
+      console.error("Get merchant coupons error:", error);
+      res.status(500).json({ error: "Failed to get coupons" });
+    }
+  });
+
+  // POST /api/merchant/coupons - 建立新優惠券模板
+  app.post("/api/merchant/coupons", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      const { name, tier, content, terms, quantity, validUntil, merchantPlaceLinkId, backgroundImageUrl, inventoryImageUrl } = req.body;
+
+      if (!name || !content) {
+        return res.status(400).json({ error: "請填寫優惠券名稱與內容" });
+      }
+
+      const coupon = await storage.createMerchantCoupon({
+        merchantId: merchant.id,
+        merchantPlaceLinkId: merchantPlaceLinkId || null,
+        name,
+        tier: tier || 'R',
+        content,
+        terms,
+        quantity: quantity || -1, // -1 = unlimited
+        validUntil: validUntil ? new Date(validUntil) : null,
+        backgroundImageUrl,
+        inventoryImageUrl,
+      });
+
+      res.json({ success: true, coupon });
+    } catch (error) {
+      console.error("Create merchant coupon error:", error);
+      res.status(500).json({ error: "Failed to create coupon" });
+    }
+  });
+
+  // PUT /api/merchant/coupons/:id - 更新優惠券模板
+  app.put("/api/merchant/coupons/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      const couponId = parseInt(req.params.id);
+      const { name, tier, content, terms, quantity, validUntil, isActive, backgroundImageUrl, inventoryImageUrl } = req.body;
+
+      const coupon = await storage.updateMerchantCoupon(couponId, merchant.id, {
+        name,
+        tier,
+        content,
+        terms,
+        quantity,
+        validUntil: validUntil ? new Date(validUntil) : undefined,
+        isActive,
+        backgroundImageUrl,
+        inventoryImageUrl,
+      });
+
+      if (!coupon) {
+        return res.status(404).json({ error: "Coupon not found" });
+      }
+
+      res.json({ success: true, coupon });
+    } catch (error) {
+      console.error("Update merchant coupon error:", error);
+      res.status(500).json({ error: "Failed to update coupon" });
+    }
+  });
+
+  // DELETE /api/merchant/coupons/:id - 刪除優惠券模板
+  app.delete("/api/merchant/coupons/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const merchant = await storage.getMerchantByUserId(userId);
+      if (!merchant) {
+        return res.status(403).json({ error: "Merchant registration required" });
+      }
+
+      const couponId = parseInt(req.params.id);
+      const deleted = await storage.deleteMerchantCoupon(couponId, merchant.id);
+
+      if (!deleted) {
+        return res.status(404).json({ error: "Coupon not found" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete merchant coupon error:", error);
+      res.status(500).json({ error: "Failed to delete coupon" });
+    }
   });
 
   const httpServer = createServer(app);

@@ -337,6 +337,42 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async updateMerchant(merchantId: number, data: Partial<Merchant>): Promise<Merchant | undefined> {
+    const [updated] = await db
+      .update(merchants)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(merchants.id, merchantId))
+      .returning();
+    return updated;
+  }
+
+  // Merchant Coupons CRUD
+  async createMerchantCoupon(data: InsertMerchantCoupon): Promise<MerchantCoupon> {
+    const [coupon] = await db.insert(merchantCoupons).values(data).returning();
+    return coupon;
+  }
+
+  async updateMerchantCoupon(couponId: number, merchantId: number, data: Partial<MerchantCoupon>): Promise<MerchantCoupon | null> {
+    const [coupon] = await db.select().from(merchantCoupons)
+      .where(and(eq(merchantCoupons.id, couponId), eq(merchantCoupons.merchantId, merchantId)));
+    if (!coupon) return null;
+    
+    const [updated] = await db.update(merchantCoupons)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(merchantCoupons.id, couponId))
+      .returning();
+    return updated;
+  }
+
+  async deleteMerchantCoupon(couponId: number, merchantId: number): Promise<boolean> {
+    const [coupon] = await db.select().from(merchantCoupons)
+      .where(and(eq(merchantCoupons.id, couponId), eq(merchantCoupons.merchantId, merchantId)));
+    if (!coupon) return false;
+    
+    await db.delete(merchantCoupons).where(eq(merchantCoupons.id, couponId));
+    return true;
+  }
+
   // Coupons
   async getMerchantCoupons(merchantId: number): Promise<Coupon[]> {
     return await db

@@ -126,18 +126,39 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Merchants
+// Merchants (商家)
+export type MerchantStatus = 'pending' | 'approved' | 'rejected';
+export type MerchantLevel = 'free' | 'pro' | 'premium';
+
 export const merchants = pgTable("merchants", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").references(() => users.id).notNull(),
-  name: text("name").notNull(),
+  // 基本資料
+  ownerName: text("owner_name"), // 負責人姓名 (nullable for backward compat)
+  businessName: text("business_name"), // 商家名稱 (nullable for backward compat)
+  taxId: varchar("tax_id", { length: 20 }), // 統一編號 (選填)
+  businessCategory: varchar("business_category", { length: 50 }), // 營業類別
+  address: text("address"), // 地點
+  phone: varchar("phone", { length: 20 }), // 電話
+  mobile: varchar("mobile", { length: 20 }), // 手機
   email: text("email").notNull(),
+  // 舊欄位 (保留向下相容)
+  name: text("name"), // 保留舊欄位
   subscriptionPlan: text("subscription_plan").default('free').notNull(),
-  dailySeedCode: text("daily_seed_code"), // 每日核銷碼
-  codeUpdatedAt: timestamp("code_updated_at"), // 核銷碼更新時間
-  creditBalance: integer("credit_balance").default(0).notNull(), // 平台點數餘額
+  dailySeedCode: text("daily_seed_code"),
+  codeUpdatedAt: timestamp("code_updated_at"),
+  creditBalance: integer("credit_balance").default(0).notNull(),
+  // 審核與等級
+  status: varchar("status", { length: 20 }).default('pending').notNull(), // 'pending' | 'approved' | 'rejected'
+  merchantLevel: varchar("merchant_level", { length: 20 }).default('free').notNull(), // 'free' | 'pro' | 'premium'
+  rejectionReason: text("rejection_reason"), // 審核拒絕原因
+  approvedAt: timestamp("approved_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_merchants_user").on(table.userId),
+  index("IDX_merchants_status").on(table.status),
+]);
 
 // Specialists (專員)
 export const specialists = pgTable("specialists", {
@@ -263,7 +284,9 @@ export const places = pgTable("places", {
   index("IDX_places_merchant").on(table.merchantId),
 ]);
 
-// Merchant-Place Links (ownership/claim system) - 單一認領制
+// Merchant-Place Links (ownership/claim system) - 單一認領制 / 行程卡
+export type CardLevel = 'free' | 'pro' | 'premium';
+
 export const merchantPlaceLinks = pgTable("merchant_place_links", {
   id: serial("id").primaryKey(),
   merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
@@ -274,11 +297,25 @@ export const merchantPlaceLinks = pgTable("merchant_place_links", {
   district: text("district").notNull(),
   city: text("city").notNull(),
   country: text("country").notNull(),
-  status: varchar("status", { length: 50 }).default('pending').notNull(),
+  // 行程卡基本資料
+  description: text("description"), // 基本介紹
+  categoryId: integer("category_id"), // 八大種類 (參照 categories 表)
+  googleMapUrl: text("google_map_url"), // Google 地圖連結
+  // 審核狀態
+  status: varchar("status", { length: 50 }).default('pending').notNull(), // 'pending' | 'approved' | 'rejected'
+  rejectionReason: text("rejection_reason"),
+  submittedAt: timestamp("submitted_at"),
+  approvedAt: timestamp("approved_at"),
+  // 行程卡等級與特效
+  cardLevel: varchar("card_level", { length: 20 }).default('free').notNull(), // 'free' | 'pro' | 'premium'
+  cardFrameEnabled: boolean("card_frame_enabled").default(false), // 是否顯示外框 (Pro+)
+  specialEffectEnabled: boolean("special_effect_enabled").default(false), // 抽中時特效 (Premium)
+  // 優惠資訊
   couponDropRate: doublePrecision("coupon_drop_rate").default(0.1),
   promoTitle: text("promo_title"),
   promoDescription: text("promo_description"),
   promoImageUrl: text("promo_image_url"),
+  inventoryImageUrl: text("inventory_image_url"), // 道具箱圖片 (Pro+)
   isPromoActive: boolean("is_promo_active").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -287,6 +324,7 @@ export const merchantPlaceLinks = pgTable("merchant_place_links", {
   index("IDX_merchant_place_links_merchant").on(table.merchantId),
   index("IDX_merchant_place_links_google_place_id").on(table.googlePlaceId),
   index("IDX_merchant_place_links_official").on(table.officialPlaceId),
+  index("IDX_merchant_place_links_status").on(table.status),
 ]);
 
 // Merchant coupons
@@ -447,8 +485,29 @@ export const insertCollectionSchema = createInsertSchema(collections).omit({
 
 export const insertMerchantSchema = createInsertSchema(merchants).omit({
   id: true,
+  status: true,
+  approvedAt: true,
   createdAt: true,
+  updatedAt: true,
+}).extend({
+  // Make new fields optional for backwards compatibility
+  ownerName: z.string().optional(),
+  businessName: z.string().optional(),
 });
+
+// 商家註冊 Schema (送審用)
+export const merchantRegisterSchema = z.object({
+  ownerName: z.string().min(1, "請輸入負責人姓名"),
+  businessName: z.string().min(1, "請輸入商家名稱"),
+  taxId: z.string().optional(), // 統一編號 (選填)
+  businessCategory: z.string().min(1, "請選擇營業類別"),
+  address: z.string().min(1, "請輸入地點"),
+  phone: z.string().optional(),
+  mobile: z.string().min(1, "請輸入手機號碼"),
+  email: z.string().email("請輸入有效的 Email"),
+});
+
+export type MerchantRegisterInput = z.infer<typeof merchantRegisterSchema>;
 
 export const insertSpecialistSchema = createInsertSchema(specialists).omit({
   id: true,
@@ -1311,6 +1370,37 @@ export const insertMerchantCouponSchema = createInsertSchema(merchantCoupons).om
 export type MerchantCoupon = typeof merchantCoupons.$inferSelect;
 export type InsertMerchantCoupon = z.infer<typeof insertMerchantCouponSchema>;
 
+// ============ Merchant Analytics (商家數據分析) ============
+
+export const merchantAnalytics = pgTable("merchant_analytics", {
+  id: serial("id").primaryKey(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  placeId: integer("place_id").references(() => merchantPlaceLinks.id), // 行程卡 ID (null = 商家總計)
+  date: date("date").notNull(), // 統計日期
+  // 數據指標
+  collectedCount: integer("collected_count").default(0).notNull(), // 當日被收錄圖鑑卡人數
+  totalCollectors: integer("total_collectors").default(0).notNull(), // 累計已有圖鑑卡人數
+  clickCount: integer("click_count").default(0).notNull(), // 圖鑑被點擊次數
+  couponUsageCount: integer("coupon_usage_count").default(0).notNull(), // 優惠券總使用次數
+  couponIssuedCount: integer("coupon_issued_count").default(0).notNull(), // 優惠券發放數
+  prizePoolViews: integer("prize_pool_views").default(0).notNull(), // 被查看獎池人數
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_merchant_analytics_merchant").on(table.merchantId),
+  index("IDX_merchant_analytics_place").on(table.placeId),
+  index("IDX_merchant_analytics_date").on(table.date),
+]);
+
+export const insertMerchantAnalyticsSchema = createInsertSchema(merchantAnalytics).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type MerchantAnalytics = typeof merchantAnalytics.$inferSelect;
+export type InsertMerchantAnalytics = z.infer<typeof insertMerchantAnalyticsSchema>;
+
 // ============ User Inventory System (道具箱) ============
 
 export type InventoryItemType = 'coupon' | 'badge' | 'item';
@@ -1366,6 +1456,7 @@ export const userInventoryRelations = relations(userInventory, ({ one }) => ({
 
 export const insertUserInventorySchema = createInsertSchema(userInventory).omit({
   id: true,
+  slotIndex: true, // Auto-assigned by storage
   isRedeemed: true,
   redeemedAt: true,
   isExpired: true,
@@ -1564,32 +1655,8 @@ export const insertCouponProbabilitySettingSchema = createInsertSchema(couponPro
 
 export type CouponProbabilitySetting = typeof couponProbabilitySettings.$inferSelect;
 
-// ============ Merchant Analytics Tracking ============
-
-export const merchantAnalytics = pgTable("merchant_analytics", {
-  id: serial("id").primaryKey(),
-  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
-  merchantPlaceLinkId: integer("merchant_place_link_id").references(() => merchantPlaceLinks.id),
-  date: timestamp("date").notNull(),
-  collectionsToday: integer("collections_today").default(0).notNull(), // 今日被收錄人數
-  totalCollectors: integer("total_collectors").default(0).notNull(), // 已收錄總人數
-  collectionViews: integer("collection_views").default(0).notNull(), // 圖鑑點擊次數
-  couponRedemptions: integer("coupon_redemptions").default(0).notNull(), // 優惠券使用次數
-  prizePoolViews: integer("prize_pool_views").default(0).notNull(), // 被查看獎池人數
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => [
-  index("IDX_merchant_analytics_merchant").on(table.merchantId),
-  index("IDX_merchant_analytics_date").on(table.date),
-]);
-
-export const merchantAnalyticsRelations = relations(merchantAnalytics, ({ one }) => ({
-  merchant: one(merchants, {
-    fields: [merchantAnalytics.merchantId],
-    references: [merchants.id],
-  }),
-}));
-
-export type MerchantAnalyticsRecord = typeof merchantAnalytics.$inferSelect;
+// ============ Merchant Analytics Tracking (已移至上方) ============
+// merchantAnalytics table defined earlier in the file
 
 // ============ Trip Service Purchases ============
 
