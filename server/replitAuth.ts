@@ -369,11 +369,21 @@ export async function setupAuth(app: Express) {
       ensureStrategy(req.hostname);
     } catch (strategyError) {
       console.error('[OAuth Callback] ensureStrategy failed:', strategyError);
+      const extUri = getExternalRedirectUri();
+      if (extUri) {
+        clearExternalRedirectUri();
+        const targetUrl = `${extUri}?error=CONFIG_ERROR&message=${encodeURIComponent('OAuth設定錯誤')}`;
+        if (isCustomScheme(extUri)) {
+          return redirectWithBouncePage(targetUrl, 'OAuth設定錯誤');
+        }
+        return res.redirect(targetUrl);
+      }
       return res.status(500).json({ message: 'OAuth configuration error' });
     }
     
-    passport.authenticate(`replitauth:${req.hostname}`, (err: any, user: any) => {
-      console.log(`[OAuth Callback] passport.authenticate result - err: ${err}, user: ${user?.claims?.sub || 'null'}`);
+    try {
+      passport.authenticate(`replitauth:${req.hostname}`, (err: any, user: any) => {
+        console.log(`[OAuth Callback] passport.authenticate result - err: ${err}, user: ${user?.claims?.sub || 'null'}`);
       if (err) {
         console.error('[OAuth Callback] Passport authentication error:', err);
       }
@@ -563,6 +573,19 @@ export async function setupAuth(app: Express) {
         }
       });
     })(req, res, next);
+    } catch (passportError: any) {
+      console.error('[OAuth Callback] Passport authenticate error:', passportError);
+      const extUri = getExternalRedirectUri();
+      if (extUri) {
+        clearExternalRedirectUri();
+        const targetUrl = `${extUri}?error=AUTH_ERROR&message=${encodeURIComponent('認證處理失敗')}`;
+        if (isCustomScheme(extUri)) {
+          return redirectWithBouncePage(targetUrl, '認證失敗');
+        }
+        return res.redirect(targetUrl);
+      }
+      return res.status(500).json({ message: 'Authentication processing error' });
+    }
   });
 
   app.get("/api/logout", (req, res) => {
