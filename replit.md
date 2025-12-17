@@ -83,3 +83,165 @@ Mibu 旅行扭dan is a Progressive Web Application (PWA) that gamifies travel pl
 - `TWILIO_API_KEY_SID`
 - `TWILIO_API_KEY_SECRET`
 - `TWILIO_CONVERSATIONS_SERVICE_SID`
+
+## 前端同步指令記錄
+
+### 2024-12-17: 道具箱系統升級 + 優惠券機率系統
+
+#### 用戶需求
+1. 30格遊戲風格道具箱 (grid-based inventory)
+2. 5階優惠券機率系統 (SP 2%, SSR 8%, SR 15%, S 23%, R 32%)
+3. 過期優惠券變灰但不刪除
+4. 軟刪除道具功能 (需前端確認)
+5. 行程生成時自動檢查商家認領並抽取優惠券
+
+#### API 變更
+
+**道具箱 API (更新)**
+```
+GET /api/inventory
+Response: {
+  items: UserInventoryItem[],
+  slotCount: number,      // 目前使用格數
+  maxSlots: number,       // 最大格數 (30)
+  isFull: boolean         // 是否已滿
+}
+
+UserInventoryItem 新增欄位:
+- slotIndex: number       // 格子索引 (0-29)
+- tier: string           // 優惠券等級 (SP/SSR/SR/S/R)
+- status: string         // 'active' | 'expired' | 'redeemed' | 'deleted'
+- isExpired: boolean     // 是否過期 (自動計算)
+- isDeleted: boolean     // 是否已刪除
+```
+
+**刪除道具 API (新增)**
+```
+DELETE /api/inventory/:id
+Response: { success: true, message: "Item deleted" }
+// 注意: 前端需在呼叫前顯示確認對話框
+```
+
+**取得單一道具詳情 API (新增)**
+```
+GET /api/inventory/:id
+Response: { item: UserInventoryItem }
+```
+
+**道具箱設定 API (新增)**
+```
+GET /api/inventory/config
+Response: { maxSlots: 30 }
+```
+
+**機率設定 API (公開)**
+```
+GET /api/rarity-config
+Response: {
+  config: {
+    spRate: 2, ssrRate: 8, srRate: 15, sRate: 23, rRate: 32
+  }
+}
+```
+
+**優惠券核銷 API (更新)**
+```
+POST /api/inventory/:id/redeem
+Body: { redemptionCode: string }
+Response: 
+- 成功: { success: true, expiresAt: Date, redemptionId: number }
+- 過期: { error: "此優惠券已過期", isExpired: true } (400)
+- 已使用: { error: "此優惠券已使用", isRedeemed: true } (400)
+```
+
+**行程生成 API (更新)**
+```
+POST /api/generate-itinerary
+Response.data 新增:
+- coupons_won: { tier, placeName, couponName }[]  // 抽到的優惠券列表
+- meta.coupons_won: number                        // 抽到優惠券數量
+
+inventory 項目新增:
+- merchant_promo: {
+    merchantId: number,
+    isPromoActive: boolean,
+    promoTitle: string?,
+    promoDescription: string?,
+    promoImageUrl: string?
+  }
+- is_coupon: boolean       // 是否抽到優惠券
+- coupon_data: {
+    inventoryId: number,
+    tier: string,
+    name: string,
+    description: string,
+    validUntil: string,
+    slotIndex: number
+  }
+```
+
+#### 前端修改建議
+
+1. **道具箱頁面 (ItemBox)**
+   - 改為 6x5 grid 佈局 (30格)
+   - 顯示 slotCount/maxSlots 狀態
+   - 過期物品變灰 + "已過期" 標籤
+   - 刪除按鈕 + 確認對話框
+   - 按稀有度顯示不同邊框/特效
+
+2. **行程結果頁面**
+   - 顯示 coupons_won 慶祝動畫
+   - 商家認領地點顯示優惠資訊 overlay
+   - 新獲得優惠券的卡片閃爍效果
+
+3. **核銷頁面**
+   - 過期優惠券顯示灰色且無法核銷
+   - 核銷失敗時根據 isExpired/isRedeemed 顯示不同錯誤訊息
+
+#### 稀有度視覺設計建議
+```
+SP  - 金色邊框 + 閃爍特效 + 彩虹光暈
+SSR - 紫色邊框 + 發光效果
+SR  - 藍色邊框
+S   - 綠色邊框
+R   - 灰色邊框
+```
+
+#### 程式碼範例
+
+```typescript
+// 道具箱 Grid 組件
+const InventoryGrid: React.FC = () => {
+  const { data } = useQuery(['inventory'], () => 
+    fetch('/api/inventory').then(r => r.json())
+  );
+  
+  const slots = Array(30).fill(null);
+  data?.items.forEach(item => {
+    slots[item.slotIndex] = item;
+  });
+  
+  return (
+    <div className="grid grid-cols-6 gap-2">
+      {slots.map((item, idx) => (
+        <InventorySlot 
+          key={idx} 
+          item={item} 
+          isEmpty={!item}
+          isExpired={item?.isExpired}
+          tier={item?.tier}
+        />
+      ))}
+    </div>
+  );
+};
+
+// 稀有度邊框樣式
+const tierBorderStyles = {
+  SP: 'border-yellow-400 animate-pulse shadow-yellow-400/50',
+  SSR: 'border-purple-500 shadow-purple-500/30',
+  SR: 'border-blue-500',
+  S: 'border-green-500',
+  R: 'border-gray-400'
+};
+```

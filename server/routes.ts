@@ -1407,6 +1407,107 @@ ${uncachedSkeleton.map((item, idx) => `  {
         }
       }
 
+      // ===== Merchant Promo Overlay: 檢查商家認領並附加優惠資訊與優惠券機率 =====
+      // SECURITY: 只從已驗證的 auth context 取得 userId，不接受 req.body.userId
+      // 驗證 session 或 JWT 是否真正已認證
+      const isActuallyAuthenticated = !!(
+        (req.user?.claims?.sub && req.session?.userId) ||  // Replit Auth with valid session
+        (req.jwtUser?.userId && req.headers.authorization)  // Valid JWT token
+      );
+      const userId = isActuallyAuthenticated 
+        ? (req.user?.claims?.sub || req.jwtUser?.userId) 
+        : null;
+      let couponsWon: any[] = [];
+      
+      const enrichedInventory = await Promise.all(finalInventory.map(async (item: any) => {
+        if (!item) return item;
+        
+        try {
+          // 查找商家是否認領此地點
+          const merchantLink = await storage.getMerchantPlaceLinkByPlaceName(
+            item.place_name || item.verified_name,
+            item.district || '',
+            item.city
+          );
+          
+          if (merchantLink) {
+            // 附加商家優惠資訊 overlay
+            item.merchant_promo = {
+              merchantId: merchantLink.merchantId,
+              isPromoActive: merchantLink.isPromoActive || false,
+              promoTitle: merchantLink.promoTitle,
+              promoDescription: merchantLink.promoDescription,
+              promoImageUrl: merchantLink.promoImageUrl
+            };
+            
+            // 如果有登入用戶(已驗證)且背包未滿，進行優惠券抽獎
+            if (isActuallyAuthenticated && userId && merchantLink.isPromoActive) {
+              const isFull = await storage.isInventoryFull(userId);
+              if (!isFull) {
+                // 使用機率系統抽取優惠券等級
+                const tier = await storage.rollCouponTier();
+                
+                if (tier) {
+                  // 獲取該商家的優惠券模板
+                  const merchantCoupons = await storage.getMerchantCouponsByPlaceLink(merchantLink.id);
+                  // 根據等級找到匹配的優惠券
+                  const matchingCoupon = merchantCoupons.find(c => c.tier === tier) || merchantCoupons[0];
+                  
+                  if (matchingCoupon) {
+                    // 計算有效期限
+                    const validDays = matchingCoupon.validDays || 30;
+                    const validUntil = new Date();
+                    validUntil.setDate(validUntil.getDate() + validDays);
+                    
+                    // 新增到用戶背包
+                    const inventoryItem = await storage.addToUserInventory({
+                      userId,
+                      itemType: 'coupon',
+                      itemName: matchingCoupon.name,
+                      itemDescription: matchingCoupon.description,
+                      tier: tier,
+                      merchantId: merchantLink.merchantId,
+                      couponTemplateId: matchingCoupon.id,
+                      placeName: item.place_name,
+                      district: item.district,
+                      city: item.city,
+                      country: item.country,
+                      validUntil,
+                      metadata: {
+                        promoTitle: merchantLink.promoTitle,
+                        discountType: matchingCoupon.discountType,
+                        discountValue: matchingCoupon.discountValue
+                      }
+                    });
+                    
+                    if (inventoryItem) {
+                      item.is_coupon = true;
+                      item.coupon_data = {
+                        inventoryId: inventoryItem.id,
+                        tier: tier,
+                        name: matchingCoupon.name,
+                        description: matchingCoupon.description,
+                        validUntil: validUntil.toISOString(),
+                        slotIndex: inventoryItem.slotIndex
+                      };
+                      couponsWon.push({
+                        tier,
+                        placeName: item.place_name,
+                        couponName: matchingCoupon.name
+                      });
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (promoError) {
+          console.error(`Error enriching place ${item.place_name} with promo:`, promoError);
+        }
+        
+        return item;
+      }));
+
       const data = {
         status: 'success',
         meta: {
@@ -1418,9 +1519,11 @@ ${uncachedSkeleton.map((item, idx) => `  {
           total_items: skeleton.length,
           verification_enabled: !!GOOGLE_MAPS_API_KEY,
           cache_hits: cachedItems.length,
-          ai_generated: uncachedSkeleton.length
+          ai_generated: uncachedSkeleton.length,
+          coupons_won: couponsWon.length
         },
-        inventory: finalInventory
+        inventory: enrichedInventory,
+        coupons_won: couponsWon
       };
 
       res.json({ data, sources: [] });
