@@ -38,7 +38,7 @@ import {
   type MerchantAnalytics, type InsertMerchantAnalytics
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, ilike, or, isNull, lt, gt, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, ilike, or, isNull, isNotNull, lt, gt, gte, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // Users (mandatory for Replit Auth)
@@ -1128,10 +1128,11 @@ export class DatabaseStorage implements IStorage {
       );
     }
     if (filters.minReviewCount !== undefined) {
+      // 只選擇有 Google 評論數且 >= 門檻的草稿（排除 NULL）
       conditions.push(
-        or(
-          gte(placeDrafts.googleReviewCount, filters.minReviewCount),
-          isNull(placeDrafts.googleReviewCount)
+        and(
+          isNotNull(placeDrafts.googleReviewCount),
+          gte(placeDrafts.googleReviewCount, filters.minReviewCount)
         )
       );
     }
