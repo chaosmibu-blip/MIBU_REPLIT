@@ -4036,8 +4036,21 @@ ${uncachedSkeleton.map((item, idx) => `  {
       }
       console.log("[ClaimAPI] merchant:", merchant.id, merchant.businessName);
 
-      const { placeName, district, city, country, placeCacheId, googlePlaceId } = req.body;
+      let { placeName, district, city, country, placeCacheId, googlePlaceId } = req.body;
       console.log("[ClaimAPI] Parsed fields:", { placeName, district, city, country, placeCacheId, googlePlaceId });
+      
+      // Handle case where placeCacheId is actually a Google Place ID string (starts with "ChIJ")
+      if (placeCacheId && typeof placeCacheId === 'string' && placeCacheId.startsWith('ChIJ')) {
+        console.log("[ClaimAPI] Detected Google Place ID in placeCacheId field, moving to googlePlaceId");
+        googlePlaceId = placeCacheId;
+        placeCacheId = null;
+      }
+      
+      // Ensure placeCacheId is a number if provided
+      if (placeCacheId && typeof placeCacheId === 'string') {
+        const parsed = parseInt(placeCacheId, 10);
+        placeCacheId = isNaN(parsed) ? null : parsed;
+      }
       
       if (!placeName || !district || !city || !country) {
         console.log("[ClaimAPI] Missing fields:", { placeName: !!placeName, district: !!district, city: !!city, country: !!country });
