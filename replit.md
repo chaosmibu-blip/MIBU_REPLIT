@@ -6,6 +6,26 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) designed to gamify trav
 ## User Preferences
 偏好的溝通方式：簡單、日常用語。
 
+## Agent 開發守則
+
+### 1. 雙重人格與檔案隔離
+| 情境 | 正確做法 | 禁止事項 |
+|------|----------|----------|
+| 修改 `server/` | 專注 API 與 DB | - |
+| 修改 `client/` | 這是 Web Admin（React + Tailwind） | - |
+| 提供 Expo App 程式碼 | 使用 React Native 原生組件 (`<View>`, `<Text>`, `<FlatList>`) | ❌ 參考 `client/` 資料夾、❌ 使用 HTML 標籤 |
+
+### 2. API 變更同步 (Sync Protocol)
+任何後端 API 修改，必須在回覆最後附上 **「📱 Expo 前端同步指令」**，包含：
+- 更新後的 TypeScript Interface
+- API 呼叫範例（含 headers 和 body）
+
+### 3. 依賴鎖定
+- 除非用戶明確允許，**禁止**修改 `package.json` 或安裝新套件
+- 若需要新套件，先詢問用戶是否允許
+
+---
+
 ### 程式碼修改規範
 每次進行程式碼修改時，必須說明：
 1. 修改了什麼 - 具體更動的檔案和程式碼
