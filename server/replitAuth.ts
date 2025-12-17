@@ -269,6 +269,9 @@ export async function setupAuth(app: Express) {
   app.get("/api/auth/login", loginHandler);
 
   app.get("/api/callback", (req, res, next) => {
+    console.log(`[OAuth Callback] ========== CALLBACK RECEIVED ==========`);
+    console.log(`[OAuth Callback] hostname: ${req.hostname}, query: ${JSON.stringify(req.query)}`);
+    
     // Helper to get redirect URI from session or cookie
     const getExternalRedirectUri = () => {
       return (req.session as any)?.externalRedirectUri || req.cookies?.app_redirect_uri;
