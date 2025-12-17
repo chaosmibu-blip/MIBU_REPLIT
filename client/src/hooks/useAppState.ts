@@ -14,9 +14,8 @@ export const STORAGE_KEYS = {
   SELECTED_ROLE: 'mibu_selected_role'
 };
 
-export const getViewForRole = (role: string): 'mibu_home' | 'merchant_dashboard' | 'agent_dashboard' | 'admin_dashboard' => {
+export const getViewForRole = (role: string): 'mibu_home' | 'agent_dashboard' | 'admin_dashboard' => {
   switch (role) {
-    case 'merchant': return 'merchant_dashboard';
     case 'agent': return 'agent_dashboard';
     case 'admin': return 'admin_dashboard';
     default: return 'mibu_home';
@@ -218,7 +217,7 @@ export function useAppState() {
               const merchant = JSON.parse(savedMerchantStr);
               merchant.subscriptionPlan = 'premium';
               localStorage.setItem(STORAGE_KEYS.MERCHANT_PROFILE, JSON.stringify(merchant));
-              setState(prev => ({ ...prev, currentMerchant: merchant, view: 'merchant_dashboard' }));
+              setState(prev => ({ ...prev, currentMerchant: merchant, view: 'mibu_home' }));
             }
           }
         } catch (e) {
@@ -229,7 +228,7 @@ export function useAppState() {
     checkPaymentStatus();
   }, [state.language]);
 
-  const isInGachaModule = ['gacha_module', 'result', 'merchant_login', 'merchant_dashboard'].includes(state.view);
+  const isInGachaModule = ['gacha_module', 'result'].includes(state.view);
   const isInPlannerModule = state.view === 'planner_module';
   const hasNewCollection = state.collection.some(i => i.collectedAt && i.collectedAt > state.lastVisitCollection);
   const hasNewItems = state.collection.some(i => i.is_coupon && i.collectedAt && i.collectedAt > state.lastVisitItemBox);

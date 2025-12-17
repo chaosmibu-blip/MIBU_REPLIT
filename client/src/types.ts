@@ -123,7 +123,7 @@ export interface LocationData {
   };
 }
 
-export type AppView = 'login' | 'mibu_home' | 'gacha_module' | 'planner_module' | 'settings' | 'result' | 'merchant_login' | 'merchant_dashboard' | 'agent_dashboard' | 'admin_dashboard';
+export type AppView = 'login' | 'mibu_home' | 'gacha_module' | 'planner_module' | 'settings' | 'result' | 'agent_dashboard' | 'admin_dashboard';
 
 export type GachaSubView = 'gacha' | 'collection' | 'itembox';
 export type PlannerSubView = 'location' | 'itinerary' | 'chat' | 'service';

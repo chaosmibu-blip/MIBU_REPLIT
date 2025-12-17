@@ -20,7 +20,7 @@ export const SideNav: React.FC<SideNavProps> = ({ currentView, onChange, languag
 
   const isActiveView = (itemId: AppView) => {
     if (itemId === 'gacha_module') {
-      return ['gacha_module', 'result', 'merchant_login', 'merchant_dashboard'].includes(currentView);
+      return ['gacha_module', 'result'].includes(currentView);
     }
     if (itemId === 'planner_module') {
       return currentView === 'planner_module';
