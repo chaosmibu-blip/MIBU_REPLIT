@@ -57,6 +57,12 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) that gamifies travel pl
 
 ### Feature Specifications
 - **Mibu Backend Responsibilities**: User authentication/authorization, AI itinerary generation, location data management, collection/feedback systems, merchant system, trip planning services, real-time chat, payment processing (Stripe).
+- **Announcement & Event System** (2025-12-17):
+    - Three types: `announcement` (permanent), `flash_event` (auto-delete), `holiday_event` (auto-delete)
+    - Admin API endpoints: GET/POST/PATCH/DELETE `/api/admin/announcements`
+    - Public API: GET `/api/announcements` (active only)
+    - Auto-deletion scheduler runs hourly for expired flash/holiday events
+    - Authorization uses `hasAdminAccess` helper checking JWT activeRole + super admin email
 
 ## External Dependencies
 
