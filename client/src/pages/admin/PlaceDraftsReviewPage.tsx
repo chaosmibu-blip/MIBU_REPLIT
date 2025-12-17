@@ -430,7 +430,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filter })
+        body: JSON.stringify(filter)
       });
       
       if (!response.ok) {
@@ -468,7 +468,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filter })
+        body: JSON.stringify(filter)
       });
       
       if (!response.ok) {
