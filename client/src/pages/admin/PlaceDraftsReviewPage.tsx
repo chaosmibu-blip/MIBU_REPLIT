@@ -404,7 +404,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
         throw new Error('無法查詢符合條件的草稿');
       }
       const data = await response.json();
-      setFilteredCount(data.total || 0);
+      setFilteredCount(data.count || 0);
     } catch (err: any) {
       setError(err.message);
     } finally {
