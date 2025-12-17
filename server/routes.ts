@@ -1374,33 +1374,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const prompt = `You are a professional travel planner AI. Fill in REAL place names for this itinerary skeleton in ${city}, ${country}.
 
 【目標區域 Target District】
-All places MUST be in "${targetDistrict}" district (within 5-10km radius).
+All places MUST be in or near "${targetDistrict}" district.
 
 【行程骨架 Itinerary Skeleton - FOLLOW THIS EXACTLY】
 ${skeletonInstructions}
 
+【重要規則 CRITICAL RULES】
+1. place_name 必須是「真實存在的店家名稱」，例如：
+   - 正確: "阿嬌熱炒"、"蘭姐鴨肉飯"、"石碇老街"、"功維敘隧道"
+   - 錯誤: "壯圍鄉景點探索"、"南澳鄉食探索"、"XX鄉購物探索"
+2. 絕對禁止使用「地區名+類別+探索」格式的假名稱
+3. 如果該區域確實沒有符合類別的店家，請推薦鄰近區域的真實店家
+4. place_name 必須可以在 Google Maps 搜尋到
+
 【任務說明 Your Task】
-For each skeleton slot above, find a REAL, existing place in ${targetDistrict} that matches:
-- The category and sub-category specified
-- The time slot and energy level
-- Must be an actual business/location that exists
+For each skeleton slot, find a REAL business/location in or near ${targetDistrict}:
+- Must be an actual restaurant, shop, attraction, or business with a real name
+- Can be searched and found on Google Maps
+- If no matching place in ${targetDistrict}, suggest one from a nearby district
 
 【排除清單 Exclusions】
-Do NOT include any of these places (already used): ${usedPlaceNamesInPull.size > 0 ? Array.from(usedPlaceNamesInPull).join(', ') : 'none'}
+Do NOT include: ${usedPlaceNamesInPull.size > 0 ? Array.from(usedPlaceNamesInPull).join(', ') : 'none'}
 
 Output language: ${outputLang}
-Output ONLY valid JSON array, no markdown, no explanation.
+Output ONLY valid JSON array, no markdown, no explanation:
 
 [
 ${uncachedSkeleton.map((item, idx) => `  {
-    "place_name": "REAL place name for ${item.subCategory} in ${targetDistrict}",
-    "description": "2-3 sentence description",
+    "place_name": "真實店家名稱",
+    "description": "2-3句描述這個地點的特色",
     "category": "${categoryMap[item.category] || item.category}",
     "sub_category": "${item.subCategory}",
     "suggested_time": "${item.suggestedTime}",
     "duration": "1-2 hours",
     "time_slot": "${item.timeSlot}",
-    "search_query": "place name ${city}",
+    "search_query": "店家名稱 ${city}",
     "color_hex": "#6366f1",
     "energy_level": "${item.energyLevel}"
   }`).join(',\n')}
@@ -1410,6 +1418,30 @@ ${uncachedSkeleton.map((item, idx) => `  {
         let jsonText = responseText || '';
         jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         aiGeneratedItems = JSON.parse(jsonText);
+        
+        // 驗證並過濾掉無效的 place_name (搜索詞格式的假名稱)
+        const invalidPatterns = [
+          /探索$/,  // 以「探索」結尾
+          /^.{2,4}(鄉|區|市|鎮|村).{2,6}探索$/,  // 區域名+探索
+          /^.{2,4}(鄉|區|市|鎮|村).{2,4}(美食|購物|景點|住宿|體驗)$/,  // 區域名+類別
+          /真實店家名稱/,  // 模板佔位符
+          /^REAL place/i,  // 英文模板佔位符
+        ];
+        
+        aiGeneratedItems = aiGeneratedItems.map((item: any, idx: number) => {
+          const isInvalid = invalidPatterns.some(pattern => pattern.test(item.place_name));
+          if (isInvalid) {
+            console.log(`[AI Validation] Rejected invalid place_name: "${item.place_name}"`);
+            // 使用 sub_category + 區域作為備用，標記為需要人工審核
+            return {
+              ...item,
+              place_name: `[待審核] ${targetDistrict}${item.sub_category}推薦`,
+              description: `此地點需要人工確認，AI 無法找到符合條件的真實店家。原始分類：${item.sub_category}`,
+              needs_review: true
+            };
+          }
+          return item;
+        });
       }
 
       // Merge cached and AI-generated items
