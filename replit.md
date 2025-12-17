@@ -246,3 +246,102 @@ const tierBorderStyles = {
   R: 'border-gray-400'
 };
 ```
+
+### 2024-12-17: 設定頁面 + 安全中心 (SOS)
+
+#### 用戶需求
+1. 個人資料設定頁面（基本資料、飲食禁忌、疾病史、緊急聯絡人）
+2. 語言切換功能 (zh-TW, en, ja, ko)
+3. 登出功能
+4. SOS 安全中心（需購買旅程服務才能使用）
+5. 飲食禁忌/疾病史 - 用戶自由輸入標籤
+6. SOS 觸發方式：長按3秒 + 音量鍵5連按 + 搖晃3次
+
+#### API 變更
+
+**登出 API**
+```
+POST /api/auth/logout
+Response: { success: true, message: '已成功登出' }
+```
+
+**取得個人資料 API**
+```
+GET /api/profile
+Headers: { Authorization: Bearer <token> }
+Response: {
+  id, email, firstName, lastName, profileImageUrl, role,
+  gender: 'male' | 'female' | 'other' | null,
+  birthDate: string | null,
+  phone: string | null,
+  dietaryRestrictions: string[],   // 用戶自由輸入
+  medicalHistory: string[],        // 用戶自由輸入
+  emergencyContactName, emergencyContactPhone, emergencyContactRelation,
+  preferredLanguage: 'zh-TW' | 'en' | 'ja' | 'ko'
+}
+```
+
+**更新個人資料 API**
+```
+PATCH /api/profile
+Headers: { Authorization: Bearer <token> }
+Body: {
+  firstName?, lastName?, gender?, birthDate?, phone?,
+  dietaryRestrictions?: string[],
+  medicalHistory?: string[],
+  emergencyContactName?, emergencyContactPhone?, emergencyContactRelation?,
+  preferredLanguage?: 'zh-TW' | 'en' | 'ja' | 'ko'
+}
+Response: { success: true, message: '個人資料已更新', profile: {...} }
+```
+
+**檢查 SOS 資格 API**
+```
+GET /api/sos/eligibility
+Response: { eligible: boolean, reason: string | null }
+```
+
+**發送 SOS 求救 API**
+```
+POST /api/sos/alert
+Body: { serviceOrderId?, plannerId?, location?, locationAddress?, message? }
+Response (成功): { success: true, alertId: number, message: '求救訊號已發送' }
+Response (無資格 403): { error: '需購買旅程服務...', requiresPurchase: true }
+```
+
+**取得 SOS 記錄 API**
+```
+GET /api/sos/alerts
+Response: { alerts: SosAlert[] }
+```
+
+**取消 SOS 求救 API**
+```
+PATCH /api/sos/alerts/:id/cancel
+Response: { success: true, alert: {...} }
+```
+
+#### SOS 觸發方式設計
+
+| 方式 | 說明 | 實作 |
+|------|------|------|
+| 長按 SOS 按鈕 3 秒 | 主要觸發方式 | TouchStart/End + setTimeout |
+| 音量鍵連按 5 下 | 備用觸發 | keydown 事件監聽 VolumeUp/Down |
+| 用力搖晃 3 次 | 緊急觸發 | DeviceMotion API |
+
+#### 設定頁面結構
+```
+設定 (Settings)
+├── 個人資料 (Profile)
+│   ├── 基本資訊（姓名、性別、生日、手機）
+│   ├── 飲食禁忌（自由輸入標籤）
+│   ├── 疾病史（自由輸入標籤）
+│   └── 緊急聯絡人（姓名、電話、關係）
+├── 語言設定 (Language)
+│   └── zh-TW | en | ja | ko
+├── 安全中心 (Safety Center) ← 需購買旅程服務解鎖
+│   ├── SOS 緊急求救按鈕（長按3秒）
+│   ├── 求救記錄列表
+│   └── 功能說明
+└── 登出 (Logout)
+```
