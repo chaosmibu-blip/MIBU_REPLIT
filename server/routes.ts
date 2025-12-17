@@ -5334,6 +5334,184 @@ ${draft.address ? `地址：${draft.address}` : ''}
     }
   });
 
+  // ============ Announcements & Events API (公告與活動管理) ============
+  
+  // Helper: Check if user has admin access (via activeRole or super admin)
+  const hasAdminAccess = async (req: any): Promise<boolean> => {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return false;
+    
+    const user = await storage.getUser(userId);
+    if (!user) return false;
+    
+    const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
+    const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
+    
+    // Get activeRole from JWT or session
+    const activeRole = req.jwtUser?.activeRole || (req.session as any)?.activeRole || user.role;
+    
+    // Allow if super admin or activeRole is 'admin'
+    return isSuperAdmin || activeRole === 'admin';
+  };
+
+  // 取得所有公告 (管理端)
+  app.get("/api/admin/announcements", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      if (!(await hasAdminAccess(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const announcements = await storage.getAllAnnouncements();
+      res.json({ announcements });
+    } catch (error) {
+      console.error("Get announcements error:", error);
+      res.status(500).json({ error: "Failed to get announcements" });
+    }
+  });
+
+  // 取得有效的公告 (前台用)
+  app.get("/api/announcements", async (req: any, res) => {
+    try {
+      const { type } = req.query;
+      const validTypes = ['announcement', 'flash_event', 'holiday_event'];
+      const announcementType = validTypes.includes(type as string) ? type as 'announcement' | 'flash_event' | 'holiday_event' : undefined;
+      
+      const announcements = await storage.getActiveAnnouncements(announcementType);
+      res.json({ announcements });
+    } catch (error) {
+      console.error("Get active announcements error:", error);
+      res.status(500).json({ error: "Failed to get announcements" });
+    }
+  });
+
+  // 新增公告/活動
+  app.post("/api/admin/announcements", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      if (!(await hasAdminAccess(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const schema = z.object({
+        type: z.enum(['announcement', 'flash_event', 'holiday_event']).default('announcement'),
+        title: z.string().min(1),
+        content: z.string().min(1),
+        imageUrl: z.string().url().optional().nullable(),
+        linkUrl: z.string().url().optional().nullable(),
+        startDate: z.string().datetime().optional(),
+        endDate: z.string().datetime().optional().nullable(),
+        isActive: z.boolean().default(true),
+        priority: z.number().int().default(0),
+      });
+
+      const validated = schema.parse(req.body);
+      
+      const announcement = await storage.createAnnouncement({
+        ...validated,
+        startDate: validated.startDate ? new Date(validated.startDate) : new Date(),
+        endDate: validated.endDate ? new Date(validated.endDate) : null,
+        createdBy: userId,
+      });
+      
+      res.json({ success: true, announcement });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Create announcement error:", error);
+      res.status(500).json({ error: "Failed to create announcement" });
+    }
+  });
+
+  // 更新公告/活動
+  app.patch("/api/admin/announcements/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      if (!(await hasAdminAccess(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const announcementId = parseInt(req.params.id);
+      const schema = z.object({
+        type: z.enum(['announcement', 'flash_event', 'holiday_event']).optional(),
+        title: z.string().min(1).optional(),
+        content: z.string().min(1).optional(),
+        imageUrl: z.string().url().optional().nullable(),
+        linkUrl: z.string().url().optional().nullable(),
+        startDate: z.string().datetime().optional(),
+        endDate: z.string().datetime().optional().nullable(),
+        isActive: z.boolean().optional(),
+        priority: z.number().int().optional(),
+      });
+
+      const validated = schema.parse(req.body);
+      
+      const updateData: any = { ...validated };
+      if (validated.startDate) updateData.startDate = new Date(validated.startDate);
+      if (validated.endDate) updateData.endDate = new Date(validated.endDate);
+      
+      const announcement = await storage.updateAnnouncement(announcementId, updateData);
+      
+      if (!announcement) {
+        return res.status(404).json({ error: "Announcement not found" });
+      }
+      
+      res.json({ success: true, announcement });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Update announcement error:", error);
+      res.status(500).json({ error: "Failed to update announcement" });
+    }
+  });
+
+  // 刪除公告/活動
+  app.delete("/api/admin/announcements/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      if (!(await hasAdminAccess(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const announcementId = parseInt(req.params.id);
+      await storage.deleteAnnouncement(announcementId);
+      
+      res.json({ success: true, message: "Announcement deleted" });
+    } catch (error) {
+      console.error("Delete announcement error:", error);
+      res.status(500).json({ error: "Failed to delete announcement" });
+    }
+  });
+
+  // 手動觸發清除過期活動
+  app.post("/api/admin/announcements/cleanup", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      if (!(await hasAdminAccess(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const deletedCount = await storage.deleteExpiredEvents();
+      
+      res.json({ success: true, deletedCount, message: `Deleted ${deletedCount} expired events` });
+    } catch (error) {
+      console.error("Cleanup expired events error:", error);
+      res.status(500).json({ error: "Failed to cleanup expired events" });
+    }
+  });
+
   registerStripeRoutes(app);
 
   const httpServer = createServer(app);

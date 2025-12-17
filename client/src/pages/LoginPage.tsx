@@ -95,7 +95,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       
       <div className="text-center">
         <h1 className="text-4xl font-bold text-slate-800 mb-2">Mibu</h1>
-        <p className="text-slate-500">{t.appSubtitle || '探索台灣的最佳方式'}</p>
       </div>
       
       <div className="w-full max-w-sm space-y-4">

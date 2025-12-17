@@ -90,7 +90,6 @@ export const TRANSLATIONS = {
     paymentSuccess: '付款成功！您已升級為 Premium 商家。',
     // UI
     appTitle: '行程扭蛋',
-    appSubtitle: '今天去哪玩?老天說了算',
     destination: '目的地',
     selectDestination: '選擇目的地',
     city: '城市',
@@ -179,7 +178,6 @@ export const TRANSLATIONS = {
     paymentSuccess: 'Payment Successful! You are now a Premium Merchant.',
     // UI
     appTitle: 'MIBU TRIP',
-    appSubtitle: 'AI Travel Gacha',
     destination: 'Destination',
     selectDestination: 'Select Destination',
     city: 'City',
@@ -268,7 +266,6 @@ export const TRANSLATIONS = {
     paymentSuccess: '支払いが完了しました！Premiumプランにアップグレードされました。',
     // UI
     appTitle: 'MIBU 旅ガチャ',
-    appSubtitle: 'AI トラベルガチャ',
     destination: '目的地',
     selectDestination: '目的地を選択',
     city: '都市',
@@ -357,7 +354,6 @@ export const TRANSLATIONS = {
     paymentSuccess: '결제 성공! 이제 프리미엄 판매자입니다.',
     // UI
     appTitle: 'MIBU 트립',
-    appSubtitle: 'AI 여행 가챠',
     destination: '목적지',
     selectDestination: '목적지 선택',
     city: '도시',

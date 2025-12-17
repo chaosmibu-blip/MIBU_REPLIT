@@ -434,6 +434,22 @@ async function startServer() {
       }, 60000); // 60秒 = 1分鐘
       
       console.log('[AutoDraft] Automatic draft generation scheduled (every 1 minute)');
+
+      // ============================================================
+      // 7. 每小時自動清除過期活動 (快閃活動、節日限定活動)
+      // ============================================================
+      setInterval(async () => {
+        try {
+          const deletedCount = await storage.deleteExpiredEvents();
+          if (deletedCount > 0) {
+            console.log(`[AutoCleanup] Deleted ${deletedCount} expired events`);
+          }
+        } catch (error) {
+          console.error('[AutoCleanup] Error cleaning up expired events:', error);
+        }
+      }, 3600000); // 3600000ms = 1小時
+      
+      console.log('[AutoCleanup] Expired events cleanup scheduled (every 1 hour)');
     },
   );
 }
