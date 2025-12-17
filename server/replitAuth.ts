@@ -418,10 +418,13 @@ export async function setupAuth(app: Express) {
           return res.redirect(`/?error=${errorCode}&message=${encodeURIComponent(errorMessage)}`);
         };
         
-        // ===== Login Permission Matrix =====
-        const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
-        const userId = user.claims?.sub;
-        const dbUser = userId ? await storage.getUser(userId) : null;
+        try {
+          // ===== Login Permission Matrix =====
+          const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
+          const userId = user.claims?.sub;
+          console.log(`[OAuth Callback] Getting user from DB: ${userId}`);
+          const dbUser = userId ? await storage.getUser(userId) : null;
+          console.log(`[OAuth Callback] DB user found: ${dbUser ? 'yes' : 'no'}, role: ${dbUser?.role || 'null'}, email: ${dbUser?.email || 'null'}`);
         const userRole = dbUser?.role || 'traveler';
         const isSuperAdmin = dbUser?.email === SUPER_ADMIN_EMAIL;
         
@@ -544,6 +547,20 @@ export async function setupAuth(app: Express) {
         }
         
         return res.redirect("/");
+        } catch (permissionError: any) {
+          console.error('[OAuth Callback] Permission check error:', permissionError);
+          // If there's an error during permission checking, redirect with error
+          const externalUri = getExternalRedirectUri();
+          if (externalUri) {
+            clearExternalRedirectUri();
+            const targetUrl = `${externalUri}?error=INTERNAL_ERROR&message=${encodeURIComponent('登入處理失敗，請稍後再試')}`;
+            if (isCustomScheme(externalUri)) {
+              return redirectWithBouncePage(targetUrl, '登入失敗');
+            }
+            return res.redirect(targetUrl);
+          }
+          return res.redirect("/?error=INTERNAL_ERROR");
+        }
       });
     })(req, res, next);
   });
