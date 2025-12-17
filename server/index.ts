@@ -443,9 +443,9 @@ async function startServer() {
         } finally {
           isAutoDraftRunning = false;
         }
-      }, 15000); // 15秒
+      }, 30000); // 30秒
       
-      console.log('[AutoDraft] Automatic draft generation scheduled (every 15 seconds)');
+      console.log('[AutoDraft] Automatic draft generation scheduled (every 30 seconds)');
 
       // ============================================================
       // 7. AI 自動審查 auto_generated 草稿 (每 2 分鐘)
