@@ -100,6 +100,8 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
   const [batchResult, setBatchResult] = useState<BatchPublishResult | null>(null);
   const [filteredCount, setFilteredCount] = useState<number | null>(null);
   const [loadingFilteredCount, setLoadingFilteredCount] = useState(false);
+  const [batchRegenerating, setBatchRegenerating] = useState(false);
+  const [regenerateResult, setRegenerateResult] = useState<{ regenerated: number; failed: number; errors?: { id: number; placeName: string; error: string }[] } | null>(null);
 
   const [draftForm, setDraftForm] = useState({
     placeName: '',
@@ -445,6 +447,43 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
     }
   };
 
+  const handleBatchRegenerate = async () => {
+    if (filteredCount === 0) return;
+    
+    const confirmMsg = `確定要為 ${filteredCount} 筆草稿重新生成 AI 描述嗎？這可能需要幾分鐘時間。`;
+    if (!window.confirm(confirmMsg)) return;
+    
+    setBatchRegenerating(true);
+    setRegenerateResult(null);
+    setBatchResult(null);
+    setError(null);
+    try {
+      const filter: { minRating?: number; minReviewCount?: number } = {};
+      if (batchFilter.minRating) filter.minRating = parseFloat(batchFilter.minRating);
+      if (batchFilter.minReviewCount) filter.minReviewCount = parseInt(batchFilter.minReviewCount);
+      
+      const response = await fetch('/api/admin/place-drafts/batch-regenerate', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filter })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || '批次重新生成失敗');
+      }
+      
+      const result = await response.json();
+      setRegenerateResult(result);
+      await fetchAllDrafts();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setBatchRegenerating(false);
+    }
+  };
+
   const getSourceLabel = (source: string) => {
     const labels: Record<string, string> = {
       'ai': 'AI 生成',
@@ -516,7 +555,7 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <button
-          onClick={() => { setShowBatchPanel(!showBatchPanel); setBatchResult(null); setFilteredCount(null); }}
+          onClick={() => { setShowBatchPanel(!showBatchPanel); setBatchResult(null); setRegenerateResult(null); setFilteredCount(null); }}
           className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
           data-testid="button-toggle-batch-panel"
         >
@@ -580,14 +619,24 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
               </button>
               
               {filteredCount !== null && (
-                <button
-                  onClick={handleBatchPublish}
-                  disabled={batchPublishing || filteredCount === 0}
-                  className="px-4 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                  data-testid="button-batch-publish"
-                >
-                  {batchPublishing ? '發布中...' : `批次發布 ${filteredCount} 筆`}
-                </button>
+                <>
+                  <button
+                    onClick={handleBatchRegenerate}
+                    disabled={batchRegenerating || batchPublishing || filteredCount === 0}
+                    className="px-4 py-2 bg-purple-500 text-white rounded-lg font-medium hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                    data-testid="button-batch-regenerate"
+                  >
+                    {batchRegenerating ? 'AI 重新生成中...' : `AI 重新生成 ${filteredCount} 筆`}
+                  </button>
+                  <button
+                    onClick={handleBatchPublish}
+                    disabled={batchPublishing || batchRegenerating || filteredCount === 0}
+                    className="px-4 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                    data-testid="button-batch-publish"
+                  >
+                    {batchPublishing ? '發布中...' : `批次發布 ${filteredCount} 筆`}
+                  </button>
+                </>
               )}
             </div>
             
@@ -617,6 +666,33 @@ export const PlaceDraftsReviewPage: React.FC<PlaceDraftsReviewPageProps> = ({ la
                           <p>...還有 {batchResult.errors.length - 5} 筆錯誤</p>
                         )}
                       </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {regenerateResult && (
+              <div className={`p-4 rounded-xl border ${regenerateResult.failed > 0 ? 'bg-amber-50 border-amber-200' : 'bg-purple-50 border-purple-200'}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xl">{regenerateResult.failed > 0 ? '⚠️' : '✨'}</span>
+                  <span className="font-medium text-slate-800">AI 重新生成完成</span>
+                </div>
+                <div className="text-sm space-y-1">
+                  <p className="text-purple-700">成功重新生成：{regenerateResult.regenerated} 筆</p>
+                  {regenerateResult.failed > 0 && (
+                    <>
+                      <p className="text-red-600">生成失敗：{regenerateResult.failed} 筆</p>
+                      {regenerateResult.errors && (
+                        <div className="mt-2 text-xs text-red-500">
+                          {regenerateResult.errors.slice(0, 5).map((err, i) => (
+                            <p key={i}>{err.placeName}: {err.error}</p>
+                          ))}
+                          {regenerateResult.errors.length > 5 && (
+                            <p>...還有 {regenerateResult.errors.length - 5} 筆錯誤</p>
+                          )}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>

@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, generateJwtToken } from "./replitAuth";
-import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema, insertPlaceDraftSchema, insertPlaceApplicationSchema, registerUserSchema, insertSpecialistSchema, insertServiceRelationSchema, insertAdPlacementSchema, insertCouponRarityConfigSchema, INVENTORY_MAX_SLOTS } from "@shared/schema";
+import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema, insertPlaceDraftSchema, insertPlaceApplicationSchema, registerUserSchema, insertSpecialistSchema, insertServiceRelationSchema, insertAdPlacementSchema, insertCouponRarityConfigSchema, INVENTORY_MAX_SLOTS, type PlaceDraft, type Subcategory } from "@shared/schema";
 import * as crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
@@ -5678,6 +5678,103 @@ ${draft.address ? `地址：${draft.address}` : ''}
       if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
       console.error("Admin batch publish error:", error);
       res.status(500).json({ error: "Failed to batch publish" });
+    }
+  });
+
+  // 管理員：批次 AI 重新生成描述
+  app.post("/api/admin/place-drafts/batch-regenerate", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const { ids, filter } = req.body as {
+        ids?: number[];
+        filter?: { minRating?: number; minReviewCount?: number };
+      };
+
+      let draftsToRegenerate: PlaceDraft[] = [];
+
+      if (ids && ids.length > 0) {
+        const allDrafts = await storage.getAllPlaceDrafts();
+        draftsToRegenerate = allDrafts.filter(d => ids.includes(d.id) && d.status === 'pending');
+      } else if (filter) {
+        draftsToRegenerate = await storage.getFilteredPlaceDrafts({
+          ...filter,
+          status: 'pending'
+        });
+      } else {
+        return res.status(400).json({ error: "必須提供 ids 或 filter 參數" });
+      }
+
+      if (draftsToRegenerate.length === 0) {
+        return res.json({ success: true, regenerated: 0, failed: 0, message: "沒有符合條件的草稿" });
+      }
+
+      // 預載分類和地區資料以提高效率
+      const categories = await storage.getCategories();
+      const allSubcategories: Map<number, Subcategory[]> = new Map();
+
+      const regeneratedIds: number[] = [];
+      const errors: { id: number; placeName: string; error: string }[] = [];
+
+      for (const draft of draftsToRegenerate) {
+        try {
+          // 取得地區資訊
+          const districtInfo = await storage.getDistrictWithParents(draft.districtId);
+          const category = categories.find(c => c.id === draft.categoryId);
+          
+          // 快取子分類
+          if (!allSubcategories.has(draft.categoryId)) {
+            const subs = await storage.getSubcategoriesByCategory(draft.categoryId);
+            allSubcategories.set(draft.categoryId, subs);
+          }
+          const subcategory = allSubcategories.get(draft.categoryId)?.find(s => s.id === draft.subcategoryId);
+
+          // 使用更詳細的 prompt 生成更好的描述
+          const prompt = `你是一位資深的旅遊作家和行銷專家。請為以下景點撰寫一段精彩、生動、吸引人的介紹文字。
+
+景點名稱：${draft.placeName}
+類別：${category?.nameZh || ''} / ${subcategory?.nameZh || ''}
+地區：${districtInfo?.country?.nameZh || ''} ${districtInfo?.region?.nameZh || ''} ${districtInfo?.district?.nameZh || ''}
+${draft.address ? `地址：${draft.address}` : ''}
+${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
+
+撰寫要求：
+1. 字數：80-120字（繁體中文）
+2. 風格：生動活潑，富有感染力
+3. 內容：突出景點特色、獨特體驗、推薦理由
+4. 語氣：像是當地人熱情推薦給好友的口吻
+5. 避免：空洞的形容詞堆砌，要有具體的描述
+
+請直接輸出介紹文字，不需要標題或其他格式。`;
+
+          const newDescription = await callGemini(prompt);
+          const cleanDescription = newDescription.trim();
+
+          await storage.updatePlaceDraft(draft.id, { description: cleanDescription });
+          regeneratedIds.push(draft.id);
+          
+          console.log(`[BatchRegenerate] Regenerated description for: ${draft.placeName}`);
+        } catch (e: any) {
+          console.error(`[BatchRegenerate] Failed for ${draft.placeName}:`, e.message);
+          errors.push({ id: draft.id, placeName: draft.placeName, error: e.message });
+        }
+      }
+
+      res.json({
+        success: true,
+        regenerated: regeneratedIds.length,
+        failed: errors.length,
+        regeneratedIds,
+        errors: errors.length > 0 ? errors : undefined,
+        message: `成功重新生成 ${regeneratedIds.length} 筆描述`
+      });
+    } catch (error) {
+      console.error("Admin batch regenerate error:", error);
+      res.status(500).json({ error: "批次重新生成失敗" });
     }
   });
 
