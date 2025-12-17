@@ -5,6 +5,7 @@ import {
   placeDrafts, placeApplications, userLocations, planners, serviceOrders, places,
   specialists, transactions, serviceRelations, announcements,
   adPlacements, userNotifications, couponRedemptions, userInventory, merchantCoupons,
+  couponRarityConfigs, INVENTORY_MAX_SLOTS,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -31,7 +32,8 @@ import {
   type AdPlacementRecord, type InsertAdPlacement,
   type UserNotification, type CouponRedemption, type InsertCouponRedemption,
   type UserInventoryItem, type InsertUserInventoryItem,
-  type MerchantCoupon, type InsertMerchantCoupon
+  type MerchantCoupon, type InsertMerchantCoupon,
+  type CouponRarityConfig, type InsertCouponRarityConfig
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike, or, isNull, lt, gt, gte, lte } from "drizzle-orm";
@@ -1770,15 +1772,48 @@ export class DatabaseStorage implements IStorage {
     return expiredRedemptions.length;
   }
 
-  // User Inventory (道具箱)
+  // User Inventory (道具箱) - Grid system with 30 slots
   async getUserInventory(userId: string): Promise<UserInventoryItem[]> {
     return db.select().from(userInventory)
-      .where(and(eq(userInventory.userId, userId), eq(userInventory.isRedeemed, false), eq(userInventory.isExpired, false)))
-      .orderBy(desc(userInventory.createdAt));
+      .where(and(
+        eq(userInventory.userId, userId), 
+        eq(userInventory.isDeleted, false)
+      ))
+      .orderBy(userInventory.slotIndex);
   }
 
-  async addToUserInventory(item: InsertUserInventoryItem): Promise<UserInventoryItem> {
-    const [created] = await db.insert(userInventory).values(item).returning();
+  async getInventorySlotCount(userId: string): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` })
+      .from(userInventory)
+      .where(and(eq(userInventory.userId, userId), eq(userInventory.isDeleted, false)));
+    return Number(result[0]?.count || 0);
+  }
+
+  async isInventoryFull(userId: string): Promise<boolean> {
+    const count = await this.getInventorySlotCount(userId);
+    return count >= INVENTORY_MAX_SLOTS;
+  }
+
+  async getNextAvailableSlot(userId: string): Promise<number | null> {
+    const items = await db.select({ slotIndex: userInventory.slotIndex })
+      .from(userInventory)
+      .where(and(eq(userInventory.userId, userId), eq(userInventory.isDeleted, false)));
+    
+    const usedSlots = new Set(items.map(i => i.slotIndex));
+    for (let i = 0; i < INVENTORY_MAX_SLOTS; i++) {
+      if (!usedSlots.has(i)) return i;
+    }
+    return null;
+  }
+
+  async addToUserInventory(item: InsertUserInventoryItem): Promise<UserInventoryItem | null> {
+    const nextSlot = await this.getNextAvailableSlot(item.userId);
+    if (nextSlot === null) return null; // Inventory full
+    
+    const [created] = await db.insert(userInventory).values({
+      ...item,
+      slotIndex: nextSlot
+    }).returning();
     await this.incrementUnreadCount(item.userId, 'itembox');
     return created;
   }
@@ -1787,11 +1822,80 @@ export class DatabaseStorage implements IStorage {
     await db.update(userInventory).set({ isRead: true }).where(eq(userInventory.id, itemId));
   }
 
+  async softDeleteInventoryItem(itemId: number, userId: string): Promise<boolean> {
+    const [item] = await db.select().from(userInventory)
+      .where(and(eq(userInventory.id, itemId), eq(userInventory.userId, userId)));
+    if (!item) return false;
+    
+    await db.update(userInventory)
+      .set({ isDeleted: true, deletedAt: new Date(), status: 'deleted' })
+      .where(eq(userInventory.id, itemId));
+    return true;
+  }
+
+  async getInventoryItemById(itemId: number, userId: string): Promise<UserInventoryItem | undefined> {
+    const [item] = await db.select().from(userInventory)
+      .where(and(eq(userInventory.id, itemId), eq(userInventory.userId, userId), eq(userInventory.isDeleted, false)));
+    return item || undefined;
+  }
+
   async getUnreadInventoryCount(userId: string): Promise<number> {
     const result = await db.select({ count: sql<number>`count(*)` })
       .from(userInventory)
-      .where(and(eq(userInventory.userId, userId), eq(userInventory.isRead, false), eq(userInventory.isRedeemed, false)));
+      .where(and(eq(userInventory.userId, userId), eq(userInventory.isRead, false), eq(userInventory.isDeleted, false)));
     return Number(result[0]?.count || 0);
+  }
+
+  // Coupon Rarity Config (優惠券機率設定)
+  async getGlobalRarityConfig(): Promise<CouponRarityConfig | undefined> {
+    const [config] = await db.select().from(couponRarityConfigs)
+      .where(and(eq(couponRarityConfigs.configKey, 'global'), eq(couponRarityConfigs.isActive, true)));
+    return config || undefined;
+  }
+
+  async getAllRarityConfigs(): Promise<CouponRarityConfig[]> {
+    return db.select().from(couponRarityConfigs).orderBy(couponRarityConfigs.configKey);
+  }
+
+  async upsertRarityConfig(config: InsertCouponRarityConfig): Promise<CouponRarityConfig> {
+    const [existing] = await db.select().from(couponRarityConfigs)
+      .where(eq(couponRarityConfigs.configKey, config.configKey || 'global'));
+    
+    if (existing) {
+      const [updated] = await db.update(couponRarityConfigs)
+        .set({ ...config, updatedAt: new Date() })
+        .where(eq(couponRarityConfigs.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(couponRarityConfigs).values(config).returning();
+      return created;
+    }
+  }
+
+  async deleteRarityConfig(id: number): Promise<void> {
+    await db.delete(couponRarityConfigs).where(eq(couponRarityConfigs.id, id));
+  }
+
+  // Generate coupon tier based on probability
+  async rollCouponTier(): Promise<string | null> {
+    const config = await this.getGlobalRarityConfig();
+    const rates = config ? {
+      SP: config.spRate,
+      SSR: config.ssrRate,
+      SR: config.srRate,
+      S: config.sRate,
+      R: config.rRate
+    } : { SP: 2, SSR: 8, SR: 15, S: 23, R: 32 };
+
+    const roll = Math.random() * 100;
+    let cumulative = 0;
+    
+    for (const [tier, rate] of Object.entries(rates)) {
+      cumulative += rate;
+      if (roll < cumulative) return tier;
+    }
+    return null; // No coupon (remaining probability)
   }
 
   // Merchant Coupons (商家優惠券模板)

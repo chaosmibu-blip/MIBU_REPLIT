@@ -1291,10 +1291,14 @@ export type InsertMerchantCoupon = z.infer<typeof insertMerchantCouponSchema>;
 // ============ User Inventory System (道具箱) ============
 
 export type InventoryItemType = 'coupon' | 'badge' | 'item';
+export type InventoryItemStatus = 'active' | 'expired' | 'redeemed' | 'deleted';
+
+export const INVENTORY_MAX_SLOTS = 30;
 
 export const userInventory = pgTable("user_inventory", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").references(() => users.id).notNull(),
+  slotIndex: integer("slot_index").notNull(), // 0-29 for 30 slots
   itemType: varchar("item_type", { length: 20 }).default('coupon').notNull(),
   merchantCouponId: integer("merchant_coupon_id").references(() => merchantCoupons.id), // Link to coupon template
   itemName: text("item_name").notNull(),
@@ -1306,15 +1310,20 @@ export const userInventory = pgTable("user_inventory", {
   terms: text("terms"),
   content: text("content"),
   validUntil: timestamp("valid_until"),
+  status: varchar("status", { length: 20 }).default('active').notNull(), // active, expired, redeemed, deleted
   isRedeemed: boolean("is_redeemed").default(false).notNull(),
   redeemedAt: timestamp("redeemed_at"),
   isExpired: boolean("is_expired").default(false).notNull(),
   isRead: boolean("is_read").default(false).notNull(), // For notification dot
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_user_inventory_user").on(table.userId),
   index("IDX_user_inventory_type").on(table.itemType),
   index("IDX_user_inventory_read").on(table.isRead),
+  index("IDX_user_inventory_slot").on(table.userId, table.slotIndex),
+  index("IDX_user_inventory_status").on(table.status),
 ]);
 
 export const userInventoryRelations = relations(userInventory, ({ one }) => ({
@@ -1343,6 +1352,30 @@ export const insertUserInventorySchema = createInsertSchema(userInventory).omit(
 
 export type UserInventoryItem = typeof userInventory.$inferSelect;
 export type InsertUserInventoryItem = z.infer<typeof insertUserInventorySchema>;
+
+// ============ Coupon Rarity Config (優惠券機率設定) ============
+
+export const couponRarityConfigs = pgTable("coupon_rarity_configs", {
+  id: serial("id").primaryKey(),
+  configKey: varchar("config_key", { length: 50 }).default('global').notNull().unique(), // 'global' or merchant-specific key
+  spRate: integer("sp_rate").default(2).notNull(), // 2%
+  ssrRate: integer("ssr_rate").default(8).notNull(), // 8%
+  srRate: integer("sr_rate").default(15).notNull(), // 15%
+  sRate: integer("s_rate").default(23).notNull(), // 23%
+  rRate: integer("r_rate").default(32).notNull(), // 32% (remaining 20% = no coupon)
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCouponRarityConfigSchema = createInsertSchema(couponRarityConfigs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type CouponRarityConfig = typeof couponRarityConfigs.$inferSelect;
+export type InsertCouponRarityConfig = z.infer<typeof insertCouponRarityConfigSchema>;
 
 // ============ Extended User Profile ============
 

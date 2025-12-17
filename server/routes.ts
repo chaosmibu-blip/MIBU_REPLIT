@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, generateJwtToken } from "./replitAuth";
-import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema, insertPlaceDraftSchema, insertPlaceApplicationSchema, registerUserSchema, insertSpecialistSchema, insertServiceRelationSchema, insertAdPlacementSchema } from "@shared/schema";
+import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema, insertPlaceDraftSchema, insertPlaceApplicationSchema, registerUserSchema, insertSpecialistSchema, insertServiceRelationSchema, insertAdPlacementSchema, insertCouponRarityConfigSchema, INVENTORY_MAX_SLOTS } from "@shared/schema";
 import * as crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
@@ -5700,17 +5700,64 @@ ${draft.address ? `地址：${draft.address}` : ''}
 
   // ============ User Inventory API (道具箱) ============
 
-  // 取得使用者道具箱
+  // 取得使用者道具箱 (30格遊戲風格)
   app.get("/api/inventory", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.jwtUser?.userId;
       if (!userId) return res.status(401).json({ error: "Authentication required" });
 
       const items = await storage.getUserInventory(userId);
-      res.json({ items });
+      const slotCount = await storage.getInventorySlotCount(userId);
+      const isFull = slotCount >= INVENTORY_MAX_SLOTS;
+      
+      // 標記過期的優惠券 (不刪除，變灰色)
+      const now = new Date();
+      const enrichedItems = items.map(item => {
+        const isExpired = item.validUntil && new Date(item.validUntil) < now;
+        return {
+          ...item,
+          isExpired: isExpired || item.isExpired,
+          status: isExpired ? 'expired' : item.status
+        };
+      });
+      
+      res.json({ 
+        items: enrichedItems,
+        slotCount,
+        maxSlots: INVENTORY_MAX_SLOTS,
+        isFull
+      });
     } catch (error) {
       console.error("Get inventory error:", error);
       res.status(500).json({ error: "Failed to get inventory" });
+    }
+  });
+
+  // 取得單一道具詳情
+  app.get("/api/inventory/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const item = await storage.getInventoryItemById(parseInt(req.params.id), userId);
+      if (!item) {
+        return res.status(404).json({ error: "Item not found" });
+      }
+      
+      // 檢查是否過期
+      const now = new Date();
+      const isExpired = item.validUntil && new Date(item.validUntil) < now;
+      
+      res.json({ 
+        item: {
+          ...item,
+          isExpired: isExpired || item.isExpired,
+          status: isExpired ? 'expired' : item.status
+        }
+      });
+    } catch (error) {
+      console.error("Get inventory item error:", error);
+      res.status(500).json({ error: "Failed to get inventory item" });
     }
   });
 
@@ -5728,6 +5775,24 @@ ${draft.address ? `地址：${draft.address}` : ''}
     }
   });
 
+  // 刪除道具 (軟刪除)
+  app.delete("/api/inventory/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const success = await storage.softDeleteInventoryItem(parseInt(req.params.id), userId);
+      if (!success) {
+        return res.status(404).json({ error: "Item not found or already deleted" });
+      }
+      
+      res.json({ success: true, message: "Item deleted" });
+    } catch (error) {
+      console.error("Delete inventory item error:", error);
+      res.status(500).json({ error: "Failed to delete item" });
+    }
+  });
+
   // ============ Coupon Redemption API (優惠券核銷) ============
 
   // 提交優惠券核銷（用戶輸入核銷碼）
@@ -5740,11 +5805,22 @@ ${draft.address ? `地址：${draft.address}` : ''}
       const inventoryItemId = parseInt(req.params.id);
 
       // Get inventory item
-      const items = await storage.getUserInventory(userId);
-      const item = items.find(i => i.id === inventoryItemId);
+      const item = await storage.getInventoryItemById(inventoryItemId, userId);
       if (!item) {
         return res.status(404).json({ error: "Inventory item not found" });
       }
+      
+      // 檢查是否已過期 (變灰色的優惠券無法核銷)
+      const now = new Date();
+      if (item.validUntil && new Date(item.validUntil) < now) {
+        return res.status(400).json({ error: "此優惠券已過期", isExpired: true });
+      }
+      
+      // 檢查是否已核銷
+      if (item.isRedeemed || item.status === 'redeemed') {
+        return res.status(400).json({ error: "此優惠券已使用", isRedeemed: true });
+      }
+      
       if (!item.merchantId) {
         return res.status(400).json({ error: "This item cannot be redeemed" });
       }
@@ -5910,6 +5986,93 @@ ${draft.address ? `地址：${draft.address}` : ''}
       console.error("Get redemption code error:", error);
       res.status(500).json({ error: "Failed to get redemption code" });
     }
+  });
+
+  // ============ Admin: Coupon Rarity Config (優惠券機率設定) ============
+
+  // 取得所有機率設定
+  app.get("/api/admin/rarity-config", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await hasAdminAccess(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      const configs = await storage.getAllRarityConfigs();
+      const globalConfig = await storage.getGlobalRarityConfig();
+      res.json({ 
+        configs, 
+        globalConfig: globalConfig || {
+          spRate: 2, ssrRate: 8, srRate: 15, sRate: 23, rRate: 32
+        }
+      });
+    } catch (error) {
+      console.error("Get rarity configs error:", error);
+      res.status(500).json({ error: "Failed to get rarity configs" });
+    }
+  });
+
+  // 更新全域機率設定
+  app.post("/api/admin/rarity-config", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await hasAdminAccess(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      
+      const validatedData = insertCouponRarityConfigSchema.parse({
+        ...req.body,
+        configKey: req.body.configKey || 'global'
+      });
+      
+      // 驗證總機率不超過100%
+      const total = (validatedData.spRate || 2) + (validatedData.ssrRate || 8) + 
+                    (validatedData.srRate || 15) + (validatedData.sRate || 23) + 
+                    (validatedData.rRate || 32);
+      if (total > 100) {
+        return res.status(400).json({ error: "Total probability cannot exceed 100%" });
+      }
+      
+      const config = await storage.upsertRarityConfig(validatedData);
+      res.json({ success: true, config });
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: "Invalid rarity config data", details: error.errors });
+      }
+      console.error("Update rarity config error:", error);
+      res.status(500).json({ error: "Failed to update rarity config" });
+    }
+  });
+
+  // 刪除機率設定
+  app.delete("/api/admin/rarity-config/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!(await hasAdminAccess(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      await storage.deleteRarityConfig(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete rarity config error:", error);
+      res.status(500).json({ error: "Failed to delete rarity config" });
+    }
+  });
+
+  // 公開 API: 取得當前機率設定 (供前端顯示)
+  app.get("/api/rarity-config", async (req, res) => {
+    try {
+      const config = await storage.getGlobalRarityConfig();
+      res.json({ 
+        config: config || {
+          spRate: 2, ssrRate: 8, srRate: 15, sRate: 23, rRate: 32
+        }
+      });
+    } catch (error) {
+      console.error("Get rarity config error:", error);
+      res.status(500).json({ error: "Failed to get rarity config" });
+    }
+  });
+
+  // 公開 API: 道具箱格數上限
+  app.get("/api/inventory/config", async (req, res) => {
+    res.json({ maxSlots: INVENTORY_MAX_SLOTS });
   });
 
   const httpServer = createServer(app);
