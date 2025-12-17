@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppState, Language } from '../types';
 import { TRANSLATIONS } from '../constants';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Gift, X } from 'lucide-react';
 
 interface Country {
   id: number;
@@ -38,6 +38,9 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
   const [loadingCountries, setLoadingCountries] = useState(true);
   const [loadingRegions, setLoadingRegions] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [showPrizePool, setShowPrizePool] = useState(false);
+  const [prizePoolCoupons, setPrizePoolCoupons] = useState<any[]>([]);
+  const [loadingPrizePool, setLoadingPrizePool] = useState(false);
 
   useEffect(() => {
     const fetchCountries = async () => {
@@ -134,10 +137,28 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
   };
 
   const getLevelLabel = () => {
-    if (state.language === 'zh-TW') return `${state.level} Stops`;
-    if (state.language === 'ja') return `${state.level} スポット`;
-    if (state.language === 'ko') return `${state.level} 스톱`;
-    return `${state.level} Stops`;
+    return `${state.level}`;
+  };
+
+  const fetchPrizePool = async () => {
+    if (!selectedRegionId) return;
+    setLoadingPrizePool(true);
+    try {
+      const response = await fetch(`/api/coupons/region/${selectedRegionId}/pool`);
+      if (response.ok) {
+        const data = await response.json();
+        setPrizePoolCoupons(data.coupons || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch prize pool:', error);
+    } finally {
+      setLoadingPrizePool(false);
+    }
+  };
+
+  const handleShowPrizePool = () => {
+    fetchPrizePool();
+    setShowPrizePool(true);
   };
 
   const canSubmit = selectedCountryId && selectedRegionId && districtCount > 0;
@@ -146,11 +167,12 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
     <div className="w-full max-w-md mx-auto px-5 pt-8 pb-4">
       <div className="text-center mb-8">
         <h1 className="text-3xl font-black text-slate-800 tracking-tight">{t.appTitle}</h1>
-        {userName && (
-          <p className="text-slate-400 mt-2 text-sm">
-            {state.language === 'zh-TW' ? `歡迎回來, ${userName}` : `Welcome back, ${userName}`}
-          </p>
-        )}
+        <p className="text-slate-500 mt-2 text-sm font-medium">
+          {state.language === 'zh-TW' ? '今天去哪玩?老天說了算' : 
+           state.language === 'ja' ? '今日はどこへ？運命に任せよう' : 
+           state.language === 'ko' ? '오늘 어디로? 운에 맡기자' : 
+           "Where to today? Let fate decide"}
+        </p>
       </div>
 
       <div className="space-y-4">
@@ -225,7 +247,7 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
           <div className="pt-2">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-bold text-slate-700">
-                {state.language === 'zh-TW' ? '行程節奏' : state.language === 'ja' ? '行程のペース' : state.language === 'ko' ? '일정 페이스' : 'Itinerary Pace'}
+                {state.language === 'zh-TW' ? '行程數量' : state.language === 'ja' ? '行程数' : state.language === 'ko' ? '일정 수' : 'Itinerary Count'}
               </span>
               <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-sm font-bold" data-testid="text-level">
                 {getLevelLabel()}
@@ -259,6 +281,17 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
           </div>
         )}
 
+        {selectedRegionId && (
+          <button
+            onClick={handleShowPrizePool}
+            className="w-full py-3 rounded-2xl font-bold text-sm mt-2 bg-gradient-to-r from-amber-400 to-orange-400 text-white shadow-md hover:from-amber-500 hover:to-orange-500 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            data-testid="button-view-prize-pool"
+          >
+            <Gift className="w-4 h-4" />
+            {state.language === 'zh-TW' ? '查看獎池' : state.language === 'ja' ? '賞品プールを見る' : state.language === 'ko' ? '상품풀 보기' : 'View Prize Pool'}
+          </button>
+        )}
+
         <button
           onClick={onSubmit}
           disabled={!canSubmit}
@@ -272,6 +305,78 @@ export const InputForm: React.FC<InputFormProps> = ({ state, onUpdate, onSubmit,
           {state.language === 'zh-TW' ? '開始扭蛋' : state.language === 'ja' ? 'ガチャを回す' : state.language === 'ko' ? '가챠 시작' : 'START GACHA'}
         </button>
       </div>
+
+      {showPrizePool && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-400 to-orange-400 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Gift className="w-5 h-5" />
+                {state.language === 'zh-TW' ? '獎池內容' : 'Prize Pool'}
+              </h3>
+              <button
+                onClick={() => setShowPrizePool(false)}
+                className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+                data-testid="button-close-prize-pool"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {loadingPrizePool ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+                </div>
+              ) : prizePoolCoupons.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Gift className="w-8 h-8 text-slate-400" />
+                  </div>
+                  <p className="text-slate-500">
+                    {state.language === 'zh-TW' ? '目前此區域沒有特殊優惠券' : 'No special coupons in this region'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {prizePoolCoupons.map((coupon, index) => (
+                    <div 
+                      key={coupon.id || index}
+                      className={`p-4 rounded-2xl border-2 ${
+                        coupon.rarity === 'SP' 
+                          ? 'bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200' 
+                          : 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200'
+                      }`}
+                      data-testid={`prize-coupon-${coupon.id || index}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                          coupon.rarity === 'SP' 
+                            ? 'bg-purple-500 text-white' 
+                            : 'bg-amber-500 text-white'
+                        }`}>
+                          {coupon.rarity || 'SSR'}
+                        </span>
+                        {coupon.merchantName && (
+                          <span className="text-xs text-slate-500">{coupon.merchantName}</span>
+                        )}
+                      </div>
+                      <h4 className="font-bold text-slate-800">{coupon.title || coupon.name}</h4>
+                      {coupon.description && (
+                        <p className="text-sm text-slate-500 mt-1">{coupon.description}</p>
+                      )}
+                      {coupon.discount && (
+                        <div className="mt-2 text-lg font-bold text-orange-600">
+                          {coupon.discount}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

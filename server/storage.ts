@@ -56,6 +56,7 @@ export interface IStorage {
   getActiveCoupons(merchantId: number): Promise<Coupon[]>;
   createCoupon(coupon: InsertCoupon): Promise<Coupon>;
   updateCoupon(couponId: number, data: Partial<Coupon>): Promise<Coupon>;
+  getRegionPrizePoolCoupons(regionId: number): Promise<any[]>;
 
   // Place Cache
   getCachedPlace(subCategory: string, district: string, city: string, country: string): Promise<PlaceCache | undefined>;
@@ -365,6 +366,87 @@ export class DatabaseStorage implements IStorage {
       .where(eq(coupons.id, couponId))
       .returning();
     return updated;
+  }
+
+  async getRegionPrizePoolCoupons(regionId: number): Promise<any[]> {
+    // Get all districts in this region
+    const regionDistricts = await db
+      .select()
+      .from(districts)
+      .where(eq(districts.regionId, regionId));
+    
+    if (regionDistricts.length === 0) {
+      return [];
+    }
+
+    // Get region info for city name
+    const [region] = await db
+      .select()
+      .from(regions)
+      .where(eq(regions.id, regionId));
+    
+    if (!region) {
+      return [];
+    }
+
+    // Get district names in both zh and en for matching
+    const districtNames = regionDistricts.flatMap(d => [d.nameZh, d.nameEn].filter(Boolean));
+    const cityNames = [region.nameZh, region.nameEn].filter(Boolean);
+
+    // Find coupons with SP or SSR rarity that are active
+    // We join with merchantPlaceLinks to get location data for filtering
+    const prizePoolCoupons = await db
+      .select({
+        id: coupons.id,
+        title: coupons.title,
+        description: coupons.terms,
+        rarity: coupons.rarity,
+        merchantName: merchants.name,
+        discount: coupons.code,
+        merchantId: coupons.merchantId,
+        placeDistrict: merchantPlaceLinks.district,
+        placeCity: merchantPlaceLinks.city,
+      })
+      .from(coupons)
+      .innerJoin(merchants, eq(coupons.merchantId, merchants.id))
+      .leftJoin(merchantPlaceLinks, eq(coupons.merchantPlaceLinkId, merchantPlaceLinks.id))
+      .where(
+        and(
+          eq(coupons.isActive, true),
+          eq(coupons.archived, false),
+          or(
+            eq(coupons.rarity, 'SP'),
+            eq(coupons.rarity, 'SSR')
+          )
+        )
+      );
+
+    // Filter by region - match district name or city name
+    const filteredCoupons = prizePoolCoupons.filter(coupon => {
+      // If coupon has no place link, check if merchant is in this region (include as general prize for now)
+      if (!coupon.placeDistrict && !coupon.placeCity) {
+        return true; // Include global coupons
+      }
+      
+      // Check if district matches any district in the region
+      if (coupon.placeDistrict && districtNames.some(d => 
+        d.toLowerCase() === coupon.placeDistrict?.toLowerCase()
+      )) {
+        return true;
+      }
+      
+      // Check if city matches the region name
+      if (coupon.placeCity && cityNames.some(c => 
+        c.toLowerCase() === coupon.placeCity?.toLowerCase()
+      )) {
+        return true;
+      }
+      
+      return false;
+    });
+
+    // Remove internal fields before returning
+    return filteredCoupons.map(({ placeDistrict, placeCity, ...coupon }) => coupon);
   }
 
   // Place Cache

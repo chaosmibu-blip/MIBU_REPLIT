@@ -885,6 +885,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 取得區域獎池 (SP/SSR 優惠券)
+  app.get("/api/coupons/region/:regionId/pool", async (req, res) => {
+    try {
+      const regionId = parseInt(req.params.regionId);
+      if (isNaN(regionId)) {
+        return res.status(400).json({ error: "Invalid region ID" });
+      }
+      
+      const coupons = await storage.getRegionPrizePoolCoupons(regionId);
+      res.json({ coupons });
+    } catch (error) {
+      console.error("Failed to fetch prize pool:", error);
+      res.status(500).json({ error: "Failed to fetch prize pool" });
+    }
+  });
+
   // ============ District Data for Random Selection ============
   const DISTRICT_DATA: Record<string, Record<string, string[]>> = {
     taiwan: {
