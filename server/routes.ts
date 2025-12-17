@@ -1387,11 +1387,18 @@ ${skeletonInstructions}
 3. 如果該區域確實沒有符合類別的店家，請推薦鄰近區域的真實店家
 4. place_name 必須可以在 Google Maps 搜尋到
 
+【動線順暢原則 Route Flow】
+- 推薦鄰近區域的店家時，優先選擇「相鄰區域」而非遠方區域
+- 考慮時間順序：早上的地點、中午的地點、下午的地點應該在合理的移動範圍內
+- 避免讓使用者來回奔波，地點之間的移動距離應控制在 30 分鐘車程以內
+- 如果必須跨區，請選擇同一方向上的區域
+
 【任務說明 Your Task】
 For each skeleton slot, find a REAL business/location in or near ${targetDistrict}:
 - Must be an actual restaurant, shop, attraction, or business with a real name
 - Can be searched and found on Google Maps
-- If no matching place in ${targetDistrict}, suggest one from a nearby district
+- If no matching place in ${targetDistrict}, suggest one from a nearby district (prefer adjacent areas)
+- Ensure route flow is smooth - places should be geographically close to minimize travel time
 
 【排除清單 Exclusions】
 Do NOT include: ${usedPlaceNamesInPull.size > 0 ? Array.from(usedPlaceNamesInPull).join(', ') : 'none'}
