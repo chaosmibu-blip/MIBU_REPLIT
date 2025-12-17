@@ -203,21 +203,42 @@ export async function setupAuth(app: Express) {
 
   const registeredStrategies = new Set<string>();
 
-  const ensureStrategy = (domain: string) => {
-    const strategyName = `replitauth:${domain}`;
+  // Always use the development domain for OAuth callback (Replit only registers dev domain for OAuth)
+  const getOAuthCallbackDomain = () => {
+    const replitDomains = process.env.REPLIT_DOMAINS;
+    if (replitDomains) {
+      const devDomain = replitDomains.split(',')[0].trim();
+      console.log(`[OAuth] Using REPLIT_DOMAINS for callback: ${devDomain}`);
+      return devDomain;
+    }
+    // Fallback: shouldn't happen in Replit environment
+    console.warn('[OAuth] REPLIT_DOMAINS not set, OAuth may fail');
+    return null;
+  };
+
+  const oauthCallbackDomain = getOAuthCallbackDomain();
+
+  const ensureStrategy = (requestDomain: string) => {
+    // Use the OAuth callback domain (dev domain) for strategy, not the request domain
+    const callbackDomain = oauthCallbackDomain || requestDomain;
+    const strategyName = `replitauth:${callbackDomain}`;
+    
     if (!registeredStrategies.has(strategyName)) {
+      console.log(`[OAuth] Registering strategy: ${strategyName}, callbackURL: https://${callbackDomain}/api/callback`);
       const strategy = new Strategy(
         {
           name: strategyName,
           config,
           scope: "openid email profile offline_access",
-          callbackURL: `https://${domain}/api/callback`,
+          callbackURL: `https://${callbackDomain}/api/callback`,
         },
         verify,
       );
       passport.use(strategy);
       registeredStrategies.add(strategyName);
     }
+    
+    return strategyName;
   };
 
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
@@ -258,10 +279,10 @@ export async function setupAuth(app: Express) {
         console.log(`[OAuth] Login requested with portal/target_role: ${requestedRole}`);
       }
       
-      console.log(`[OAuth Login] Calling ensureStrategy for: ${req.hostname}`);
-      ensureStrategy(req.hostname);
-      console.log(`[OAuth Login] Starting passport.authenticate for: replitauth:${req.hostname}`);
-      passport.authenticate(`replitauth:${req.hostname}`, {
+      console.log(`[OAuth Login] Calling ensureStrategy for request from: ${req.hostname}`);
+      const strategyName = ensureStrategy(req.hostname);
+      console.log(`[OAuth Login] Starting passport.authenticate with strategy: ${strategyName}`);
+      passport.authenticate(strategyName, {
         prompt: "login consent",
         scope: ["openid", "email", "profile", "offline_access"],
       })(req, res, next);
@@ -383,9 +404,11 @@ export async function setupAuth(app: Express) {
       return res.redirect("/");
     }
     
+    let strategyName: string;
     try {
       console.log(`[OAuth Callback] Processing callback for hostname: ${req.hostname}`);
-      ensureStrategy(req.hostname);
+      strategyName = ensureStrategy(req.hostname);
+      console.log(`[OAuth Callback] Using strategy: ${strategyName}`);
     } catch (strategyError) {
       console.error('[OAuth Callback] ensureStrategy failed:', strategyError);
       const extUri = getExternalRedirectUri();
@@ -401,7 +424,7 @@ export async function setupAuth(app: Express) {
     }
     
     try {
-      passport.authenticate(`replitauth:${req.hostname}`, (err: any, user: any) => {
+      passport.authenticate(strategyName, (err: any, user: any) => {
         console.log(`[OAuth Callback] passport.authenticate result - err: ${err}, user: ${user?.claims?.sub || 'null'}`);
       if (err) {
         console.error('[OAuth Callback] Passport authentication error:', err);
