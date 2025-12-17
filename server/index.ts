@@ -434,6 +434,7 @@ async function startServer() {
             googleReviewCount: verification.reviewCount,
             locationLat: verification.location?.lat?.toString(),
             locationLng: verification.location?.lng?.toString(),
+            status: 'auto_generated', // 等待 AI 審查
           });
           
           console.log(`[AutoDraft] Draft created: ID=${draft.id}, Name=${draft.placeName}`);
