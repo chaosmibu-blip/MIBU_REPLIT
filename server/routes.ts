@@ -526,6 +526,186 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ Logout ============
+  
+  app.post('/api/auth/logout', async (req: any, res) => {
+    try {
+      if (req.session) {
+        req.session.destroy((err: any) => {
+          if (err) console.error('Session destroy error:', err);
+        });
+      }
+      res.clearCookie('connect.sid');
+      res.json({ success: true, message: '已成功登出' });
+    } catch (error) {
+      console.error('Logout error:', error);
+      res.status(500).json({ error: '登出失敗' });
+    }
+  });
+
+  // ============ Profile Routes (設定頁面) ============
+
+  app.get('/api/profile', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: '請先登入' });
+      
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: '找不到用戶資料' });
+
+      res.json({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileImageUrl: user.profileImageUrl,
+        role: user.role,
+        gender: user.gender,
+        birthDate: user.birthDate,
+        phone: user.phone,
+        dietaryRestrictions: user.dietaryRestrictions || [],
+        medicalHistory: user.medicalHistory || [],
+        emergencyContactName: user.emergencyContactName,
+        emergencyContactPhone: user.emergencyContactPhone,
+        emergencyContactRelation: user.emergencyContactRelation,
+        preferredLanguage: user.preferredLanguage || 'zh-TW',
+      });
+    } catch (error) {
+      console.error('Get profile error:', error);
+      res.status(500).json({ error: '無法取得用戶資料' });
+    }
+  });
+
+  app.patch('/api/profile', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: '請先登入' });
+
+      const { updateProfileSchema } = await import('@shared/schema');
+      const validated = updateProfileSchema.parse(req.body);
+      
+      const updateData: any = { ...validated };
+      if (validated.birthDate) {
+        updateData.birthDate = new Date(validated.birthDate);
+      }
+
+      const updatedUser = await storage.updateUser(userId, updateData);
+      if (!updatedUser) return res.status(404).json({ error: '找不到用戶資料' });
+
+      res.json({
+        success: true,
+        message: '個人資料已更新',
+        profile: {
+          firstName: updatedUser.firstName,
+          lastName: updatedUser.lastName,
+          gender: updatedUser.gender,
+          birthDate: updatedUser.birthDate,
+          phone: updatedUser.phone,
+          dietaryRestrictions: updatedUser.dietaryRestrictions || [],
+          medicalHistory: updatedUser.medicalHistory || [],
+          emergencyContactName: updatedUser.emergencyContactName,
+          emergencyContactPhone: updatedUser.emergencyContactPhone,
+          emergencyContactRelation: updatedUser.emergencyContactRelation,
+          preferredLanguage: updatedUser.preferredLanguage,
+        }
+      });
+    } catch (error: any) {
+      console.error('Update profile error:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: '資料格式錯誤', details: error.errors });
+      }
+      res.status(500).json({ error: '無法更新用戶資料' });
+    }
+  });
+
+  // ============ SOS Alerts (安全中心) ============
+
+  app.get('/api/sos/eligibility', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: '請先登入' });
+
+      const hasPurchased = await storage.hasUserPurchasedTripService(userId);
+      res.json({ 
+        eligible: hasPurchased,
+        reason: hasPurchased ? null : '需購買旅程服務才能使用安全中心功能'
+      });
+    } catch (error) {
+      console.error('SOS eligibility check error:', error);
+      res.status(500).json({ error: '無法檢查資格' });
+    }
+  });
+
+  app.post('/api/sos/alert', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: '請先登入' });
+
+      const hasPurchased = await storage.hasUserPurchasedTripService(userId);
+      if (!hasPurchased) {
+        return res.status(403).json({ 
+          error: '需購買旅程服務才能使用 SOS 求救功能',
+          requiresPurchase: true
+        });
+      }
+
+      const { insertSosAlertSchema } = await import('@shared/schema');
+      const validated = insertSosAlertSchema.parse({ ...req.body, userId });
+
+      const alert = await storage.createSosAlert(validated);
+      console.log('🆘 SOS Alert Created:', alert);
+
+      res.json({
+        success: true,
+        alertId: alert.id,
+        message: '求救訊號已發送，我們會盡快聯繫您',
+      });
+    } catch (error: any) {
+      console.error('Create SOS alert error:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: '資料格式錯誤', details: error.errors });
+      }
+      res.status(500).json({ error: '無法發送求救訊號' });
+    }
+  });
+
+  app.get('/api/sos/alerts', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      if (!userId) return res.status(401).json({ error: '請先登入' });
+
+      const alerts = await storage.getUserSosAlerts(userId);
+      res.json({ alerts });
+    } catch (error) {
+      console.error('Get SOS alerts error:', error);
+      res.status(500).json({ error: '無法取得求救記錄' });
+    }
+  });
+
+  app.patch('/api/sos/alerts/:id/cancel', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+      const alertId = parseInt(req.params.id);
+      
+      if (!userId) return res.status(401).json({ error: '請先登入' });
+
+      const alert = await storage.getSosAlertById(alertId);
+      if (!alert || alert.userId !== userId) {
+        return res.status(404).json({ error: '找不到求救記錄' });
+      }
+
+      if (alert.status !== 'pending') {
+        return res.status(400).json({ error: '無法取消已處理的求救' });
+      }
+
+      const updated = await storage.updateSosAlertStatus(alertId, 'cancelled');
+      res.json({ success: true, alert: updated });
+    } catch (error) {
+      console.error('Cancel SOS alert error:', error);
+      res.status(500).json({ error: '無法取消求救' });
+    }
+  });
+
   // ============ Location Routes ============
 
   app.post('/api/location/update', isAuthenticated, async (req: any, res) => {

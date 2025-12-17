@@ -5,7 +5,7 @@ import {
   placeDrafts, placeApplications, userLocations, planners, serviceOrders, places,
   specialists, transactions, serviceRelations, announcements,
   adPlacements, userNotifications, couponRedemptions, userInventory, merchantCoupons,
-  couponRarityConfigs, INVENTORY_MAX_SLOTS,
+  couponRarityConfigs, sosAlerts, INVENTORY_MAX_SLOTS,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -33,7 +33,8 @@ import {
   type UserNotification, type CouponRedemption, type InsertCouponRedemption,
   type UserInventoryItem, type InsertUserInventoryItem,
   type MerchantCoupon, type InsertMerchantCoupon,
-  type CouponRarityConfig, type InsertCouponRarityConfig
+  type CouponRarityConfig, type InsertCouponRarityConfig,
+  type SosAlert, type InsertSosAlert, type SosAlertStatus
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, ilike, or, isNull, lt, gt, gte, lte } from "drizzle-orm";
@@ -1943,6 +1944,63 @@ export class DatabaseStorage implements IStorage {
     }));
     
     return enrichedCollections;
+  }
+
+  // ============ SOS Alerts (安全中心求救) ============
+  
+  async createSosAlert(data: InsertSosAlert): Promise<SosAlert> {
+    const [alert] = await db.insert(sosAlerts).values(data).returning();
+    return alert;
+  }
+
+  async getSosAlertById(alertId: number): Promise<SosAlert | undefined> {
+    const [alert] = await db.select().from(sosAlerts).where(eq(sosAlerts.id, alertId));
+    return alert || undefined;
+  }
+
+  async getUserSosAlerts(userId: string): Promise<SosAlert[]> {
+    return db.select().from(sosAlerts)
+      .where(eq(sosAlerts.userId, userId))
+      .orderBy(desc(sosAlerts.createdAt));
+  }
+
+  async getPlannerSosAlerts(plannerId: number): Promise<SosAlert[]> {
+    return db.select().from(sosAlerts)
+      .where(eq(sosAlerts.plannerId, plannerId))
+      .orderBy(desc(sosAlerts.createdAt));
+  }
+
+  async getPendingSosAlerts(): Promise<SosAlert[]> {
+    return db.select().from(sosAlerts)
+      .where(eq(sosAlerts.status, 'pending'))
+      .orderBy(desc(sosAlerts.createdAt));
+  }
+
+  async updateSosAlertStatus(alertId: number, status: SosAlertStatus, acknowledgedBy?: string): Promise<SosAlert | undefined> {
+    const updateData: Partial<SosAlert> = { status };
+    
+    if (status === 'acknowledged' && acknowledgedBy) {
+      updateData.acknowledgedBy = acknowledgedBy;
+      updateData.acknowledgedAt = new Date();
+    } else if (status === 'resolved') {
+      updateData.resolvedAt = new Date();
+    }
+    
+    const [alert] = await db.update(sosAlerts)
+      .set(updateData)
+      .where(eq(sosAlerts.id, alertId))
+      .returning();
+    return alert || undefined;
+  }
+
+  async hasUserPurchasedTripService(userId: string): Promise<boolean> {
+    const [order] = await db.select({ id: serviceOrders.id })
+      .from(serviceOrders)
+      .where(and(
+        eq(serviceOrders.userId, userId),
+        eq(serviceOrders.status, 'completed')
+      ));
+    return !!order;
   }
 }
 
