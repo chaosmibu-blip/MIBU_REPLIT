@@ -113,6 +113,7 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) designed to gamify trav
 - **Mibu Backend Responsibilities**: User authentication/authorization, AI itinerary generation, location data management, collection/feedback systems, merchant system, trip planning services, real-time chat, payment processing (Stripe), AdMob integration, Itembox, and coupon redemption.
 - **Frontend/Backend Collaboration**: Backend provides "Frontend Sync Instructions" for API and data structure changes.
     - **Backend Base URL**: `https://gacha-travel--s8869420.replit.app`
+- **Error Handling**: Unified error code system (`shared/errors.ts`) with standardized `{ errorCode, message }` format. Frontend can copy this file to display localized error messages based on error codes (E1xxx=Auth, E2xxx=Gacha, E3xxx=Location, E4xxx=Merchant, E5xxx=Validation, E9xxx=Server).
 
 ## External Dependencies
 

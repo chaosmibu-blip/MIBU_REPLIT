@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, generateJwtToken } from "./replitAuth";
 import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema, insertPlaceDraftSchema, insertPlaceApplicationSchema, registerUserSchema, insertSpecialistSchema, insertServiceRelationSchema, insertAdPlacementSchema, insertCouponRarityConfigSchema, INVENTORY_MAX_SLOTS, type PlaceDraft, type Subcategory } from "@shared/schema";
+import { ErrorCode, createErrorResponse } from "@shared/errors";
 import * as crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
@@ -217,7 +218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if email already exists
       const existingUser = await storage.getUserByEmail(validated.email);
       if (existingUser) {
-        return res.status(400).json({ error: '此電子郵件已被註冊' });
+        return res.status(400).json(createErrorResponse(ErrorCode.EMAIL_ALREADY_EXISTS));
       }
       
       // Hash password
@@ -257,7 +258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error.name === 'ZodError') {
         return res.status(400).json({ error: '輸入資料格式錯誤', details: error.errors });
       }
-      res.status(500).json({ error: '註冊失敗，請稍後再試' });
+      res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '註冊失敗，請稍後再試'));
     }
   });
 
@@ -281,12 +282,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Find user by email
       const user = await storage.getUserByEmail(validated.email);
       if (!user || !user.password) {
-        return res.status(401).json({ error: '電子郵件或密碼錯誤', code: 'INVALID_CREDENTIALS' });
+        return res.status(401).json(createErrorResponse(ErrorCode.INVALID_CREDENTIALS));
       }
       
       // Verify password
       if (!verifyPassword(validated.password, user.password)) {
-        return res.status(401).json({ error: '電子郵件或密碼錯誤', code: 'INVALID_CREDENTIALS' });
+        return res.status(401).json(createErrorResponse(ErrorCode.INVALID_CREDENTIALS));
       }
       
       const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
@@ -378,9 +379,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Login error:", error);
       if (error.name === 'ZodError') {
-        return res.status(400).json({ error: '輸入資料格式錯誤', code: 'VALIDATION_ERROR' });
+        return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR));
       }
-      res.status(500).json({ error: '登入失敗，請稍後再試', code: 'SERVER_ERROR' });
+      res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '登入失敗，請稍後再試'));
     }
   });
 
@@ -510,7 +511,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error.name === 'ZodError') {
         return res.status(400).json({ error: '無效的角色', code: 'INVALID_ROLE' });
       }
-      res.status(500).json({ error: '切換角色失敗', code: 'SERVER_ERROR' });
+      res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '切換角色失敗'));
     }
   });
 
@@ -539,7 +540,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true, message: '已成功登出' });
     } catch (error) {
       console.error('Logout error:', error);
-      res.status(500).json({ error: '登出失敗' });
+      res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '登出失敗'));
     }
   });
 
@@ -548,10 +549,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/profile', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.jwtUser?.userId;
-      if (!userId) return res.status(401).json({ error: '請先登入' });
+      if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
       
       const user = await storage.getUser(userId);
-      if (!user) return res.status(404).json({ error: '找不到用戶資料' });
+      if (!user) return res.status(404).json(createErrorResponse(ErrorCode.USER_NOT_FOUND));
 
       res.json({
         id: user.id,
@@ -572,14 +573,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error('Get profile error:', error);
-      res.status(500).json({ error: '無法取得用戶資料' });
+      res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得用戶資料'));
     }
   });
 
   app.patch('/api/profile', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.jwtUser?.userId;
-      if (!userId) return res.status(401).json({ error: '請先登入' });
+      if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
       const { updateProfileSchema } = await import('@shared/schema');
       const validated = updateProfileSchema.parse(req.body);
@@ -590,7 +591,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updatedUser = await storage.updateUser(userId, updateData);
-      if (!updatedUser) return res.status(404).json({ error: '找不到用戶資料' });
+      if (!updatedUser) return res.status(404).json(createErrorResponse(ErrorCode.USER_NOT_FOUND));
 
       res.json({
         success: true,
@@ -614,7 +615,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error.name === 'ZodError') {
         return res.status(400).json({ error: '資料格式錯誤', details: error.errors });
       }
-      res.status(500).json({ error: '無法更新用戶資料' });
+      res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法更新用戶資料'));
     }
   });
 
@@ -623,7 +624,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/sos/eligibility', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.jwtUser?.userId;
-      if (!userId) return res.status(401).json({ error: '請先登入' });
+      if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
       const hasPurchased = await storage.hasUserPurchasedTripService(userId);
       res.json({ 
@@ -632,14 +633,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error('SOS eligibility check error:', error);
-      res.status(500).json({ error: '無法檢查資格' });
+      res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法檢查資格'));
     }
   });
 
   app.post('/api/sos/alert', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.jwtUser?.userId;
-      if (!userId) return res.status(401).json({ error: '請先登入' });
+      if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
       const hasPurchased = await storage.hasUserPurchasedTripService(userId);
       if (!hasPurchased) {
@@ -665,20 +666,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error.name === 'ZodError') {
         return res.status(400).json({ error: '資料格式錯誤', details: error.errors });
       }
-      res.status(500).json({ error: '無法發送求救訊號' });
+      res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法發送求救訊號'));
     }
   });
 
   app.get('/api/sos/alerts', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.jwtUser?.userId;
-      if (!userId) return res.status(401).json({ error: '請先登入' });
+      if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
       const alerts = await storage.getUserSosAlerts(userId);
       res.json({ alerts });
     } catch (error) {
       console.error('Get SOS alerts error:', error);
-      res.status(500).json({ error: '無法取得求救記錄' });
+      res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得求救記錄'));
     }
   });
 
@@ -687,7 +688,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user?.claims?.sub || req.jwtUser?.userId;
       const alertId = parseInt(req.params.id);
       
-      if (!userId) return res.status(401).json({ error: '請先登入' });
+      if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
       const alert = await storage.getSosAlertById(alertId);
       if (!alert || alert.userId !== userId) {
@@ -702,7 +703,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true, alert: updated });
     } catch (error) {
       console.error('Cancel SOS alert error:', error);
-      res.status(500).json({ error: '無法取消求救' });
+      res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取消求救'));
     }
   });
 
@@ -1286,10 +1287,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Validate: must have regionId or countryId (use database, no hardcoding)
       if (!regionId && !countryId) {
-        return res.status(400).json({ 
-          error: "請提供 regionId 或 countryId",
-          code: "MISSING_LOCATION_ID"
-        });
+        return res.status(400).json(createErrorResponse(ErrorCode.MISSING_LOCATION_ID));
       }
       
       // Step 1: Get random district from database (no DISTRICT_DATA)
@@ -1301,10 +1299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       if (!district) {
-        return res.status(404).json({ 
-          error: "找不到可用的區域",
-          code: "NO_DISTRICT_FOUND"
-        });
+        return res.status(404).json(createErrorResponse(ErrorCode.NO_DISTRICT_FOUND));
       }
       
       // Step 2: Get full hierarchy (district, region, country) from database
@@ -4312,12 +4307,12 @@ ${uncachedSkeleton.map((item, idx) => `  {
     try {
       const userId = req.user?.claims?.sub;
       if (!userId) {
-        return res.status(401).json({ error: "Authentication required", code: "AUTH_REQUIRED" });
+        return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
       }
 
       const merchant = await storage.getMerchantByUserId(userId);
       if (!merchant) {
-        return res.status(403).json({ error: "商家帳號必要", code: "MERCHANT_REQUIRED" });
+        return res.status(403).json(createErrorResponse(ErrorCode.MERCHANT_REQUIRED));
       }
 
       const existingCode = await storage.getMerchantDailySeedCode(merchant.id);
@@ -4365,12 +4360,12 @@ ${uncachedSkeleton.map((item, idx) => `  {
       
       const merchant = await storage.getMerchantById(validated.merchantId);
       if (!merchant) {
-        return res.status(404).json({ error: "商家不存在", code: "MERCHANT_NOT_FOUND", valid: false });
+        return res.status(404).json({ ...createErrorResponse(ErrorCode.MERCHANT_NOT_FOUND), valid: false });
       }
 
       const existingCode = await storage.getMerchantDailySeedCode(merchant.id);
       if (!existingCode) {
-        return res.status(400).json({ error: "商家尚未設定核銷碼", code: "NO_CODE_SET", valid: false });
+        return res.status(400).json({ ...createErrorResponse(ErrorCode.NO_CODE_SET), valid: false });
       }
 
       // Check if code is expired (not from today)
@@ -4380,7 +4375,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
       codeDate.setHours(0, 0, 0, 0);
       
       if (codeDate.getTime() !== today.getTime()) {
-        return res.status(400).json({ error: "核銷碼已過期", code: "CODE_EXPIRED", valid: false });
+        return res.status(400).json({ ...createErrorResponse(ErrorCode.CODE_EXPIRED), valid: false });
       }
 
       // Verify the code
@@ -4413,12 +4408,12 @@ ${uncachedSkeleton.map((item, idx) => `  {
     try {
       const userId = req.user?.claims?.sub;
       if (!userId) {
-        return res.status(401).json({ error: "Authentication required", code: "AUTH_REQUIRED" });
+        return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
       }
 
       const merchant = await storage.getMerchantByUserId(userId);
       if (!merchant) {
-        return res.status(403).json({ error: "商家帳號必要", code: "MERCHANT_REQUIRED" });
+        return res.status(403).json(createErrorResponse(ErrorCode.MERCHANT_REQUIRED));
       }
 
       const purchaseSchema = z.object({
@@ -4557,7 +4552,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
     try {
       const userId = req.user?.claims?.sub;
       if (!userId) {
-        return res.status(401).json({ error: "Authentication required", code: "AUTH_REQUIRED" });
+        return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
       }
 
       const matchSchema = z.object({

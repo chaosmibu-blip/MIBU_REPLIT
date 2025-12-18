@@ -73,42 +73,66 @@ const rarityColors = {
 
 ## 統一錯誤格式
 
-所有 API 錯誤回應遵循以下格式：
+所有 API 錯誤回應遵循以下標準格式：
 
-### 401 Unauthorized
-```json
-{
-  "message": "Unauthorized"
+```typescript
+interface ApiErrorResponse {
+  errorCode: string;   // 錯誤代碼 (如 "E1001")
+  message: string;     // 錯誤訊息 (可供 debug 或顯示)
+  details?: unknown;   // 額外細節 (可選)
 }
 ```
-**前端處理**: 執行登出並導向登入頁
 
-### 400 Bad Request
-```json
-{
-  "error": "錯誤描述",
-  "details": [
-    { "field": "email", "message": "Invalid email format" }
-  ]
+### 錯誤代碼表 (Error Code Enum)
+
+前端請複製 `shared/errors.ts` 檔案，根據 `errorCode` 顯示對應的多語系文案：
+
+| 代碼 | 名稱 | 說明 |
+|------|------|------|
+| **認證 (E1xxx)** |
+| E1001 | AUTH_REQUIRED | 請先登入 |
+| E1002 | AUTH_TOKEN_EXPIRED | 登入已過期 |
+| E1003 | AUTH_TOKEN_INVALID | 無效的登入憑證 |
+| E1004 | INVALID_CREDENTIALS | 電子郵件或密碼錯誤 |
+| E1005 | EMAIL_ALREADY_EXISTS | 此電子郵件已被註冊 |
+| E1006 | PENDING_APPROVAL | 帳號審核中 |
+| **扭蛋 (E2xxx)** |
+| E2001 | GACHA_NO_CREDITS | 扭蛋次數不足 |
+| E2002 | GACHA_RATE_LIMITED | 操作過於頻繁 |
+| E2003 | GACHA_GENERATION_FAILED | 行程生成失敗 |
+| **地點 (E3xxx)** |
+| E3001 | MISSING_LOCATION_ID | 請提供 regionId 或 countryId |
+| E3002 | NO_DISTRICT_FOUND | 找不到可用的區域 |
+| E3003 | REGION_NOT_FOUND | 找不到指定的縣市 |
+| E3005 | NO_PLACES_AVAILABLE | 該區域暫無景點資料 |
+| **商家 (E4xxx)** |
+| E4001 | MERCHANT_REQUIRED | 需要商家帳號 |
+| E4002 | MERCHANT_NOT_FOUND | 商家不存在 |
+| E4003 | NO_CODE_SET | 商家尚未設定核銷碼 |
+| E4004 | CODE_EXPIRED | 核銷碼已過期 |
+| E4005 | INVALID_CODE | 核銷碼錯誤 |
+| **驗證 (E5xxx)** |
+| E5001 | VALIDATION_ERROR | 輸入資料格式錯誤 |
+| E5002 | INVALID_PARAMS | 無效的參數 |
+| **伺服器 (E9xxx)** |
+| E9001 | SERVER_ERROR | 伺服器錯誤 |
+| E9004 | RATE_LIMITED | 請求過於頻繁 |
+
+### 前端處理建議
+
+```typescript
+// 使用 errorCode 判斷，不要用 message 字串比對
+if (error.errorCode === 'E1001' || error.errorCode === 'E1002') {
+  // 認證相關錯誤：導向登入頁
+  router.push('/login');
+} else if (error.errorCode.startsWith('E9')) {
+  // 伺服器錯誤：顯示通用錯誤訊息
+  showToast('系統忙碌中，請稍後再試');
+} else {
+  // 其他錯誤：查翻譯檔顯示對應訊息
+  showToast(getErrorMessage(error.errorCode));
 }
 ```
-**前端處理**: 顯示 Toast 錯誤訊息
-
-### 404 Not Found
-```json
-{
-  "error": "Resource not found"
-}
-```
-**前端處理**: 顯示「找不到資料」提示
-
-### 500 Internal Server Error
-```json
-{
-  "error": "Internal server error"
-}
-```
-**前端處理**: 顯示「系統錯誤，請稍後再試」
 
 ---
 
