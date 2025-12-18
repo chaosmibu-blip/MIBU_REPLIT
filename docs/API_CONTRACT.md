@@ -198,44 +198,60 @@ headers: {
 ### 2. 扭蛋生成 (Gacha)
 
 #### POST /api/gacha/itinerary/v3
-生成 AI 行程（需認證）
+生成 AI 行程（支援訪客模式）
 
 **Request**:
 ```typescript
 {
-  country_id: number;
-  pace: 'relaxed' | 'balanced' | 'intense';
-  district_id?: number;  // 可選，若未提供則隨機選擇
+  regionId?: number;      // 縣市 ID（優先使用）
+  countryId?: number;     // 國家 ID（若未提供 regionId）
+  city?: string;          // 城市名稱（Legacy，建議用 regionId）
+  district?: string;      // 區域名稱（可選）
+  itemCount?: number;     // 景點數量 1-15（預設 7）
+  pace?: 'relaxed' | 'moderate' | 'packed';  // 行程節奏
+  language?: string;      // 語言代碼
 }
 ```
 
 **Response**:
 ```typescript
 {
-  itinerary_id: number;
-  district: {
-    id: number;
-    name: string;
-    regionName: string;
-  };
-  places: Array<{
-    id: number;
-    name: string;
-    category: string;
-    subcategory: string;
-    description: string;
-    address: string;
-    rating: number | null;
-    locationLat: string;
-    locationLng: string;
-    isCoupon: boolean;
-    couponData?: {
+  success: boolean;
+  itinerary: Array<{
+    timeSlot: string;     // 'breakfast' | 'morning' | 'lunch' | 'afternoon' | 'dinner' | 'evening'
+    place: {
+      id: number;
+      placeName: string;
+      category: string;
+      subcategory: string | null;
+      description: string | null;
+      address: string | null;
+      rating: number | null;
+      locationLat: number | null;
+      locationLng: number | null;
+      googlePlaceId: string | null;
+    };
+    couponWon?: {
       id: number;
       title: string;
       code: string;
-      rarity: 'SP' | 'SSR' | 'SR' | 'S' | 'R';
-    };
+      terms: string | null;
+    } | null;
   }>;
+  couponsWon: Array<{
+    couponId: number;
+    placeId: number;
+    placeName: string;
+    title: string;
+    code: string;
+    terms: string | null;
+  }>;
+  meta: {
+    city: string;
+    district: string | null;
+    message?: string;     // 若無景點會有提示訊息
+    code?: string;        // 錯誤代碼 (如 "NO_PLACES_AVAILABLE")
+  };
 }
 ```
 
