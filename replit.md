@@ -99,6 +99,7 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) designed to gamify trav
 - **AI Integration**: AI-generated itineraries using Gemini API, with a Place Cache System featuring automated quality review (AI Review Scheduler for drafts, batch cache review for existing records).
 - **Location & Category Systems**: Three-tiered location hierarchy and two-tiered category system, both multi-language.
 - **Gacha Itinerary Logic**: Random district selection via database queries (countries/regions/districts tables), diverse categories, duplicate avoidance, AI descriptions, and location validation. Uses `storage.getRandomDistrictByRegion()` and `storage.getDistrictWithParents()` - no hardcoded location data.
+  - **API 參數**: `/api/generate-itinerary` 使用 `regionId` (number) 或 `countryId` (number)，不再接受 country/city 字串。
 - **Trip Planning Service**: Manages planners, service plans, orders, auto-matching, and chat room creation.
 - **Announcement & Event System**: Supports `announcement`, `flash_event`, `holiday_event` types with auto-deletion.
 - **Coupon Redemption System**: User-facing coupon redemption with merchant codes and time limits.
