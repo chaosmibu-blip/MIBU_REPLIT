@@ -3351,19 +3351,11 @@ ${uncachedSkeleton.map((item, idx) => `  {
 
   // ============ Gacha V3 - One-Day Itinerary from Official Pool ============
   
-  app.post("/api/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
-    console.log('[Gacha V3] Request received:', { body: req.body, userId: req.user?.claims?.sub });
+  app.post("/api/gacha/itinerary/v3", async (req: any, res) => {
+    const userId = req.user?.claims?.sub || 'guest';
+    console.log('[Gacha V3] Request received:', { body: req.body, userId });
     
     try {
-      const userId = req.user?.claims?.sub;
-      if (!userId) {
-        console.log('[Gacha V3] No userId found in request');
-        return res.status(401).json({ 
-          success: false,
-          error: "需要登入才能使用扭蛋功能",
-          code: "AUTH_REQUIRED"
-        });
-      }
 
       // Support both old format (city, district) and new simplified format (regionId, itemCount)
       const itinerarySchema = z.object({
@@ -3515,12 +3507,18 @@ ${uncachedSkeleton.map((item, idx) => `  {
               const wonCoupon = claimInfo.coupons[randomIdx];
               couponWon = { id: wonCoupon.id, title: wonCoupon.title, code: wonCoupon.code, terms: wonCoupon.terms };
               couponsWon.push({ couponId: wonCoupon.id, placeId: place.id, placeName: place.placeName, title: wonCoupon.title, code: wonCoupon.code, terms: wonCoupon.terms });
-              await storage.saveToCollectionWithCoupon(userId, place, wonCoupon);
+              if (userId !== 'guest') {
+                await storage.saveToCollectionWithCoupon(userId, place, wonCoupon);
+              }
             } else {
-              await storage.saveToCollectionWithCoupon(userId, place);
+              if (userId !== 'guest') {
+                await storage.saveToCollectionWithCoupon(userId, place);
+              }
             }
           } else {
-            await storage.saveToCollectionWithCoupon(userId, place);
+            if (userId !== 'guest') {
+              await storage.saveToCollectionWithCoupon(userId, place);
+            }
           }
 
           itinerary.push({
