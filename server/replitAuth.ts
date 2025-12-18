@@ -34,11 +34,16 @@ export function verifyPassword(password: string, storedHash: string): boolean {
 }
 
 // Super admin initialization
-const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
-const SUPER_ADMIN_PASSWORD = 'A25576321zzay69@';
+const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 's8869420@gmail.com';
+const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD;
 
 export async function initializeSuperAdmin(): Promise<void> {
   try {
+    if (!SUPER_ADMIN_PASSWORD) {
+      console.warn('[Admin] SUPER_ADMIN_PASSWORD environment variable not set. Skipping super admin initialization.');
+      return;
+    }
+
     const existingUser = await storage.getUserByEmail(SUPER_ADMIN_EMAIL);
     
     if (!existingUser) {
