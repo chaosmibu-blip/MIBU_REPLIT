@@ -1461,32 +1461,36 @@ ${uncachedSkeleton.map((item, idx) => `  {
           ? { lat: parseFloat(cached.locationLat), lng: parseFloat(cached.locationLng) }
           : null;
         
+        const categoryZhMapCached: Record<string, string> = {
+          'Food': '美食', 'Stay': '住宿', 'Education': '生態文化教育',
+          'Activity': '遊程體驗', 'Entertainment': '娛樂設施', 'Scenery': '景點', 'Shopping': '購物'
+        };
         finalInventory[skeletonIdx] = {
           id: Date.now() + skeletonIdx,
-          place_name: cached.placeName,
+          placeName: cached.placeName,
           description: cached.description,
-          category: cached.category,
-          sub_category: cached.subCategory,
-          suggested_time: skelItem.suggestedTime,
+          category: categoryZhMapCached[cached.category] || cached.category,
+          subCategory: cached.subCategory,
+          suggestedTime: skelItem.suggestedTime,
           duration: cached.duration || '1-2 hours',
-          time_slot: skelItem.timeSlot,
-          search_query: cached.searchQuery,
-          color_hex: cached.colorHex || '#6366f1',
+          timeSlot: skelItem.timeSlot,
+          searchQuery: cached.searchQuery,
+          colorHex: cached.colorHex || '#6366f1',
           city: city,
           country: country,
           district: targetDistrict,
-          energy_level: skelItem.energyLevel,
-          is_coupon: false,
-          coupon_data: null,
-          operating_status: 'OPEN',
-          place_id: cached.placeId || null,
-          verified_name: cached.verifiedName || cached.placeName,
-          verified_address: cached.verifiedAddress || null,
-          google_rating: cached.googleRating ? Number(cached.googleRating) : null,
+          energyLevel: skelItem.energyLevel,
+          isCoupon: false,
+          couponData: null,
+          operatingStatus: 'OPEN',
+          placeId: cached.placeId || null,
+          verifiedName: cached.verifiedName || cached.placeName,
+          verifiedAddress: cached.verifiedAddress || null,
+          googleRating: cached.googleRating ? Number(cached.googleRating) : null,
           location: cachedLocation,
-          is_location_verified: cached.isLocationVerified === true,
-          district_center: districtCenter,
-          from_cache: true
+          isLocationVerified: cached.isLocationVerified === true,
+          districtCenter: districtCenter,
+          fromCache: true
         };
       }
 
@@ -1517,32 +1521,36 @@ ${uncachedSkeleton.map((item, idx) => `  {
           }
         }
 
+        const categoryZhMap: Record<string, string> = {
+          'Food': '美食', 'Stay': '住宿', 'Education': '生態文化教育',
+          'Activity': '遊程體驗', 'Entertainment': '娛樂設施', 'Scenery': '景點', 'Shopping': '購物'
+        };
         const inventoryItem = {
           id: Date.now() + originalIdx,
-          place_name: aiItem.place_name,
+          placeName: aiItem.place_name,
           description: aiItem.description,
-          category: aiItem.category,
-          sub_category: aiItem.sub_category,
-          suggested_time: skelItem.suggestedTime,
+          category: categoryZhMap[aiItem.category] || aiItem.category,
+          subCategory: aiItem.sub_category,
+          suggestedTime: skelItem.suggestedTime,
           duration: aiItem.duration || '1-2 hours',
-          time_slot: skelItem.timeSlot,
-          search_query: aiItem.search_query,
-          color_hex: aiItem.color_hex || '#6366f1',
+          timeSlot: skelItem.timeSlot,
+          searchQuery: aiItem.search_query,
+          colorHex: aiItem.color_hex || '#6366f1',
           city: city,
           country: country,
           district: targetDistrict,
-          energy_level: skelItem.energyLevel,
-          is_coupon: false,
-          coupon_data: null,
-          operating_status: 'OPEN',
-          place_id: placeResult?.place_id || null,
-          verified_name: placeResult?.name || aiItem.place_name,
-          verified_address: placeResult?.formatted_address || null,
-          google_rating: placeResult?.rating || null,
+          energyLevel: skelItem.energyLevel,
+          isCoupon: false,
+          couponData: null,
+          operatingStatus: 'OPEN',
+          placeId: placeResult?.place_id || null,
+          verifiedName: placeResult?.name || aiItem.place_name,
+          verifiedAddress: placeResult?.formatted_address || null,
+          googleRating: placeResult?.rating || null,
           location: placeLocation,
-          is_location_verified: isVerified,
-          district_center: districtCenter,
-          from_cache: false
+          isLocationVerified: isVerified,
+          districtCenter: districtCenter,
+          fromCache: false
         };
 
         finalInventory[originalIdx] = inventoryItem;
@@ -1645,14 +1653,14 @@ ${uncachedSkeleton.map((item, idx) => `  {
         try {
           // 查找商家是否認領此地點
           const merchantLink = await storage.getMerchantPlaceLinkByPlaceName(
-            item.place_name || item.verified_name,
+            item.placeName || item.verifiedName,
             item.district || '',
             item.city
           );
           
           if (merchantLink) {
             // 附加商家優惠資訊 overlay
-            item.merchant_promo = {
+            item.merchantPromo = {
               merchantId: merchantLink.merchantId,
               isPromoActive: merchantLink.isPromoActive || false,
               promoTitle: merchantLink.promoTitle,
@@ -1690,7 +1698,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
                       merchantCouponId: matchingCoupon.id,
                       terms: matchingCoupon.terms,
                       content: JSON.stringify({
-                        placeName: item.place_name,
+                        placeName: item.placeName,
                         district: item.district,
                         city: item.city,
                         country: item.country,
@@ -1700,8 +1708,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
                     });
                     
                     if (inventoryItem) {
-                      item.is_coupon = true;
-                      item.coupon_data = {
+                      item.isCoupon = true;
+                      item.couponData = {
                         inventoryId: inventoryItem.id,
                         tier: tier,
                         name: matchingCoupon.name,
@@ -1711,7 +1719,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
                       };
                       couponsWon.push({
                         tier,
-                        placeName: item.place_name,
+                        placeName: item.placeName,
                         couponName: matchingCoupon.name
                       });
                     }
@@ -1721,7 +1729,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
             }
           }
         } catch (promoError) {
-          console.error(`Error enriching place ${item.place_name} with promo:`, promoError);
+          console.error(`Error enriching place ${item.placeName} with promo:`, promoError);
         }
         
         return item;
@@ -1733,16 +1741,16 @@ ${uncachedSkeleton.map((item, idx) => `  {
           date: new Date().toISOString().split('T')[0],
           country: country,
           city: city,
-          locked_district: targetDistrict,
-          user_level: level,
-          total_items: skeleton.length,
-          verification_enabled: !!GOOGLE_MAPS_API_KEY,
-          cache_hits: cachedItems.length,
-          ai_generated: uncachedSkeleton.length,
-          coupons_won: couponsWon.length
+          lockedDistrict: targetDistrict,
+          userLevel: level,
+          totalItems: skeleton.length,
+          verificationEnabled: !!GOOGLE_MAPS_API_KEY,
+          cacheHits: cachedItems.length,
+          aiGenerated: uncachedSkeleton.length,
+          couponsWon: couponsWon.length
         },
         inventory: enrichedInventory,
-        coupons_won: couponsWon
+        couponsWon: couponsWon
       };
 
       res.json({ data, sources: [] });
