@@ -215,6 +215,63 @@ headers: {
 }
 ```
 
+#### POST /api/generate-itinerary
+生成 AI 行程（訪客模式）
+
+**說明**: 此端點用於前端扭蛋功能，使用資料庫查詢隨機選擇區域內的地點。
+
+**Request**:
+```typescript
+{
+  regionId?: number;     // 縣市 ID（regionId 或 countryId 至少需一個）
+  countryId?: number;    // 國家 ID（若未提供 regionId，則從該國隨機選區）
+  level: number;         // 難度等級 1-10
+  language: string;      // 語言代碼 ('zh-TW' | 'ja' | 'ko' | 'en')
+  collectedNames?: string[];  // 已收藏地點名稱（避免重複）
+}
+```
+
+**Response**:
+```typescript
+{
+  data: {
+    items: Array<{
+      name: string;
+      nameEn: string;
+      category: string;
+      subCategory: string;
+      rarity: 'SP' | 'SSR' | 'SR' | 'S' | 'R';
+      description: string;
+      address: string;
+      lat: number;
+      lng: number;
+      rating: number;
+      coupon?: {
+        id: number;
+        title: string;
+        code: string;
+        discount: string;
+      };
+    }>;
+    totalItems: number;
+    targetDistrict: string;  // 抽中的區域名稱
+    city: string;            // 縣市名稱
+    country: string;         // 國家名稱
+    districtId: number;      // 區域 ID
+    generatedAt: string;     // ISO 時間戳
+  };
+  sources: any[];  // Gemini API 來源資訊
+}
+```
+
+**錯誤回應**:
+- `400`: 缺少必要參數或無效 ID
+- `404`: 找不到對應的區域/國家
+- `429`: Gemini API 配額限制
+- `500`: 伺服器錯誤
+
+---
+
 #### GET /api/gacha/pool/:city
 取得特定城市的獎池預覽
 
