@@ -7690,8 +7690,8 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     }
   });
 
-  // POST /api/admin/sync-places - Super Admin: Sync places data from seed file
-  app.post("/api/admin/sync-places", async (req: any, res) => {
+  // POST /api/admin/sync-database - Super Admin: Full database sync from seed files
+  app.post("/api/admin/sync-database", async (req: any, res) => {
     try {
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -7707,63 +7707,62 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
 
       const fs = await import('fs');
       const path = await import('path');
+      const seedDir = path.join(process.cwd(), 'server/seed');
       
-      const seedPath = path.join(process.cwd(), 'server/seed/places-seed.json');
-      
-      if (!fs.existsSync(seedPath)) {
-        return res.status(404).json({ error: "Seed file not found" });
-      }
-      
-      const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
-      
-      if (!Array.isArray(seedData)) {
-        return res.status(400).json({ error: "Invalid seed data format" });
-      }
+      const results: Record<string, { total: number; inserted: number; skipped: number; errors: number }> = {};
 
-      let inserted = 0;
-      let skipped = 0;
-      let errors = 0;
+      const syncOrder = [
+        'countries',
+        'regions', 
+        'districts',
+        'categories',
+        'subcategories',
+        'service_plans',
+        'places'
+      ];
 
-      for (const place of seedData) {
-        try {
-          const existing = await storage.getPlaceByGoogleId(place.google_place_id);
-          if (existing) {
-            skipped++;
-            continue;
-          }
-
-          await storage.createPlace({
-            placeName: place.place_name,
-            category: place.category,
-            subcategory: place.subcategory,
-            city: place.city,
-            district: place.district,
-            country: place.country,
-            description: place.description,
-            address: place.address,
-            rating: place.rating?.toString() || null,
-            locationLat: place.location_lat?.toString() || null,
-            locationLng: place.location_lng?.toString() || null,
-            googlePlaceId: place.google_place_id,
-          });
-          inserted++;
-        } catch (err) {
-          console.error(`Failed to insert place ${place.place_name}:`, err);
-          errors++;
+      for (const tableName of syncOrder) {
+        const seedPath = path.join(seedDir, `${tableName}-seed.json`);
+        
+        if (!fs.existsSync(seedPath)) {
+          results[tableName] = { total: 0, inserted: 0, skipped: 0, errors: 0 };
+          continue;
         }
+
+        const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
+        if (!Array.isArray(seedData)) {
+          results[tableName] = { total: 0, inserted: 0, skipped: 0, errors: 0 };
+          continue;
+        }
+
+        let inserted = 0, skipped = 0, errors = 0;
+
+        for (const record of seedData) {
+          try {
+            const syncResult = await storage.syncRecord(tableName, record);
+            if (syncResult === 'inserted') inserted++;
+            else if (syncResult === 'skipped') skipped++;
+          } catch (err) {
+            console.error(`Failed to sync ${tableName} record:`, err);
+            errors++;
+          }
+        }
+
+        results[tableName] = { total: seedData.length, inserted, skipped, errors };
       }
+
+      const summary = Object.entries(results).map(([table, r]) => 
+        `${table}: ${r.inserted} inserted, ${r.skipped} skipped, ${r.errors} errors`
+      ).join('\n');
 
       res.json({
         success: true,
-        total: seedData.length,
-        inserted,
-        skipped,
-        errors,
-        message: `Sync complete: ${inserted} inserted, ${skipped} already exist, ${errors} errors`,
+        results,
+        summary,
       });
     } catch (error) {
-      console.error("Sync places error:", error);
-      res.status(500).json({ error: "Failed to sync places data" });
+      console.error("Sync database error:", error);
+      res.status(500).json({ error: "Failed to sync database" });
     }
   });
 

@@ -243,6 +243,9 @@ export interface IStorage {
     todayCollected: number;
   }>;
   incrementAnalyticsCounter(merchantId: number, placeId: number | null, field: 'collectedCount' | 'clickCount' | 'couponUsageCount' | 'couponIssuedCount' | 'prizePoolViews'): Promise<void>;
+
+  // Database Sync (資料庫同步)
+  syncRecord(tableName: string, record: any): Promise<'inserted' | 'skipped' | 'error'>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2294,6 +2297,105 @@ export class DatabaseStorage implements IStorage {
         prizePoolViews: field === 'prizePoolViews' ? 1 : 0,
       };
       await db.insert(merchantAnalytics).values(insertData);
+    }
+  }
+
+  async syncRecord(tableName: string, record: any): Promise<'inserted' | 'skipped' | 'error'> {
+    try {
+      switch (tableName) {
+        case 'countries': {
+          const [existing] = await db.select().from(countries).where(eq(countries.id, record.id));
+          if (existing) return 'skipped';
+          await db.execute(sql`
+            INSERT INTO countries (id, code, name_en, name_zh, name_ja, name_ko, is_active)
+            VALUES (${record.id}, ${record.code}, ${record.name_en}, ${record.name_zh}, ${record.name_ja}, ${record.name_ko}, ${record.is_active ?? true})
+          `);
+          return 'inserted';
+        }
+        case 'regions': {
+          const [existing] = await db.select().from(regions).where(eq(regions.id, record.id));
+          if (existing) return 'skipped';
+          await db.execute(sql`
+            INSERT INTO regions (id, country_id, code, name_en, name_zh, name_ja, name_ko, is_active)
+            VALUES (${record.id}, ${record.country_id}, ${record.code}, ${record.name_en}, ${record.name_zh}, ${record.name_ja}, ${record.name_ko}, ${record.is_active ?? true})
+          `);
+          return 'inserted';
+        }
+        case 'districts': {
+          const [existing] = await db.select().from(districts).where(eq(districts.id, record.id));
+          if (existing) return 'skipped';
+          await db.execute(sql`
+            INSERT INTO districts (id, region_id, code, name_en, name_zh, name_ja, name_ko, is_active)
+            VALUES (${record.id}, ${record.region_id}, ${record.code}, ${record.name_en}, ${record.name_zh}, ${record.name_ja}, ${record.name_ko}, ${record.is_active ?? true})
+          `);
+          return 'inserted';
+        }
+        case 'categories': {
+          const [existing] = await db.select().from(categories).where(eq(categories.id, record.id));
+          if (existing) return 'skipped';
+          await db.execute(sql`
+            INSERT INTO categories (id, code, name_en, name_zh, name_ja, name_ko, color_hex, sort_order, is_active)
+            VALUES (${record.id}, ${record.code}, ${record.name_en}, ${record.name_zh}, ${record.name_ja}, ${record.name_ko}, ${record.color_hex}, ${record.sort_order}, ${record.is_active ?? true})
+          `);
+          return 'inserted';
+        }
+        case 'subcategories': {
+          const [existing] = await db.select().from(subcategories).where(eq(subcategories.id, record.id));
+          if (existing) return 'skipped';
+          await db.execute(sql`
+            INSERT INTO subcategories (id, category_id, code, name_en, name_zh, name_ja, name_ko, search_keywords, is_active, preferred_time_slot)
+            VALUES (${record.id}, ${record.category_id}, ${record.code}, ${record.name_en}, ${record.name_zh}, ${record.name_ja}, ${record.name_ko}, ${record.search_keywords}, ${record.is_active ?? true}, ${record.preferred_time_slot})
+          `);
+          return 'inserted';
+        }
+        case 'service_plans': {
+          const result = await db.execute(sql`SELECT 1 FROM service_plans WHERE id = ${record.id}`);
+          if (result.rows && result.rows.length > 0) return 'skipped';
+          await db.execute(sql`
+            INSERT INTO service_plans (id, name, description, price_per_hour, features, is_active)
+            VALUES (${record.id}, ${record.name}, ${record.description}, ${record.price_per_hour}, ${record.features}, ${record.is_active ?? true})
+          `);
+          return 'inserted';
+        }
+        case 'places': {
+          if (record.google_place_id) {
+            const existing = await this.getPlaceByGoogleId(record.google_place_id);
+            if (existing) return 'skipped';
+          }
+          await db.insert(places).values({
+            placeName: record.place_name,
+            category: record.category,
+            subcategory: record.subcategory,
+            city: record.city,
+            district: record.district,
+            country: record.country,
+            description: record.description,
+            address: record.address,
+            rating: record.rating?.toString(),
+            locationLat: record.location_lat?.toString(),
+            locationLng: record.location_lng?.toString(),
+            googlePlaceId: record.google_place_id,
+          });
+          return 'inserted';
+        }
+        case 'place_cache': {
+          if (record.google_place_id) {
+            const result = await db.execute(sql`SELECT 1 FROM place_cache WHERE google_place_id = ${record.google_place_id}`);
+            if (result.rows && result.rows.length > 0) return 'skipped';
+          }
+          await db.execute(sql`
+            INSERT INTO place_cache (place_name, category, sub_category, city, district, country, description, address, rating, review_count, location_lat, location_lng, google_place_id, review_status, reviewed_by, review_note)
+            VALUES (${record.place_name}, ${record.category}, ${record.sub_category}, ${record.city}, ${record.district}, ${record.country}, ${record.description}, ${record.address}, ${record.rating}, ${record.review_count}, ${record.location_lat}, ${record.location_lng}, ${record.google_place_id}, ${record.review_status}, ${record.reviewed_by}, ${record.review_note})
+          `);
+          return 'inserted';
+        }
+        default:
+          console.warn(`Unknown table for sync: ${tableName}`);
+          return 'error';
+      }
+    } catch (err) {
+      console.error(`Sync error for ${tableName}:`, err);
+      return 'error';
     }
   }
 }
