@@ -3441,24 +3441,19 @@ ${uncachedSkeleton.map((item, idx) => `  {
         });
       }
 
-      const categoryToTimeSlot: Record<string, string[]> = {
-        'food': ['breakfast', 'lunch', 'dinner'],
-        'scenery': ['morning', 'afternoon'],
-        'activity': ['morning', 'afternoon', 'evening'],
-        'entertainment': ['afternoon', 'evening'],
-        'education': ['morning', 'afternoon'],
-        'experience': ['morning', 'afternoon'],
-        'shopping': ['afternoon', 'evening'],
-        'stay': ['evening'],
-      };
-
-      const timeSlotOrder = ['breakfast', 'morning', 'lunch', 'afternoon', 'dinner', 'evening'];
+      // 簡化邏輯：直接隨機選擇 targetCount 個不重複的地點
+      console.log('[Gacha V3] Target count:', targetCount, 'Available places:', allPlaces.length);
       
-      const timeSlotQuotas: Record<string, number> = pace === 'relaxed' 
-        ? { breakfast: 1, morning: 1, lunch: 1, afternoon: 1, dinner: 1 }
-        : pace === 'moderate'
-        ? { breakfast: 1, morning: 1, lunch: 1, afternoon: 2, dinner: 1, evening: 1 }
-        : { breakfast: 1, morning: 2, lunch: 1, afternoon: 3, dinner: 1, evening: 2 };
+      // 打亂順序
+      const shuffledPlaces = [...allPlaces];
+      for (let i = shuffledPlaces.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledPlaces[i], shuffledPlaces[j]] = [shuffledPlaces[j], shuffledPlaces[i]];
+      }
+      
+      // 選擇指定數量的地點
+      const selectedPlaces = shuffledPlaces.slice(0, Math.min(targetCount, shuffledPlaces.length));
+      console.log('[Gacha V3] Selected places:', selectedPlaces.length);
 
       const itinerary: Array<{
         id: number;
@@ -3479,106 +3474,84 @@ ${uncachedSkeleton.map((item, idx) => `  {
       }> = [];
       
       const couponsWon: Array<{ couponId: number; placeId: number; placeName: string; title: string; code: string; terms?: string | null }> = [];
-      const usedPlaceIds = new Set<number>();
-
-      for (const timeSlot of timeSlotOrder) {
-        const quota = timeSlotQuotas[timeSlot] || 0;
-        if (quota === 0) continue;
-
-        const isFood = ['breakfast', 'lunch', 'dinner'].includes(timeSlot);
+      
+      // 時段分配
+      const timeSlots = ['breakfast', 'morning', 'lunch', 'afternoon', 'dinner', 'evening'];
+      
+      for (let i = 0; i < selectedPlaces.length; i++) {
+        const place = selectedPlaces[i];
+        const timeSlot = timeSlots[i % timeSlots.length];
         
-        let candidatePlaces = allPlaces.filter(p => {
-          if (usedPlaceIds.has(p.id)) return false;
-          const slots = categoryToTimeSlot[p.category] || ['afternoon'];
-          if (isFood) {
-            return p.category === 'food' && slots.includes(timeSlot);
-          }
-          return p.category !== 'food' && slots.includes(timeSlot);
-        });
-
-        for (let i = candidatePlaces.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [candidatePlaces[i], candidatePlaces[j]] = [candidatePlaces[j], candidatePlaces[i]];
-        }
-
-        const selected = candidatePlaces.slice(0, quota);
+        let couponWon = null;
+        const claimInfo = await storage.getClaimByOfficialPlaceId(place.id);
         
-        for (const place of selected) {
-          usedPlaceIds.add(place.id);
-          
-          let couponWon = null;
-          const claimInfo = await storage.getClaimByOfficialPlaceId(place.id);
-          
-          if (claimInfo) {
-            const dropRate = claimInfo.claim.couponDropRate ?? 0.1;
-            if (Math.random() < dropRate && claimInfo.coupons.length > 0) {
-              const randomIdx = Math.floor(Math.random() * claimInfo.coupons.length);
-              const wonCoupon = claimInfo.coupons[randomIdx];
-              couponWon = { id: wonCoupon.id, title: wonCoupon.title, code: wonCoupon.code, terms: wonCoupon.terms };
-              couponsWon.push({ couponId: wonCoupon.id, placeId: place.id, placeName: place.placeName, title: wonCoupon.title, code: wonCoupon.code, terms: wonCoupon.terms });
-              if (userId !== 'guest') {
-                await storage.saveToCollectionWithCoupon(userId, place, wonCoupon);
-              }
-            } else {
-              if (userId !== 'guest') {
-                await storage.saveToCollectionWithCoupon(userId, place);
-              }
+        if (claimInfo) {
+          const dropRate = claimInfo.claim.couponDropRate ?? 0.1;
+          if (Math.random() < dropRate && claimInfo.coupons.length > 0) {
+            const randomIdx = Math.floor(Math.random() * claimInfo.coupons.length);
+            const wonCoupon = claimInfo.coupons[randomIdx];
+            couponWon = { id: wonCoupon.id, title: wonCoupon.title, code: wonCoupon.code, terms: wonCoupon.terms };
+            couponsWon.push({ couponId: wonCoupon.id, placeId: place.id, placeName: place.placeName, title: wonCoupon.title, code: wonCoupon.code, terms: wonCoupon.terms });
+            if (userId !== 'guest') {
+              await storage.saveToCollectionWithCoupon(userId, place, wonCoupon);
             }
           } else {
             if (userId !== 'guest') {
               await storage.saveToCollectionWithCoupon(userId, place);
             }
           }
+        } else {
+          if (userId !== 'guest') {
+            await storage.saveToCollectionWithCoupon(userId, place);
+          }
+        }
 
-          // Category 中文映射
-          const categoryZhMap: Record<string, string> = {
-            'food': '美食', 'stay': '住宿', 'education': '生態文化教育',
-            'activity': '遊程體驗', 'entertainment': '娛樂設施', 'scenery': '景點', 'shopping': '購物',
-            'experience': '遊程體驗'
-          };
-          // 顏色映射
-          const categoryColorMap: Record<string, string> = {
-            'food': '#FF6B6B', 'stay': '#4ECDC4', 'education': '#45B7D1',
-            'activity': '#96CEB4', 'entertainment': '#FFEAA7', 'scenery': '#DDA0DD', 'shopping': '#FFB347',
-            'experience': '#96CEB4'
-          };
-          const categoryZh = categoryZhMap[place.category] || place.category;
-          const colorHex = categoryColorMap[place.category] || '#6366f1';
-          
-          // 同時提供攤平格式和巢狀格式，確保向下相容
-          itinerary.push({
-            // 攤平欄位 (新格式)
+        // Category 中文映射
+        const categoryZhMap: Record<string, string> = {
+          'food': '美食', 'stay': '住宿', 'education': '生態文化教育',
+          'activity': '遊程體驗', 'entertainment': '娛樂設施', 'scenery': '景點', 'shopping': '購物',
+          'experience': '遊程體驗'
+        };
+        // 顏色映射
+        const categoryColorMap: Record<string, string> = {
+          'food': '#FF6B6B', 'stay': '#4ECDC4', 'education': '#45B7D1',
+          'activity': '#96CEB4', 'entertainment': '#FFEAA7', 'scenery': '#DDA0DD', 'shopping': '#FFB347',
+          'experience': '#96CEB4'
+        };
+        const categoryZh = categoryZhMap[place.category] || place.category;
+        const colorHex = categoryColorMap[place.category] || '#6366f1';
+        
+        // 同時提供攤平格式和巢狀格式，確保向下相容
+        itinerary.push({
+          id: place.id,
+          placeName: place.placeName,
+          category: categoryZh,
+          subCategory: place.subcategory,
+          description: place.description,
+          address: place.address,
+          rating: place.rating,
+          locationLat: place.locationLat,
+          locationLng: place.locationLng,
+          googlePlaceId: place.googlePlaceId,
+          timeSlot,
+          colorHex,
+          isCoupon: !!couponWon,
+          couponData: couponWon,
+          rarity: couponWon ? 'SR' : null,
+          place: {
             id: place.id,
             placeName: place.placeName,
             category: categoryZh,
-            subCategory: place.subcategory,
+            subcategory: place.subcategory,
             description: place.description,
             address: place.address,
             rating: place.rating,
             locationLat: place.locationLat,
             locationLng: place.locationLng,
             googlePlaceId: place.googlePlaceId,
-            timeSlot,
-            colorHex,
-            isCoupon: !!couponWon,
-            couponData: couponWon,
-            rarity: couponWon ? 'SR' : null,
-            // 巢狀 place 物件 (舊格式，向下相容)
-            place: {
-              id: place.id,
-              placeName: place.placeName,
-              category: categoryZh,
-              subcategory: place.subcategory,
-              description: place.description,
-              address: place.address,
-              rating: place.rating,
-              locationLat: place.locationLat,
-              locationLng: place.locationLng,
-              googlePlaceId: place.googlePlaceId,
-            },
-            couponWon,
-          });
-        }
+          },
+          couponWon,
+        });
       }
 
       res.json({
