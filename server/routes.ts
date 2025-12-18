@@ -3461,20 +3461,21 @@ ${uncachedSkeleton.map((item, idx) => `  {
         : { breakfast: 1, morning: 2, lunch: 1, afternoon: 3, dinner: 1, evening: 2 };
 
       const itinerary: Array<{
+        id: number;
+        placeName: string;
+        category: string;
+        subCategory?: string | null;
+        description?: string | null;
+        address?: string | null;
+        rating?: number | null;
+        locationLat?: number | null;
+        locationLng?: number | null;
+        googlePlaceId?: string | null;
         timeSlot: string;
-        place: {
-          id: number;
-          placeName: string;
-          category: string;
-          subcategory?: string | null;
-          description?: string | null;
-          address?: string | null;
-          rating?: number | null;
-          locationLat?: number | null;
-          locationLng?: number | null;
-          googlePlaceId?: string | null;
-        };
-        couponWon?: { id: number; title: string; code: string; terms?: string | null } | null;
+        colorHex: string;
+        isCoupon: boolean;
+        couponData?: { id: number; title: string; code: string; terms?: string | null } | null;
+        rarity?: string | null;
       }> = [];
       
       const couponsWon: Array<{ couponId: number; placeId: number; placeName: string; title: string; code: string; terms?: string | null }> = [];
@@ -3529,27 +3530,44 @@ ${uncachedSkeleton.map((item, idx) => `  {
             }
           }
 
+          // Category 中文映射
+          const categoryZhMap: Record<string, string> = {
+            'food': '美食', 'stay': '住宿', 'education': '生態文化教育',
+            'activity': '遊程體驗', 'entertainment': '娛樂設施', 'scenery': '景點', 'shopping': '購物',
+            'experience': '遊程體驗'
+          };
+          // 顏色映射
+          const categoryColorMap: Record<string, string> = {
+            'food': '#FF6B6B', 'stay': '#4ECDC4', 'education': '#45B7D1',
+            'activity': '#96CEB4', 'entertainment': '#FFEAA7', 'scenery': '#DDA0DD', 'shopping': '#FFB347',
+            'experience': '#96CEB4'
+          };
+          // 攤平的資料結構，前端可直接用 item.placeName
           itinerary.push({
+            id: place.id,
+            placeName: place.placeName,
+            category: categoryZhMap[place.category] || place.category,
+            subCategory: place.subcategory,
+            description: place.description,
+            address: place.address,
+            rating: place.rating,
+            locationLat: place.locationLat,
+            locationLng: place.locationLng,
+            googlePlaceId: place.googlePlaceId,
             timeSlot,
-            place: {
-              id: place.id,
-              placeName: place.placeName,
-              category: place.category,
-              subcategory: place.subcategory,
-              description: place.description,
-              address: place.address,
-              rating: place.rating,
-              locationLat: place.locationLat,
-              locationLng: place.locationLng,
-              googlePlaceId: place.googlePlaceId,
-            },
-            couponWon,
+            colorHex: categoryColorMap[place.category] || '#6366f1',
+            isCoupon: !!couponWon,
+            couponData: couponWon,
+            rarity: couponWon ? 'SR' : null,
           });
         }
       }
 
       res.json({
         success: true,
+        targetDistrict: district || city,
+        city,
+        country: '台灣',
         itinerary,
         couponsWon,
         meta: {
