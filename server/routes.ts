@@ -7690,6 +7690,83 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     }
   });
 
+  // POST /api/admin/sync-places - Super Admin: Sync places data from seed file
+  app.post("/api/admin/sync-places", async (req: any, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: "Authorization required" });
+      }
+      
+      const adminKey = authHeader.split(' ')[1];
+      const expectedKey = process.env.SUPER_ADMIN_PASSWORD;
+      
+      if (!expectedKey || adminKey !== expectedKey) {
+        return res.status(403).json({ error: "Invalid admin key" });
+      }
+
+      const fs = await import('fs');
+      const path = await import('path');
+      
+      const seedPath = path.join(process.cwd(), 'server/seed/places-seed.json');
+      
+      if (!fs.existsSync(seedPath)) {
+        return res.status(404).json({ error: "Seed file not found" });
+      }
+      
+      const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
+      
+      if (!Array.isArray(seedData)) {
+        return res.status(400).json({ error: "Invalid seed data format" });
+      }
+
+      let inserted = 0;
+      let skipped = 0;
+      let errors = 0;
+
+      for (const place of seedData) {
+        try {
+          const existing = await storage.getPlaceByGoogleId(place.google_place_id);
+          if (existing) {
+            skipped++;
+            continue;
+          }
+
+          await storage.createPlace({
+            placeName: place.place_name,
+            category: place.category,
+            subcategory: place.subcategory,
+            city: place.city,
+            district: place.district,
+            country: place.country,
+            description: place.description,
+            address: place.address,
+            rating: place.rating?.toString() || null,
+            locationLat: place.location_lat?.toString() || null,
+            locationLng: place.location_lng?.toString() || null,
+            googlePlaceId: place.google_place_id,
+          });
+          inserted++;
+        } catch (err) {
+          console.error(`Failed to insert place ${place.place_name}:`, err);
+          errors++;
+        }
+      }
+
+      res.json({
+        success: true,
+        total: seedData.length,
+        inserted,
+        skipped,
+        errors,
+        message: `Sync complete: ${inserted} inserted, ${skipped} already exist, ${errors} errors`,
+      });
+    } catch (error) {
+      console.error("Sync places error:", error);
+      res.status(500).json({ error: "Failed to sync places data" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
