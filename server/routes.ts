@@ -3365,35 +3365,78 @@ ${uncachedSkeleton.map((item, idx) => `  {
         });
       }
 
+      // Support both old format (city, district) and new simplified format (regionId, itemCount)
       const itinerarySchema = z.object({
-        city: z.string().min(1, "請選擇城市"),
-        district: z.string().min(1, "請選擇區域"),
-        pace: z.enum(['relaxed', 'moderate', 'packed']).optional().default('moderate'),
+        // New simplified format from mobile app
+        regionId: z.number().optional(),
+        countryId: z.number().optional(),
+        language: z.string().optional(),
+        itemCount: z.number().min(1).max(15).optional(),
+        // Legacy format
+        city: z.string().optional(),
+        district: z.string().optional(),
+        pace: z.enum(['relaxed', 'moderate', 'packed']).optional(),
       });
 
       const validated = itinerarySchema.parse(req.body);
-      const { city, district, pace } = validated;
+      let { city, district, pace } = validated;
+      const { regionId, itemCount } = validated;
       
-      console.log('[Gacha V3] Validated params:', { city, district, pace, userId });
+      // If regionId is provided, look up the city name from database
+      if (regionId && !city) {
+        const region = await storage.getRegionById(regionId);
+        if (!region) {
+          return res.status(400).json({ 
+            success: false, 
+            error: "找不到指定的區域",
+            code: "REGION_NOT_FOUND"
+          });
+        }
+        city = region.nameZh;
+        console.log('[Gacha V3] Resolved regionId', regionId, 'to city:', city);
+      }
+      
+      // Validate that we have city at minimum
+      if (!city) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "請選擇城市（需提供 city 或 regionId）",
+          code: "CITY_REQUIRED"
+        });
+      }
+      
+      // Convert itemCount to pace if provided
+      if (itemCount && !pace) {
+        if (itemCount <= 5) pace = 'relaxed';
+        else if (itemCount <= 7) pace = 'moderate';
+        else pace = 'packed';
+      }
+      pace = pace || 'moderate';
+      
+      console.log('[Gacha V3] Validated params:', { city, district, pace, itemCount, userId });
 
       const itemCounts = { relaxed: 5, moderate: 7, packed: 10 };
-      const targetCount = itemCounts[pace];
+      const targetCount = itemCount || itemCounts[pace];
 
-      const allPlaces = await storage.getOfficialPlacesByDistrict(city, district, 50);
+      // If district is provided, query by district; otherwise query entire city
+      const allPlaces = district 
+        ? await storage.getOfficialPlacesByDistrict(city, district, 50)
+        : await storage.getOfficialPlacesByCity(city, 50);
       
       console.log('[Gacha V3] Found places:', allPlaces.length);
       
       if (allPlaces.length === 0) {
+        const locationDesc = district ? `${city}${district}` : city;
         console.log('[Gacha V3] No places found for:', { city, district });
         return res.json({
           success: true,
           itinerary: [],
           couponsWon: [],
           meta: { 
-            message: `${city}${district}目前還沒有上線的景點，我們正在努力擴充中！`,
+            message: `${locationDesc}目前還沒有上線的景點，我們正在努力擴充中！`,
             code: "NO_PLACES_AVAILABLE",
             city, 
-            district 
+            district: district || null
           }
         });
       }

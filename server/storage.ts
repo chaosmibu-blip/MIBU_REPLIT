@@ -189,6 +189,7 @@ export interface IStorage {
 
   // Gacha 2.0 - Official Pool
   getOfficialPlacesByDistrict(city: string, district: string, limit?: number): Promise<Place[]>;
+  getOfficialPlacesByCity(city: string, limit?: number): Promise<Place[]>;
   getClaimByOfficialPlaceId(officialPlaceId: number): Promise<{ claim: MerchantPlaceLink; coupons: Coupon[] } | undefined>;
   saveToCollectionWithCoupon(userId: string, place: Place, wonCoupon?: Coupon): Promise<Collection>;
 
@@ -1398,6 +1399,19 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(places)
       .where(and(eq(places.city, city), eq(places.district, district)))
+      .orderBy(sql`RANDOM()`);
+    
+    if (limit) {
+      return await query.limit(limit);
+    }
+    return await query;
+  }
+
+  async getOfficialPlacesByCity(city: string, limit?: number): Promise<Place[]> {
+    const query = db
+      .select()
+      .from(places)
+      .where(eq(places.city, city))
       .orderBy(sql`RANDOM()`);
     
     if (limit) {
