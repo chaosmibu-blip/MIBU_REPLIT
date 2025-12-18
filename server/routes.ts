@@ -3542,11 +3542,15 @@ ${uncachedSkeleton.map((item, idx) => `  {
             'activity': '#96CEB4', 'entertainment': '#FFEAA7', 'scenery': '#DDA0DD', 'shopping': '#FFB347',
             'experience': '#96CEB4'
           };
-          // 攤平的資料結構，前端可直接用 item.placeName
+          const categoryZh = categoryZhMap[place.category] || place.category;
+          const colorHex = categoryColorMap[place.category] || '#6366f1';
+          
+          // 同時提供攤平格式和巢狀格式，確保向下相容
           itinerary.push({
+            // 攤平欄位 (新格式)
             id: place.id,
             placeName: place.placeName,
-            category: categoryZhMap[place.category] || place.category,
+            category: categoryZh,
             subCategory: place.subcategory,
             description: place.description,
             address: place.address,
@@ -3555,10 +3559,24 @@ ${uncachedSkeleton.map((item, idx) => `  {
             locationLng: place.locationLng,
             googlePlaceId: place.googlePlaceId,
             timeSlot,
-            colorHex: categoryColorMap[place.category] || '#6366f1',
+            colorHex,
             isCoupon: !!couponWon,
             couponData: couponWon,
             rarity: couponWon ? 'SR' : null,
+            // 巢狀 place 物件 (舊格式，向下相容)
+            place: {
+              id: place.id,
+              placeName: place.placeName,
+              category: categoryZh,
+              subcategory: place.subcategory,
+              description: place.description,
+              address: place.address,
+              rating: place.rating,
+              locationLat: place.locationLat,
+              locationLng: place.locationLng,
+              googlePlaceId: place.googlePlaceId,
+            },
+            couponWon,
           });
         }
       }
