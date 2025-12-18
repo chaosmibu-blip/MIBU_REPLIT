@@ -7718,7 +7718,8 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
         'categories',
         'subcategories',
         'service_plans',
-        'places'
+        'places',
+        'place_cache'
       ];
 
       for (const tableName of syncOrder) {

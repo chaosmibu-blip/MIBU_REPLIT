@@ -2379,13 +2379,26 @@ export class DatabaseStorage implements IStorage {
           return 'inserted';
         }
         case 'place_cache': {
-          if (record.google_place_id) {
-            const result = await db.execute(sql`SELECT 1 FROM place_cache WHERE google_place_id = ${record.google_place_id}`);
+          if (record.place_id) {
+            const result = await db.execute(sql`SELECT 1 FROM place_cache WHERE place_id = ${record.place_id}`);
             if (result.rows && result.rows.length > 0) return 'skipped';
           }
           await db.execute(sql`
-            INSERT INTO place_cache (place_name, category, sub_category, city, district, country, description, address, rating, review_count, location_lat, location_lng, google_place_id, review_status, reviewed_by, review_note)
-            VALUES (${record.place_name}, ${record.category}, ${record.sub_category}, ${record.city}, ${record.district}, ${record.country}, ${record.description}, ${record.address}, ${record.rating}, ${record.review_count}, ${record.location_lat}, ${record.location_lng}, ${record.google_place_id}, ${record.review_status}, ${record.reviewed_by}, ${record.review_note})
+            INSERT INTO place_cache (
+              sub_category, district, city, country, place_name, description, category,
+              suggested_time, duration, search_query, rarity, color_hex, place_id,
+              verified_name, verified_address, google_rating, location_lat, location_lng,
+              is_location_verified, business_status, google_types, primary_type, ai_reviewed
+            ) VALUES (
+              ${record.sub_category}, ${record.district}, ${record.city}, ${record.country},
+              ${record.place_name}, ${record.description}, ${record.category},
+              ${record.suggested_time}, ${record.duration}, ${record.search_query},
+              ${record.rarity}, ${record.color_hex}, ${record.place_id},
+              ${record.verified_name}, ${record.verified_address}, ${record.google_rating},
+              ${record.location_lat}, ${record.location_lng}, ${record.is_location_verified ?? false},
+              ${record.business_status}, ${record.google_types}, ${record.primary_type},
+              ${record.ai_reviewed ?? false}
+            )
           `);
           return 'inserted';
         }
