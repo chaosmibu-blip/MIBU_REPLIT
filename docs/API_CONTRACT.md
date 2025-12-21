@@ -193,6 +193,53 @@ headers: {
 }
 ```
 
+#### DELETE /api/user/account
+刪除用戶帳號（iOS App Store 必備功能）
+
+**Headers**:
+```
+Authorization: Bearer <token>
+```
+
+**Response**:
+```typescript
+{
+  status: "ok";
+  message: "Account deleted successfully";
+  deletedCounts: {
+    users: number;
+    collections: number;
+    userInventory: number;
+    userNotifications: number;
+    couponRedemptions: number;
+    placeFeedback: number;
+    cartItems: number;
+    userLocations: number;
+    sosAlerts: number;
+    serviceOrders: number;
+    commerceOrders: number;
+    // 若為商家還包含：
+    merchants?: number;
+    merchantCoupons?: number;
+    merchantAnalytics?: number;
+    coupons?: number;
+  };
+}
+```
+
+**Error Response**:
+```typescript
+{
+  status: "error";
+  error: "User not found or already deleted";
+}
+```
+
+**注意事項**:
+- 此操作不可逆，所有用戶資料將被永久刪除
+- 若用戶是商家，商家資料也會一併刪除
+- 刪除後 session 會自動登出
+
 ---
 
 ### 2. 扭蛋生成 (Gacha)

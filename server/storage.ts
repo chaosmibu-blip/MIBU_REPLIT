@@ -50,6 +50,7 @@ export interface IStorage {
   getPendingApprovalUsers(): Promise<User[]>;
   getAllUsers(): Promise<User[]>;
   approveUser(userId: string): Promise<User | undefined>;
+  deleteUserAccount(userId: string): Promise<{ success: boolean; deletedCounts: Record<string, number> }>;
 
   // Collections
   getUserCollections(userId: string): Promise<Collection[]>;
@@ -304,6 +305,91 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, userId))
       .returning();
     return user;
+  }
+
+  async deleteUserAccount(userId: string): Promise<{ success: boolean; deletedCounts: Record<string, number> }> {
+    const deletedCounts: Record<string, number> = {};
+    
+    try {
+      // Check if user exists
+      const user = await this.getUser(userId);
+      if (!user) {
+        return { success: false, deletedCounts };
+      }
+
+      // Delete related data in order (respecting foreign key constraints)
+      // Order: child tables first, then parent tables
+      
+      // 1. User notifications
+      const notifs = await db.delete(userNotifications).where(eq(userNotifications.userId, userId)).returning();
+      deletedCounts.userNotifications = notifs.length;
+      
+      // 2. User inventory
+      const inventory = await db.delete(userInventory).where(eq(userInventory.userId, userId)).returning();
+      deletedCounts.userInventory = inventory.length;
+      
+      // 3. Coupon redemptions
+      const redemptions = await db.delete(couponRedemptions).where(eq(couponRedemptions.userId, userId)).returning();
+      deletedCounts.couponRedemptions = redemptions.length;
+      
+      // 4. Collections
+      const colls = await db.delete(collections).where(eq(collections.userId, userId)).returning();
+      deletedCounts.collections = colls.length;
+      
+      // 5. Place feedback
+      const feedback = await db.delete(placeFeedback).where(eq(placeFeedback.userId, userId)).returning();
+      deletedCounts.placeFeedback = feedback.length;
+      
+      // 6. Cart items
+      const cart = await db.delete(cartItems).where(eq(cartItems.userId, userId)).returning();
+      deletedCounts.cartItems = cart.length;
+      
+      // 7. User locations
+      const locations = await db.delete(userLocations).where(eq(userLocations.userId, userId)).returning();
+      deletedCounts.userLocations = locations.length;
+      
+      // 8. SOS alerts
+      const alerts = await db.delete(sosAlerts).where(eq(sosAlerts.userId, userId)).returning();
+      deletedCounts.sosAlerts = alerts.length;
+      
+      // 9. Service orders (where user is the buyer)
+      const orders = await db.delete(serviceOrders).where(eq(serviceOrders.userId, userId)).returning();
+      deletedCounts.serviceOrders = orders.length;
+      
+      // 10. Commerce orders
+      const commerceOrd = await db.delete(commerceOrders).where(eq(commerceOrders.userId, userId)).returning();
+      deletedCounts.commerceOrders = commerceOrd.length;
+      
+      // 11. Check if user is a merchant - if so, handle merchant data
+      const merchant = await this.getMerchantByUserId(userId);
+      if (merchant) {
+        // Delete merchant coupons first
+        const mCoupons = await db.delete(merchantCoupons).where(eq(merchantCoupons.merchantId, merchant.id)).returning();
+        deletedCounts.merchantCoupons = mCoupons.length;
+        
+        // Delete merchant analytics
+        const analytics = await db.delete(merchantAnalytics).where(eq(merchantAnalytics.merchantId, merchant.id)).returning();
+        deletedCounts.merchantAnalytics = analytics.length;
+        
+        // Delete old coupons
+        const oldCoupons = await db.delete(coupons).where(eq(coupons.merchantId, merchant.id)).returning();
+        deletedCounts.coupons = oldCoupons.length;
+        
+        // Delete merchant
+        await db.delete(merchants).where(eq(merchants.id, merchant.id));
+        deletedCounts.merchants = 1;
+      }
+      
+      // 12. Finally delete the user
+      await db.delete(users).where(eq(users.id, userId));
+      deletedCounts.users = 1;
+      
+      console.log(`[Storage] User ${userId} account deleted successfully:`, deletedCounts);
+      return { success: true, deletedCounts };
+    } catch (error) {
+      console.error(`[Storage] Failed to delete user ${userId}:`, error);
+      throw error;
+    }
   }
 
   // Collections

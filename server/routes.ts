@@ -918,6 +918,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Delete user account (iOS App Store requirement)
+  app.delete('/api/user/account', isAuthenticated, async (req: any, res) => {
+    const userId = req.user?.claims?.sub;
+    console.log('🗑️ Account Deletion Request:', { userId });
+    
+    if (!userId) {
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+    }
+    
+    try {
+      const result = await storage.deleteUserAccount(userId);
+      
+      if (!result.success) {
+        return res.status(404).json({ 
+          status: "error", 
+          error: "User not found or already deleted" 
+        });
+      }
+      
+      console.log(`[ACCOUNT DELETED] User ${userId} deleted their account. Deleted records:`, result.deletedCounts);
+      
+      // Clear session
+      req.logout((err: any) => {
+        if (err) console.error("Logout error during account deletion:", err);
+      });
+      
+      res.json({ 
+        status: "ok",
+        message: "Account deleted successfully",
+        deletedCounts: result.deletedCounts
+      });
+    } catch (error) {
+      console.error("Error deleting account:", error);
+      res.status(500).json({ 
+        status: "error", 
+        error: "Failed to delete account" 
+      });
+    }
+  });
+
   // ============ Collection Routes ============
   
   app.get("/api/collections", isAuthenticated, async (req: any, res) => {
