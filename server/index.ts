@@ -12,6 +12,7 @@ import { verifyJwtToken, initializeSuperAdmin } from "./replitAuth";
 import { checkGeofence } from "./lib/geofencing";
 import { generatePlaceWithAI, verifyPlaceWithGoogle, reviewPlaceWithAI } from "./lib/placeGenerator";
 import { setupSocketIO } from "./socketHandler";
+import { runDataCleanup } from "./lib/dataCleanup";
 import { z } from "zod";
 
 declare module "http" {
@@ -551,6 +552,43 @@ async function startServer() {
       }, 3600000); // 3600000ms = 1小時
       
       console.log('[AutoCleanup] Expired events cleanup scheduled (every 1 hour)');
+      
+      // ============================================================
+      // 9. 每 48 小時自動執行資料清洗（名稱正規化 + 智慧去重）
+      // ============================================================
+      let isDataCleanupRunning = false;
+      
+      setInterval(async () => {
+        if (isDataCleanupRunning) {
+          console.log('[DataCleanup] Previous run still in progress, skipping...');
+          return;
+        }
+        
+        isDataCleanupRunning = true;
+        try {
+          const result = await runDataCleanup();
+          if (result.renamedCount > 0 || result.deletedCount > 0) {
+            console.log(`[DataCleanup] Cleanup complete - Renamed: ${result.renamedCount}, Deleted: ${result.deletedCount}`);
+          }
+        } catch (error) {
+          console.error('[DataCleanup] Error during data cleanup:', error);
+        } finally {
+          isDataCleanupRunning = false;
+        }
+      }, 172800000); // 172800000ms = 48 小時
+      
+      console.log('[DataCleanup] Data cleanup scheduled (every 48 hours)');
+      
+      // 啟動時也執行一次清洗
+      runDataCleanup().then(result => {
+        if (result.renamedCount > 0 || result.deletedCount > 0) {
+          console.log(`[DataCleanup] Initial cleanup complete - Renamed: ${result.renamedCount}, Deleted: ${result.deletedCount}`);
+        } else {
+          console.log('[DataCleanup] Initial cleanup complete - No changes needed');
+        }
+      }).catch(err => {
+        console.error('[DataCleanup] Initial cleanup error:', err);
+      });
     },
   );
 }
