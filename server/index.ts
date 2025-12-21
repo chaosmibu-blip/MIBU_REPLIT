@@ -567,8 +567,8 @@ async function startServer() {
         isDataCleanupRunning = true;
         try {
           const result = await runDataCleanup();
-          if (result.renamedCount > 0 || result.deletedCount > 0) {
-            console.log(`[DataCleanup] Cleanup complete - Renamed: ${result.renamedCount}, Deleted: ${result.deletedCount}`);
+          if (result.totalRenamed > 0 || result.totalDeleted > 0) {
+            console.log(`[DataCleanup] Cleanup complete - Renamed: ${result.totalRenamed}, Deleted: ${result.totalDeleted}`);
           }
         } catch (error) {
           console.error('[DataCleanup] Error during data cleanup:', error);
@@ -581,8 +581,8 @@ async function startServer() {
       
       // 啟動時也執行一次清洗
       runDataCleanup().then(result => {
-        if (result.renamedCount > 0 || result.deletedCount > 0) {
-          console.log(`[DataCleanup] Initial cleanup complete - Renamed: ${result.renamedCount}, Deleted: ${result.deletedCount}`);
+        if (result.totalRenamed > 0 || result.totalDeleted > 0) {
+          console.log(`[DataCleanup] Initial cleanup complete - Renamed: ${result.totalRenamed}, Deleted: ${result.totalDeleted}`);
         } else {
           console.log('[DataCleanup] Initial cleanup complete - No changes needed');
         }
