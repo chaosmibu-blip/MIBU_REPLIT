@@ -3418,16 +3418,38 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const itemCounts = { relaxed: 5, moderate: 7, packed: 10 };
       const targetCount = itemCount || itemCounts[pace];
 
-      // If district is provided, query by district; otherwise query entire city
-      const allPlaces = district 
-        ? await storage.getOfficialPlacesByDistrict(city, district, 50)
-        : await storage.getOfficialPlacesByCity(city, 50);
+      // ========== Step 1: 錨點策略 (Anchor Strategy) ==========
+      // 如果沒有指定 district，從該縣市的鄉鎮區中隨機選一個當核心錨點
+      let anchorDistrict = district;
+      if (!anchorDistrict && regionId) {
+        const districts = await storage.getDistrictsByRegion(regionId);
+        if (districts.length > 0) {
+          const randomIdx = Math.floor(Math.random() * districts.length);
+          anchorDistrict = districts[randomIdx].nameZh;
+          console.log('[Gacha V3] Anchor district selected:', anchorDistrict);
+        }
+      }
       
-      console.log('[Gacha V3] Found places:', allPlaces.length);
+      // ========== Step 2: 結構化選點 (Structured Selection) ==========
+      // 定義類別配比：基本配額 + 權重分配
+      const getFoodQuota = (count: number) => count <= 7 ? 2 : 3;
+      const getStayQuota = (count: number) => count >= 9 ? 1 : 0;
       
-      if (allPlaces.length === 0) {
-        const locationDesc = district ? `${city}${district}` : city;
-        console.log('[Gacha V3] No places found for:', { city, district });
+      const foodQuota = getFoodQuota(targetCount);
+      const stayQuota = getStayQuota(targetCount);
+      const remainingCount = targetCount - foodQuota - stayQuota;
+      
+      console.log('[Gacha V3] Quotas:', { foodQuota, stayQuota, remainingCount, targetCount });
+      
+      // 查詢錨點區域的地點
+      const anchorPlaces = anchorDistrict 
+        ? await storage.getOfficialPlacesByDistrict(city, anchorDistrict, 100)
+        : await storage.getOfficialPlacesByCity(city, 100);
+      
+      console.log('[Gacha V3] Anchor places found:', anchorPlaces.length, 'in', anchorDistrict || city);
+      
+      if (anchorPlaces.length === 0) {
+        const locationDesc = anchorDistrict ? `${city}${anchorDistrict}` : city;
         return res.json({
           success: true,
           itinerary: [],
@@ -3436,24 +3458,156 @@ ${uncachedSkeleton.map((item, idx) => `  {
             message: `${locationDesc}目前還沒有上線的景點，我們正在努力擴充中！`,
             code: "NO_PLACES_AVAILABLE",
             city, 
-            district: district || null
+            district: anchorDistrict || null
           }
         });
       }
-
-      // 簡化邏輯：直接隨機選擇 targetCount 個不重複的地點
-      console.log('[Gacha V3] Target count:', targetCount, 'Available places:', allPlaces.length);
       
-      // 打亂順序
-      const shuffledPlaces = [...allPlaces];
-      for (let i = shuffledPlaces.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffledPlaces[i], shuffledPlaces[j]] = [shuffledPlaces[j], shuffledPlaces[i]];
+      // 按類別分組
+      const groupByCategory = (places: any[]) => {
+        const groups: Record<string, any[]> = {};
+        for (const p of places) {
+          const cat = p.category || '其他';
+          if (!groups[cat]) groups[cat] = [];
+          groups[cat].push(p);
+        }
+        return groups;
+      };
+      
+      const anchorByCategory = groupByCategory(anchorPlaces);
+      const selectedPlaces: any[] = [];
+      const usedIds = new Set<number>();
+      
+      // 輔助函數：從類別中隨機選取
+      const pickFromCategory = (category: string, count: number, fallbackPlaces?: any[]) => {
+        const picked: any[] = [];
+        let pool = [...(anchorByCategory[category] || [])];
+        
+        // 如果錨點區不夠，從 fallback 補充
+        if (pool.length < count && fallbackPlaces) {
+          const fallbackByCategory = groupByCategory(fallbackPlaces);
+          pool = [...pool, ...(fallbackByCategory[category] || [])];
+        }
+        
+        // 打亂並選取
+        for (let i = pool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+        
+        for (const p of pool) {
+          if (picked.length >= count) break;
+          if (!usedIds.has(p.id)) {
+            picked.push(p);
+            usedIds.add(p.id);
+          }
+        }
+        return picked;
+      };
+      
+      // ========== Step 2a: 擴散備案 (Fallback) ==========
+      // 預先查詢整個縣市的地點作為 fallback
+      const cityPlaces = anchorDistrict 
+        ? await storage.getOfficialPlacesByCity(city, 200)
+        : anchorPlaces;
+      
+      // 選取「食」的基本配額
+      const foodPicks = pickFromCategory('食', foodQuota, cityPlaces);
+      selectedPlaces.push(...foodPicks);
+      console.log('[Gacha V3] Food picks:', foodPicks.length);
+      
+      // 選取「宿」的基本配額
+      if (stayQuota > 0) {
+        const stayPicks = pickFromCategory('宿', stayQuota, cityPlaces);
+        selectedPlaces.push(...stayPicks);
+        console.log('[Gacha V3] Stay picks:', stayPicks.length);
       }
       
-      // 選擇指定數量的地點
-      const selectedPlaces = shuffledPlaces.slice(0, Math.min(targetCount, shuffledPlaces.length));
-      console.log('[Gacha V3] Selected places:', selectedPlaces.length);
+      // ========== Step 2b: 權重分配剩餘 ==========
+      // 計算各類別權重（基於資料庫數量）
+      const cityByCategory = groupByCategory(cityPlaces);
+      const categoryWeights: Record<string, number> = {};
+      let totalWeight = 0;
+      
+      for (const [cat, places] of Object.entries(cityByCategory)) {
+        categoryWeights[cat] = places.length;
+        totalWeight += places.length;
+      }
+      
+      // 按權重隨機選取剩餘地點
+      let remaining = remainingCount;
+      while (remaining > 0 && usedIds.size < cityPlaces.length) {
+        // 加權隨機選擇類別
+        let rand = Math.random() * totalWeight;
+        let selectedCategory = '';
+        for (const [cat, weight] of Object.entries(categoryWeights)) {
+          rand -= weight;
+          if (rand <= 0) {
+            selectedCategory = cat;
+            break;
+          }
+        }
+        if (!selectedCategory) selectedCategory = Object.keys(categoryWeights)[0];
+        
+        // 從該類別選一個
+        const picks = pickFromCategory(selectedCategory, 1, cityPlaces);
+        if (picks.length > 0) {
+          selectedPlaces.push(...picks);
+          remaining--;
+        } else {
+          // 該類別沒地點了，降低權重
+          categoryWeights[selectedCategory] = 0;
+          totalWeight = Object.values(categoryWeights).reduce((a, b) => a + b, 0);
+          if (totalWeight === 0) break;
+        }
+      }
+      
+      console.log('[Gacha V3] Total selected:', selectedPlaces.length);
+      
+      // ========== Step 3: 經緯度排序 (Coordinate Sorting) ==========
+      // 使用最近鄰居演算法排序
+      const sortByCoordinates = (places: any[]) => {
+        if (places.length <= 1) return places;
+        
+        // 分離有效座標和無效座標的地點
+        const withCoords = places.filter(p => p.locationLat && p.locationLng);
+        const withoutCoords = places.filter(p => !p.locationLat || !p.locationLng);
+        
+        if (withCoords.length <= 1) return [...withCoords, ...withoutCoords];
+        
+        const sorted: any[] = [];
+        const remaining = [...withCoords];
+        
+        // 從最北的點開始（早上通常從北邊開始）
+        remaining.sort((a, b) => b.locationLat - a.locationLat);
+        sorted.push(remaining.shift()!);
+        
+        // 最近鄰居
+        while (remaining.length > 0) {
+          const last = sorted[sorted.length - 1];
+          let nearestIdx = 0;
+          let nearestDist = Infinity;
+          
+          for (let i = 0; i < remaining.length; i++) {
+            const p = remaining[i];
+            const dist = Math.sqrt(
+              Math.pow(p.locationLat - last.locationLat, 2) +
+              Math.pow(p.locationLng - last.locationLng, 2)
+            );
+            if (dist < nearestDist) {
+              nearestDist = dist;
+              nearestIdx = i;
+            }
+          }
+          
+          sorted.push(remaining.splice(nearestIdx, 1)[0]);
+        }
+        
+        // 無座標的地點加到最後
+        return [...sorted, ...withoutCoords];
+      };
+      
+      const sortedPlaces = sortByCoordinates(selectedPlaces);
 
       const itinerary: Array<{
         id: number;
@@ -3478,8 +3632,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
       // 時段分配
       const timeSlots = ['breakfast', 'morning', 'lunch', 'afternoon', 'dinner', 'evening'];
       
-      for (let i = 0; i < selectedPlaces.length; i++) {
-        const place = selectedPlaces[i];
+      for (let i = 0; i < sortedPlaces.length; i++) {
+        const place = sortedPlaces[i];
         const timeSlot = timeSlots[i % timeSlots.length];
         
         let couponWon = null;
@@ -3554,19 +3708,78 @@ ${uncachedSkeleton.map((item, idx) => `  {
         });
       }
 
+      // 計算類別統計
+      const categoryStats: Record<string, number> = {};
+      for (const p of sortedPlaces) {
+        const cat = p.category || '其他';
+        categoryStats[cat] = (categoryStats[cat] || 0) + 1;
+      }
+      
+      // ========== Step 4: AI 生成主題介紹 ==========
+      let themeIntro = '';
+      try {
+        const placeNames = sortedPlaces.slice(0, 5).map(p => p.placeName).join('、');
+        const prompt = `根據這些地點：${placeNames}，用一句話描述${anchorDistrict || city}一日遊的主題風格。
+要求：
+- 20-30字
+- 直接寫主題，不要「這趟」開頭
+- 不要加粗、不要字數、不要標點符號
+範例：悠遊溫泉山海、品嚐在地美食的療癒小旅行`;
+        
+        const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+        const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+        const response = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey || ''
+          },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 1000, temperature: 0.7 }
+          })
+        });
+        
+        const data = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>, error?: { code?: string; message?: string } };
+        console.log('[Gacha V3] Gemini response:', JSON.stringify(data).slice(0, 500));
+        
+        if (data.error) {
+          console.error('[Gacha V3] Gemini API error:', data.error);
+          throw new Error(data.error.message || 'Gemini API error');
+        }
+        
+        let rawTheme = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+        // 清理格式標記（保守清理，只移除明顯的格式問題）
+        themeIntro = rawTheme
+          .replace(/\*\*/g, '')  // 移除加粗
+          .replace(/\s*\(\d+字?\)\s*/g, '')  // 移除字數標記
+          .trim();
+        console.log('[Gacha V3] AI Theme (raw):', rawTheme, '-> (clean):', themeIntro);
+        // 如果清理後太短或仍以「這趟」開頭，使用 fallback
+        if (!themeIntro || themeIntro.length < 8) {
+          themeIntro = `探索${anchorDistrict || city}的在地風情`;
+        }
+      } catch (aiError) {
+        console.error('[Gacha V3] AI theme generation failed:', aiError);
+        themeIntro = `探索${anchorDistrict || city}的在地風情`;
+      }
+      
       res.json({
         success: true,
-        targetDistrict: district || city,
+        targetDistrict: anchorDistrict || city,
         city,
         country: '台灣',
+        themeIntro,
         itinerary,
         couponsWon,
         meta: {
           city,
-          district,
+          anchorDistrict,
           pace,
           totalPlaces: itinerary.length,
           totalCouponsWon: couponsWon.length,
+          categoryDistribution: categoryStats,
+          sortingMethod: 'coordinate'
         }
       });
     } catch (error) {
