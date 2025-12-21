@@ -209,20 +209,34 @@ Authorization: Bearer <token>
   deletedCounts: {
     users: number;
     collections: number;
+    collectionReadStatus: number;
     userInventory: number;
     userNotifications: number;
+    userProfiles: number;
     couponRedemptions: number;
     placeFeedback: number;
     cartItems: number;
     userLocations: number;
     sosAlerts: number;
+    sosEvents: number;
     serviceOrders: number;
     commerceOrders: number;
+    tripPlans: number;
+    tripServicePurchases: number;
+    travelCompanions: number;
+    companionInvites: number;
+    chatInvites: number;
+    serviceRelations: number;
+    planners: number;
+    announcements: number;
     // 若為商家還包含：
     merchants?: number;
     merchantCoupons?: number;
     merchantAnalytics?: number;
+    merchantPlaceLinks?: number;
     coupons?: number;
+    // 若為 specialist：
+    specialists?: number;
   };
 }
 ```
