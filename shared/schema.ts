@@ -122,6 +122,7 @@ export const users = pgTable("users", {
   emergencyContactPhone: varchar("emergency_contact_phone", { length: 20 }),
   emergencyContactRelation: varchar("emergency_contact_relation", { length: 50 }),
   preferredLanguage: varchar("preferred_language", { length: 10 }).default('zh-TW'), // 'zh-TW' | 'en' | 'ja' | 'ko'
+  expoPushToken: text("expo_push_token"), // Expo Push Notification token
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

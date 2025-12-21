@@ -13,6 +13,7 @@ import { registerStripeRoutes } from "./stripeRoutes";
 import { getUncachableStripeClient } from "./stripeClient";
 import { checkGeofence } from "./lib/geofencing";
 import { callGemini, generatePlaceWithAI, verifyPlaceWithGoogle, reviewPlaceWithAI } from "./lib/placeGenerator";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import twilio from "twilio";
 const { AccessToken } = twilio.jwt;
 const ChatGrant = AccessToken.ChatGrant;
@@ -189,6 +190,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Planner Service Routes (策劃師服務)
   createPlannerServiceRoutes(app);
+  
+  // Object Storage Routes (照片上傳)
+  registerObjectStorageRoutes(app);
 
   // ============ Auth Routes ============
   
@@ -955,6 +959,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "error", 
         error: "Failed to delete account" 
       });
+    }
+  });
+
+  // Register/update push token
+  app.post('/api/user/push-token', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { token } = req.body;
+      
+      if (!token || typeof token !== 'string') {
+        return res.status(400).json({ error: "Push token is required" });
+      }
+      
+      await storage.updateUserPushToken(userId, token);
+      res.json({ status: "ok", message: "Push token registered" });
+    } catch (error) {
+      console.error("Error registering push token:", error);
+      res.status(500).json({ error: "Failed to register push token" });
+    }
+  });
+
+  // Remove push token (for logout)
+  app.delete('/api/user/push-token', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      await storage.updateUserPushToken(userId, null);
+      res.json({ status: "ok", message: "Push token removed" });
+    } catch (error) {
+      console.error("Error removing push token:", error);
+      res.status(500).json({ error: "Failed to remove push token" });
     }
   });
 

@@ -309,6 +309,13 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async updateUserPushToken(userId: string, token: string | null): Promise<void> {
+    await db
+      .update(users)
+      .set({ expoPushToken: token, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+  }
+
   async deleteUserAccount(userId: string): Promise<{ success: boolean; deletedCounts: Record<string, number> }> {
     const deletedCounts: Record<string, number> = {};
     
@@ -379,9 +386,7 @@ export class DatabaseStorage implements IStorage {
         const trips = await tx.delete(tripPlans).where(eq(tripPlans.userId, userId)).returning();
         deletedCounts.tripPlans = trips.length;
         
-        const companions = await tx.delete(travelCompanions).where(
-          or(eq(travelCompanions.userId, userId), eq(travelCompanions.companionUserId, userId))
-        ).returning();
+        const companions = await tx.delete(travelCompanions).where(eq(travelCompanions.userId, userId)).returning();
         deletedCounts.travelCompanions = companions.length;
         
         const invites = await tx.delete(companionInvites).where(
