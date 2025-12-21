@@ -249,9 +249,13 @@ headers: {
   meta: {
     city: string;
     district: string | null;
-    message?: string;     // 若無景點會有提示訊息
-    code?: string;        // 錯誤代碼 (如 "NO_PLACES_AVAILABLE")
+    message?: string;           // 若無景點會有提示訊息
+    code?: string;              // 錯誤代碼 (如 "NO_PLACES_AVAILABLE")
+    sortingMethod?: string;     // "coordinate" | "ai_reordered" - 排序方式
+    aiReorderResult?: string;   // "reordered" | "no_change" | "no_numbers" | "error" - AI調整結果
+    categoryDistribution?: Record<string, number>;  // 各類別數量分佈
   };
+  themeIntro?: string;          // AI 生成的一句話行程主題介紹
 }
 ```
 
