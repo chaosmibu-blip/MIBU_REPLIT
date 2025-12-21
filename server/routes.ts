@@ -3530,6 +3530,10 @@ ${uncachedSkeleton.map((item, idx) => `  {
       let totalWeight = 0;
       
       for (const [cat, places] of Object.entries(cityByCategory)) {
+        // 完全排除「宿」類別從權重分配（住宿只能通過基本配額獲得，最多 1 個）
+        if (cat === '宿') {
+          continue;
+        }
         categoryWeights[cat] = places.length;
         totalWeight += places.length;
       }
@@ -3607,7 +3611,86 @@ ${uncachedSkeleton.map((item, idx) => `  {
         return [...sorted, ...withoutCoords];
       };
       
-      const sortedPlaces = sortByCoordinates(selectedPlaces);
+      const coordinateSortedPlaces = sortByCoordinates(selectedPlaces);
+      
+      // ========== Step 3b: 住宿排最後 ==========
+      // 把「宿」類別的地點抽出，放到最後（晚上才入住）
+      const stayPlaces = coordinateSortedPlaces.filter(p => p.category === '宿');
+      const nonStayPlaces = coordinateSortedPlaces.filter(p => p.category !== '宿');
+      const sortedPlaces = [...nonStayPlaces, ...stayPlaces];
+      
+      console.log('[Gacha V3] After stay reorder:', { nonStay: nonStayPlaces.length, stay: stayPlaces.length });
+
+      // ========== Step 3c: AI 在地人調整順序 ==========
+      let finalPlaces = sortedPlaces;
+      let aiReorderResult = 'skipped';
+      
+      if (nonStayPlaces.length >= 3) {
+        try {
+          const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+          const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+          
+          const placesInfo = nonStayPlaces.map((p, idx) => ({
+            idx: idx + 1,
+            name: p.placeName,
+            category: p.category,
+            address: p.address || ''
+          }));
+          
+          const exampleOrder = Array.from({length: nonStayPlaces.length}, (_, i) => i + 1).join(',');
+          const reorderPrompt = `調整以下景點順序（早餐店排前面、夜店排最後）：
+${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
+只回覆數字順序如：${exampleOrder}`;
+          
+          const reorderResponse = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey || ''
+            },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: reorderPrompt }] }],
+              generationConfig: { maxOutputTokens: 500, temperature: 0.2 }
+            })
+          });
+          
+          const reorderData = await reorderResponse.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>, error?: { code?: string; message?: string } };
+          const reorderText = reorderData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+          console.log('[Gacha V3] AI Reorder response:', reorderText);
+          
+          if (reorderText) {
+            if (reorderText === 'OK' || reorderText.includes('OK') || reorderText.includes('順序合理')) {
+              aiReorderResult = 'no_change';
+            } else {
+              const allNumbers = reorderText.match(/\d+/g);
+              if (allNumbers && allNumbers.length > 0) {
+                const newOrder = allNumbers.map(n => parseInt(n)).filter(n => !isNaN(n) && n >= 1 && n <= nonStayPlaces.length);
+                const uniqueOrder = [...new Set(newOrder)];
+                
+                if (uniqueOrder.length === nonStayPlaces.length) {
+                  const reorderedNonStay = uniqueOrder.map(idx => nonStayPlaces[idx - 1]);
+                  finalPlaces = [...reorderedNonStay, ...stayPlaces];
+                  aiReorderResult = 'reordered';
+                  console.log('[Gacha V3] AI reordered:', uniqueOrder);
+                } else {
+                  aiReorderResult = 'partial_response';
+                  console.log('[Gacha V3] AI reorder partial (got', uniqueOrder.length, 'of', nonStayPlaces.length, '), keeping original');
+                }
+              } else {
+                aiReorderResult = 'no_numbers';
+                console.log('[Gacha V3] AI returned text without numbers:', reorderText.slice(0, 50));
+              }
+            }
+          } else {
+            aiReorderResult = 'empty_response';
+          }
+        } catch (reorderError) {
+          console.error('[Gacha V3] AI reorder failed:', reorderError);
+          aiReorderResult = 'error';
+        }
+      }
+      
+      console.log('[Gacha V3] AI reorder result:', aiReorderResult);
 
       const itinerary: Array<{
         id: number;
@@ -3632,8 +3715,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
       // 時段分配
       const timeSlots = ['breakfast', 'morning', 'lunch', 'afternoon', 'dinner', 'evening'];
       
-      for (let i = 0; i < sortedPlaces.length; i++) {
-        const place = sortedPlaces[i];
+      for (let i = 0; i < finalPlaces.length; i++) {
+        const place = finalPlaces[i];
         const timeSlot = timeSlots[i % timeSlots.length];
         
         let couponWon = null;
@@ -3710,7 +3793,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
 
       // 計算類別統計
       const categoryStats: Record<string, number> = {};
-      for (const p of sortedPlaces) {
+      for (const p of finalPlaces) {
         const cat = p.category || '其他';
         categoryStats[cat] = (categoryStats[cat] || 0) + 1;
       }
@@ -3718,7 +3801,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
       // ========== Step 4: AI 生成主題介紹 ==========
       let themeIntro = '';
       try {
-        const placeNames = sortedPlaces.slice(0, 5).map(p => p.placeName).join('、');
+        const placeNames = finalPlaces.slice(0, 5).map(p => p.placeName).join('、');
         const prompt = `根據這些地點：${placeNames}，用一句話描述${anchorDistrict || city}一日遊的主題風格。
 要求：
 - 20-30字
@@ -3779,7 +3862,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
           totalPlaces: itinerary.length,
           totalCouponsWon: couponsWon.length,
           categoryDistribution: categoryStats,
-          sortingMethod: 'coordinate'
+          sortingMethod: aiReorderResult === 'reordered' ? 'ai_reordered' : 'coordinate',
+          aiReorderResult
         }
       });
     } catch (error) {
