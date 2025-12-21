@@ -2279,7 +2279,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
 
       // === HARDCODED PROBABILITY CONSTANTS ===
       const CACHE_USE_PROBABILITY = 0.25; // 25% chance to use cache
-      const COLLECTED_REDUCTION_PROBABILITY = 0.45; // 45% reduction for collected items
+      const COLLECTED_REDUCTION_PROBABILITY = 0.40; // 40% reduction for collected items
       
       // Step 4: Select subcategory using 1/8 category probability, then 1/N subcategory probability
       // with time-appropriate filtering to avoid awkward combinations

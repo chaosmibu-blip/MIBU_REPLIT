@@ -316,6 +316,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async addToCollection(collection: InsertCollection): Promise<Collection> {
+    // 標準化區域名稱（修正常見錯字）
+    const normalizeDistrict = (d: string | undefined | null): string | undefined => {
+      if (!d) return undefined;
+      return d.replace(/郷/g, '鄉').replace(/県/g, '縣').replace(/市$/g, '市').trim();
+    };
+    
+    const normalizedDistrict = normalizeDistrict(collection.district);
+    
+    // 先用標準化後的區域名稱檢查是否已存在
     const existing = await db
       .select()
       .from(collections)
@@ -323,7 +332,7 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(collections.userId, collection.userId),
           eq(collections.placeName, collection.placeName),
-          collection.district ? eq(collections.district, collection.district) : sql`TRUE`
+          normalizedDistrict ? eq(collections.district, normalizedDistrict) : sql`TRUE`
         )
       )
       .limit(1);
@@ -332,9 +341,31 @@ export class DatabaseStorage implements IStorage {
       return existing[0];
     }
     
+    // 也檢查是否有未標準化的舊資料
+    if (collection.district && collection.district !== normalizedDistrict) {
+      const existingOld = await db
+        .select()
+        .from(collections)
+        .where(
+          and(
+            eq(collections.userId, collection.userId),
+            eq(collections.placeName, collection.placeName),
+            eq(collections.district, collection.district)
+          )
+        )
+        .limit(1);
+      
+      if (existingOld.length > 0) {
+        return existingOld[0];
+      }
+    }
+    
     const [newCollection] = await db
       .insert(collections)
-      .values(collection)
+      .values({
+        ...collection,
+        district: normalizedDistrict || collection.district
+      })
       .returning();
     return newCollection;
   }
