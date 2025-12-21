@@ -3534,8 +3534,9 @@ ${uncachedSkeleton.map((item, idx) => `  {
         if (cat === '宿') {
           continue;
         }
-        categoryWeights[cat] = places.length;
-        totalWeight += places.length;
+        // 使用等權重（每個類別權重 = 1），避免資料量大的類別（如「食」）佔比過高
+        categoryWeights[cat] = 1;
+        totalWeight += 1;
       }
       
       // 按權重隨機選取剩餘地點
