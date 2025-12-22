@@ -228,9 +228,79 @@ Apple Sign In 登入，驗證 Apple Identity Token 並取得 JWT
 **注意事項**:
 - Apple 只在用戶首次授權時提供 email 和姓名
 - 後端會自動處理帳號合併：如果相同 email 已存在其他帳號，資料會遷移到 Apple 帳號
-- **安全限制**：新用戶只能註冊為 `traveler`，無法自行選擇其他角色
-- 現有用戶必須用正確的入口登入（role 必須匹配 targetPortal）
+- **限制**：Apple 登入只允許 `traveler` 入口，商家/專員請使用 Email 註冊
 - 需要設定 `APPLE_CLIENT_ID` 環境變數
+
+#### POST /api/auth/register/merchant
+商家註冊（需管理員審核）
+
+**Request**:
+```typescript
+{
+  email: string;           // Email（帳號）
+  password: string;        // 密碼（至少6字）
+  businessName: string;    // 商家名稱
+  contactName: string;     // 聯絡人名稱
+  taxId?: string;          // 統一編號（選填）
+  businessCategory: string; // 產業類別
+  address: string;         // 營業地址
+  otherContact?: string;   // 其他聯絡方式
+}
+```
+
+**Response (成功)**:
+```typescript
+{
+  success: true;
+  message: "已收到您的申請，立馬為您處理";
+  user: {
+    id: string;
+    email: string;
+    role: "merchant";
+    isApproved: false;
+  };
+}
+```
+
+**錯誤回應**:
+- `400`: Email 已存在
+  ```typescript
+  { errorCode: "E1005"; message: "此電子郵件已被註冊"; }
+  ```
+
+#### POST /api/auth/register/specialist
+專員註冊（需管理員審核）
+
+**Request**:
+```typescript
+{
+  email: string;           // Email（帳號）
+  password: string;        // 密碼（至少6字）
+  name: string;            // 名稱
+  otherContact?: string;   // 其他聯絡方式
+  serviceRegion?: string;  // 服務地區（可後續設定）
+}
+```
+
+**Response (成功)**:
+```typescript
+{
+  success: true;
+  message: "已收到您的申請，立馬為您處理";
+  user: {
+    id: string;
+    email: string;
+    role: "specialist";
+    isApproved: false;
+  };
+}
+```
+
+**錯誤回應**:
+- `400`: Email 已存在
+  ```typescript
+  { errorCode: "E1005"; message: "此電子郵件已被註冊"; }
+  ```
 
 #### GET /api/auth/user
 取得當前用戶資訊（需認證）

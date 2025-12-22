@@ -211,10 +211,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return jwt.sign({ sub: userId, role }, secret, { expiresIn: '30d' });
   };
 
-  // Email/Password Registration
+  // Email/Password Registration (Traveler only)
+  // For merchant/specialist registration, use /api/auth/register/merchant or /api/auth/register/specialist
   app.post('/api/auth/register', async (req, res) => {
     try {
-      const validated = registerUserSchema.parse(req.body);
+      const travelerRegisterSchema = z.object({
+        email: z.string().email('請輸入有效的電子郵件'),
+        password: z.string().min(6, '密碼至少6個字'),
+        firstName: z.string().optional(),
+        lastName: z.string().optional(),
+      });
+      
+      const validated = travelerRegisterSchema.parse(req.body);
       
       // Check if email already exists
       const existingUser = await storage.getUserByEmail(validated.email);
@@ -228,20 +236,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Generate unique user ID
       const userId = `email_${crypto.randomBytes(16).toString('hex')}`;
       
-      // Create user with traveler role by default
+      // Security: Always create as traveler, always auto-approved
+      // Merchant/Specialist must use dedicated registration endpoints
       const user = await storage.createUser({
         id: userId,
         email: validated.email,
         password: hashedPassword,
         firstName: validated.firstName || null,
         lastName: validated.lastName || null,
-        role: validated.role || 'traveler',
-        isApproved: validated.role === 'traveler', // Travelers are auto-approved
+        role: 'traveler', // Always traveler
+        isApproved: true, // Travelers are always auto-approved
         provider: 'email',
       });
       
       // Generate JWT token
-      const token = generateToken(user.id, user.role || 'traveler');
+      const token = generateToken(user.id, 'traveler');
       
       res.status(201).json({ 
         user: { 
@@ -256,6 +265,150 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error("Registration error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: '輸入資料格式錯誤', details: error.errors });
+      }
+      res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '註冊失敗，請稍後再試'));
+    }
+  });
+
+  // Merchant Registration (商家註冊)
+  app.post('/api/auth/register/merchant', async (req, res) => {
+    try {
+      const merchantRegisterSchema = z.object({
+        email: z.string().email('請輸入有效的電子郵件'),
+        password: z.string().min(6, '密碼至少6個字'),
+        businessName: z.string().min(1, '請輸入商家名稱'),
+        contactName: z.string().min(1, '請輸入聯絡人名稱'),
+        taxId: z.string().optional(), // 統一編號（選填）
+        businessCategory: z.string().min(1, '請選擇產業類別'),
+        address: z.string().min(1, '請輸入營業地址'),
+        otherContact: z.string().optional(), // 其他聯絡方式
+      });
+      
+      const validated = merchantRegisterSchema.parse(req.body);
+      
+      // Check if email already exists
+      const existingUser = await storage.getUserByEmail(validated.email);
+      if (existingUser) {
+        return res.status(400).json(createErrorResponse(ErrorCode.EMAIL_ALREADY_EXISTS));
+      }
+      
+      // Hash password
+      const hashedPassword = hashPassword(validated.password);
+      
+      // Generate unique user ID
+      const userId = `email_${crypto.randomBytes(16).toString('hex')}`;
+      
+      // Create user with merchant role (pending approval)
+      const user = await storage.createUser({
+        id: userId,
+        email: validated.email,
+        password: hashedPassword,
+        firstName: validated.contactName,
+        lastName: null,
+        role: 'merchant',
+        isApproved: false, // Requires admin approval
+        provider: 'email',
+      });
+      
+      // Create merchant record
+      await storage.createMerchant({
+        userId: user.id,
+        email: validated.email,
+        businessName: validated.businessName,
+        ownerName: validated.contactName,
+        taxId: validated.taxId || null,
+        businessCategory: validated.businessCategory,
+        address: validated.address,
+        phone: validated.otherContact || null,
+        name: validated.businessName, // For backward compatibility
+        subscriptionPlan: 'free',
+        creditBalance: 0,
+      });
+      
+      console.log(`[Merchant Register] New merchant application: ${validated.email}, business: ${validated.businessName}`);
+      
+      res.status(201).json({
+        success: true,
+        message: '已收到您的申請，立馬為您處理',
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          isApproved: user.isApproved,
+        },
+      });
+    } catch (error: any) {
+      console.error("Merchant registration error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: '輸入資料格式錯誤', details: error.errors });
+      }
+      res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '註冊失敗，請稍後再試'));
+    }
+  });
+
+  // Specialist Registration (專員註冊)
+  app.post('/api/auth/register/specialist', async (req, res) => {
+    try {
+      const specialistRegisterSchema = z.object({
+        email: z.string().email('請輸入有效的電子郵件'),
+        password: z.string().min(6, '密碼至少6個字'),
+        name: z.string().min(1, '請輸入名稱'),
+        otherContact: z.string().optional(), // 其他聯絡方式
+        serviceRegion: z.string().optional(), // 服務地區（可後續設定）
+      });
+      
+      const validated = specialistRegisterSchema.parse(req.body);
+      
+      // Check if email already exists
+      const existingUser = await storage.getUserByEmail(validated.email);
+      if (existingUser) {
+        return res.status(400).json(createErrorResponse(ErrorCode.EMAIL_ALREADY_EXISTS));
+      }
+      
+      // Hash password
+      const hashedPassword = hashPassword(validated.password);
+      
+      // Generate unique user ID
+      const userId = `email_${crypto.randomBytes(16).toString('hex')}`;
+      
+      // Create user with specialist role (pending approval)
+      const user = await storage.createUser({
+        id: userId,
+        email: validated.email,
+        password: hashedPassword,
+        firstName: validated.name,
+        lastName: null,
+        role: 'specialist',
+        isApproved: false, // Requires admin approval
+        provider: 'email',
+      });
+      
+      // Create specialist record
+      await storage.createSpecialist({
+        userId: user.id,
+        name: validated.name,
+        serviceRegion: validated.serviceRegion || 'taipei', // Default region
+        isAvailable: false, // Not available until approved
+        maxTravelers: 5,
+        currentTravelers: 0,
+      });
+      
+      console.log(`[Specialist Register] New specialist application: ${validated.email}, name: ${validated.name}`);
+      
+      res.status(201).json({
+        success: true,
+        message: '已收到您的申請，立馬為您處理',
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          isApproved: user.isApproved,
+        },
+      });
+    } catch (error: any) {
+      console.error("Specialist registration error:", error);
       if (error.name === 'ZodError') {
         return res.status(400).json({ error: '輸入資料格式錯誤', details: error.errors });
       }
@@ -440,27 +593,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Security: New users default to 'traveler', cannot self-assign privileged roles
-      // Existing users must use their stored role (or have super admin privileges)
-      let userRole: string;
+      // Security: Apple login only allows 'traveler' portal
+      // Merchant/Specialist must use email registration
+      if (targetPortal !== 'traveler') {
+        return res.status(400).json({
+          success: false,
+          error: '商家與專員請使用 Email 註冊',
+          code: 'APPLE_LOGIN_TRAVELER_ONLY',
+        });
+      }
+      
+      // For existing users, validate they're accessing the correct portal
+      let userRole: string = 'traveler';
       if (existingUser) {
-        // Existing user: use their stored role
         userRole = existingUser.role || 'traveler';
         // Check if user is trying to access a different portal than their role
-        if (userRole !== targetPortal && existingUser.email !== SUPER_ADMIN_EMAIL) {
+        if (userRole !== 'traveler' && existingUser.email !== SUPER_ADMIN_EMAIL) {
           return res.status(403).json({
             success: false,
-            error: `您的帳號角色為 ${userRole}，無法從 ${targetPortal} 入口登入`,
+            error: `您的帳號角色為 ${userRole}，請使用對應入口登入`,
             code: 'ROLE_MISMATCH',
             currentRole: userRole,
             targetPortal: targetPortal,
           });
-        }
-      } else {
-        // New user: only allow 'traveler' role, ignore client-provided targetPortal for security
-        userRole = 'traveler';
-        if (targetPortal !== 'traveler') {
-          console.log(`[Apple Auth] Security: New user tried to request role '${targetPortal}', defaulting to 'traveler'`);
         }
       }
       
