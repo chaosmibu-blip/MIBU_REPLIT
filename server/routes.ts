@@ -13,7 +13,6 @@ import { registerStripeRoutes } from "./stripeRoutes";
 import { getUncachableStripeClient } from "./stripeClient";
 import { checkGeofence } from "./lib/geofencing";
 import { callGemini, generatePlaceWithAI, verifyPlaceWithGoogle, reviewPlaceWithAI } from "./lib/placeGenerator";
-import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import twilio from "twilio";
 const { AccessToken } = twilio.jwt;
 const ChatGrant = AccessToken.ChatGrant;
@@ -190,9 +189,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Planner Service Routes (策劃師服務)
   createPlannerServiceRoutes(app);
-  
-  // Object Storage Routes (照片上傳)
-  registerObjectStorageRoutes(app);
 
   // ============ Auth Routes ============
   
@@ -919,76 +915,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error regenerating SOS key:", error);
       res.status(500).json({ error: "Failed to regenerate SOS key" });
-    }
-  });
-
-  // Delete user account (iOS App Store requirement)
-  app.delete('/api/user/account', isAuthenticated, async (req: any, res) => {
-    const userId = req.user?.claims?.sub;
-    console.log('🗑️ Account Deletion Request:', { userId });
-    
-    if (!userId) {
-      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
-    }
-    
-    try {
-      const result = await storage.deleteUserAccount(userId);
-      
-      if (!result.success) {
-        return res.status(404).json({ 
-          status: "error", 
-          error: "User not found or already deleted" 
-        });
-      }
-      
-      console.log(`[ACCOUNT DELETED] User ${userId} deleted their account. Deleted records:`, result.deletedCounts);
-      
-      // Clear session
-      req.logout((err: any) => {
-        if (err) console.error("Logout error during account deletion:", err);
-      });
-      
-      res.json({ 
-        status: "ok",
-        message: "Account deleted successfully",
-        deletedCounts: result.deletedCounts
-      });
-    } catch (error) {
-      console.error("Error deleting account:", error);
-      res.status(500).json({ 
-        status: "error", 
-        error: "Failed to delete account" 
-      });
-    }
-  });
-
-  // Register/update push token
-  app.post('/api/user/push-token', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const { token } = req.body;
-      
-      if (!token || typeof token !== 'string') {
-        return res.status(400).json({ error: "Push token is required" });
-      }
-      
-      await storage.updateUserPushToken(userId, token);
-      res.json({ status: "ok", message: "Push token registered" });
-    } catch (error) {
-      console.error("Error registering push token:", error);
-      res.status(500).json({ error: "Failed to register push token" });
-    }
-  });
-
-  // Remove push token (for logout)
-  app.delete('/api/user/push-token', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      await storage.updateUserPushToken(userId, null);
-      res.json({ status: "ok", message: "Push token removed" });
-    } catch (error) {
-      console.error("Error removing push token:", error);
-      res.status(500).json({ error: "Failed to remove push token" });
     }
   });
 

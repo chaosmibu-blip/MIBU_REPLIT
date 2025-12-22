@@ -6,8 +6,6 @@ import {
   specialists, transactions, serviceRelations, announcements,
   adPlacements, userNotifications, couponRedemptions, userInventory, merchantCoupons,
   couponRarityConfigs, sosAlerts, merchantAnalytics, INVENTORY_MAX_SLOTS,
-  tripPlans, travelCompanions, companionInvites, sosEvents, userProfiles, 
-  tripServicePurchases, collectionReadStatus,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -52,7 +50,6 @@ export interface IStorage {
   getPendingApprovalUsers(): Promise<User[]>;
   getAllUsers(): Promise<User[]>;
   approveUser(userId: string): Promise<User | undefined>;
-  deleteUserAccount(userId: string): Promise<{ success: boolean; deletedCounts: Record<string, number> }>;
 
   // Collections
   getUserCollections(userId: string): Promise<Collection[]>;
@@ -307,187 +304,6 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, userId))
       .returning();
     return user;
-  }
-
-  async updateUserPushToken(userId: string, token: string | null): Promise<void> {
-    await db
-      .update(users)
-      .set({ expoPushToken: token, updatedAt: new Date() })
-      .where(eq(users.id, userId));
-  }
-
-  async deleteUserAccount(userId: string): Promise<{ success: boolean; deletedCounts: Record<string, number> }> {
-    const deletedCounts: Record<string, number> = {};
-    
-    try {
-      // Check if user exists
-      const user = await this.getUser(userId);
-      if (!user) {
-        return { success: false, deletedCounts };
-      }
-
-      // Use transaction to ensure atomicity - all queries use tx
-      await db.transaction(async (tx) => {
-        // === Phase 1: Set nullable FKs to NULL ===
-        await tx.execute(sql`UPDATE sos_events SET resolved_by = NULL WHERE resolved_by = ${userId}`);
-        await tx.execute(sql`UPDATE chat_invites SET used_by_user_id = NULL WHERE used_by_user_id = ${userId}`);
-        await tx.execute(sql`UPDATE place_applications SET reviewed_by = NULL WHERE reviewed_by = ${userId}`);
-        await tx.execute(sql`UPDATE coupon_probability_settings SET updated_by = NULL WHERE updated_by = ${userId}`);
-        await tx.execute(sql`UPDATE merchant_profiles SET approved_by = NULL WHERE approved_by = ${userId}`);
-        await tx.execute(sql`UPDATE trip_service_purchases SET purchased_for_user_id = NULL WHERE purchased_for_user_id = ${userId}`);
-        
-        // Handle planners: set service_orders.plannerId to NULL before deleting planner record
-        const plannerIds = await tx.execute(sql`SELECT id FROM planners WHERE user_id = ${userId}`);
-        if (plannerIds.rows && plannerIds.rows.length > 0) {
-          const plannerIdList = plannerIds.rows.map((r: any) => r.id);
-          for (const pid of plannerIdList) {
-            await tx.execute(sql`UPDATE service_orders SET planner_id = NULL WHERE planner_id = ${pid}`);
-          }
-        }
-        
-        // === Phase 2: Delete user-owned tables (direct userId FK) ===
-        
-        const notifs = await tx.delete(userNotifications).where(eq(userNotifications.userId, userId)).returning();
-        deletedCounts.userNotifications = notifs.length;
-        
-        const inventory = await tx.delete(userInventory).where(eq(userInventory.userId, userId)).returning();
-        deletedCounts.userInventory = inventory.length;
-        
-        const redemptions = await tx.delete(couponRedemptions).where(eq(couponRedemptions.userId, userId)).returning();
-        deletedCounts.couponRedemptions = redemptions.length;
-        
-        const readStatus = await tx.delete(collectionReadStatus).where(eq(collectionReadStatus.userId, userId)).returning();
-        deletedCounts.collectionReadStatus = readStatus.length;
-        
-        const colls = await tx.delete(collections).where(eq(collections.userId, userId)).returning();
-        deletedCounts.collections = colls.length;
-        
-        const feedback = await tx.delete(placeFeedback).where(eq(placeFeedback.userId, userId)).returning();
-        deletedCounts.placeFeedback = feedback.length;
-        
-        const cart = await tx.delete(cartItems).where(eq(cartItems.userId, userId)).returning();
-        deletedCounts.cartItems = cart.length;
-        
-        const locations = await tx.delete(userLocations).where(eq(userLocations.userId, userId)).returning();
-        deletedCounts.userLocations = locations.length;
-        
-        const profiles = await tx.delete(userProfiles).where(eq(userProfiles.userId, userId)).returning();
-        deletedCounts.userProfiles = profiles.length;
-        
-        const alerts = await tx.delete(sosAlerts).where(eq(sosAlerts.userId, userId)).returning();
-        deletedCounts.sosAlerts = alerts.length;
-        
-        const events = await tx.delete(sosEvents).where(eq(sosEvents.userId, userId)).returning();
-        deletedCounts.sosEvents = events.length;
-        
-        const purchases = await tx.delete(tripServicePurchases).where(eq(tripServicePurchases.userId, userId)).returning();
-        deletedCounts.tripServicePurchases = purchases.length;
-        
-        const trips = await tx.delete(tripPlans).where(eq(tripPlans.userId, userId)).returning();
-        deletedCounts.tripPlans = trips.length;
-        
-        const companions = await tx.delete(travelCompanions).where(eq(travelCompanions.userId, userId)).returning();
-        deletedCounts.travelCompanions = companions.length;
-        
-        const invites = await tx.delete(companionInvites).where(
-          or(eq(companionInvites.inviterUserId, userId), eq(companionInvites.inviteeUserId, userId))
-        ).returning();
-        deletedCounts.companionInvites = invites.length;
-        
-        const chats = await tx.delete(chatInvites).where(eq(chatInvites.inviterUserId, userId)).returning();
-        deletedCounts.chatInvites = chats.length;
-        
-        const relations = await tx.delete(serviceRelations).where(eq(serviceRelations.travelerId, userId)).returning();
-        deletedCounts.serviceRelations = relations.length;
-        
-        const orders = await tx.delete(serviceOrders).where(eq(serviceOrders.userId, userId)).returning();
-        deletedCounts.serviceOrders = orders.length;
-        
-        const commerceOrd = await tx.delete(commerceOrders).where(eq(commerceOrders.userId, userId)).returning();
-        deletedCounts.commerceOrders = commerceOrd.length;
-        
-        const anns = await tx.delete(announcements).where(eq(announcements.createdBy, userId)).returning();
-        deletedCounts.announcements = anns.length;
-        
-        const plannerRecords = await tx.delete(planners).where(eq(planners.userId, userId)).returning();
-        deletedCounts.planners = plannerRecords.length;
-        
-        // === Phase 3: Handle specialists (user may be a specialist) ===
-        const specialistRecords = await tx.select().from(specialists).where(eq(specialists.userId, userId));
-        if (specialistRecords.length > 0) {
-          const specialistId = specialistRecords[0].id;
-          // Null out service_orders.specialist_id before deleting specialist
-          await tx.execute(sql`UPDATE service_orders SET specialist_id = NULL WHERE specialist_id = ${specialistId}`);
-          await tx.delete(serviceRelations).where(eq(serviceRelations.specialistId, specialistId));
-          await tx.delete(specialists).where(eq(specialists.id, specialistId));
-          deletedCounts.specialists = 1;
-        }
-        
-        // === Phase 4: Handle merchant data (if user is a merchant) ===
-        const [merchantRecord] = await tx.select().from(merchants).where(eq(merchants.userId, userId));
-        if (merchantRecord) {
-          // Delete all merchant-owned tables in proper order (deepest FK first)
-          
-          // 1. coupon_redemptions for this merchant's coupons
-          await tx.execute(sql`DELETE FROM coupon_redemptions WHERE merchant_id = ${merchantRecord.id}`);
-          
-          // 2. user_inventory items from this merchant
-          await tx.execute(sql`DELETE FROM user_inventory WHERE merchant_id = ${merchantRecord.id}`);
-          
-          // 3. place_applications that reference this merchant
-          await tx.execute(sql`DELETE FROM place_applications WHERE merchant_id = ${merchantRecord.id}`);
-          
-          // 4. place_drafts
-          const drafts = await tx.delete(placeDrafts).where(eq(placeDrafts.merchantId, merchantRecord.id)).returning();
-          deletedCounts.placeDrafts = drafts.length;
-          
-          // 5. place_products
-          await tx.execute(sql`DELETE FROM place_products WHERE merchant_id = ${merchantRecord.id}`);
-          
-          // 6. Set merchant_id to NULL on places (nullable FK)
-          await tx.execute(sql`UPDATE places SET merchant_id = NULL WHERE merchant_id = ${merchantRecord.id}`);
-          
-          // 7. merchant_profiles
-          await tx.execute(sql`DELETE FROM merchant_profiles WHERE merchant_id = ${merchantRecord.id}`);
-          
-          // 8. transactions
-          await tx.execute(sql`DELETE FROM transactions WHERE merchant_id = ${merchantRecord.id}`);
-          
-          // 9. merchant_coupons
-          const mCoupons = await tx.delete(merchantCoupons).where(eq(merchantCoupons.merchantId, merchantRecord.id)).returning();
-          deletedCounts.merchantCoupons = mCoupons.length;
-          
-          // 10. merchant_analytics
-          const analytics = await tx.delete(merchantAnalytics).where(eq(merchantAnalytics.merchantId, merchantRecord.id)).returning();
-          deletedCounts.merchantAnalytics = analytics.length;
-          
-          // 11. merchant_place_links
-          const links = await tx.delete(merchantPlaceLinks).where(eq(merchantPlaceLinks.merchantId, merchantRecord.id)).returning();
-          deletedCounts.merchantPlaceLinks = links.length;
-          
-          // 12. coupons (old table)
-          const oldCoupons = await tx.delete(coupons).where(eq(coupons.merchantId, merchantRecord.id)).returning();
-          deletedCounts.coupons = oldCoupons.length;
-          
-          // 13. Finally delete merchant
-          await tx.delete(merchants).where(eq(merchants.id, merchantRecord.id));
-          deletedCounts.merchants = 1;
-        }
-        
-        // === Phase 5: Delete user sessions (with JSONB safety check) ===
-        await tx.execute(sql`DELETE FROM sessions WHERE sess ? 'passport' AND sess->'passport'->'user'->'claims'->>'sub' = ${userId}`);
-        
-        // === Phase 6: Finally delete the user ===
-        await tx.delete(users).where(eq(users.id, userId));
-        deletedCounts.users = 1;
-      });
-      
-      console.log(`[Storage] User ${userId} account deleted successfully:`, deletedCounts);
-      return { success: true, deletedCounts };
-    } catch (error) {
-      console.error(`[Storage] Failed to delete user ${userId}:`, error);
-      throw error;
-    }
   }
 
   // Collections
