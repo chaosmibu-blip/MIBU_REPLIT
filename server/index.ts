@@ -501,7 +501,7 @@ async function startServer() {
             await storage.savePlaceToCache({
               placeName: draft.placeName,
               description: draft.description || '',
-              category: category.nameZh,
+              category: category.code,
               subCategory: subcategory.nameZh,
               district: districtInfo.district.nameZh,
               city: districtInfo.region.nameZh,

@@ -2281,7 +2281,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const CACHE_USE_PROBABILITY = 0.25; // 25% chance to use cache
       const COLLECTED_REDUCTION_PROBABILITY = 0.40; // 40% reduction for collected items
       
-      // Step 4: Select subcategory using 1/8 category probability, then 1/N subcategory probability
+      // Step 4: Select subcategory using 1/N category probability (excluding food/stay for activities), then 1/N subcategory probability
       // with time-appropriate filtering to avoid awkward combinations
       const selectSubcategoryForTask = (worker: AIWorker, taskType: string): typeof allSubcategories[0] | null => {
         // Define excluded categories/subcategories per worker to avoid awkward combinations
@@ -2337,7 +2337,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
           return staySubcats.length > 0 ? staySubcats[Math.floor(Math.random() * staySubcats.length)] : null;
         }
         
-        // For 'activity' task type: use 1/8 category probability, then 1/N subcategory probability
+        // For 'activity' task type: use 1/N category probability (excluding food/stay = 6 categories), then 1/N subcategory probability
         // Step A: Get all 8 categories (excluding food and stay for activities)
         const allCategorySet = new Set<string>();
         allSubcategories.forEach(s => allCategorySet.add(s.category.code));
@@ -5815,7 +5815,7 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
             const newPlace = await storage.savePlaceToCache({
               placeName: draft.placeName,
               description: draft.description || '',
-              category: category?.nameZh || '',
+              category: category?.code || '',
               subCategory: subcategory?.nameZh || '',
               district: districtInfo.district.nameZh,
               city: districtInfo.region.nameZh,
@@ -5914,7 +5914,7 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
       const newPlace = await storage.savePlaceToCache({
         placeName: draft.placeName,
         description: draft.description || '',
-        category: category?.nameZh || '',
+        category: category?.code || '',
         subCategory: subcategory?.nameZh || '',
         district: districtInfo.district.nameZh,
         city: districtInfo.region.nameZh,
@@ -6116,7 +6116,7 @@ ${draft.address ? `地址：${draft.address}` : ''}
           await storage.savePlaceToCache({
             placeName: draft.placeName,
             description: draft.description || '',
-            category: category?.nameZh || '',
+            category: category?.code || '',
             subCategory: subcategory?.nameZh || '',
             district: districtInfo.district.nameZh,
             city: districtInfo.region.nameZh,
@@ -6381,8 +6381,8 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
             passedIds.push(place.id);
           } else {
             // 未通過審核，移至草稿表並記錄原因
-            // 查找對應的分類 ID
-            const category = categories.find(c => c.nameZh === place.category);
+            // 查找對應的分類 ID（place_cache 現在使用英文 code）
+            const category = categories.find(c => c.code === place.category);
             const subcategory = allSubcategories.find(s => s.nameZh === place.subCategory);
             
             // 查找對應的地區 ID
