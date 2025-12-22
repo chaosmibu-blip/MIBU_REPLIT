@@ -14,6 +14,7 @@ import { getUncachableStripeClient } from "./stripeClient";
 import { checkGeofence } from "./lib/geofencing";
 import { callGemini, generatePlaceWithAI, verifyPlaceWithGoogle, reviewPlaceWithAI } from "./lib/placeGenerator";
 import twilio from "twilio";
+import appleSignin from "apple-signin-auth";
 const { AccessToken } = twilio.jwt;
 const ChatGrant = AccessToken.ChatGrant;
 const VoiceGrant = AccessToken.VoiceGrant;
@@ -382,6 +383,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR));
       }
       res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '登入失敗，請稍後再試'));
+    }
+  });
+
+  // Apple Sign In
+  app.post('/api/auth/apple', async (req, res) => {
+    try {
+      const appleAuthSchema = z.object({
+        identityToken: z.string().min(1, 'Identity token is required'),
+        fullName: z.object({
+          givenName: z.string().optional(),
+          familyName: z.string().optional(),
+        }).optional(),
+        email: z.string().email().optional(),
+        user: z.string().min(1, 'Apple user ID is required'),
+        targetPortal: z.enum(['traveler', 'merchant', 'specialist', 'admin']),
+      });
+      
+      const validated = appleAuthSchema.parse(req.body);
+      const { identityToken, fullName, email, user: appleUserId, targetPortal } = validated;
+      
+      console.log(`[Apple Auth] Verifying token for Apple user: ${appleUserId}`);
+      
+      // Verify Apple identity token
+      let appleTokenPayload: any;
+      try {
+        appleTokenPayload = await appleSignin.verifyIdToken(identityToken, {
+          audience: process.env.APPLE_CLIENT_ID,
+          ignoreExpiration: false,
+        });
+      } catch (verifyError: any) {
+        console.error('[Apple Auth] Token verification failed:', verifyError.message);
+        return res.status(401).json(createErrorResponse(ErrorCode.INVALID_CREDENTIALS, 'Apple token verification failed'));
+      }
+      
+      // Extract email from token or request body (Apple only sends email on first login)
+      const userEmail = appleTokenPayload.email || email;
+      const firstName = fullName?.givenName || null;
+      const lastName = fullName?.familyName || null;
+      
+      console.log(`[Apple Auth] Verified. Email: ${userEmail}, Apple sub: ${appleTokenPayload.sub}`);
+      
+      // Generate unique user ID for Apple users
+      const userId = `apple_${appleUserId}`;
+      
+      // Try to find existing user by Apple ID first
+      let existingUser = await storage.getUser(userId);
+      
+      // If no user found by ID but we have email, check if there's an existing user with this email
+      // This handles account merging (e.g., guest user → Apple login)
+      if (!existingUser && userEmail) {
+        const existingUserByEmail = await storage.getUserByEmail(userEmail);
+        if (existingUserByEmail && existingUserByEmail.id !== userId) {
+          console.log(`[Apple Auth] Found existing user with same email. Will merge: ${existingUserByEmail.id} -> ${userId}`);
+          existingUser = existingUserByEmail; // Use existing user's role for validation
+        }
+      }
+      
+      // Security: New users default to 'traveler', cannot self-assign privileged roles
+      // Existing users must use their stored role (or have super admin privileges)
+      let userRole: string;
+      if (existingUser) {
+        // Existing user: use their stored role
+        userRole = existingUser.role || 'traveler';
+        // Check if user is trying to access a different portal than their role
+        if (userRole !== targetPortal && existingUser.email !== SUPER_ADMIN_EMAIL) {
+          return res.status(403).json({
+            success: false,
+            error: `您的帳號角色為 ${userRole}，無法從 ${targetPortal} 入口登入`,
+            code: 'ROLE_MISMATCH',
+            currentRole: userRole,
+            targetPortal: targetPortal,
+          });
+        }
+      } else {
+        // New user: only allow 'traveler' role, ignore client-provided targetPortal for security
+        userRole = 'traveler';
+        if (targetPortal !== 'traveler') {
+          console.log(`[Apple Auth] Security: New user tried to request role '${targetPortal}', defaulting to 'traveler'`);
+        }
+      }
+      
+      // upsertUser handles account merging if email matches existing user
+      const user = await storage.upsertUser({
+        id: userId,
+        email: userEmail,
+        firstName: firstName,
+        lastName: lastName,
+        role: userRole,
+        provider: 'apple',
+        isApproved: userRole === 'traveler' ? true : (existingUser?.isApproved || false),
+      });
+      
+      console.log(`[Apple Auth] User upserted: ${user.id}, role: ${user.role}`);
+      
+      const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
+      
+      // For non-traveler roles, check approval status (unless super admin)
+      if (!isSuperAdmin && user.role !== 'traveler' && !user.isApproved) {
+        return res.status(403).json({
+          success: false,
+          error: '帳號審核中，請等待管理員核准',
+          code: 'PENDING_APPROVAL',
+        });
+      }
+      
+      // Generate JWT token
+      const token = generateToken(user.id, user.role || 'traveler');
+      
+      res.json({
+        success: true,
+        token,
+        user: {
+          id: user.id,
+          email: user.email || '',
+          name: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Apple User',
+          role: user.role,
+          isApproved: user.isApproved,
+          isSuperAdmin,
+        },
+      });
+    } catch (error: any) {
+      console.error('[Apple Auth] Error:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, 'Invalid request data'));
+      }
+      res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, 'Apple authentication failed'));
     }
   });
 

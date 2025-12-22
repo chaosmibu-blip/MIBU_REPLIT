@@ -90,7 +90,7 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) designed to gamify trav
 - **Backend**: Node.js + Express with TypeScript (ES modules).
 - **API Pattern**: RESTful APIs, prefixed with `/api/`.
 - **State Management**: React Query + React useState.
-- **Authentication**: Replit Auth (OpenID Connect) for login; JWT Token for API authentication.
+- **Authentication**: Replit Auth (OpenID Connect), Apple Sign In, and Email/Password for login; JWT Token for API authentication.
 - **Role-Based Access Control (RBAC)**: `consumer`, `merchant`, `admin` roles with API differentiation.
 - **Data Storage**: PostgreSQL with Drizzle ORM.
 - **Modular Architecture**: Code organized into `modules/` and `core/`.
@@ -140,3 +140,4 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) designed to gamify trav
 - `TWILIO_API_KEY_SID`
 - `TWILIO_API_KEY_SECRET`
 - `TWILIO_CONVERSATIONS_SERVICE_SID`
+- `APPLE_CLIENT_ID` (Apple Sign In Bundle ID)

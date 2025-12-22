@@ -178,6 +178,60 @@ headers: {
 }
 ```
 
+#### POST /api/auth/apple
+Apple Sign In 登入，驗證 Apple Identity Token 並取得 JWT
+
+**Request**:
+```typescript
+{
+  identityToken: string;  // Apple 返回的 JWT token
+  fullName?: {
+    givenName?: string;
+    familyName?: string;
+  };
+  email?: string;         // Apple 只在首次登入提供 email
+  user: string;           // Apple user ID
+  targetPortal: 'traveler' | 'merchant' | 'specialist' | 'admin';
+}
+```
+
+**Response (成功)**:
+```typescript
+{
+  success: true;
+  token: string;          // JWT token (7天有效)
+  user: {
+    id: string;           // 格式: apple_{appleUserId}
+    email: string;
+    name: string;
+    role: string;
+    isApproved: boolean;
+    isSuperAdmin: boolean;
+  };
+}
+```
+
+**錯誤回應**:
+- `401`: Token 驗證失敗
+  ```typescript
+  { errorCode: "E1004"; message: "Apple token verification failed"; }
+  ```
+- `403`: 帳號審核中 (非 traveler 角色)
+  ```typescript
+  { success: false; error: "帳號審核中，請等待管理員核准"; code: "PENDING_APPROVAL"; }
+  ```
+- `400`: 參數錯誤
+  ```typescript
+  { errorCode: "E5001"; message: "Invalid request data"; }
+  ```
+
+**注意事項**:
+- Apple 只在用戶首次授權時提供 email 和姓名
+- 後端會自動處理帳號合併：如果相同 email 已存在其他帳號，資料會遷移到 Apple 帳號
+- **安全限制**：新用戶只能註冊為 `traveler`，無法自行選擇其他角色
+- 現有用戶必須用正確的入口登入（role 必須匹配 targetPortal）
+- 需要設定 `APPLE_CLIENT_ID` 環境變數
+
 #### GET /api/auth/user
 取得當前用戶資訊（需認證）
 
