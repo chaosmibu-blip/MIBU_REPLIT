@@ -193,6 +193,62 @@ headers: {
 }
 ```
 
+#### DELETE /api/user/account
+刪除用戶帳號及所有相關資料（需認證）
+
+**Headers**: `Authorization: Bearer <token>`
+
+**Response (成功)**:
+```typescript
+{
+  success: true;
+  message: "帳號已成功刪除";
+}
+```
+
+**錯誤回應**:
+- `401`: 未授權
+  ```typescript
+  { success: false; error: "未授權"; code: "UNAUTHORIZED"; }
+  ```
+- `400`: 商家帳號存在（需先取消商家資格）
+  ```typescript
+  { success: false; error: "您有商家身份，請先取消商家資格後再刪除帳號"; code: "MERCHANT_ACCOUNT_EXISTS"; }
+  ```
+- `500`: 刪除失敗
+  ```typescript
+  { success: false; error: "刪除帳號失敗，請稍後再試"; code: "DELETE_FAILED"; }
+  ```
+
+**刪除順序**:
+用戶刪除時會依序清除以下資料：
+1. 用戶通知 (userNotifications)
+2. 每日抽卡統計 (userDailyGachaStats)
+3. 用戶背包 (userInventory)
+4. 優惠券兌換記錄 (couponRedemptions)
+5. 收藏 (collections)
+6. 用戶位置 (userLocations)
+7. 地點回饋 (placeFeedback)
+8. 廣告展示記錄 (adPlacements)
+9. 聊天邀請 (chatInvites)
+10. SOS 相關 (sosAlerts + sosEvents)
+11. 旅行同伴 (travelCompanions)
+12. 服務關係 - 旅客 (serviceRelations)
+13. 購物車 (cartItems)
+14. 服務訂單 + 商業訂單 (serviceOrders + commerceOrders)
+15. 規劃師記錄 (planners)
+16. 專員記錄 + 其服務關係 (specialists + serviceRelations)
+17. 旅程規劃 (tripPlans + tripDays + tripActivities)
+18. 用戶個人資料 (userProfiles)
+19. 收藏閱讀狀態 (collectionReadStatus)
+20. 旅程服務購買記錄 (tripServicePurchases) - 購買者記錄刪除，受益者欄位設 null
+21. 用戶帳號本身 (users)
+
+**注意**：
+- 如果用戶有商家身份，會返回 `MERCHANT_ACCOUNT_EXISTS` 錯誤，需先取消商家資格才能刪除帳號
+- 這是為了保護商家相關的交易記錄和優惠券歷史
+- 專員刪除時，相關的 tripServicePurchases 的 specialistId 會設為 null（保留購買歷史）
+
 ---
 
 ### 2. 扭蛋生成 (Gacha)
@@ -254,10 +310,37 @@ headers: {
     sortingMethod?: string;     // "coordinate" | "ai_reordered" - 排序方式
     aiReorderResult?: string;   // "reordered" | "no_change" | "no_numbers" | "error" - AI調整結果
     categoryDistribution?: Record<string, number>;  // 各類別數量分佈
+    dailyLimit: number;         // 每日抽卡上限（目前 36）
+    dailyPullCount: number;     // 今日已抽張數
+    remainingQuota: number;     // 今日剩餘額度
   };
   themeIntro?: string;          // AI 生成的一句話行程主題介紹
 }
 ```
+
+**錯誤回應（每日限制）**:
+- `429`: 今日抽卡次數已達上限
+  ```typescript
+  {
+    success: false;
+    error: "今日抽卡次數已達上限，請明天再來！";
+    code: "DAILY_LIMIT_EXCEEDED";
+    dailyLimit: number;
+    currentCount: number;
+    remainingQuota: 0;
+  }
+  ```
+- `400`: 請求數量超過剩餘額度
+  ```typescript
+  {
+    success: false;
+    error: "今日剩餘額度為 N 張，請調整抽取數量";
+    code: "EXCEEDS_REMAINING_QUOTA";
+    dailyLimit: number;
+    currentCount: number;
+    remainingQuota: number;
+  }
+  ```
 
 #### POST /api/generate-itinerary
 生成 AI 行程（訪客模式）

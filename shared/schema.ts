@@ -1819,3 +1819,26 @@ export const insertCouponRedemptionSchema = createInsertSchema(couponRedemptions
 
 export type CouponRedemption = typeof couponRedemptions.$inferSelect;
 export type InsertCouponRedemption = z.infer<typeof insertCouponRedemptionSchema>;
+
+// ============ User Daily Gacha Stats (每日抽卡統計) ============
+
+export const userDailyGachaStats = pgTable("user_daily_gacha_stats", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  date: date("date").notNull(), // YYYY-MM-DD format
+  pullCount: integer("pull_count").default(0).notNull(), // 當日已抽卡片數
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_daily_gacha_user").on(table.userId),
+  index("IDX_user_daily_gacha_date").on(table.date),
+]);
+
+export const userDailyGachaStatsRelations = relations(userDailyGachaStats, ({ one }) => ({
+  user: one(users, {
+    fields: [userDailyGachaStats.userId],
+    references: [users.id],
+  }),
+}));
+
+export type UserDailyGachaStat = typeof userDailyGachaStats.$inferSelect;

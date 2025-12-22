@@ -918,6 +918,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============ Delete User Account ============
+  
+  app.delete('/api/user/account', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      if (!userId) {
+        return res.status(401).json({ 
+          success: false, 
+          error: "未授權",
+          code: "UNAUTHORIZED" 
+        });
+      }
+      
+      console.log(`[Account Deletion] User ${userId} requested account deletion`);
+      
+      const result = await storage.deleteUserAccount(userId);
+      
+      if (result.success) {
+        console.log(`[Account Deletion] User ${userId} account deleted successfully`);
+        res.json({ 
+          success: true, 
+          message: "帳號已成功刪除" 
+        });
+      } else {
+        // 根據錯誤代碼返回適當的狀態碼
+        const statusCode = result.code === 'MERCHANT_ACCOUNT_EXISTS' ? 400 : 500;
+        console.log(`[Account Deletion] Failed to delete user ${userId}: ${result.code}`);
+        res.status(statusCode).json({ 
+          success: false, 
+          error: result.error,
+          code: result.code
+        });
+      }
+    } catch (error) {
+      console.error("Delete account error:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: "刪除帳號時發生錯誤",
+        code: "SERVER_ERROR" 
+      });
+    }
+  });
+
   // ============ Collection Routes ============
   
   app.get("/api/collections", isAuthenticated, async (req: any, res) => {
@@ -3382,6 +3426,37 @@ ${uncachedSkeleton.map((item, idx) => `  {
       let { city, district, pace } = validated;
       const { regionId, itemCount } = validated;
       
+      // ========== 每日抽卡限制檢查 ==========
+      const DAILY_PULL_LIMIT = 36; // 每人每天最多抽 36 張卡
+      const requestedCount = itemCount || 7; // 預設 7 張
+      
+      if (userId !== 'guest') {
+        const currentDailyCount = await storage.getUserDailyGachaCount(userId);
+        const remainingQuota = DAILY_PULL_LIMIT - currentDailyCount;
+        
+        if (remainingQuota <= 0) {
+          return res.status(429).json({
+            success: false,
+            error: "今日抽卡次數已達上限，請明天再來！",
+            code: "DAILY_LIMIT_EXCEEDED",
+            dailyLimit: DAILY_PULL_LIMIT,
+            currentCount: currentDailyCount,
+            remainingQuota: 0
+          });
+        }
+        
+        if (requestedCount > remainingQuota) {
+          return res.status(400).json({
+            success: false,
+            error: `今日剩餘額度為 ${remainingQuota} 張，請調整抽取數量`,
+            code: "EXCEEDS_REMAINING_QUOTA",
+            dailyLimit: DAILY_PULL_LIMIT,
+            currentCount: currentDailyCount,
+            remainingQuota
+          });
+        }
+      }
+      
       // If regionId is provided, look up the city name from database
       if (regionId && !city) {
         const region = await storage.getRegionById(regionId);
@@ -3848,6 +3923,14 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
         themeIntro = `探索${anchorDistrict || city}的在地風情`;
       }
       
+      // 成功後遞增每日抽卡計數
+      let newDailyCount = 0;
+      let remainingQuota = DAILY_PULL_LIMIT;
+      if (userId !== 'guest') {
+        newDailyCount = await storage.incrementUserDailyGachaCount(userId, itinerary.length);
+        remainingQuota = DAILY_PULL_LIMIT - newDailyCount;
+      }
+      
       res.json({
         success: true,
         targetDistrict: anchorDistrict || city,
@@ -3864,7 +3947,10 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
           totalCouponsWon: couponsWon.length,
           categoryDistribution: categoryStats,
           sortingMethod: aiReorderResult === 'reordered' ? 'ai_reordered' : 'coordinate',
-          aiReorderResult
+          aiReorderResult,
+          dailyLimit: DAILY_PULL_LIMIT,
+          dailyPullCount: newDailyCount,
+          remainingQuota
         }
       });
     } catch (error) {

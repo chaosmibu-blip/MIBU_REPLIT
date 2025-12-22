@@ -5,7 +5,9 @@ import {
   placeDrafts, placeApplications, userLocations, planners, serviceOrders, places,
   specialists, transactions, serviceRelations, announcements,
   adPlacements, userNotifications, couponRedemptions, userInventory, merchantCoupons,
-  couponRarityConfigs, sosAlerts, merchantAnalytics, INVENTORY_MAX_SLOTS,
+  couponRarityConfigs, sosAlerts, merchantAnalytics, userDailyGachaStats, 
+  tripPlans, tripDays, tripActivities, travelCompanions, sosEvents, 
+  userProfiles, collectionReadStatus, tripServicePurchases, INVENTORY_MAX_SLOTS,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
   type Merchant, type InsertMerchant,
@@ -2440,6 +2442,147 @@ export class DatabaseStorage implements IStorage {
     } catch (err) {
       console.error(`Sync error for ${tableName}:`, err);
       return 'error';
+    }
+  }
+
+  // ============ User Daily Gacha Stats (每日抽卡統計) ============
+  
+  async getUserDailyGachaCount(userId: string): Promise<number> {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const [stat] = await db.select()
+      .from(userDailyGachaStats)
+      .where(and(
+        eq(userDailyGachaStats.userId, userId),
+        eq(userDailyGachaStats.date, today)
+      ));
+    return stat?.pullCount || 0;
+  }
+
+  async incrementUserDailyGachaCount(userId: string, count: number): Promise<number> {
+    const today = new Date().toISOString().split('T')[0];
+    const [existing] = await db.select()
+      .from(userDailyGachaStats)
+      .where(and(
+        eq(userDailyGachaStats.userId, userId),
+        eq(userDailyGachaStats.date, today)
+      ));
+    
+    if (existing) {
+      const newCount = existing.pullCount + count;
+      await db.update(userDailyGachaStats)
+        .set({ pullCount: newCount, updatedAt: new Date() })
+        .where(eq(userDailyGachaStats.id, existing.id));
+      return newCount;
+    } else {
+      await db.insert(userDailyGachaStats).values({
+        userId,
+        date: today,
+        pullCount: count
+      });
+      return count;
+    }
+  }
+
+  // ============ Delete User Account (刪除帳號) ============
+  
+  async deleteUserAccount(userId: string): Promise<{ success: boolean; error?: string; code?: string }> {
+    try {
+      // 0. 檢查是否有商家身份（商家帳號需要先取消商家身份才能刪除）
+      const [merchant] = await db.select().from(merchants).where(eq(merchants.userId, userId));
+      if (merchant) {
+        console.log(`[Account Deletion] User ${userId} has merchant account, deletion blocked`);
+        return { 
+          success: false, 
+          error: "您有商家身份，請先取消商家資格後再刪除帳號",
+          code: "MERCHANT_ACCOUNT_EXISTS"
+        };
+      }
+      
+      // 依序刪除用戶相關資料（注意外鍵順序）
+      // 1. 通知和統計
+      await db.delete(userNotifications).where(eq(userNotifications.userId, userId));
+      await db.delete(userDailyGachaStats).where(eq(userDailyGachaStats.userId, userId));
+      
+      // 2. 背包和優惠券兌換
+      await db.delete(userInventory).where(eq(userInventory.userId, userId));
+      await db.delete(couponRedemptions).where(eq(couponRedemptions.userId, userId));
+      
+      // 3. 收藏和位置
+      await db.delete(collections).where(eq(collections.userId, userId));
+      await db.delete(userLocations).where(eq(userLocations.userId, userId));
+      await db.delete(placeFeedback).where(eq(placeFeedback.userId, userId));
+      
+      // 4. 廣告展示和聊天邀請
+      await db.delete(adPlacements).where(eq(adPlacements.userId, userId));
+      await db.delete(chatInvites).where(eq(chatInvites.inviterUserId, userId));
+      await db.delete(chatInvites).where(eq(chatInvites.usedByUserId, userId));
+      
+      // 5. SOS 相關
+      await db.delete(sosAlerts).where(eq(sosAlerts.userId, userId));
+      await db.delete(sosEvents).where(eq(sosEvents.userId, userId));
+      
+      // 5b. 旅行同伴
+      await db.delete(travelCompanions).where(eq(travelCompanions.userId, userId));
+      
+      // 6. 服務關係 (作為旅客)
+      await db.delete(serviceRelations).where(eq(serviceRelations.travelerId, userId));
+      
+      // 7. 購物車、服務訂單和商業訂單
+      await db.delete(cartItems).where(eq(cartItems.userId, userId));
+      await db.delete(serviceOrders).where(eq(serviceOrders.userId, userId));
+      await db.delete(commerceOrders).where(eq(commerceOrders.userId, userId));
+      
+      // 8. 規劃師
+      await db.delete(planners).where(eq(planners.userId, userId));
+      
+      // 9. 專員（需要先處理專員的服務關係）
+      const userSpecialists = await db.select().from(specialists).where(eq(specialists.userId, userId));
+      for (const specialist of userSpecialists) {
+        // 刪除專員的服務關係
+        await db.delete(serviceRelations).where(eq(serviceRelations.specialistId, specialist.id));
+        // 將該專員相關的購買記錄的 specialistId 設為 null（保留購買歷史）
+        await db.update(tripServicePurchases)
+          .set({ specialistId: null })
+          .where(eq(tripServicePurchases.specialistId, specialist.id));
+      }
+      await db.delete(specialists).where(eq(specialists.userId, userId));
+      
+      // 10. 旅程規劃（需要先刪除子表）
+      const userTripPlans = await db.select().from(tripPlans).where(eq(tripPlans.userId, userId));
+      for (const plan of userTripPlans) {
+        // 刪除 tripActivities (依賴 tripDays)
+        const planDays = await db.select().from(tripDays).where(eq(tripDays.tripPlanId, plan.id));
+        for (const day of planDays) {
+          await db.delete(tripActivities).where(eq(tripActivities.tripDayId, day.id));
+        }
+        // 刪除 tripDays
+        await db.delete(tripDays).where(eq(tripDays.tripPlanId, plan.id));
+      }
+      // 刪除 tripPlans
+      await db.delete(tripPlans).where(eq(tripPlans.userId, userId));
+      
+      // 11. 其他用戶相關資料
+      await db.delete(userProfiles).where(eq(userProfiles.userId, userId));
+      await db.delete(collectionReadStatus).where(eq(collectionReadStatus.userId, userId));
+      
+      // 將購買記錄的 purchasedForUserId 設為 null（當用戶是受益者時）
+      await db.update(tripServicePurchases)
+        .set({ purchasedForUserId: null })
+        .where(eq(tripServicePurchases.purchasedForUserId, userId));
+      // 刪除用戶自己購買的記錄
+      await db.delete(tripServicePurchases).where(eq(tripServicePurchases.userId, userId));
+      
+      // 最後刪除用戶本身
+      await db.delete(users).where(eq(users.id, userId));
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Delete user account error:', error);
+      return { 
+        success: false, 
+        error: "刪除帳號時發生錯誤",
+        code: "DELETE_FAILED" 
+      };
     }
   }
 }
