@@ -268,6 +268,45 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
+    // 先檢查是否有相同 email 但不同 ID 的舊用戶（帳號合併邏輯）
+    if (userData.email && userData.id) {
+      const existingUserByEmail = await this.getUserByEmail(userData.email);
+      
+      if (existingUserByEmail && existingUserByEmail.id !== userData.id) {
+        console.log(`[upsertUser] 發現帳號合併需求: 舊ID=${existingUserByEmail.id}, 新ID=${userData.id}`);
+        
+        // 使用 transaction 確保原子性：先創建新用戶，遷移資料，刪除舊用戶
+        const [newUser] = await db.transaction(async (tx) => {
+          // 1. 先創建新用戶（確保 FK 目標存在）
+          const [createdUser] = await tx
+            .insert(users)
+            .values(userData)
+            .onConflictDoUpdate({
+              target: users.id,
+              set: {
+                ...userData,
+                updatedAt: new Date(),
+              },
+            })
+            .returning();
+          
+          console.log(`[upsertUser] 新用戶已創建/更新: ${createdUser.id}`);
+          
+          // 2. 遷移舊用戶的資料到新用戶
+          await this.migrateUserDataInTransaction(tx, existingUserByEmail.id, userData.id!);
+          
+          // 3. 刪除舊用戶記錄
+          await tx.delete(users).where(eq(users.id, existingUserByEmail.id));
+          console.log(`[upsertUser] 已刪除舊用戶記錄: ${existingUserByEmail.id}`);
+          
+          return [createdUser];
+        });
+        
+        return newUser;
+      }
+    }
+    
+    // 沒有帳號合併需求，正常 upsert
     const [user] = await db
       .insert(users)
       .values(userData)
@@ -280,6 +319,120 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return user;
+  }
+  
+  // 遷移用戶資料（在 transaction 內使用）
+  private async migrateUserDataInTransaction(tx: any, oldUserId: string, newUserId: string): Promise<void> {
+    console.log(`[migrateUserData] 開始遷移: ${oldUserId} -> ${newUserId}`);
+    
+    // ===== 1. 基礎用戶資料 =====
+    const updatedCollections = await tx.update(collections)
+      .set({ userId: newUserId })
+      .where(eq(collections.userId, oldUserId))
+      .returning();
+    console.log(`[migrateUserData] 遷移 collections: ${updatedCollections.length} 筆`);
+    
+    await tx.update(userDailyGachaStats)
+      .set({ userId: newUserId })
+      .where(eq(userDailyGachaStats.userId, oldUserId));
+    
+    await tx.update(userInventory)
+      .set({ userId: newUserId })
+      .where(eq(userInventory.userId, oldUserId));
+    
+    await tx.update(couponRedemptions)
+      .set({ userId: newUserId })
+      .where(eq(couponRedemptions.userId, oldUserId));
+    
+    await tx.update(userNotifications)
+      .set({ userId: newUserId })
+      .where(eq(userNotifications.userId, oldUserId));
+    
+    await tx.update(userLocations)
+      .set({ userId: newUserId })
+      .where(eq(userLocations.userId, oldUserId));
+    
+    await tx.update(placeFeedback)
+      .set({ userId: newUserId })
+      .where(eq(placeFeedback.userId, oldUserId));
+    
+    await tx.update(collectionReadStatus)
+      .set({ userId: newUserId })
+      .where(eq(collectionReadStatus.userId, oldUserId));
+    
+    await tx.update(userProfiles)
+      .set({ userId: newUserId })
+      .where(eq(userProfiles.userId, oldUserId));
+    
+    // ===== 2. 訂單和購買記錄 =====
+    await tx.update(cartItems)
+      .set({ userId: newUserId })
+      .where(eq(cartItems.userId, oldUserId));
+    
+    await tx.update(serviceOrders)
+      .set({ userId: newUserId })
+      .where(eq(serviceOrders.userId, oldUserId));
+    
+    await tx.update(commerceOrders)
+      .set({ userId: newUserId })
+      .where(eq(commerceOrders.userId, oldUserId));
+    
+    // tripServicePurchases - 作為購買者
+    await tx.update(tripServicePurchases)
+      .set({ userId: newUserId })
+      .where(eq(tripServicePurchases.userId, oldUserId));
+    
+    // tripServicePurchases - 作為受益者（可為 null）
+    await tx.update(tripServicePurchases)
+      .set({ purchasedForUserId: newUserId })
+      .where(eq(tripServicePurchases.purchasedForUserId, oldUserId));
+    
+    // ===== 3. 旅程規劃 =====
+    await tx.update(planners)
+      .set({ userId: newUserId })
+      .where(eq(planners.userId, oldUserId));
+    
+    await tx.update(tripPlans)
+      .set({ userId: newUserId })
+      .where(eq(tripPlans.userId, oldUserId));
+    
+    // ===== 4. 專員和服務關係 =====
+    await tx.update(specialists)
+      .set({ userId: newUserId })
+      .where(eq(specialists.userId, oldUserId));
+    
+    await tx.update(serviceRelations)
+      .set({ travelerId: newUserId })
+      .where(eq(serviceRelations.travelerId, oldUserId));
+    
+    // ===== 5. SOS 和旅行同伴 =====
+    await tx.update(sosAlerts)
+      .set({ userId: newUserId })
+      .where(eq(sosAlerts.userId, oldUserId));
+    
+    await tx.update(sosEvents)
+      .set({ userId: newUserId })
+      .where(eq(sosEvents.userId, oldUserId));
+    
+    await tx.update(travelCompanions)
+      .set({ userId: newUserId })
+      .where(eq(travelCompanions.userId, oldUserId));
+    
+    // ===== 6. 聊天和邀請 =====
+    await tx.update(chatInvites)
+      .set({ inviterUserId: newUserId })
+      .where(eq(chatInvites.inviterUserId, oldUserId));
+    
+    await tx.update(chatInvites)
+      .set({ usedByUserId: newUserId })
+      .where(eq(chatInvites.usedByUserId, oldUserId));
+    
+    // ===== 7. 商家（如果舊帳號有商家身份，需要遷移） =====
+    await tx.update(merchants)
+      .set({ userId: newUserId })
+      .where(eq(merchants.userId, oldUserId));
+    
+    console.log(`[migrateUserData] 遷移完成`);
   }
 
   async updateUser(id: string, data: Partial<User>): Promise<User | undefined> {
@@ -2512,8 +2665,7 @@ export class DatabaseStorage implements IStorage {
       await db.delete(userLocations).where(eq(userLocations.userId, userId));
       await db.delete(placeFeedback).where(eq(placeFeedback.userId, userId));
       
-      // 4. 廣告展示和聊天邀請
-      await db.delete(adPlacements).where(eq(adPlacements.userId, userId));
+      // 4. 聊天邀請
       await db.delete(chatInvites).where(eq(chatInvites.inviterUserId, userId));
       await db.delete(chatInvites).where(eq(chatInvites.usedByUserId, userId));
       
