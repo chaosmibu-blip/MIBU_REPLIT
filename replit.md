@@ -5,6 +5,39 @@ Mibu 旅行扭蛋 is a Progressive Web Application (PWA) designed to gamify trav
 
 ## User Preferences
 偏好的溝通方式：簡單、日常用語。
+更新偏好：每次完成重要修改後，自動更新 replit.md 記錄進度。
+
+## Recent Changes (最近更新)
+
+### 2024-12-23: Apple Sign In 修復完成 ✅
+**問題**：前端發送 Apple 登入請求後收到 E5001 (Invalid request data) 錯誤
+
+**根本原因**：
+- Zod schema 的 `.optional()` 只接受 `undefined`，不接受 `null`
+- 前端發送 `email: null` 和 `fullName.givenName: null` 被 Zod 拒絕
+
+**修復內容** (`server/routes.ts`):
+```typescript
+// 之前：只接受 undefined
+email: z.string().email().optional()
+
+// 修復後：同時接受 null 和 undefined
+email: z.string().email().nullable().optional()
+```
+
+**修改的欄位**：
+- `email` → `.nullable().optional()`
+- `fullName` → `.nullable().optional()`
+- `fullName.givenName` → `.nullable().optional()`
+- `fullName.familyName` → `.nullable().optional()`
+- `portal` → `.nullable().optional()`
+- `targetPortal` → `.nullable().optional()`
+
+**文檔更新**：`docs/API_CONTRACT.md` 已同步更新
+
+**前端待處理**：
+- 登入成功後需正確保存 token 到 AsyncStorage
+- 所有 API 調用需在 Header 加上 `Authorization: Bearer <token>`
 
 ## Agent 開發守則
 
