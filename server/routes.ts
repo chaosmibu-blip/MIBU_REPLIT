@@ -689,7 +689,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('[Apple Auth] Error:', error);
       if (error.name === 'ZodError') {
-        return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, 'Invalid request data'));
+        const zodError = error as z.ZodError;
+        const issues = zodError.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ');
+        console.error(`[Apple Auth] Zod validation failed: ${issues}`);
+        console.error(`[Apple Auth] Received body keys: ${Object.keys(req.body || {}).join(', ')}`);
+        console.error(`[Apple Auth] Received body (masked):`, JSON.stringify({
+          identityToken: req.body?.identityToken ? `[${String(req.body.identityToken).length} chars]` : undefined,
+          user: req.body?.user,
+          portal: req.body?.portal,
+          targetPortal: req.body?.targetPortal,
+          email: req.body?.email,
+          fullName: req.body?.fullName,
+        }));
+        return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, `Invalid request data: ${issues}`));
       }
       res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, 'Apple authentication failed'));
     }
