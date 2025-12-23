@@ -3839,23 +3839,31 @@ ${uncachedSkeleton.map((item, idx) => `  {
       console.log('[Gacha V3] Quotas:', { foodQuota, stayQuota, remainingCount, targetCount });
       
       // 查詢錨點區域的地點
-      const anchorPlaces = anchorDistrict 
+      let anchorPlaces = anchorDistrict 
         ? await storage.getOfficialPlacesByDistrict(city, anchorDistrict, 100)
         : await storage.getOfficialPlacesByCity(city, 100);
       
       console.log('[Gacha V3] Anchor places found:', anchorPlaces.length, 'in', anchorDistrict || city);
       
+      // Fallback: 如果錨點區沒有地點，擴展到整個城市
+      if (anchorPlaces.length === 0 && anchorDistrict) {
+        console.log('[Gacha V3] Anchor district empty, falling back to city-wide search');
+        anchorPlaces = await storage.getOfficialPlacesByCity(city, 100);
+        console.log('[Gacha V3] City-wide places found:', anchorPlaces.length);
+        anchorDistrict = undefined; // 清除錨點區，改用城市範圍
+      }
+      
+      // 只有整個城市都沒有地點時才返回錯誤
       if (anchorPlaces.length === 0) {
-        const locationDesc = anchorDistrict ? `${city}${anchorDistrict}` : city;
         return res.json({
           success: true,
           itinerary: [],
           couponsWon: [],
           meta: { 
-            message: `${locationDesc}目前還沒有上線的景點，我們正在努力擴充中！`,
+            message: `${city}目前還沒有上線的景點，我們正在努力擴充中！`,
             code: "NO_PLACES_AVAILABLE",
             city, 
-            district: anchorDistrict || null
+            district: null
           }
         });
       }
