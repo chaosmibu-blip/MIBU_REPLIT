@@ -553,13 +553,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const appleAuthSchema = z.object({
         identityToken: z.string().min(1, 'Identity token is required'),
         fullName: z.object({
-          givenName: z.string().optional(),
-          familyName: z.string().optional(),
-        }).optional(),
-        email: z.string().email().optional(),
+          givenName: z.string().nullable().optional(),
+          familyName: z.string().nullable().optional(),
+        }).nullable().optional(),
+        email: z.string().email().nullable().optional(),
         user: z.string().min(1, 'Apple user ID is required'),
-        targetPortal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).optional(),
-        portal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).optional(),
+        targetPortal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).nullable().optional(),
+        portal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).nullable().optional(),
       });
       
       const validated = appleAuthSchema.parse(req.body);
