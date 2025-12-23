@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, index, doublePrecision, date } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, integer, boolean, jsonb, index, uniqueIndex, doublePrecision, date } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -278,12 +278,14 @@ export const places = pgTable("places", {
   description: text("description"),
   merchantId: integer("merchant_id").references(() => merchants.id),
   isPromoActive: boolean("is_promo_active").default(false),
+  isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_places_google_place_id").on(table.googlePlaceId),
   index("IDX_places_city_district").on(table.city, table.district),
   index("IDX_places_category").on(table.category),
   index("IDX_places_merchant").on(table.merchantId),
+  index("IDX_places_is_active").on(table.isActive),
 ]);
 
 // Merchant-Place Links (ownership/claim system) - 單一認領制 / 行程卡
@@ -1832,6 +1834,7 @@ export const userDailyGachaStats = pgTable("user_daily_gacha_stats", {
 }, (table) => [
   index("IDX_user_daily_gacha_user").on(table.userId),
   index("IDX_user_daily_gacha_date").on(table.date),
+  uniqueIndex("UQ_user_daily_gacha_user_date").on(table.userId, table.date),
 ]);
 
 export const userDailyGachaStatsRelations = relations(userDailyGachaStats, ({ one }) => ({

@@ -1564,7 +1564,11 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(places)
-      .where(and(eq(places.city, city), eq(places.district, district)));
+      .where(and(
+        eq(places.city, city), 
+        eq(places.district, district),
+        eq(places.isActive, true)
+      ));
   }
 
   async getJackpotPlaces(city: string, district: string): Promise<Place[]> {
@@ -1572,7 +1576,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(places)
       .where(
-        sql`${places.city} = ${city} AND ${places.district} = ${district} AND (${places.rating} >= 4.5 OR ${places.merchantId} IS NOT NULL)`
+        sql`${places.city} = ${city} AND ${places.district} = ${district} AND ${places.isActive} = true AND (${places.rating} >= 4.5 OR ${places.merchantId} IS NOT NULL)`
       );
   }
 
@@ -1588,7 +1592,11 @@ export class DatabaseStorage implements IStorage {
     const query = db
       .select()
       .from(places)
-      .where(and(eq(places.city, city), eq(places.district, district)))
+      .where(and(
+        eq(places.city, city), 
+        eq(places.district, district),
+        eq(places.isActive, true)
+      ))
       .orderBy(sql`RANDOM()`);
     
     if (limit) {
@@ -1601,7 +1609,10 @@ export class DatabaseStorage implements IStorage {
     const query = db
       .select()
       .from(places)
-      .where(eq(places.city, city))
+      .where(and(
+        eq(places.city, city),
+        eq(places.isActive, true)
+      ))
       .orderBy(sql`RANDOM()`);
     
     if (limit) {
@@ -1614,7 +1625,10 @@ export class DatabaseStorage implements IStorage {
     const [place] = await db
       .select()
       .from(places)
-      .where(eq(places.googlePlaceId, googlePlaceId))
+      .where(and(
+        eq(places.googlePlaceId, googlePlaceId),
+        eq(places.isActive, true)
+      ))
       .limit(1);
     return place;
   }
@@ -2613,27 +2627,22 @@ export class DatabaseStorage implements IStorage {
 
   async incrementUserDailyGachaCount(userId: string, count: number): Promise<number> {
     const today = new Date().toISOString().split('T')[0];
-    const [existing] = await db.select()
-      .from(userDailyGachaStats)
-      .where(and(
-        eq(userDailyGachaStats.userId, userId),
-        eq(userDailyGachaStats.date, today)
-      ));
     
-    if (existing) {
-      const newCount = existing.pullCount + count;
-      await db.update(userDailyGachaStats)
-        .set({ pullCount: newCount, updatedAt: new Date() })
-        .where(eq(userDailyGachaStats.id, existing.id));
-      return newCount;
-    } else {
-      await db.insert(userDailyGachaStats).values({
-        userId,
-        date: today,
-        pullCount: count
-      });
-      return count;
-    }
+    // 使用 SQL 原子更新，避免併發問題 (Race Condition)
+    // 邏輯: INSERT ... ON CONFLICT DO UPDATE SET pull_count = pull_count + :count
+    const result = await db.execute(sql`
+      INSERT INTO user_daily_gacha_stats (user_id, date, pull_count, updated_at)
+      VALUES (${userId}, ${today}, ${count}, NOW())
+      ON CONFLICT (user_id, date) 
+      DO UPDATE SET 
+        pull_count = user_daily_gacha_stats.pull_count + ${count},
+        updated_at = NOW()
+      RETURNING pull_count
+    `);
+    
+    // 從結果中取得新的 pullCount
+    const rows = result.rows as Array<{ pull_count: number }>;
+    return rows[0]?.pull_count || count;
   }
 
   // ============ Delete User Account (刪除帳號) ============
