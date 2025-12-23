@@ -559,14 +559,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[Apple Auth] Verifying token for Apple user: ${appleUserId}`);
       
       // Verify Apple identity token
+      // Support both production Bundle ID and Expo Go testing (host.exp.Exponent)
+      const validAudiences = [
+        process.env.APPLE_CLIENT_ID,
+        'host.exp.Exponent', // Expo Go development testing
+      ].filter(Boolean) as string[];
+      
       let appleTokenPayload: any;
-      try {
-        appleTokenPayload = await appleSignin.verifyIdToken(identityToken, {
-          audience: process.env.APPLE_CLIENT_ID,
-          ignoreExpiration: false,
-        });
-      } catch (verifyError: any) {
-        console.error('[Apple Auth] Token verification failed:', verifyError.message);
+      let verificationSucceeded = false;
+      
+      for (const audience of validAudiences) {
+        try {
+          appleTokenPayload = await appleSignin.verifyIdToken(identityToken, {
+            audience: audience,
+            ignoreExpiration: false,
+          });
+          verificationSucceeded = true;
+          console.log(`[Apple Auth] Token verified with audience: ${audience}`);
+          break;
+        } catch (verifyError: any) {
+          console.log(`[Apple Auth] Token verification failed for audience ${audience}: ${verifyError.message}`);
+          continue;
+        }
+      }
+      
+      if (!verificationSucceeded) {
+        console.error('[Apple Auth] Token verification failed for all audiences');
         return res.status(401).json(createErrorResponse(ErrorCode.INVALID_CREDENTIALS, 'Apple token verification failed'));
       }
       
