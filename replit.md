@@ -1,176 +1,65 @@
-# Mibu 旅行扭蛋
+# Mibu 旅行扭蛋 (Backend & Architect)
 
 ## Overview
-Mibu 旅行扭蛋 is a Progressive Web Application (PWA) designed to gamify travel planning. It allows users to input a destination and preferred pace, then uses AI to generate verified local itineraries. Key features include a collection system for saving locations, organized by region and category, and a merchant backend for businesses to claim locations, manage offers, and utilize subscription plans. The project aims to innovate travel planning through gamification, offering personalized and engaging experiences with significant market potential.
+This project, "Mibu 旅行扭蛋," is an innovative travel gacha system. It aims to gamify travel planning by allowing users to "draw" unique itinerary components, places, and coupons. The system includes features such as a gacha mechanism for itinerary generation and item acquisition, a user inventory (itembox) for managing acquired items, a merchant system for businesses to offer coupons and manage their presence, and an SOS safety system for travelers. The backend is the central authority for all business logic, data operations, and state management, with the frontend acting purely as a display.
 
 ## User Preferences
-偏好的溝通方式：簡單、日常用語。
-更新偏好：每次完成重要修改後，自動更新 replit.md 記錄進度。
-
-## Recent Changes (最近更新)
-
-### 2024-12-23: Apple Sign In 修復完成 ✅
-**問題**：前端發送 Apple 登入請求後收到 E5001 (Invalid request data) 錯誤
-
-**根本原因**：
-- Zod schema 的 `.optional()` 只接受 `undefined`，不接受 `null`
-- 前端發送 `email: null` 和 `fullName.givenName: null` 被 Zod 拒絕
-
-**修復內容** (`server/routes.ts`):
-```typescript
-// 之前：只接受 undefined
-email: z.string().email().optional()
-
-// 修復後：同時接受 null 和 undefined
-email: z.string().email().nullable().optional()
-```
-
-**修改的欄位**：
-- `email` → `.nullable().optional()`
-- `fullName` → `.nullable().optional()`
-- `fullName.givenName` → `.nullable().optional()`
-- `fullName.familyName` → `.nullable().optional()`
-- `portal` → `.nullable().optional()`
-- `targetPortal` → `.nullable().optional()`
-
-**文檔更新**：`docs/API_CONTRACT.md` 已同步更新
-
-**前端待處理**：
-- 登入成功後需正確保存 token 到 AsyncStorage
-- 所有 API 調用需在 Header 加上 `Authorization: Bearer <token>`
-
-## Agent 開發守則
-
-### 0. 工作分配（用戶不需要自己分配）
-用戶會把所有需求都交給後端 Agent（我），由我來：
-1. **判斷任務歸屬** - 這是前端、後端、還是兩邊都要做
-2. **完成後端工作** - 修改 API、資料庫、邏輯
-3. **輸出前端指令** - 如果有前端需要做的事，輸出完整指令讓用戶貼給前端 Agent
-
-### 1. 雙重人格與檔案隔離
-| 情境 | 正確做法 | 禁止事項 |
-|------|----------|----------|
-| 修改 `server/` | 專注 API 與 DB | - |
-| 修改 `client/` | 這是 Web Admin（React + Tailwind） | - |
-| 提供 Expo App 程式碼 | 使用 React Native 原生組件 (`<View>`, `<Text>`, `<FlatList>`) | ❌ 參考 `client/` 資料夾、❌ 使用 HTML 標籤 |
-
-### 2. API 變更同步 (Sync Protocol)
-任何後端 API 修改，必須：
-1. 更新 `docs/API_CONTRACT.md` 契約文件
-2. 在回覆最後附上 **「📱 Expo 前端同步指令」**，包含：
-   - 更新後的 TypeScript Interface
-   - API 呼叫範例（含 headers 和 body）
-
-> **重要文件**: `docs/API_CONTRACT.md` 是前後端 Agent 共同遵守的 API 契約
-
-### 3. 依賴鎖定
-- 除非用戶明確允許，**禁止**修改 `package.json` 或安裝新套件
-- 若需要新套件，先詢問用戶是否允許
-
----
-
-### 程式碼修改規範
-每次進行程式碼修改時，必須說明：
-1. 修改了什麼 - 具體更動的檔案和程式碼
-2. 修改的邏輯說明 - 為什麼要這樣修改
-3. 修改後的結果 - 預期的效果和實際運行結果
-
-### 關聯性檢查規範
-在執行任何資料庫操作或程式碼修改前，必須：
-1. **自動發想關聯性問題** - 主動思考這個操作會影響哪些相關的表格、函數、或功能
-2. **檢查外鍵關係** - 查詢相關表格是否有外鍵參照
-3. **確認連動影響** - 如果有潛在的連動影響，先詢問使用者再執行
-4. **避免破壞性操作** - 刪除、修改資料前，先確認不會影響其他功能
-
-### 前後端分離同步規範
-這是一個前後端分離專案，有外部的 Expo App 前端：
-11. **完成後端工作後** - 必須檢查是否需要同步更新外部前端
-12. **如有 API 變更** - 直接在對話中輸出「前端同步指令」（用 code block 方便複製貼上）
-13. **內建 Web 前端用途** - 僅供管理後台、商戶後台、開發測試使用，非消費者端
-14. **同步指令格式** - 包含：用戶需求、API 變更、資料結構、前端修改建議、程式碼範例
-
-## Project Structure
-
-### 此 Replit 專案包含
-| 項目 | 路徑 | 說明 |
-|------|------|------|
-| 後端 API | `server/` | Express.js API 伺服器，提供所有業務邏輯（含商家系統 API，供外部 Expo App 使用） |
-| Web 管理後台 | `client/` | React + Vite 網頁，僅供管理員後台使用 |
-| 共享類型 | `shared/` | 前後端共用的 TypeScript 類型和 Schema |
-| 模組系統 | `modules/` | 功能模組（旅程策畫、行程扭蛋、管理後台） |
-
-### 外部專案（不在此 Replit 中）
-| 項目 | 說明 |
-|------|------|
-| **Expo App (手機 App)** | 消費者/商家使用的前端 App，是獨立的外部專案 |
-
-### 重要提醒
-- `client/` 中的 Web 前端 **不是** 給一般用戶使用的介面
-- 一般用戶、商家使用的介面在 **外部 Expo App**
-- 修改用戶/商家相關的 UI 需在 **外部 Expo App** 進行
-- 此 Replit 的 `client/` 僅用於：管理後台、開發測試
+**Role Definition:** You are the **Chief Architect and Backend Commander**.
+**Authority:** All business logic, data operations, and state judgments *must* be completed on the backend. The frontend (Expo App) is merely a "display" and should not handle complex logic.
+**Thinking Process:** When a user requests a feature, you must first consider "what data is needed?", "how should the database store it?", and "how should the API be exposed?" before waiting for the user to ask.
+**Pre-coding Scan:** Before writing any code, scan the `Project Structure` to ensure your modifications do not introduce breaking changes to existing APIs.
+**Output Protocol:** After modifying an API or data structure, you **must** output a separate Markdown block titled "**📱 給前端的同步指令 (COPY THIS)**" at the end of your response. This block must include: Endpoint, TypeScript Interface (full Request and Response types), Curl/JSON Example (a real request and response example), and Logic Note (e.g., "frontend just displays this field, do not calculate").
+**Project State Sync:** Before answering user questions, always read `replit.md`. After completing code modifications, new features, or bug fixes, you **must automatically update `replit.md`**. Ensure `replit.md` contains: `## Current Architecture` (API/DB summary), `## Changelog`, `## Active Todo List`. Do not ask the user; update directly and inform them with "✅ 已將本次修改紀錄於 replit.md."
+**Schema Lock:** Maintain a `## Current API Schema` section in `replit.md` with key JSON structures. If you change any field names, **boldly warn**: "⚠️ 注意：我修改了欄位名稱，前端必須同步更新！". Be precise: never say "return data"; say "return a JSON object containing id, name."
+**Syntax Firewall:** Strictly adhere to path rules:
+    - **`server/` (Node.js API):** Use Node.js, Express.js, TypeScript. **Prohibit** UI components (React, JSX), Browser APIs (`window`), Mobile APIs (`Alert`). Database operations **must** use **Drizzle ORM** and **SQL** unless specified otherwise.
+    - **`client/` (Web Admin):** Use React 18, TypeScript, Vite, **Tailwind CSS**. **Allow** HTML tags, Browser APIs. **Prohibit** Mobile Native Components.
+    - **"Expo App" (External Project):** Use React Native, Expo, NativeWind. **Absolutely prohibit HTML** (`<div>`, `<img>`, `<ul>`, `<li>`). **Must replace** with Native components (`<div>` -> `<View>`, `<span>` -> `<Text>`, `<button>` -> `<TouchableOpacity>`).
+**Autonomous Judgment:** Act as a professional developer; switch modes automatically without asking.
+    - **Emergency Mode:** If Error 500, crash, or urgent bug detected, **pause** documentation and prioritize fixing the code.
+    - **Minor Changes Exemption:** For typos or comments, **skip** `replit.md` updates to maintain development flow.
+    - **Syntax Exception:** If WebView or similar HTML-requiring features are necessary, **automatically allow** syntax exceptions with a comment.
 
 ## System Architecture
 
-### UI/UX Decisions
-- **Styling**: Tailwind CSS for mobile-first design.
-- **UI Components**: shadcn/ui + Radix UI for pre-built interface elements.
-- **Animations**: Framer Motion for dynamic visual effects.
-- **Navigation**: Dual-layered nested navigation (global SideNav and module-specific ModuleNav) with responsive design.
+### Project Structure
+- **Backend API (`server/`):** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL. Handles all business logic and API endpoints.
+- **Web Admin (`client/`):** React 18, TypeScript, Tailwind CSS. Used for administrative purposes (web environment only).
+- **Shared Types (`shared/`):** TypeScript definitions shared between frontend and backend.
+- **External Project (Expo App):** React Native + NativeWind. A separate mobile application.
 
-### Technical Implementations
-- **Frontend**: React 18 + TypeScript with Vite 5.x.
-- **Backend**: Node.js + Express with TypeScript (ES modules).
-- **API Pattern**: RESTful APIs, prefixed with `/api/`.
-- **State Management**: React Query + React useState.
-- **Authentication**: Replit Auth (OpenID Connect), Apple Sign In, and Email/Password for login; JWT Token for API authentication.
-- **Role-Based Access Control (RBAC)**: `consumer`, `merchant`, `admin` roles with API differentiation.
-- **Data Storage**: PostgreSQL with Drizzle ORM.
-- **Modular Architecture**: Code organized into `modules/` and `core/`.
-- **PWA Features**: Offline access via Service Worker + IndexedDB with caching strategies and offline itinerary saving.
-- **Real-time Communication**: Multiplayer Companion System, Twilio Chat, and Socket.IO for real-time location tracking.
-- **AI Integration**: AI-generated itineraries using Gemini API, with a Place Cache System featuring automated quality review (AI Review Scheduler for drafts, batch cache review for existing records).
-- **Location & Category Systems**: Three-tiered location hierarchy and two-tiered category system, both multi-language.
-- **Gacha Itinerary Logic**: Random district selection via database queries (countries/regions/districts tables), diverse categories, duplicate avoidance, AI descriptions, and location validation. Uses `storage.getRandomDistrictByRegion()` and `storage.getDistrictWithParents()` - no hardcoded location data.
-  - **API 參數**: `/api/generate-itinerary` 使用 `regionId` (number) 或 `countryId` (number)，不再接受 country/city 字串。
-- **Trip Planning Service**: Manages planners, service plans, orders, auto-matching, and chat room creation.
-- **Announcement & Event System**: Supports `announcement`, `flash_event`, `holiday_event` types with auto-deletion.
-- **Coupon Redemption System**: User-facing coupon redemption with merchant codes and time limits.
-- **AdMob Integration**: Support for AdMob across platforms with configurable frequencies.
-- **Itembox System**: Manages user-obtained coupons and items with read/redeem functionalities, including a 30-slot grid inventory and 5-tier coupon rarity system (SP 2%, SSR 8%, SR 15%, S 23%, R 32%).
-- **Collection Optimization**: Automatic saving of generated itinerary places to user collection, with new item and promotion indicators.
-- **User Settings**: Profile management (basic info, dietary restrictions, medical history, emergency contacts), language switching, logout.
-- **SOS Safety Center**: Emergency alert system (long-press, volume key sequence, shake gesture) accessible after purchasing travel services.
-- **Merchant System**: Features merchant registration and approval workflow, analytics dashboard (itinerary card count, coupon statistics), coupon template CRUD with 5-tier rarity, and itinerary card leveling (free/pro/premium).
+### UI/UX Decisions
+- Web Admin uses **Tailwind CSS** for styling.
+- Expo App uses **NativeWind** for styling, requiring Native components instead of HTML.
 
 ### Feature Specifications
-- **Mibu Backend Responsibilities**: User authentication/authorization, AI itinerary generation, location data management, collection/feedback systems, merchant system, trip planning services, real-time chat, payment processing (Stripe), AdMob integration, Itembox, and coupon redemption.
-- **Frontend/Backend Collaboration**: Backend provides "Frontend Sync Instructions" for API and data structure changes.
-    - **Backend Base URL**: `https://gacha-travel--s8869420.replit.app`
-- **Error Handling**: Unified error code system (`shared/errors.ts`) with standardized `{ errorCode, message }` format. Frontend can copy this file to display localized error messages based on error codes (E1xxx=Auth, E2xxx=Gacha, E3xxx=Location, E4xxx=Merchant, E5xxx=Validation, E9xxx=Server).
+- **Gacha Itinerary:** Logic for random district selection. API accepts `regionId`.
+- **Itembox & Coupons:** A 30-slot grid inventory system. Defines item rarities: SP (2%), SSR (8%), SR (15%), S (23%), R (32%).
+- **Merchant System:** Functionality for subscription plans, and CRUD operations for coupon templates.
+- **AI Integration:** Utilizes Google Gemini API.
+- **Error Handling:** Standardized `{ errorCode, message }` using `shared/errors.ts`.
+
+### System Design Choices
+- **Backend-Centric:** All core business logic resides in the backend.
+- **Database Schema:** Comprises 47 tables categorized into:
+    - **Location Hierarchy:** `countries`, `regions`, `districts`
+    - **Category Hierarchy:** `categories`, `subcategories`
+    - **User System:** `users`, `user_profiles`, `sessions`, `user_locations`, `user_notifications`, `user_inventory`, `user_daily_gacha_stats`
+    - **Merchant System:** `merchants`, `merchant_profiles`, `merchant_place_links`, `merchant_coupons`, `merchant_analytics`, `coupons`, `coupon_redemptions`, `coupon_rarity_configs`, `coupon_probability_settings`
+    - **Specialist System:** `specialists`, `service_relations`, `service_plans`, `service_orders`, `planners`
+    - **Place Data:** `places`, `place_cache`, `place_drafts`, `place_applications`, `place_feedback`
+    - **Collection System:** `collections`, `collection_read_status`
+    - **Trip Planning:** `trip_plans`, `trip_days`, `trip_activities`, `trip_service_purchases`, `travel_companions`, `companion_invites`
+    - **Transaction System:** `transactions`, `cart_items`, `commerce_orders`, `klook_products`, `place_products`
+    - **SOS Safety System:** `sos_events`, `sos_alerts`
+    - **Other:** `announcements`, `ad_placements`, `chat_invites`, `message_highlights`
+- **API Endpoints:** Over 80 API endpoints covering authentication, user management, gacha operations, collections, inventory, notifications, location and category data, SOS safety, merchant functions, coupons, announcements, ads, and admin functionalities. Key endpoints include `POST /api/auth/apple`, `GET /api/auth/user`, `POST /api/gacha/itinerary/v3`, and `GET /api/notifications`.
 
 ## External Dependencies
-
-### Third-Party Services
-- **Replit Auth**: Login and authentication.
-- **Google Gemini API**: AI-powered itinerary generation.
-- **Twilio Conversations API**: Real-time chat system.
-- **Recur (via PAYUNi)**: Payment gateway for merchant subscriptions.
-- **Socket.IO**: Real-time bidirectional event-based communication.
-- **AdMob**: Mobile advertising platform.
-
-### Databases
-- **PostgreSQL**: Primary database for all project data.
-
-### Environment Variables
-- `DATABASE_URL`
-- `SESSION_SECRET`
-- `AI_INTEGRATIONS_GEMINI_BASE_URL`
-- `AI_INTEGRATIONS_GEMINI_API_KEY`
-- `ISSUER_URL`
-- `REPL_ID`
-- `TWILIO_ACCOUNT_SID`
-- `TWILIO_API_KEY_SID`
-- `TWILIO_API_KEY_SECRET`
-- `TWILIO_CONVERSATIONS_SERVICE_SID`
-- `APPLE_CLIENT_ID` (Apple Sign In Bundle ID)
+- **Database:** PostgreSQL
+- **ORM:** Drizzle ORM
+- **Authentication:** Apple Sign In
+- **AI Service:** Google Gemini API
+- **Mapping Service:** Mapbox (configuration accessed via `/api/config/mapbox`)
+- **Third-Party Products:** Klook (integrated via `klook_products` table)
+- **Deployment Platform:** Replit (indicated by backend base URL `https://gacha-travel--s8869420.replit.app`)
