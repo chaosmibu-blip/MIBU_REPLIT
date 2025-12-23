@@ -541,6 +541,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Apple Sign In
   app.post('/api/auth/apple', async (req, res) => {
+    console.log('[Apple Auth] Request received:', JSON.stringify({
+      hasIdentityToken: !!req.body?.identityToken,
+      hasUser: !!req.body?.user,
+      portal: req.body?.portal,
+      targetPortal: req.body?.targetPortal,
+      keys: Object.keys(req.body || {}),
+    }));
+    
     try {
       const appleAuthSchema = z.object({
         identityToken: z.string().min(1, 'Identity token is required'),
