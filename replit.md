@@ -63,3 +63,49 @@ This project, "Mibu 旅行扭蛋," is an innovative travel gacha system. It aims
 - **Mapping Service:** Mapbox (configuration accessed via `/api/config/mapbox`)
 - **Third-Party Products:** Klook (integrated via `klook_products` table)
 - **Deployment Platform:** Replit (indicated by backend base URL `https://gacha-travel--s8869420.replit.app`)
+
+## Changelog
+
+### 2024-12-23 - Data Integrity & Concurrency Fixes
+1. **places.isActive 欄位新增**
+   - 新增 `is_active` boolean 欄位 (預設 `true`)
+   - 用途：標記無效地點（如公廁、已關閉店家）不出現在扭蛋結果
+   - 新增索引 `IDX_places_is_active`
+   
+2. **扭蛋查詢強制過濾 isActive = true**
+   - `getPlacesByDistrict()`
+   - `getJackpotPlaces()`
+   - `getOfficialPlacesByDistrict()`
+   - `getOfficialPlacesByCity()`
+   - `getPlaceByGoogleId()`
+   
+3. **每日抽卡計數原子更新**
+   - 修復 Race Condition 漏洞
+   - 改用 `INSERT ... ON CONFLICT DO UPDATE SET pull_count = pull_count + :count`
+   - 新增唯一約束 `UQ_user_daily_gacha_user_date` on (user_id, date)
+
+## Current API Schema (Key Fields)
+
+### places 表結構
+```typescript
+{
+  id: number;
+  placeName: string;
+  city: string;
+  district: string;
+  category: string;
+  isActive: boolean;  // 🆕 控制是否出現在扭蛋結果
+  // ...其他欄位
+}
+```
+
+### user_daily_gacha_stats 表結構
+```typescript
+{
+  id: number;
+  userId: string;
+  date: string;        // YYYY-MM-DD
+  pullCount: number;   // 原子更新，防止併發問題
+}
+// UNIQUE 約束: (user_id, date)
+```
