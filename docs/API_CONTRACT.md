@@ -184,14 +184,15 @@ Apple Sign In 登入，驗證 Apple Identity Token 並取得 JWT
 **Request**:
 ```typescript
 {
-  identityToken: string;  // Apple 返回的 JWT token
+  identityToken: string;  // Apple 返回的 JWT token (必填)
+  user: string;           // Apple user ID (必填)
+  portal?: 'traveler' | 'merchant' | 'specialist' | 'admin' | null;  // 入口 (選填，預設 traveler)
+  targetPortal?: 'traveler' | 'merchant' | 'specialist' | 'admin' | null;  // 同 portal (選填)
+  email?: string | null;  // Apple 只在首次登入提供 email (選填，可為 null)
   fullName?: {
-    givenName?: string;
-    familyName?: string;
-  };
-  email?: string;         // Apple 只在首次登入提供 email
-  user: string;           // Apple user ID
-  targetPortal: 'traveler' | 'merchant' | 'specialist' | 'admin';
+    givenName?: string | null;
+    familyName?: string | null;
+  } | null;  // Apple 只在首次登入提供姓名 (選填，可為 null)
 }
 ```
 
