@@ -1036,11 +1036,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log('📍 Location Update Request:', { userId, body: req.body });
     
     const locationSchema = z.object({
-      lat: z.number().min(-90).max(90).optional(),
-      lon: z.number().min(-180).max(180).optional(),
-      lng: z.number().min(-180).max(180).optional(),
-      latitude: z.number().min(-90).max(90).optional(),
-      longitude: z.number().min(-180).max(180).optional(),
+      lat: z.number().min(-90).max(90),
+      lon: z.number().min(-180).max(180),
       isSharingEnabled: z.boolean().optional(),
       targets: z.array(z.object({
         id: z.union([z.string(), z.number()]),
@@ -1049,17 +1046,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lon: z.number().min(-180).max(180),
         radiusMeters: z.number().min(1).max(10000).default(50),
       })).optional(),
-    }).refine(data => {
-      const hasLat = data.lat !== undefined || data.latitude !== undefined;
-      const hasLon = data.lon !== undefined || data.lng !== undefined || data.longitude !== undefined;
-      return hasLat && hasLon;
-    }, { message: "Must provide lat/lon, lat/lng, or latitude/longitude" });
+    });
 
     try {
       const validated = locationSchema.parse(req.body);
-      const finalLat = validated.lat ?? validated.latitude!;
-      const finalLon = validated.lon ?? validated.lng ?? validated.longitude!;
-      console.log('📍 Location Update Validated:', { userId, lat: finalLat, lon: finalLon, isSharingEnabled: validated.isSharingEnabled });
+      console.log('📍 Location Update Validated:', { userId, lat: validated.lat, lon: validated.lon, isSharingEnabled: validated.isSharingEnabled });
       
       let sharingEnabled = validated.isSharingEnabled;
       if (sharingEnabled === undefined) {
@@ -1069,13 +1060,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const location = await storage.upsertUserLocation(
         userId,
-        finalLat,
-        finalLon,
+        validated.lat,
+        validated.lon,
         sharingEnabled
       );
       
       const geofenceResult = checkGeofence(
-        { lat: finalLat, lon: finalLon },
+        { lat: validated.lat, lon: validated.lon },
         validated.targets || []
       );
       
