@@ -550,11 +550,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }).optional(),
         email: z.string().email().optional(),
         user: z.string().min(1, 'Apple user ID is required'),
-        targetPortal: z.enum(['traveler', 'merchant', 'specialist', 'admin']),
+        targetPortal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).optional(),
+        portal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).optional(),
       });
       
       const validated = appleAuthSchema.parse(req.body);
-      const { identityToken, fullName, email, user: appleUserId, targetPortal } = validated;
+      const { identityToken, fullName, email, user: appleUserId } = validated;
+      const targetPortal = validated.targetPortal || validated.portal || 'traveler';
       
       console.log(`[Apple Auth] Verifying token for Apple user: ${appleUserId}`);
       
