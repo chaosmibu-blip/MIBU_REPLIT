@@ -97,3 +97,17 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 - `isActive = false` 的景點不會出現在扭蛋結果
 - 原子更新 `pull_count` 防止 Race Condition
 - 無 API 快取，每次都重新隨機選取
+
+---
+
+## Changelog
+
+### 2024-12-24 - 去重保護機制
+- 新增 `userRecentGachaCache` 記憶體快取
+- 記住最近 3 次抽卡結果，30 分鐘內排除重複
+- 景點池不足時自動清除快取
+
+### 2024-12-23 - 資料完整性修復
+- 扭蛋查詢強制過濾 `isActive = true`
+- 影響函數: `getPlacesByDistrict()`, `getJackpotPlaces()`, `getOfficialPlacesByDistrict()`, `getOfficialPlacesByCity()`, `getPlaceByGoogleId()`
+- 每日抽卡計數改為原子更新，修復 Race Condition

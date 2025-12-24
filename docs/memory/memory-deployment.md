@@ -5,6 +5,35 @@
 
 ---
 
+## 專案結構
+
+### 程式碼目錄
+```
+├── server/          # Node.js API (Express, TypeScript, Drizzle ORM)
+│   ├── routes.ts    # API 端點定義
+│   ├── storage.ts   # 資料存取層
+│   ├── db.ts        # 資料庫連線
+│   └── index.ts     # 伺服器入口
+├── client/          # Web Admin (React 18, Vite, Tailwind CSS)
+│   └── src/
+├── shared/          # 共用型別定義
+│   ├── schema.ts    # Drizzle ORM Schema (47 張表)
+│   └── errors.ts    # 標準錯誤格式
+└── docs/memory/     # 模組記憶庫
+```
+
+### 外部專案
+- **Expo App**: React Native + NativeWind (獨立 repository)
+
+### 語法防火牆
+| 目錄 | 技術棧 | 允許 | 禁止 |
+|------|--------|------|------|
+| `server/` | Node.js, Express, TypeScript | Drizzle ORM, SQL | React, JSX, Browser APIs |
+| `client/` | React 18, Vite, Tailwind | HTML, Browser APIs | Native Components |
+| Expo App | React Native, NativeWind | Native Components | HTML (`<div>`, `<img>`) |
+
+---
+
 ## 環境區分
 
 ### 開發環境 (Development)
@@ -229,3 +258,13 @@ Response: { status: 'ok', timestamp: Date }
 2. 檢查連線數限制
 3. 使用 db:push --force 同步 schema
 ```
+
+---
+
+## Changelog
+
+### 2024-12-24 - 開發→生產資料同步成功
+- 新增跨環境同步 API：`/api/admin/export-places` + `/api/admin/seed-places`
+- 生產環境從 527 筆增加到 **1,633 筆**景點
+- 覆蓋城市從 3 個增加到 **22 個**
+- 使用 `ON CONFLICT DO NOTHING` 防止重複插入

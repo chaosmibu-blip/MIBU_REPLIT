@@ -138,3 +138,27 @@ NO_PLACES_AVAILABLE   // 200 (success=false) 無景點
 - 目前版本: v1 (隱含)
 - 未來版本: /api/v2/xxx
 - 棄用政策: 提前 3 個月通知
+
+---
+
+## 錯誤處理標準
+```typescript
+// shared/errors.ts
+// 標準化錯誤格式: { errorCode, message }
+
+// 常見錯誤碼
+UNAUTHORIZED          // 401 - 未登入
+FORBIDDEN             // 403 - 無權限
+NOT_FOUND             // 404 - 找不到資源
+VALIDATION_ERROR      // 400 - 參數錯誤
+DAILY_LIMIT_EXCEEDED  // 429 - 每日限額
+```
+
+---
+
+## API 端點統計
+- 總端點數: 80+
+- 認證相關: /api/auth/*
+- 扭蛋相關: /api/gacha/*
+- 商家相關: /api/merchants/*
+- 管理相關: /api/admin/*

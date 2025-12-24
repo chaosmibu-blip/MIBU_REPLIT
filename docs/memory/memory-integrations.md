@@ -232,3 +232,16 @@ const { sub, email } = await appleSignIn.verifyIdToken(
 2. 使用 fallback 或 graceful degradation
 3. 記錄錯誤但不暴露 API 金鑰
 4. 設定合理的 timeout（10-30 秒）
+
+---
+
+## 外部依賴總覽
+| 服務 | 用途 | 配置位置 |
+|------|------|----------|
+| PostgreSQL | 資料庫 | DATABASE_URL |
+| Drizzle ORM | 資料存取 | shared/schema.ts |
+| Apple Sign In | iOS 認證 | APPLE_CLIENT_ID |
+| Google Gemini | AI 生成/審核 | AI_INTEGRATIONS_* |
+| Mapbox | 地圖顯示 | /api/config/mapbox |
+| Klook | 第三方商品 | klook_products 表 |
+| Replit | 部署平台 | 自動配置 |

@@ -183,3 +183,18 @@ DO UPDATE SET pullCount = pullCount + :count
 - places: 1,633 筆
 - users: ~500 筆
 - regions: 22 個城市有資料
+
+---
+
+## Changelog
+
+### 2024-12-23 - 資料完整性修復
+1. **places.isActive 欄位新增**
+   - 新增 `is_active` boolean 欄位 (預設 `true`)
+   - 用途：標記無效地點不出現在扭蛋結果
+   - 新增索引 `IDX_places_is_active`
+
+2. **user_daily_gacha_stats 原子更新**
+   - 新增唯一約束 `UQ_user_daily_gacha_user_date` on (user_id, date)
+   - 改用 `INSERT ... ON CONFLICT DO UPDATE SET pull_count = pull_count + :count`
+   - 修復 Race Condition 漏洞
