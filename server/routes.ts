@@ -1,6 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 import { setupAuth, isAuthenticated, generateJwtToken } from "./replitAuth";
 import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema, insertPlaceDraftSchema, insertPlaceApplicationSchema, registerUserSchema, insertSpecialistSchema, insertServiceRelationSchema, insertAdPlacementSchema, insertCouponRarityConfigSchema, INVENTORY_MAX_SLOTS, type PlaceDraft, type Subcategory } from "@shared/schema";
 import { ErrorCode, createErrorResponse } from "@shared/errors";
@@ -8498,6 +8500,218 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     } catch (error) {
       console.error("Sync database error:", error);
       res.status(500).json({ error: "Failed to sync database" });
+    }
+  });
+
+  // ============ 一鍵遷移：place_cache → places ============
+  // 簡易版本：使用密鑰驗證（方便在 App 上操作）
+  app.get("/api/admin/migrate-places", async (req: any, res) => {
+    try {
+      const { key } = req.query;
+      const MIGRATION_KEY = "mibu2024migrate"; // 簡易密鑰
+      
+      if (key !== MIGRATION_KEY) {
+        return res.status(403).json({ 
+          error: "需要密鑰",
+          hint: "請使用正確的 key 參數訪問此 API"
+        });
+      }
+      
+      console.log('[Migration] Starting place_cache to places migration (simple key auth)...');
+      
+      // 執行遷移
+      const insertResult = await db.execute(sql`
+        INSERT INTO places (
+          place_name, country, city, district, address,
+          location_lat, location_lng, google_place_id, rating,
+          category, subcategory, description, is_active, is_promo_active
+        )
+        SELECT 
+          COALESCE(verified_name, place_name),
+          country, city, district, verified_address,
+          CASE WHEN location_lat ~ '^[0-9.-]+$' THEN location_lat::double precision ELSE NULL END,
+          CASE WHEN location_lng ~ '^[0-9.-]+$' THEN location_lng::double precision ELSE NULL END,
+          place_id,
+          CASE WHEN google_rating ~ '^[0-9.]+$' THEN google_rating::double precision ELSE NULL END,
+          category, sub_category, description, true, false
+        FROM place_cache
+        WHERE place_id IS NOT NULL AND place_id != ''
+          AND is_location_verified = true
+          AND business_status IS DISTINCT FROM 'CLOSED_PERMANENTLY'
+        ON CONFLICT (google_place_id) DO NOTHING
+      `);
+      
+      // 取得統計
+      const statsResult = await db.execute(sql`
+        SELECT city, COUNT(*) as count 
+        FROM places 
+        WHERE is_active = true 
+        GROUP BY city 
+        ORDER BY count DESC
+      `);
+      
+      const totalPlaces = statsResult.rows.reduce((sum: number, row: any) => sum + parseInt(row.count), 0);
+      
+      console.log('[Migration] Complete! Total places:', totalPlaces, 'Cities:', statsResult.rows.length);
+      
+      res.json({
+        success: true,
+        message: "✅ 遷移完成！place_cache 資料已轉移到 places 表",
+        totalPlaces,
+        totalCities: statsResult.rows.length,
+        byCity: statsResult.rows
+      });
+    } catch (error) {
+      console.error("[Migration] Error:", error);
+      res.status(500).json({ error: "遷移失敗", details: String(error) });
+    }
+  });
+  
+  // 用於將 place_cache 中已驗證的景點轉移到 places 正式表
+  app.post("/api/admin/migrate-cache-to-places", async (req: any, res) => {
+    try {
+      // 驗證管理員權限
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "需要登入" });
+      }
+      
+      // 檢查是否為超級管理員
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== 'superadmin') {
+        return res.status(403).json({ error: "需要超級管理員權限" });
+      }
+      
+      console.log('[Migration] Starting place_cache to places migration...');
+      
+      // 執行遷移 SQL
+      const result = await db.execute(sql`
+        INSERT INTO places (
+          place_name,
+          country,
+          city,
+          district,
+          address,
+          location_lat,
+          location_lng,
+          google_place_id,
+          rating,
+          category,
+          subcategory,
+          description,
+          is_active,
+          is_promo_active
+        )
+        SELECT 
+          COALESCE(verified_name, place_name) as place_name,
+          country,
+          city,
+          district,
+          verified_address as address,
+          CASE WHEN location_lat ~ '^[0-9.-]+$' THEN location_lat::double precision ELSE NULL END as location_lat,
+          CASE WHEN location_lng ~ '^[0-9.-]+$' THEN location_lng::double precision ELSE NULL END as location_lng,
+          place_id as google_place_id,
+          CASE WHEN google_rating ~ '^[0-9.]+$' THEN google_rating::double precision ELSE NULL END as rating,
+          category,
+          sub_category as subcategory,
+          description,
+          true as is_active,
+          false as is_promo_active
+        FROM place_cache
+        WHERE 
+          place_id IS NOT NULL 
+          AND place_id != ''
+          AND is_location_verified = true
+          AND business_status IS DISTINCT FROM 'CLOSED_PERMANENTLY'
+        ON CONFLICT (google_place_id) DO NOTHING
+      `);
+      
+      // 統計結果
+      const [stats] = await db.execute(sql`
+        SELECT 
+          (SELECT COUNT(*) FROM places WHERE is_active = true) as total_places,
+          (SELECT COUNT(DISTINCT city) FROM places WHERE is_active = true) as total_cities,
+          (SELECT COUNT(*) FROM place_cache WHERE is_location_verified = true) as total_cache
+      `);
+      
+      console.log('[Migration] Complete:', stats);
+      
+      res.json({
+        success: true,
+        message: "遷移完成！",
+        stats: stats
+      });
+    } catch (error) {
+      console.error("[Migration] Error:", error);
+      res.status(500).json({ error: "遷移失敗", details: String(error) });
+    }
+  });
+  
+  // GET 版本（方便瀏覽器直接訪問）
+  app.get("/api/admin/migrate-cache-to-places", async (req: any, res) => {
+    try {
+      // 驗證管理員權限
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ 
+          error: "需要登入", 
+          hint: "請先登入超級管理員帳號，然後再訪問此頁面"
+        });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== 'superadmin') {
+        return res.status(403).json({ 
+          error: "需要超級管理員權限",
+          currentRole: user?.role || 'unknown'
+        });
+      }
+      
+      console.log('[Migration] Starting place_cache to places migration (GET)...');
+      
+      // 執行遷移
+      await db.execute(sql`
+        INSERT INTO places (
+          place_name, country, city, district, address,
+          location_lat, location_lng, google_place_id, rating,
+          category, subcategory, description, is_active, is_promo_active
+        )
+        SELECT 
+          COALESCE(verified_name, place_name),
+          country, city, district, verified_address,
+          CASE WHEN location_lat ~ '^[0-9.-]+$' THEN location_lat::double precision ELSE NULL END,
+          CASE WHEN location_lng ~ '^[0-9.-]+$' THEN location_lng::double precision ELSE NULL END,
+          place_id,
+          CASE WHEN google_rating ~ '^[0-9.]+$' THEN google_rating::double precision ELSE NULL END,
+          category, sub_category, description, true, false
+        FROM place_cache
+        WHERE place_id IS NOT NULL AND place_id != ''
+          AND is_location_verified = true
+          AND business_status IS DISTINCT FROM 'CLOSED_PERMANENTLY'
+        ON CONFLICT (google_place_id) DO NOTHING
+      `);
+      
+      // 取得統計
+      const statsResult = await db.execute(sql`
+        SELECT city, COUNT(*) as count 
+        FROM places 
+        WHERE is_active = true 
+        GROUP BY city 
+        ORDER BY count DESC
+      `);
+      
+      const totalPlaces = statsResult.rows.reduce((sum: number, row: any) => sum + parseInt(row.count), 0);
+      
+      res.json({
+        success: true,
+        message: "✅ 遷移完成！",
+        totalPlaces,
+        totalCities: statsResult.rows.length,
+        byCity: statsResult.rows
+      });
+    } catch (error) {
+      console.error("[Migration] Error:", error);
+      res.status(500).json({ error: "遷移失敗", details: String(error) });
     }
   });
 
