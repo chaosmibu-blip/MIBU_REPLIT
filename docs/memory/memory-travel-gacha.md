@@ -112,17 +112,17 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 
 ## Changelog
 
-### 2024-12-24 - 張數不足提示
+### 2025-12-24 - 張數不足提示
 - 新增 `requestedCount`、`isShortfall`、`shortfallMessage` 回應欄位
 - 當實際抽出張數少於請求張數時，提供友善提示
 - 前端可據此顯示 Toast 告知用戶
 
-### 2024-12-24 - 去重保護機制
+### 2025-12-24 - 去重保護機制
 - 新增 `userRecentGachaCache` 記憶體快取
 - 記住最近 3 次抽卡結果，30 分鐘內排除重複
 - 景點池不足時自動清除快取
 
-### 2024-12-23 - 資料完整性修復
+### 2025-12-23 - 資料完整性修復
 - 扭蛋查詢強制過濾 `isActive = true`
 - 影響函數: `getPlacesByDistrict()`, `getJackpotPlaces()`, `getOfficialPlacesByDistrict()`, `getOfficialPlacesByCity()`, `getPlaceByGoogleId()`
 - 每日抽卡計數改為原子更新，修復 Race Condition
