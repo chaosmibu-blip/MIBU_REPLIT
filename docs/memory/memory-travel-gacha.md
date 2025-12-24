@@ -51,6 +51,9 @@ interface GachaV3Response {
     anchorDistrict: string;
     dailyPullCount: number;
     remainingQuota: number;
+    requestedCount: number;      // 用戶請求張數
+    isShortfall: boolean;        // 是否不足
+    shortfallMessage: string | null;  // 不足提示訊息
   };
 }
 ```
@@ -59,12 +62,19 @@ interface GachaV3Response {
 1. **每日限額檢查**: 每人每天最多 36 張卡
 2. **錨點區選擇**: 無指定 district 時隨機選一區
 3. **結構化選點**:
-   - 食: 40% 配額
-   - 宿: 最多 1 個
+   - 食: 固定 2-3 個（抽 ≤7 張給 2 個，抽 8+ 張給 3 個）
+   - 宿: 最多 1 個（抽 ≥9 張時才有）
    - 其餘按等權重隨機分配（遊、購、行）
 4. **去重保護**: 排除最近 3 次抽過的景點（30 分鐘 TTL）
 5. **經緯度排序**: 最近鄰居演算法優化動線
 6. **AI 調整**: Gemini 微調順序（早餐前、夜店後）
+7. **張數不足提示**: 當實際抽出 < 請求張數時，回傳 `isShortfall: true`
+
+### 張數不足處理
+當 `totalPlaces < requestedCount` 時：
+- `isShortfall: true`
+- `shortfallMessage`: 例如「礁溪鄉目前只有 5 個景點，我們正在努力擴充中！」
+- 前端應顯示 Toast 或提示告知用戶
 
 ## 去重保護機制
 ```typescript
@@ -101,6 +111,11 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 ---
 
 ## Changelog
+
+### 2024-12-24 - 張數不足提示
+- 新增 `requestedCount`、`isShortfall`、`shortfallMessage` 回應欄位
+- 當實際抽出張數少於請求張數時，提供友善提示
+- 前端可據此顯示 Toast 告知用戶
 
 ### 2024-12-24 - 去重保護機制
 - 新增 `userRecentGachaCache` 記憶體快取

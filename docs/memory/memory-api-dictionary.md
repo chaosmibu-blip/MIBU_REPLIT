@@ -68,6 +68,16 @@ NO_PLACES_AVAILABLE   // 200 (success=false) 無景點
 | POST | /api/gacha/pull/v3 | 抽取單一景點 |
 | GET | /api/gacha/quota | 查詢每日剩餘額度 |
 
+#### POST /api/gacha/itinerary/v3 回應欄位
+| 欄位 | 類型 | 說明 |
+|------|------|------|
+| meta.requestedCount | number | 用戶請求張數 |
+| meta.totalPlaces | number | 實際抽出張數 |
+| meta.isShortfall | boolean | 是否不足 |
+| meta.shortfallMessage | string? | 不足提示訊息 |
+| meta.dailyPullCount | number | 今日已抽張數 |
+| meta.remainingQuota | number | 今日剩餘額度 |
+
 ### 背包 (Inventory)
 | Method | Endpoint | 說明 |
 |--------|----------|------|
