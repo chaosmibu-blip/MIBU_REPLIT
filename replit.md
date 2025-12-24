@@ -66,6 +66,17 @@ This project, "Mibu 旅行扭蛋," is an innovative travel gacha system. It aims
 
 ## Changelog
 
+### 2024-12-24 - Production Database Sync Complete
+1. **開發→生產資料同步成功**
+   - 新增跨環境同步 API：`/api/admin/export-places` + `/api/admin/seed-places`
+   - 生產環境從 527 筆增加到 **1,633 筆**景點
+   - 覆蓋城市從 3 個增加到 **22 個**
+   
+2. **同步機制**
+   - 開發環境提供 export API，返回 JSON 格式資料
+   - 生產環境的 seed API 自動排除已有城市，避免重複
+   - 使用 `ON CONFLICT DO NOTHING` 防止重複插入
+
 ### 2024-12-23 - Data Integrity & Concurrency Fixes
 1. **places.isActive 欄位新增**
    - 新增 `is_active` boolean 欄位 (預設 `true`)
