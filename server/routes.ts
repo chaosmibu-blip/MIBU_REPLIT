@@ -28,6 +28,55 @@ const RECUR_PREMIUM_PLAN_ID = "adkwbl9dya0wc6b53parl9yk";
 const UNLIMITED_GENERATION_EMAILS = ["s8869420@gmail.com"];
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
+// ========== 扭蛋去重保護機制 ==========
+// 記錄每個用戶最近 N 次抽卡結果的景點 ID，避免連續抽到相同行程
+interface RecentGachaResult {
+  placeIds: Set<number>;
+  timestamp: number;
+}
+const userRecentGachaCache = new Map<string, RecentGachaResult[]>();
+const GACHA_CACHE_MAX_HISTORY = 3; // 記住最近 3 次抽卡結果
+const GACHA_CACHE_TTL = 30 * 60 * 1000; // 30 分鐘後過期
+
+function getRecentlyDrawnPlaceIds(userId: string, city: string): Set<number> {
+  const cacheKey = `${userId}:${city}`;
+  const history = userRecentGachaCache.get(cacheKey) || [];
+  const now = Date.now();
+  
+  // 過濾過期的記錄
+  const validHistory = history.filter(h => now - h.timestamp < GACHA_CACHE_TTL);
+  if (validHistory.length !== history.length) {
+    userRecentGachaCache.set(cacheKey, validHistory);
+  }
+  
+  // 合併所有最近抽過的 ID
+  const recentIds = new Set<number>();
+  for (const h of validHistory) {
+    for (const id of h.placeIds) {
+      recentIds.add(id);
+    }
+  }
+  return recentIds;
+}
+
+function recordGachaResult(userId: string, city: string, placeIds: number[]): void {
+  const cacheKey = `${userId}:${city}`;
+  const history = userRecentGachaCache.get(cacheKey) || [];
+  
+  // 新增本次結果
+  history.push({
+    placeIds: new Set(placeIds),
+    timestamp: Date.now()
+  });
+  
+  // 只保留最近 N 次
+  while (history.length > GACHA_CACHE_MAX_HISTORY) {
+    history.shift();
+  }
+  
+  userRecentGachaCache.set(cacheKey, history);
+}
+
 interface PlaceSearchResult {
   name: string;
   formatted_address: string;
@@ -3886,7 +3935,11 @@ ${uncachedSkeleton.map((item, idx) => `  {
       
       const anchorByCategory = groupByCategory(anchorPlaces);
       const selectedPlaces: any[] = [];
-      const usedIds = new Set<number>();
+      
+      // ========== 去重保護：排除最近抽過的景點 ==========
+      let recentlyDrawnIds = getRecentlyDrawnPlaceIds(userId, city);
+      const usedIds = new Set<number>(recentlyDrawnIds);
+      console.log('[Gacha V3] Initial dedup exclusion:', recentlyDrawnIds.size, 'places');
       
       // 輔助函數：從類別中隨機選取
       const pickFromCategory = (category: string, count: number, fallbackPlaces?: any[]) => {
@@ -3920,6 +3973,16 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const cityPlaces = anchorDistrict 
         ? await storage.getOfficialPlacesByCity(city, 200)
         : anchorPlaces;
+      
+      // ========== 去重安全檢查 ==========
+      // 如果去重後剩餘景點不足以完成本次抽卡，清空去重記錄
+      const availableAfterDedup = cityPlaces.filter(p => !usedIds.has(p.id)).length;
+      if (availableAfterDedup < targetCount) {
+        console.log('[Gacha V3] Dedup safety: only', availableAfterDedup, 'available (need', targetCount, '), clearing cache');
+        const cacheKey = `${userId}:${city}`;
+        userRecentGachaCache.delete(cacheKey);
+        usedIds.clear(); // 清空已用 ID，重新開始
+      }
       
       // 選取「食」的基本配額
       const foodPicks = pickFromCategory('食', foodQuota, cityPlaces);
@@ -4268,6 +4331,11 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
         newDailyCount = await storage.incrementUserDailyGachaCount(userId, itinerary.length);
         remainingQuota = DAILY_PULL_LIMIT - newDailyCount;
       }
+      
+      // ========== 記錄本次抽卡結果（去重保護）==========
+      const drawnPlaceIds = finalPlaces.map(p => p.id);
+      recordGachaResult(userId, city, drawnPlaceIds);
+      console.log('[Gacha V3] Recorded', drawnPlaceIds.length, 'places for dedup protection');
       
       res.json({
         success: true,
