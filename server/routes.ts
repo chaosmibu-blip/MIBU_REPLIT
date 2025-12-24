@@ -8505,10 +8505,59 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     }
   });
 
-  // ============ 一鍵匯入：從 seed 檔案匯入景點資料 ============
+  // ============ 導出景點資料 API（給其他環境獲取）============
+  app.get("/api/admin/export-places", async (req: any, res) => {
+    try {
+      const { key, exclude } = req.query;
+      const MIGRATION_KEY = process.env.ADMIN_MIGRATION_KEY || "mibu2024migrate";
+      
+      if (key !== MIGRATION_KEY) {
+        return res.status(403).json({ error: "需要密鑰" });
+      }
+      
+      // 排除已有的城市
+      const excludeCities = exclude ? (exclude as string).split(',') : [];
+      
+      let query;
+      if (excludeCities.length > 0) {
+        query = sql`
+          SELECT place_name, country, city, district, address, 
+                 location_lat, location_lng, google_place_id, rating,
+                 category, subcategory, description
+          FROM places 
+          WHERE is_active = true 
+            AND google_place_id IS NOT NULL
+            AND city NOT IN ${sql.raw(`('${excludeCities.join("','")}')`)}
+          ORDER BY city, district
+        `;
+      } else {
+        query = sql`
+          SELECT place_name, country, city, district, address, 
+                 location_lat, location_lng, google_place_id, rating,
+                 category, subcategory, description
+          FROM places 
+          WHERE is_active = true AND google_place_id IS NOT NULL
+          ORDER BY city, district
+        `;
+      }
+      
+      const result = await db.execute(query);
+      
+      res.json({
+        success: true,
+        count: result.rows.length,
+        places: result.rows
+      });
+    } catch (error) {
+      console.error("[Export] Error:", error);
+      res.status(500).json({ error: "導出失敗", details: String(error) });
+    }
+  });
+
+  // ============ 一鍵匯入：從遠端 API 獲取資料 ============
   app.get("/api/admin/seed-places", async (req: any, res) => {
     try {
-      const { key } = req.query;
+      const { key, source } = req.query;
       const MIGRATION_KEY = process.env.ADMIN_MIGRATION_KEY || "mibu2024migrate";
       
       if (key !== MIGRATION_KEY) {
@@ -8517,65 +8566,71 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
       
       console.log('[Seed] Starting places seed import...');
       
-      // 嘗試多種路徑
-      const possiblePaths = [
-        path.join(process.cwd(), 'data', 'places_seed.json'),
-        path.resolve('./data/places_seed.json'),
-        '/app/data/places_seed.json',
-        './data/places_seed.json'
-      ];
+      // 獲取目前已有的城市
+      const existingCities = await db.execute(sql`
+        SELECT DISTINCT city FROM places WHERE is_active = true
+      `);
+      const excludeCities = existingCities.rows.map((r: any) => r.city).join(',');
+      console.log('[Seed] Excluding cities:', excludeCities);
       
-      let seedPath: string | null = null;
-      for (const p of possiblePaths) {
-        console.log('[Seed] Checking path:', p);
-        if (fs.existsSync(p)) {
-          seedPath = p;
-          console.log('[Seed] Found seed file at:', p);
-          break;
-        }
-      }
+      // 從開發環境 API 獲取資料
+      const devApiUrl = source || 'https://591965a7-25f6-479c-b527-3890b1193c21-00-1m08cwv9a4rev.picard.replit.dev';
+      const exportUrl = `${devApiUrl}/api/admin/export-places?key=${MIGRATION_KEY}&exclude=${encodeURIComponent(excludeCities)}`;
       
-      if (!seedPath) {
-        return res.status(404).json({ 
-          error: "找不到 seed 檔案", 
-          triedPaths: possiblePaths,
-          cwd: process.cwd()
+      console.log('[Seed] Fetching from:', exportUrl);
+      
+      const response = await fetch(exportUrl, { 
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(30000) // 30 秒超時
+      });
+      
+      if (!response.ok) {
+        return res.status(502).json({ 
+          error: "無法從開發環境獲取資料", 
+          status: response.status 
         });
       }
       
-      const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
-      if (!Array.isArray(seedData)) {
-        return res.status(400).json({ error: "Seed 檔案格式錯誤" });
+      const data = await response.json();
+      if (!data.success || !Array.isArray(data.places)) {
+        return res.status(400).json({ error: "資料格式錯誤" });
       }
       
-      console.log('[Seed] Found', seedData.length, 'places to import');
+      console.log('[Seed] Received', data.places.length, 'places to import');
       
       let inserted = 0, skipped = 0, errors = 0;
       
-      for (const place of seedData) {
-        try {
-          if (!place.google_place_id) {
-            skipped++;
-            continue;
+      // 批量插入，每 50 筆一批
+      const batchSize = 50;
+      for (let i = 0; i < data.places.length; i += batchSize) {
+        const batch = data.places.slice(i, i + batchSize);
+        
+        for (const place of batch) {
+          try {
+            if (!place.google_place_id) {
+              skipped++;
+              continue;
+            }
+            
+            await db.execute(sql`
+              INSERT INTO places (
+                place_name, country, city, district, address,
+                location_lat, location_lng, google_place_id, rating,
+                category, subcategory, description, is_active, is_promo_active
+              ) VALUES (
+                ${place.place_name}, ${place.country}, ${place.city}, ${place.district}, ${place.address},
+                ${place.location_lat}, ${place.location_lng}, ${place.google_place_id}, ${place.rating},
+                ${place.category}, ${place.subcategory}, ${place.description}, true, false
+              )
+              ON CONFLICT (google_place_id) DO NOTHING
+            `);
+            inserted++;
+          } catch (err) {
+            errors++;
           }
-          
-          await db.execute(sql`
-            INSERT INTO places (
-              place_name, country, city, district, address,
-              location_lat, location_lng, google_place_id, rating,
-              category, subcategory, description, is_active, is_promo_active
-            ) VALUES (
-              ${place.place_name}, ${place.country}, ${place.city}, ${place.district}, ${place.address},
-              ${place.location_lat}, ${place.location_lng}, ${place.google_place_id}, ${place.rating},
-              ${place.category}, ${place.subcategory}, ${place.description}, true, false
-            )
-            ON CONFLICT (google_place_id) DO NOTHING
-          `);
-          inserted++;
-        } catch (err) {
-          errors++;
-          console.error('[Seed] Error inserting place:', place.place_name, err);
         }
+        
+        console.log(`[Seed] Progress: ${Math.min(i + batchSize, data.places.length)}/${data.places.length}`);
       }
       
       // 取得統計
@@ -8594,7 +8649,7 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
       res.json({
         success: true,
         message: "✅ 匯入完成！",
-        imported: { inserted, skipped, errors, total: seedData.length },
+        imported: { inserted, skipped, errors, total: data.places.length },
         totalPlaces,
         totalCities: statsResult.rows.length,
         byCity: statsResult.rows
