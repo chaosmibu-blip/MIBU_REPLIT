@@ -8503,6 +8503,86 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     }
   });
 
+  // ============ 一鍵匯入：從 seed 檔案匯入景點資料 ============
+  app.get("/api/admin/seed-places", async (req: any, res) => {
+    try {
+      const { key } = req.query;
+      const MIGRATION_KEY = process.env.ADMIN_MIGRATION_KEY || "mibu2024migrate";
+      
+      if (key !== MIGRATION_KEY) {
+        return res.status(403).json({ error: "需要密鑰" });
+      }
+      
+      console.log('[Seed] Starting places seed import...');
+      
+      // 讀取 seed 檔案
+      const seedPath = path.join(process.cwd(), 'data', 'places_seed.json');
+      if (!fs.existsSync(seedPath)) {
+        return res.status(404).json({ error: "找不到 seed 檔案", path: seedPath });
+      }
+      
+      const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
+      if (!Array.isArray(seedData)) {
+        return res.status(400).json({ error: "Seed 檔案格式錯誤" });
+      }
+      
+      console.log('[Seed] Found', seedData.length, 'places to import');
+      
+      let inserted = 0, skipped = 0, errors = 0;
+      
+      for (const place of seedData) {
+        try {
+          if (!place.google_place_id) {
+            skipped++;
+            continue;
+          }
+          
+          await db.execute(sql`
+            INSERT INTO places (
+              place_name, country, city, district, address,
+              location_lat, location_lng, google_place_id, rating,
+              category, subcategory, description, is_active, is_promo_active
+            ) VALUES (
+              ${place.place_name}, ${place.country}, ${place.city}, ${place.district}, ${place.address},
+              ${place.location_lat}, ${place.location_lng}, ${place.google_place_id}, ${place.rating},
+              ${place.category}, ${place.subcategory}, ${place.description}, true, false
+            )
+            ON CONFLICT (google_place_id) DO NOTHING
+          `);
+          inserted++;
+        } catch (err) {
+          errors++;
+          console.error('[Seed] Error inserting place:', place.place_name, err);
+        }
+      }
+      
+      // 取得統計
+      const statsResult = await db.execute(sql`
+        SELECT city, COUNT(*) as count 
+        FROM places 
+        WHERE is_active = true 
+        GROUP BY city 
+        ORDER BY count DESC
+      `);
+      
+      const totalPlaces = statsResult.rows.reduce((sum: number, row: any) => sum + parseInt(row.count), 0);
+      
+      console.log('[Seed] Complete! Inserted:', inserted, 'Skipped:', skipped, 'Errors:', errors);
+      
+      res.json({
+        success: true,
+        message: "✅ 匯入完成！",
+        imported: { inserted, skipped, errors, total: seedData.length },
+        totalPlaces,
+        totalCities: statsResult.rows.length,
+        byCity: statsResult.rows
+      });
+    } catch (error) {
+      console.error("[Seed] Error:", error);
+      res.status(500).json({ error: "匯入失敗", details: String(error) });
+    }
+  });
+
   // ============ 一鍵遷移：place_cache → places ============
   // 簡易版本：使用密鑰驗證（方便在 App 上操作）
   app.get("/api/admin/migrate-places", async (req: any, res) => {
