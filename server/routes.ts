@@ -3,6 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import * as path from "path";
+import * as fs from "fs";
 import { setupAuth, isAuthenticated, generateJwtToken } from "./replitAuth";
 import { insertCollectionSchema, insertMerchantSchema, insertCouponSchema, insertCartItemSchema, insertPlaceDraftSchema, insertPlaceApplicationSchema, registerUserSchema, insertSpecialistSchema, insertServiceRelationSchema, insertAdPlacementSchema, insertCouponRarityConfigSchema, INVENTORY_MAX_SLOTS, type PlaceDraft, type Subcategory } from "@shared/schema";
 import { ErrorCode, createErrorResponse } from "@shared/errors";
