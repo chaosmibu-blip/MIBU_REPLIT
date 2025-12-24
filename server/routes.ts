@@ -8517,10 +8517,30 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
       
       console.log('[Seed] Starting places seed import...');
       
-      // 讀取 seed 檔案
-      const seedPath = path.join(process.cwd(), 'data', 'places_seed.json');
-      if (!fs.existsSync(seedPath)) {
-        return res.status(404).json({ error: "找不到 seed 檔案", path: seedPath });
+      // 嘗試多種路徑
+      const possiblePaths = [
+        path.join(process.cwd(), 'data', 'places_seed.json'),
+        path.resolve('./data/places_seed.json'),
+        '/app/data/places_seed.json',
+        './data/places_seed.json'
+      ];
+      
+      let seedPath: string | null = null;
+      for (const p of possiblePaths) {
+        console.log('[Seed] Checking path:', p);
+        if (fs.existsSync(p)) {
+          seedPath = p;
+          console.log('[Seed] Found seed file at:', p);
+          break;
+        }
+      }
+      
+      if (!seedPath) {
+        return res.status(404).json({ 
+          error: "找不到 seed 檔案", 
+          triedPaths: possiblePaths,
+          cwd: process.cwd()
+        });
       }
       
       const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
