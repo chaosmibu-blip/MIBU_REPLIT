@@ -8508,7 +8508,7 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
   app.get("/api/admin/migrate-places", async (req: any, res) => {
     try {
       const { key } = req.query;
-      const MIGRATION_KEY = "mibu2024migrate"; // 簡易密鑰
+      const MIGRATION_KEY = process.env.ADMIN_MIGRATION_KEY || "mibu2024migrate";
       
       if (key !== MIGRATION_KEY) {
         return res.status(403).json({ 
