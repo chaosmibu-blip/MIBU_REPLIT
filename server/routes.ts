@@ -4337,6 +4337,12 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
       recordGachaResult(userId, city, drawnPlaceIds);
       console.log('[Gacha V3] Recorded', drawnPlaceIds.length, 'places for dedup protection');
       
+      // ========== 張數不足提示 ==========
+      const isShortfall = itinerary.length < targetCount;
+      const shortfallMessage = isShortfall 
+        ? `${anchorDistrict || city}目前只有 ${itinerary.length} 個景點，我們正在努力擴充中！`
+        : null;
+      
       res.json({
         success: true,
         targetDistrict: anchorDistrict || city,
@@ -4349,7 +4355,10 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
           city,
           anchorDistrict,
           pace,
+          requestedCount: targetCount,
           totalPlaces: itinerary.length,
+          isShortfall,
+          shortfallMessage,
           totalCouponsWon: couponsWon.length,
           categoryDistribution: categoryStats,
           sortingMethod: aiReorderResult === 'reordered' ? 'ai_reordered' : 'coordinate',
