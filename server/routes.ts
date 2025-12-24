@@ -211,7 +211,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
   
   const generateToken = (userId: string, role: string): string => {
-    const secret = process.env.SESSION_SECRET || 'mibu-secret-key';
+    // 使用與 replitAuth.ts 相同的 JWT_SECRET，確保 token 可以被正確驗證
+    const secret = process.env.JWT_SECRET || 'mibu_secret_key_fixed_12345';
     return jwt.sign({ sub: userId, role }, secret, { expiresIn: '30d' });
   };
 
