@@ -1,7 +1,7 @@
 # 行程扭蛋模組記憶庫 (Travel Gacha Module)
 
 ## 模組範圍
-負責隨機生成旅遊行程的核心扭蛋機制，包含景點抽取、AI 審核、自動草稿生成。
+負責隨機生成旅遊行程的核心扭蛋機制，包含景點抽取、批次採集、去重保護。
 
 ## API 版本
 
@@ -91,41 +91,23 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 - `user_daily_gacha_stats`: 每日抽卡計數
 - `regions`, `districts`: 地區階層
 
-## AutoDraft 自動填充
-- 排程: 每 30 秒執行
-- 功能: 自動從 Google Places API 抓取新景點
-- 限制: Gemini 15 req/min (free), 360+ req/min (paid)
-- 可並行 3-5 個 instance
+## 批次採集系統（取代 AutoDraft）
 
-## AI 審核系統（短批次模式）
+> ⚠️ **已移除功能**：AutoDraft 自動填充和自動 AI 審查已於 2025-12-25 移除
 
-### 審核腳本
-- **腳本**: `server/scripts/short-batch-review.ts`
-- **用法**: `npx tsx server/scripts/short-batch-review.ts [批次數量]`
-- **預設**: 每次 12 筆（符合 60 秒限制）
-- **通過率**: 約 80-85%
+### 目前採集方式
+- 使用管理後台「批次採集地點」頁面手動觸發
+- API: `POST /api/admin/places/batch-generate`
+- 流程: AI 關鍵字擴散 → Google 搜尋 → 批次生成描述 → 存入 place_cache
 
-### 升級腳本
-- **腳本**: `server/scripts/promote-to-places.ts`
-- **用法**: `npx tsx server/scripts/promote-to-places.ts [批次數量]`
-- **預設**: 每次 50 筆
-- **功能**: 將已審核通過的 place_cache 升級到 places 表
+### 手動審核腳本（保留）
+```bash
+# AI 審核（每批 10 筆，含 Rate Limit 防護）
+npx tsx server/scripts/short-batch-review.ts [數量]
 
-### 完整流程
+# 升級到 places 表
+npx tsx server/scripts/promote-to-places.ts [數量]
 ```
-place_cache (ai_reviewed=null)
-    ↓ short-batch-review.ts
-    ├─ 通過 → ai_reviewed=true
-    └─ 不通過 → 刪除
-    ↓ promote-to-places.ts
-    ├─ 不重複 → 寫入 places
-    └─ 已存在 → 刪除 cache
-```
-
-### Replit 60 秒限制
-- 背景任務有 ~60 秒執行時間限制
-- 超時會被 SIGTERM 終止
-- 必須用短批次策略，每次 ≤12 筆
 
 ## 注意事項
 - `isActive = false` 的景點不會出現在扭蛋結果

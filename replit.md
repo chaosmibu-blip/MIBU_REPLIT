@@ -33,7 +33,7 @@ Mibu 是專為自由行旅客打造的旅遊 App，包含兩大核心模組：
 
 | 檔案 | 模組 | 內容 |
 |------|------|------|
-| memory-travel-gacha.md | 行程扭蛋 | Gacha 邏輯、去重、AutoDraft、AI 審核 |
+| memory-travel-gacha.md | 行程扭蛋 | Gacha 邏輯、去重、批次採集 |
 | memory-trip-planner.md | 旅程策劃 | 天數管理、活動、旅伴 |
 | memory-user-client.md | 用戶端 | 認證、背包、通知、額度 |
 | memory-merchant.md | 商家端 | 認領、優惠券、訂閱、數據 |
