@@ -6750,7 +6750,7 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
         { maxKeywords, maxPagesPerKeyword, enableAIExpansion }
       );
 
-      // 如果需要儲存到 drafts
+      // 儲存到 place_cache（原始採集資料）
       let savedCount = 0;
       let skippedCount = 0;
       const savedPlaces: any[] = [];
@@ -6769,9 +6769,9 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
           subcategory = subcategories.find(s => s.id === subcategoryId);
         }
 
-        // 檢查已存在的 place_id（在 drafts、cache、places 中）
-        const existingDrafts = await storage.getAllPlaceDrafts();
-        const existingDraftPlaceIds = new Set(existingDrafts.map(d => d.googlePlaceId).filter(Boolean));
+        // 檢查已存在的 place_id（在 cache 和 places 中）
+        const existingCache = await storage.getCachedPlaces(district.nameZh, region.nameZh, country.nameZh);
+        const existingCachePlaceIds = new Set(existingCache.map(c => c.placeId).filter(Boolean));
         
         // 也檢查 places 表
         const existingPlaces = await storage.getOfficialPlacesByCity(region.nameZh, 1000);
@@ -6779,7 +6779,7 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
 
         for (const place of result.places) {
           // 跳過已存在的
-          if (existingDraftPlaceIds.has(place.placeId) || existingPlacePlaceIds.has(place.placeId)) {
+          if (existingCachePlaceIds.has(place.placeId) || existingPlacePlaceIds.has(place.placeId)) {
             skippedCount++;
             continue;
           }
@@ -6801,29 +6801,39 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
               description = `探索${district.nameZh}的特色景點`;
             }
 
-            const draft = await storage.createPlaceDraft({
-              merchantId: null,
-              source: 'ai',
+            // 存入 place_cache 而非 place_drafts
+            const cached = await storage.savePlaceToCache({
+              subCategory: subcategory?.slug || category?.slug || 'attraction',
+              district: district.nameZh,
+              city: region.nameZh,
+              country: country.nameZh,
               placeName: place.name,
-              categoryId: categoryId || 1,
-              subcategoryId: subcategoryId || null,
               description,
-              districtId,
-              regionId: region.id,
-              countryId: country.id,
-              address: place.address,
-              googlePlaceId: place.placeId,
-              googleRating: place.rating,
-              googleReviewCount: place.reviewCount,
+              category: category?.slug || 'attraction',
+              suggestedTime: null,
+              duration: null,
+              searchQuery: keyword,
+              rarity: null,
+              colorHex: null,
+              placeId: place.placeId,
+              verifiedName: place.name,
+              verifiedAddress: place.address,
+              googleRating: place.rating?.toString() || null,
+              googleTypes: place.types?.join(',') || null,
+              primaryType: place.primaryType || null,
               locationLat: place.location?.lat?.toString() || null,
               locationLng: place.location?.lng?.toString() || null,
-              status: 'pending'
+              isLocationVerified: true,
+              businessStatus: place.businessStatus || null,
+              lastVerifiedAt: new Date(),
+              aiReviewed: false,
+              aiReviewedAt: null
             });
 
             savedPlaces.push({
-              id: draft.id,
-              placeName: draft.placeName,
-              googlePlaceId: draft.googlePlaceId
+              id: cached.id,
+              placeName: cached.placeName,
+              placeId: cached.placeId
             });
             savedCount++;
           } catch (e: any) {
