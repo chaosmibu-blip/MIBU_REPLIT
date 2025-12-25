@@ -98,7 +98,17 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 ### 目前採集方式
 - 使用管理後台「批次採集地點」頁面手動觸發
 - API: `POST /api/admin/places/batch-generate`
-- 流程: AI 關鍵字擴散 → Google 搜尋 → 批次生成描述 → 存入 place_cache
+- 流程: AI 關鍵字擴散 → Google 搜尋 → **規則映射分類** → AI 批次生成描述 → 存入 place_cache
+
+### 分類邏輯（2025-12-25 改版）
+1. **Category 判斷**：`determineCategory(primaryType, googleTypes)` - 規則映射，100% 成功
+2. **Subcategory 判斷**：`determineSubcategory(primaryType, googleTypes)` - 規則映射
+3. **描述生成**：`batchGenerateDescriptionsOnly()` - AI 只生成描述（不做分類）
+4. **Fallback 模板**：AI 失敗時用 `generateFallbackDescription()` 智能模板（非通用文字）
+
+### 行程卡顯示標籤
+- 前端使用 **`category`** 欄位透過 `getCategoryLabel()` 顯示
+- 映射：`food` → 美食、`scenery` → 景點、`stay` → 住宿
 
 ### 手動審核腳本（保留）
 ```bash

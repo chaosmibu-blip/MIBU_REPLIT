@@ -105,6 +105,19 @@ Body: { key: 'mibu2024migrate', data: [...] }
 
 ## Changelog
 
+### 2025-12-26 - 舊資料分類修復
+- **修復範圍**：place_cache（662 筆）、place_drafts（1 筆）、places（4 筆）
+- **問題**：舊採集資料 category 錯誤（如 `primary_type=restaurant` 卻分類為「景點」）
+- **修復內容**：
+  1. 通用描述「探索XX的特色景點」→ 智能 fallback 模板（173 筆）
+  2. restaurant/cafe/bakery/bar → 美食（381 筆）
+  3. lodging → 住宿（63 筆）
+  4. museum → 生態文化教育（1 筆）
+  5. category='food'(英文) → 美食（22 筆）
+  6. tourist_attraction/store 但名稱含餐廳 → 美食（22 筆）
+- **新增腳本**：`server/scripts/reclassify-data.ts` - 批次重新分類
+- **行程卡顯示**：前端使用 `category` 欄位（非 sub_category）透過 `getCategoryLabel()` 顯示標籤
+
 ### 2025-12-25 - 規則映射分類系統（取代純 AI 分類）
 - **新增** `server/lib/categoryMapping.ts`：Google Types → Mibu Category/Subcategory 對照表
 - **分類流程改進**：
