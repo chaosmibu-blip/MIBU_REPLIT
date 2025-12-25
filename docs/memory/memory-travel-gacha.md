@@ -97,11 +97,35 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 - 限制: Gemini 15 req/min (free), 360+ req/min (paid)
 - 可並行 3-5 個 instance
 
-## AI 審核系統
-- 排程: 每 30 秒執行
-- 功能: 審核 place_cache 中的 AI 生成景點
-- 通過率: confidence >= 0.6
-- 失敗處理: 移至 place_drafts 待人工審核
+## AI 審核系統（短批次模式）
+
+### 審核腳本
+- **腳本**: `server/scripts/short-batch-review.ts`
+- **用法**: `npx tsx server/scripts/short-batch-review.ts [批次數量]`
+- **預設**: 每次 12 筆（符合 60 秒限制）
+- **通過率**: 約 80-85%
+
+### 升級腳本
+- **腳本**: `server/scripts/promote-to-places.ts`
+- **用法**: `npx tsx server/scripts/promote-to-places.ts [批次數量]`
+- **預設**: 每次 50 筆
+- **功能**: 將已審核通過的 place_cache 升級到 places 表
+
+### 完整流程
+```
+place_cache (ai_reviewed=null)
+    ↓ short-batch-review.ts
+    ├─ 通過 → ai_reviewed=true
+    └─ 不通過 → 刪除
+    ↓ promote-to-places.ts
+    ├─ 不重複 → 寫入 places
+    └─ 已存在 → 刪除 cache
+```
+
+### Replit 60 秒限制
+- 背景任務有 ~60 秒執行時間限制
+- 超時會被 SIGTERM 終止
+- 必須用短批次策略，每次 ≤12 筆
 
 ## 注意事項
 - `isActive = false` 的景點不會出現在扭蛋結果
@@ -111,6 +135,12 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 ---
 
 ## Changelog
+
+### 2025-12-25 - 升級腳本 & 資料遷移
+- 新增 `promote-to-places.ts` 升級腳本
+- 將 2,092 筆已審核 place_cache 升級到 places
+- 實際新增 499 筆景點（其餘 1,593 筆為重複已清理）
+- places 總數從 1,778 → 2,277 筆
 
 ### 2025-12-24 - 張數不足提示
 - 新增 `requestedCount`、`isShortfall`、`shortfallMessage` 回應欄位
