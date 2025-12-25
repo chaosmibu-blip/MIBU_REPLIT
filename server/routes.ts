@@ -16,7 +16,8 @@ import { createPlannerServiceRoutes } from "../modules/trip-planner/server/plann
 import { registerStripeRoutes } from "./stripeRoutes";
 import { getUncachableStripeClient } from "./stripeClient";
 import { checkGeofence } from "./lib/geofencing";
-import { callGemini, batchGeneratePlaces, batchGenerateDescriptions, batchGenerateWithClassification, type PlaceResult } from "./lib/placeGenerator";
+import { callGemini, batchGeneratePlaces, batchGenerateDescriptions, batchGenerateWithClassification, classifyAndDescribePlaces, reclassifyPlace, type PlaceResult, type PlaceWithClassification } from "./lib/placeGenerator";
+import { determineCategory, determineSubcategory, generateFallbackDescription, classifyPlace } from "./lib/categoryMapping";
 import twilio from "twilio";
 import appleSignin from "apple-signin-auth";
 const { AccessToken } = twilio.jwt;
@@ -6820,7 +6821,7 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
 
           sendProgress('filtering_results', 1, 1, `需處理 ${placesToProcess.length} 筆，跳過 ${skippedCount} 筆重複`);
 
-          // 階段 3: 批次生成描述 + 分類
+          // 階段 3: 規則映射分類 + AI 生成描述
           const CHUNK_SIZE = 15;
           const DELAY_BETWEEN_CHUNKS = 2000;
           const totalChunks = Math.ceil(placesToProcess.length / CHUNK_SIZE);
@@ -6830,13 +6831,10 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
             const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
             
             sendProgress('generating_descriptions', chunkNum, totalChunks, 
-              `AI 正在生成描述與分類 (批次 ${chunkNum}/${totalChunks})...`);
+              `規則映射分類 + AI 生成描述 (批次 ${chunkNum}/${totalChunks})...`);
             
-            // 使用新的 AI 分類函數
-            const classificationMap = await batchGenerateWithClassification(
-              chunk.map(p => ({ name: p.name, address: p.address, types: p.types })),
-              cityName
-            );
+            // 使用新的規則映射 + AI 描述函數
+            const classificationMap = await classifyAndDescribePlaces(chunk, cityName);
             
             // 階段 4: 儲存（含自動新增子分類）
             sendProgress('saving_places', savedCount, placesToProcess.length, 
@@ -6844,33 +6842,36 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
 
             for (const place of chunk) {
               try {
-                const classification = classificationMap.get(place.name) || {
-                  description: `探索${cityName}的特色景點`,
-                  category: '景點',
-                  subcategory: 'attraction'
+                const classification = classificationMap.get(place.name);
+                const classResult = classification || {
+                  name: place.name,
+                  category: determineCategory(place.primaryType, place.types),
+                  subcategory: determineSubcategory(place.primaryType, place.types),
+                  description: generateFallbackDescription(place.name, determineCategory(place.primaryType, place.types), determineSubcategory(place.primaryType, place.types), cityName),
+                  descriptionSource: 'fallback' as const
                 };
 
-                // 根據 AI 判斷的種類找到對應的 category
-                const matchedCategory = allCategories.find(c => c.nameZh === classification.category) || selectedCategory;
+                // 根據規則判斷的種類找到對應的 category
+                const matchedCategory = allCategories.find(c => c.nameZh === classResult.category) || selectedCategory;
                 
                 // 檢查子分類是否存在，不存在則新增
-                let subcategoryName = classification.subcategory;
+                let subcategoryName = classResult.subcategory;
                 if (matchedCategory) {
                   const existingSubcategories = await storage.getSubcategoriesByCategory(matchedCategory.id);
-                  const existingSubcategory = existingSubcategories.find(s => s.nameZh === classification.subcategory);
+                  const existingSubcategory = existingSubcategories.find(s => s.nameZh === classResult.subcategory);
                   
-                  if (!existingSubcategory && classification.subcategory) {
+                  if (!existingSubcategory && classResult.subcategory) {
                     // 自動新增子分類
                     try {
                       await storage.createSubcategory({
                         categoryId: matchedCategory.id,
-                        nameZh: classification.subcategory,
-                        nameEn: classification.subcategory,
+                        nameZh: classResult.subcategory,
+                        nameEn: classResult.subcategory,
                         icon: '📍'
                       });
-                      console.log(`[BatchGenerate] 自動新增子分類: ${classification.subcategory} (${matchedCategory.nameZh})`);
+                      console.log(`[BatchGenerate] 自動新增子分類: ${classResult.subcategory} (${matchedCategory.nameZh})`);
                     } catch (subErr: any) {
-                      console.log(`[BatchGenerate] 子分類已存在或新增失敗: ${classification.subcategory}`);
+                      console.log(`[BatchGenerate] 子分類已存在或新增失敗: ${classResult.subcategory}`);
                     }
                   }
                 }
@@ -6881,8 +6882,8 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
                   city: cityName,
                   country: countryName,
                   placeName: place.name,
-                  description: classification.description,
-                  category: classification.category,
+                  description: classResult.description,
+                  category: classResult.category,
                   suggestedTime: null,
                   duration: null,
                   searchQuery: searchKeyword,
@@ -6966,31 +6967,32 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
         for (let i = 0; i < placesToProcess.length; i += CHUNK_SIZE) {
           const chunk = placesToProcess.slice(i, i + CHUNK_SIZE);
           
-          const classificationMap = await batchGenerateWithClassification(
-            chunk.map(p => ({ name: p.name, address: p.address, types: p.types })),
-            cityName
-          );
+          // 使用新的規則映射 + AI 描述函數
+          const classificationMap = await classifyAndDescribePlaces(chunk, cityName);
           
           for (const place of chunk) {
             try {
-              const classification = classificationMap.get(place.name) || {
-                description: `探索${cityName}的特色景點`,
-                category: '景點',
-                subcategory: 'attraction'
+              const classification = classificationMap.get(place.name);
+              const classResult = classification || {
+                name: place.name,
+                category: determineCategory(place.primaryType, place.types),
+                subcategory: determineSubcategory(place.primaryType, place.types),
+                description: generateFallbackDescription(place.name, determineCategory(place.primaryType, place.types), determineSubcategory(place.primaryType, place.types), cityName),
+                descriptionSource: 'fallback' as const
               };
 
-              const matchedCategory = allCategories.find(c => c.nameZh === classification.category) || selectedCategory;
+              const matchedCategory = allCategories.find(c => c.nameZh === classResult.category) || selectedCategory;
               
               if (matchedCategory) {
                 const existingSubcategories = await storage.getSubcategoriesByCategory(matchedCategory.id);
-                const existingSubcategory = existingSubcategories.find(s => s.nameZh === classification.subcategory);
+                const existingSubcategory = existingSubcategories.find(s => s.nameZh === classResult.subcategory);
                 
-                if (!existingSubcategory && classification.subcategory) {
+                if (!existingSubcategory && classResult.subcategory) {
                   try {
                     await storage.createSubcategory({
                       categoryId: matchedCategory.id,
-                      nameZh: classification.subcategory,
-                      nameEn: classification.subcategory,
+                      nameZh: classResult.subcategory,
+                      nameEn: classResult.subcategory,
                       icon: '📍'
                     });
                   } catch (subErr: any) {
@@ -7000,13 +7002,13 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
               }
 
               const cached = await storage.savePlaceToCache({
-                subCategory: classification.subcategory,
+                subCategory: classResult.subcategory,
                 district: districtName || cityName,
                 city: cityName,
                 country: countryName,
                 placeName: place.name,
-                description: classification.description,
-                category: classification.category,
+                description: classResult.description,
+                category: classResult.category,
                 suggestedTime: null,
                 duration: null,
                 searchQuery: searchKeyword,
