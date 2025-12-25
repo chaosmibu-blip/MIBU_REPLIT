@@ -20,6 +20,22 @@ interface PreviewPlace {
   types: string[];
 }
 
+type ProgressStage = 
+  | 'idle'
+  | 'expanding_keywords'
+  | 'searching_google'
+  | 'filtering_results'
+  | 'generating_descriptions'
+  | 'saving_places'
+  | 'complete';
+
+interface ProgressState {
+  stage: ProgressStage;
+  current: number;
+  total: number;
+  message: string;
+}
+
 export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, t }) => {
   const [countries, setCountries] = useState<LocationOption[]>([]);
   const [regions, setRegions] = useState<LocationOption[]>([]);
@@ -35,6 +51,12 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
   const [previewTotal, setPreviewTotal] = useState(0);
   const [generateResult, setGenerateResult] = useState<{ saved: number; skipped: number } | null>(null);
   const [error, setError] = useState('');
+  const [progress, setProgress] = useState<ProgressState>({
+    stage: 'idle',
+    current: 0,
+    total: 0,
+    message: ''
+  });
 
   useEffect(() => {
     fetch('/api/locations/countries', { credentials: 'include' })
@@ -73,6 +95,88 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
     return '';
   };
 
+  const simulateProgress = (keywordCount: number, pageCount: number) => {
+    const stages: { stage: ProgressStage; duration: number; getMessage: (current: number, total: number) => string }[] = [
+      { 
+        stage: 'expanding_keywords', 
+        duration: 2000, 
+        getMessage: () => `正在擴散關鍵字... (AI 生成中)` 
+      },
+      { 
+        stage: 'searching_google', 
+        duration: keywordCount * pageCount * 1500, 
+        getMessage: (c, t) => `正在搜尋 Google 地圖 (${c}/${t})...` 
+      },
+      { 
+        stage: 'filtering_results', 
+        duration: 1000, 
+        getMessage: () => `正在過濾與去重...` 
+      },
+      { 
+        stage: 'generating_descriptions', 
+        duration: 3000, 
+        getMessage: (c, t) => `AI 正在生成描述 (${c}/${t})...` 
+      },
+      { 
+        stage: 'saving_places', 
+        duration: 2000, 
+        getMessage: (c, t) => `正在儲存地點 (${c}/${t})...` 
+      }
+    ];
+
+    let totalElapsed = 0;
+    
+    stages.forEach((stageInfo, idx) => {
+      const searchTotal = keywordCount * pageCount;
+      const estimatedPlaces = searchTotal * 15;
+      
+      setTimeout(() => {
+        if (stageInfo.stage === 'searching_google') {
+          let searchStep = 0;
+          const searchInterval = setInterval(() => {
+            searchStep++;
+            if (searchStep <= searchTotal) {
+              setProgress({
+                stage: stageInfo.stage,
+                current: searchStep,
+                total: searchTotal,
+                message: stageInfo.getMessage(searchStep, searchTotal)
+              });
+            }
+            if (searchStep >= searchTotal) {
+              clearInterval(searchInterval);
+            }
+          }, 1200);
+        } else if (stageInfo.stage === 'generating_descriptions' || stageInfo.stage === 'saving_places') {
+          let step = 0;
+          const interval = setInterval(() => {
+            step += 5;
+            if (step <= estimatedPlaces) {
+              setProgress({
+                stage: stageInfo.stage,
+                current: Math.min(step, estimatedPlaces),
+                total: estimatedPlaces,
+                message: stageInfo.getMessage(Math.min(step, estimatedPlaces), estimatedPlaces)
+              });
+            }
+            if (step >= estimatedPlaces) {
+              clearInterval(interval);
+            }
+          }, 300);
+        } else {
+          setProgress({
+            stage: stageInfo.stage,
+            current: 0,
+            total: 0,
+            message: stageInfo.getMessage(0, 0)
+          });
+        }
+      }, totalElapsed);
+      
+      totalElapsed += stageInfo.duration;
+    });
+  };
+
   const handlePreview = async () => {
     if (!selectedDistrictId || !keywords.trim()) {
       setError('請選擇地區並輸入關鍵字');
@@ -93,6 +197,12 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
     setError('');
     setPreviewPlaces([]);
     setPreviewTotal(0);
+    setProgress({
+      stage: 'searching_google',
+      current: 0,
+      total: keywordList.length,
+      message: '正在搜尋 Google 地圖...'
+    });
 
     try {
       const res = await fetch('/api/admin/places/batch-preview', {
@@ -111,8 +221,10 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
 
       setPreviewPlaces(data.places || []);
       setPreviewTotal(data.total || 0);
+      setProgress({ stage: 'complete', current: 0, total: 0, message: '預覽完成' });
     } catch (err: any) {
       setError(err.message);
+      setProgress({ stage: 'idle', current: 0, total: 0, message: '' });
     } finally {
       setPreviewing(false);
     }
@@ -137,6 +249,8 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
     setLoading(true);
     setError('');
     setGenerateResult(null);
+    
+    simulateProgress(keywordList.length, maxPages);
 
     try {
       const res = await fetch('/api/admin/places/batch-generate', {
@@ -154,14 +268,38 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
       if (!res.ok) throw new Error(data.error || '生成失敗');
 
       setGenerateResult({
-        saved: data.savedCount || 0,
-        skipped: data.skippedCount || 0
+        saved: data.saved || 0,
+        skipped: data.skipped || 0
+      });
+      setProgress({ 
+        stage: 'complete', 
+        current: data.saved || 0, 
+        total: data.total || 0, 
+        message: `完成！儲存 ${data.saved} 筆` 
       });
     } catch (err: any) {
       setError(err.message);
+      setProgress({ stage: 'idle', current: 0, total: 0, message: '' });
     } finally {
       setLoading(false);
     }
+  };
+
+  const getProgressColor = () => {
+    switch (progress.stage) {
+      case 'expanding_keywords': return 'bg-purple-500';
+      case 'searching_google': return 'bg-blue-500';
+      case 'filtering_results': return 'bg-yellow-500';
+      case 'generating_descriptions': return 'bg-orange-500';
+      case 'saving_places': return 'bg-green-500';
+      case 'complete': return 'bg-green-600';
+      default: return 'bg-slate-300';
+    }
+  };
+
+  const getProgressPercent = () => {
+    if (progress.total === 0) return 0;
+    return Math.round((progress.current / progress.total) * 100);
   };
 
   return (
@@ -248,6 +386,30 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
           </select>
         </div>
 
+        {(loading || previewing) && progress.stage !== 'idle' && (
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3" data-testid="progress-container">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+              <span className="text-sm font-medium text-slate-700" data-testid="progress-message">
+                {progress.message}
+              </span>
+            </div>
+            {progress.total > 0 && (
+              <div className="space-y-1">
+                <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className={`h-full transition-all duration-300 ${getProgressColor()}`}
+                    style={{ width: `${getProgressPercent()}%` }}
+                  />
+                </div>
+                <div className="text-xs text-slate-500 text-right">
+                  {progress.current} / {progress.total} ({getProgressPercent()}%)
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {error && (
           <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700" data-testid="text-error">
             {error}
@@ -263,7 +425,7 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
         <div className="flex gap-3">
           <button
             onClick={handlePreview}
-            disabled={previewing || !selectedDistrictId}
+            disabled={previewing || loading || !selectedDistrictId}
             className="flex-1 px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors disabled:opacity-50"
             data-testid="button-preview"
           >
@@ -271,11 +433,11 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
           </button>
           <button
             onClick={handleGenerate}
-            disabled={loading || !selectedDistrictId}
+            disabled={loading || previewing || !selectedDistrictId}
             className="flex-1 px-6 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50"
             data-testid="button-generate"
           >
-            {loading ? '生成中...' : '開始採集'}
+            {loading ? '採集中...' : '開始採集'}
           </button>
         </div>
       </div>

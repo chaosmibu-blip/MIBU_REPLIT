@@ -100,3 +100,20 @@ Body: { key: 'mibu2024migrate', data: [...] }
 - [ ] 即時監控儀表板
 - [ ] 自動化報表
 - [ ] A/B 測試系統
+
+---
+
+## Changelog
+
+### 2025-12-25 - 批次採集進度顯示
+- 前端顯示詳細進度狀態：
+  - 「正在擴散關鍵字...」
+  - 「正在搜尋 Google 地圖 (第 1/5 頁)...」
+  - 「AI 正在生成描述 (10/50)...」
+- 進度條 UI 顯示百分比
+- 修改檔案：`client/src/pages/admin/BatchGeneratePage.tsx`
+
+### 2025-12-25 - 廢除自建廣告管理
+- 決定使用 AdMob 官方後台管理廣告
+- 刪除 `AdsManagePage.tsx`
+- 從 `AdminDashboard` 移除相關入口

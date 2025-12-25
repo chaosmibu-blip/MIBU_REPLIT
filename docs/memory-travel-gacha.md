@@ -136,6 +136,17 @@ place_cache (ai_reviewed=null)
 
 ## Changelog
 
+### 2025-12-25 - 真・批次 AI 審查（模式 B）
+- 重構 `server/scripts/short-batch-review.ts`
+- 原模式 A：每個地點單獨呼叫 1 次 Gemini API（N 次呼叫）
+- 新模式 B：打包最多 20 個地點，1 次呼叫取得所有結果
+- API 呼叫次數從 N 次降為 ceil(N/20) 次
+- 新增批次採集進度顯示（前端模擬）
+
+### 2025-12-25 - 記憶庫檔案遷移
+- 從 `docs/memory/` 遷移至 `docs/` 根目錄
+- 確保唯一來源，刪除舊目錄
+
 ### 2025-12-25 - 刪除 AutoDraft 和自動 AI 審查
 - 刪除 `server/scripts/batch-review-all.ts`
 - 刪除 `server/scripts/loop-batch-review.sh`

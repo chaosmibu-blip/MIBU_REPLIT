@@ -11,14 +11,26 @@ const pool = new Pool({
 
 const db = drizzle(pool, { schema });
 
-async function reviewPlaceWithAI(
-  placeName: string,
-  description: string,
-  category: string,
-  subCategory: string,
-  district: string,
-  city: string
-): Promise<{ passed: boolean; reason: string; confidence: number }> {
+interface PlaceForReview {
+  id: number;
+  placeName: string;
+  description: string;
+  category: string;
+  subCategory: string;
+  district: string;
+  city: string;
+}
+
+interface BatchReviewResult {
+  place_name: string;
+  passed: boolean;
+  reason: string;
+  confidence: number;
+}
+
+async function batchReviewPlacesWithAI(
+  places: PlaceForReview[]
+): Promise<BatchReviewResult[]> {
   const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
   const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
   
@@ -26,27 +38,32 @@ async function reviewPlaceWithAI(
     throw new Error("Gemini API not configured");
   }
 
-  const prompt = `你是旅遊景點品質審核員。請審核以下景點是否適合推薦給旅客。
+  const placesJson = places.map(p => ({
+    name: p.placeName,
+    description: p.description || '',
+    category: `${p.category} > ${p.subCategory}`,
+    location: `${p.city} ${p.district}`
+  }));
 
-景點名稱：${placeName}
-描述：${description}
-分類：${category} > ${subCategory}
-地區：${city} ${district}
+  const prompt = `你是旅遊景點品質審核員。請一次審核以下 ${places.length} 個景點。
 
-審核標準：
-1. 名稱與描述是否相符且合理
-2. 分類是否正確
-3. 描述是否有吸引力且具體
-4. 是否適合作為旅遊推薦
+【待審核景點列表】
+${JSON.stringify(placesJson, null, 2)}
 
-請以 JSON 格式回答：
-{
-  "passed": true或false,
-  "reason": "審核原因（10字內）",
-  "confidence": 0.0到1.0的信心度
-}
+【審核標準】
+1. 名稱與描述是否相符且合理（不是亂碼或無意義文字）
+2. 分類是否大致正確
+3. 描述是否有最低限度的吸引力
+4. 是否適合作為旅遊推薦（排除：殯儀、政府機關、醫療機構）
 
-只回答 JSON。`;
+【回傳格式】
+請回傳純 JSON Array，每個元素對應一個景點：
+[
+  { "place_name": "景點名稱", "passed": true, "reason": "適合推薦", "confidence": 0.9 },
+  { "place_name": "另一景點", "passed": false, "reason": "非旅遊景點", "confidence": 0.8 }
+]
+
+只回傳 JSON Array，不要其他文字。`;
 
   const response = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
     method: 'POST',
@@ -58,7 +75,7 @@ async function reviewPlaceWithAI(
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.3,
-        maxOutputTokens: 1024,
+        maxOutputTokens: 4096,
       }
     }),
   });
@@ -70,26 +87,36 @@ async function reviewPlaceWithAI(
   const data = await response.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   
-  let jsonMatch = text.match(/\{[\s\S]*?\}/);
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
   if (!jsonMatch) {
-    return { passed: true, reason: "解析失敗預設通過", confidence: 0.7 };
+    console.error('AI 回傳無法解析:', text.substring(0, 500));
+    return places.map(p => ({
+      place_name: p.placeName,
+      passed: true,
+      reason: "解析失敗預設通過",
+      confidence: 0.6
+    }));
   }
   
   try {
-    const parsed = JSON.parse(jsonMatch[0]);
-    return {
-      passed: parsed.passed ?? true,
-      reason: parsed.reason || "無原因",
-      confidence: parsed.confidence ?? 0.7
-    };
-  } catch {
-    return { passed: true, reason: "JSON解析失敗預設通過", confidence: 0.7 };
+    const parsed = JSON.parse(jsonMatch[0]) as BatchReviewResult[];
+    return parsed;
+  } catch (e) {
+    console.error('JSON 解析失敗:', e);
+    return places.map(p => ({
+      place_name: p.placeName,
+      passed: true,
+      reason: "JSON解析失敗預設通過",
+      confidence: 0.6
+    }));
   }
 }
 
 async function shortBatchReview() {
-  // 測試更大批次：從命令列參數讀取，預設 10
-  const BATCH_SIZE = parseInt(process.argv[2] || '10');
+  const BATCH_SIZE = parseInt(process.argv[2] || '20');
+  const MAX_PER_CALL = 20;
+  
+  console.log(`🚀 真・批次 AI 審查模式 (每次 ${MAX_PER_CALL} 筆打包呼叫)`);
   
   const unreviewed = await db.select().from(schema.placeCache)
     .where(or(
@@ -104,52 +131,85 @@ async function shortBatchReview() {
     return;
   }
   
-  console.log(`📦 處理 ${unreviewed.length} 筆`);
+  console.log(`📦 取得 ${unreviewed.length} 筆待審核資料`);
   
-  let passed = 0;
-  let failed = 0;
+  let totalPassed = 0;
+  let totalFailed = 0;
   
-  for (const place of unreviewed) {
+  for (let i = 0; i < unreviewed.length; i += MAX_PER_CALL) {
+    const batch = unreviewed.slice(i, i + MAX_PER_CALL);
+    const batchNum = Math.floor(i / MAX_PER_CALL) + 1;
+    const totalBatches = Math.ceil(unreviewed.length / MAX_PER_CALL);
+    
+    console.log(`\n🔄 批次 ${batchNum}/${totalBatches}: 審核 ${batch.length} 個地點...`);
+    
+    const placesToReview: PlaceForReview[] = batch.map(p => ({
+      id: p.id,
+      placeName: p.placeName,
+      description: p.description || '',
+      category: p.category || '',
+      subCategory: p.subCategory || '',
+      district: p.district || '',
+      city: p.city || ''
+    }));
+    
     try {
-      const result = await reviewPlaceWithAI(
-        place.placeName,
-        place.description || '',
-        place.category || '',
-        place.subCategory || '',
-        place.district || '',
-        place.city || ''
-      );
+      const results = await batchReviewPlacesWithAI(placesToReview);
       
-      if (result.passed && result.confidence >= 0.6) {
+      const resultMap = new Map<string, BatchReviewResult>();
+      for (const r of results) {
+        resultMap.set(r.place_name, r);
+      }
+      
+      for (const place of batch) {
+        const result = resultMap.get(place.placeName);
+        
+        if (!result) {
+          console.log(`⚠️ ${place.placeName}: 無審核結果，預設通過`);
+          await db.update(schema.placeCache)
+            .set({ aiReviewed: true })
+            .where(eq(schema.placeCache.id, place.id));
+          totalPassed++;
+          continue;
+        }
+        
+        if (result.passed && result.confidence >= 0.6) {
+          await db.update(schema.placeCache)
+            .set({ aiReviewed: true })
+            .where(eq(schema.placeCache.id, place.id));
+          totalPassed++;
+          console.log(`✅ ${place.placeName}: PASS (${(result.confidence * 100).toFixed(0)}%)`);
+        } else {
+          await db.delete(schema.placeCache)
+            .where(eq(schema.placeCache.id, place.id));
+          totalFailed++;
+          console.log(`❌ ${place.placeName}: FAIL - ${result.reason}`);
+        }
+      }
+      
+      if (i + MAX_PER_CALL < unreviewed.length) {
+        console.log('⏳ 等待 2 秒避免 API 限流...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    } catch (e: any) {
+      console.error(`⚠️ 批次 ${batchNum} 失敗: ${e.message}`);
+      for (const place of batch) {
         await db.update(schema.placeCache)
           .set({ aiReviewed: true })
           .where(eq(schema.placeCache.id, place.id));
-        passed++;
-        console.log(`✅ ${place.placeName}: PASS (${(result.confidence * 100).toFixed(0)}%)`);
-      } else {
-        await db.delete(schema.placeCache)
-          .where(eq(schema.placeCache.id, place.id));
-        failed++;
-        console.log(`❌ ${place.placeName}: FAIL - ${result.reason}`);
+        totalPassed++;
       }
-      
-      await new Promise(resolve => setTimeout(resolve, 200));
-    } catch (e: any) {
-      console.error(`⚠️ ${place.placeName}: ERROR - ${e.message}`);
-      await db.update(schema.placeCache)
-        .set({ aiReviewed: true })
-        .where(eq(schema.placeCache.id, place.id));
     }
   }
   
-  // 查詢剩餘數量
   const remaining = await db.select().from(schema.placeCache)
     .where(or(
       eq(schema.placeCache.aiReviewed, false),
       isNull(schema.placeCache.aiReviewed)
     ));
   
-  console.log(`📊 本次: 通過 ${passed}, 刪除 ${failed}, 剩餘 ${remaining.length}`);
+  console.log(`\n📊 審核完成: 通過 ${totalPassed}, 刪除 ${totalFailed}, 剩餘 ${remaining.length}`);
+  console.log(`📈 API 呼叫次數: ${Math.ceil(unreviewed.length / MAX_PER_CALL)} 次（舊版需 ${unreviewed.length} 次）`);
   
   await pool.end();
 }
