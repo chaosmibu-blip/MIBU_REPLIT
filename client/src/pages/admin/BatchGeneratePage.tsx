@@ -57,15 +57,6 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
     total: 0,
     message: ''
   });
-  const [progressTimers, setProgressTimers] = useState<number[]>([]);
-
-  const clearProgressTimers = () => {
-    progressTimers.forEach(id => {
-      clearTimeout(id);
-      clearInterval(id);
-    });
-    setProgressTimers([]);
-  };
 
   useEffect(() => {
     fetch('/api/locations/countries', { credentials: 'include' })
@@ -104,94 +95,70 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
     return '';
   };
 
-  const simulateProgress = (keywordCount: number, pageCount: number) => {
-    clearProgressTimers();
-    const newTimers: number[] = [];
-    
-    const stages: { stage: ProgressStage; duration: number; getMessage: (current: number, total: number) => string }[] = [
-      { 
-        stage: 'expanding_keywords', 
-        duration: 2000, 
-        getMessage: () => `正在擴散關鍵字... (AI 生成中)` 
-      },
-      { 
-        stage: 'searching_google', 
-        duration: keywordCount * pageCount * 1500, 
-        getMessage: (c, t) => `正在搜尋 Google 地圖 (${c}/${t})...` 
-      },
-      { 
-        stage: 'filtering_results', 
-        duration: 1000, 
-        getMessage: () => `正在過濾與去重...` 
-      },
-      { 
-        stage: 'generating_descriptions', 
-        duration: 3000, 
-        getMessage: (c, t) => `AI 正在生成描述 (${c}/${t})...` 
-      },
-      { 
-        stage: 'saving_places', 
-        duration: 2000, 
-        getMessage: (c, t) => `正在儲存地點 (${c}/${t})...` 
-      }
-    ];
-
-    let totalElapsed = 0;
-    
-    stages.forEach((stageInfo) => {
-      const searchTotal = keywordCount * pageCount;
-      const estimatedPlaces = searchTotal * 15;
-      
-      const timerId = window.setTimeout(() => {
-        if (stageInfo.stage === 'searching_google') {
-          let searchStep = 0;
-          const searchInterval = window.setInterval(() => {
-            searchStep++;
-            if (searchStep <= searchTotal) {
-              setProgress({
-                stage: stageInfo.stage,
-                current: searchStep,
-                total: searchTotal,
-                message: stageInfo.getMessage(searchStep, searchTotal)
-              });
-            }
-            if (searchStep >= searchTotal) {
-              clearInterval(searchInterval);
-            }
-          }, 1200);
-          newTimers.push(searchInterval);
-        } else if (stageInfo.stage === 'generating_descriptions' || stageInfo.stage === 'saving_places') {
-          let step = 0;
-          const interval = window.setInterval(() => {
-            step += 5;
-            if (step <= estimatedPlaces) {
-              setProgress({
-                stage: stageInfo.stage,
-                current: Math.min(step, estimatedPlaces),
-                total: estimatedPlaces,
-                message: stageInfo.getMessage(Math.min(step, estimatedPlaces), estimatedPlaces)
-              });
-            }
-            if (step >= estimatedPlaces) {
-              clearInterval(interval);
-            }
-          }, 300);
-          newTimers.push(interval);
-        } else {
-          setProgress({
-            stage: stageInfo.stage,
-            current: 0,
-            total: 0,
-            message: stageInfo.getMessage(0, 0)
-          });
+  // SSE 串流處理真實進度
+  const handleSSEGenerate = async (body: object): Promise<{ saved: number; skipped: number; total: number } | null> => {
+    return new Promise((resolve, reject) => {
+      fetch('/api/admin/places/batch-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ...body, useSSE: true })
+      }).then(response => {
+        if (!response.ok) {
+          response.json().then(data => reject(new Error(data.error || '採集失敗')));
+          return;
         }
-      }, totalElapsed);
-      
-      newTimers.push(timerId);
-      totalElapsed += stageInfo.duration;
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+
+        if (!reader) {
+          reject(new Error('無法建立串流連線'));
+          return;
+        }
+
+        const readStream = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              const text = decoder.decode(value, { stream: true });
+              const lines = text.split('\n');
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(line.slice(6));
+                    
+                    if (data.stage === 'done') {
+                      resolve({ saved: data.saved, skipped: data.skipped, total: data.total });
+                      return;
+                    } else if (data.stage === 'error') {
+                      reject(new Error(data.error));
+                      return;
+                    } else {
+                      setProgress({
+                        stage: data.stage as ProgressStage,
+                        current: data.current || 0,
+                        total: data.total || 0,
+                        message: data.message || ''
+                      });
+                    }
+                  } catch (e) {
+                    // 忽略解析錯誤
+                  }
+                }
+              }
+            }
+          } catch (e: any) {
+            reject(e);
+          }
+        };
+
+        readStream();
+      }).catch(reject);
     });
-    
-    setProgressTimers(newTimers);
   };
 
   const handlePreview = async () => {
@@ -266,37 +233,34 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
     setLoading(true);
     setError('');
     setGenerateResult(null);
-    
-    simulateProgress(keywordList.length, maxPages);
+    setProgress({
+      stage: 'expanding_keywords',
+      current: 0,
+      total: 0,
+      message: '正在連線...'
+    });
 
     try {
-      const res = await fetch('/api/admin/places/batch-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          districtId: selectedDistrictId,
-          keyword: keywordList.join(', '),
-          maxPagesPerKeyword: Math.min(maxPages, 3)
-        })
+      // 使用 SSE 串流接收真實進度
+      const result = await handleSSEGenerate({
+        districtId: selectedDistrictId,
+        keyword: keywordList.join(', '),
+        maxPagesPerKeyword: Math.min(maxPages, 3)
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '生成失敗');
-
-      clearProgressTimers();
-      setGenerateResult({
-        saved: data.saved || 0,
-        skipped: data.skipped || 0
-      });
-      setProgress({ 
-        stage: 'complete', 
-        current: data.saved || 0, 
-        total: data.total || 0, 
-        message: `完成！儲存 ${data.saved} 筆` 
-      });
+      if (result) {
+        setGenerateResult({
+          saved: result.saved,
+          skipped: result.skipped
+        });
+        setProgress({ 
+          stage: 'complete', 
+          current: result.saved, 
+          total: result.total, 
+          message: `完成！儲存 ${result.saved} 筆` 
+        });
+      }
     } catch (err: any) {
-      clearProgressTimers();
       setError(err.message);
       setProgress({ stage: 'idle', current: 0, total: 0, message: '' });
     } finally {

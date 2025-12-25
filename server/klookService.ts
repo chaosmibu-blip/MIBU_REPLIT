@@ -1,7 +1,5 @@
 import { storage } from "./storage";
-
-const GEMINI_BASE_URL = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-const GEMINI_API_KEY = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+import { callGemini } from "./lib/placeGenerator";
 
 interface DetectedProduct {
   keyword: string;
@@ -13,36 +11,6 @@ interface DetectedProduct {
 interface DetectionResult {
   products: DetectedProduct[];
   rawResponse?: string;
-}
-
-async function callGeminiForDetection(prompt: string): Promise<string> {
-  if (!GEMINI_BASE_URL || !GEMINI_API_KEY) {
-    throw new Error("Gemini API not configured");
-  }
-
-  const response = await fetch(`${GEMINI_BASE_URL}/models/gemini-2.5-flash:generateContent`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': GEMINI_API_KEY,
-    },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 2048,
-      }
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("Gemini API error:", errorText);
-    throw new Error(`Gemini API failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 function generateKlookSearchUrl(keyword: string, region?: string): string {
@@ -85,7 +53,7 @@ Klook 銷售的商品類型包括：
 ]`;
 
   try {
-    const response = await callGeminiForDetection(prompt);
+    const response = await callGemini(prompt);
     
     let jsonStr = response.trim();
     const jsonMatch = jsonStr.match(/\[[\s\S]*\]/);

@@ -6704,45 +6704,188 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     }
   });
 
-  // ============ 批次生成地點 API ============
+  // ============ 批次生成地點 API (SSE 串流進度) ============
   // 管理員：批次採集地點（AI 關鍵字擴散 + 分頁 + 去重）
   app.post("/api/admin/places/batch-generate", isAuthenticated, async (req: any, res) => {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const { 
+      keyword, 
+      districtId, 
+      categoryId,
+      subcategoryId,
+      maxKeywords: rawMaxKeywords = 8,
+      maxPagesPerKeyword: rawMaxPages = 3,
+      enableAIExpansion = true,
+      saveToDrafts = true,
+      useSSE = false
+    } = req.body;
+
+    const maxKeywords = Math.min(Math.max(1, rawMaxKeywords), 10);
+    const maxPagesPerKeyword = Math.min(Math.max(1, rawMaxPages), 3);
+
+    if (!keyword || !districtId) {
+      return res.status(400).json({ error: "keyword 和 districtId 為必填" });
+    }
+
+    const districtInfo = await storage.getDistrictWithParents(districtId);
+    if (!districtInfo) {
+      return res.status(400).json({ error: "無效的 districtId" });
+    }
+
+    const { district, region, country } = districtInfo;
+
+    // SSE 模式：串流回傳進度
+    if (useSSE) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+
+      const sendProgress = (stage: string, current: number, total: number, message: string) => {
+        res.write(`data: ${JSON.stringify({ stage, current, total, message })}\n\n`);
+      };
+
+      try {
+        // 階段 1: 關鍵字擴散
+        sendProgress('expanding_keywords', 0, 1, '正在擴散關鍵字... (AI 生成中)');
+        
+        const result = await batchGeneratePlaces(
+          keyword,
+          district.nameZh,
+          region.nameZh,
+          { maxKeywords, maxPagesPerKeyword, enableAIExpansion }
+        );
+
+        sendProgress('searching_google', result.stats.keywords.length, result.stats.keywords.length, 
+          `搜尋完成，找到 ${result.places.length} 個地點`);
+
+        // 階段 2: 過濾去重
+        sendProgress('filtering_results', 0, 1, '正在過濾與去重...');
+
+        let savedCount = 0;
+        let skippedCount = 0;
+        const savedPlaces: any[] = [];
+
+        if (saveToDrafts && result.places.length > 0) {
+          let category = null;
+          let subcategory = null;
+          
+          if (categoryId) {
+            const categories = await storage.getCategories();
+            category = categories.find(c => c.id === categoryId);
+          }
+          if (subcategoryId) {
+            const subcategories = category ? await storage.getSubcategoriesByCategory(categoryId) : [];
+            subcategory = subcategories.find(s => s.id === subcategoryId);
+          }
+
+          const existingCache = await storage.getCachedPlaces(district.nameZh, region.nameZh, country.nameZh);
+          const existingCachePlaceIds = new Set(existingCache.map(c => c.placeId).filter(Boolean));
+          const existingPlaces = await storage.getOfficialPlacesByCity(region.nameZh, 1000);
+          const existingPlacePlaceIds = new Set(existingPlaces.map(p => p.googlePlaceId).filter(Boolean));
+
+          const placesToProcess = result.places.filter(place => 
+            !existingCachePlaceIds.has(place.placeId) && !existingPlacePlaceIds.has(place.placeId)
+          );
+          skippedCount = result.places.length - placesToProcess.length;
+
+          sendProgress('filtering_results', 1, 1, `需處理 ${placesToProcess.length} 筆，跳過 ${skippedCount} 筆重複`);
+
+          // 階段 3: 批次生成描述
+          const CHUNK_SIZE = 15;
+          const DELAY_BETWEEN_CHUNKS = 2000;
+          const totalChunks = Math.ceil(placesToProcess.length / CHUNK_SIZE);
+          
+          for (let i = 0; i < placesToProcess.length; i += CHUNK_SIZE) {
+            const chunk = placesToProcess.slice(i, i + CHUNK_SIZE);
+            const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
+            
+            sendProgress('generating_descriptions', chunkNum, totalChunks, 
+              `AI 正在生成描述 (批次 ${chunkNum}/${totalChunks})...`);
+            
+            const descriptionMap = await batchGenerateDescriptions(
+              chunk.map(p => ({ name: p.name, address: p.address, types: p.types })),
+              district.nameZh
+            );
+            
+            // 階段 4: 儲存
+            sendProgress('saving_places', savedCount, placesToProcess.length, 
+              `正在儲存地點 (${savedCount}/${placesToProcess.length})...`);
+
+            for (const place of chunk) {
+              try {
+                const description = descriptionMap.get(place.name) || `探索${district.nameZh}的特色景點`;
+                const categoryName = category?.nameZh || '景點';
+                const subcategoryName = subcategory?.nameZh || place.primaryType || 'attraction';
+
+                const cached = await storage.savePlaceToCache({
+                  subCategory: subcategoryName,
+                  district: district.nameZh,
+                  city: region.nameZh,
+                  country: country.nameZh,
+                  placeName: place.name,
+                  description,
+                  category: categoryName,
+                  suggestedTime: null,
+                  duration: null,
+                  searchQuery: keyword,
+                  rarity: null,
+                  colorHex: null,
+                  placeId: place.placeId,
+                  verifiedName: place.name,
+                  verifiedAddress: place.address,
+                  googleRating: place.rating?.toString() || null,
+                  googleTypes: place.types?.join(',') || null,
+                  primaryType: place.primaryType || null,
+                  locationLat: place.location?.lat?.toString() || null,
+                  locationLng: place.location?.lng?.toString() || null,
+                  isLocationVerified: true,
+                  businessStatus: place.businessStatus || null,
+                  lastVerifiedAt: new Date(),
+                  aiReviewed: false,
+                  aiReviewedAt: null
+                });
+
+                existingCachePlaceIds.add(place.placeId);
+                savedPlaces.push({ id: cached.id, placeName: cached.placeName, placeId: cached.placeId });
+                savedCount++;
+              } catch (e: any) {
+                console.error(`[BatchGenerate] Failed to save ${place.name}:`, e.message);
+              }
+            }
+            
+            if (i + CHUNK_SIZE < placesToProcess.length) {
+              await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_CHUNKS));
+            }
+          }
+        }
+
+        // 完成
+        sendProgress('complete', savedCount, savedCount, `完成！儲存 ${savedCount} 筆`);
+        res.write(`data: ${JSON.stringify({ 
+          stage: 'done', 
+          success: true,
+          saved: savedCount, 
+          skipped: skippedCount, 
+          total: result.places.length 
+        })}\n\n`);
+        res.end();
+      } catch (error: any) {
+        res.write(`data: ${JSON.stringify({ stage: 'error', error: error.message })}\n\n`);
+        res.end();
+      }
+      return;
+    }
+
+    // 非 SSE 模式：傳統 JSON 回傳
     try {
-      const userId = req.user?.claims?.sub;
-      if (!userId) return res.status(401).json({ error: "Authentication required" });
-
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
-
-      const { 
-        keyword, 
-        districtId, 
-        categoryId,
-        subcategoryId,
-        maxKeywords: rawMaxKeywords = 8,
-        maxPagesPerKeyword: rawMaxPages = 3,
-        enableAIExpansion = true,
-        saveToDrafts = true
-      } = req.body;
-
-      // 強制限制上限：最多 10 個關鍵字、最多 3 頁
-      const maxKeywords = Math.min(Math.max(1, rawMaxKeywords), 10);
-      const maxPagesPerKeyword = Math.min(Math.max(1, rawMaxPages), 3);
-
-      if (!keyword || !districtId) {
-        return res.status(400).json({ error: "keyword 和 districtId 為必填" });
-      }
-
-      // 取得地區資訊
-      const districtInfo = await storage.getDistrictWithParents(districtId);
-      if (!districtInfo) {
-        return res.status(400).json({ error: "無效的 districtId" });
-      }
-
-      const { district, region, country } = districtInfo;
       console.log(`[BatchGenerate] Admin ${userId} generating for: ${region.nameZh}${district.nameZh}, keyword: ${keyword}`);
 
-      // 執行批次生成
       const result = await batchGeneratePlaces(
         keyword,
         district.nameZh,
@@ -6750,13 +6893,11 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
         { maxKeywords, maxPagesPerKeyword, enableAIExpansion }
       );
 
-      // 儲存到 place_cache（原始採集資料）
       let savedCount = 0;
       let skippedCount = 0;
       const savedPlaces: any[] = [];
 
       if (saveToDrafts && result.places.length > 0) {
-        // 取得類別資訊
         let category = null;
         let subcategory = null;
         
@@ -6769,40 +6910,27 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
           subcategory = subcategories.find(s => s.id === subcategoryId);
         }
 
-        // 檢查已存在的 place_id（在 cache 和 places 中）
         const existingCache = await storage.getCachedPlaces(district.nameZh, region.nameZh, country.nameZh);
         const existingCachePlaceIds = new Set(existingCache.map(c => c.placeId).filter(Boolean));
-        
-        // 也檢查 places 表
         const existingPlaces = await storage.getOfficialPlacesByCity(region.nameZh, 1000);
         const existingPlacePlaceIds = new Set(existingPlaces.map(p => p.googlePlaceId).filter(Boolean));
 
-        // 先過濾出需要處理的地點
         const placesToProcess = result.places.filter(place => 
           !existingCachePlaceIds.has(place.placeId) && !existingPlacePlaceIds.has(place.placeId)
         );
         skippedCount = result.places.length - placesToProcess.length;
 
-        console.log(`[BatchGenerate] 需處理 ${placesToProcess.length} 筆，跳過 ${skippedCount} 筆重複`);
-
-        // 分批生成描述（每批 15 個，避免 Rate Limit）
         const CHUNK_SIZE = 15;
         const DELAY_BETWEEN_CHUNKS = 2000;
         
         for (let i = 0; i < placesToProcess.length; i += CHUNK_SIZE) {
           const chunk = placesToProcess.slice(i, i + CHUNK_SIZE);
-          const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
-          const totalChunks = Math.ceil(placesToProcess.length / CHUNK_SIZE);
           
-          console.log(`[BatchGenerate] 批次 ${chunkNum}/${totalChunks}: 生成 ${chunk.length} 筆描述...`);
-          
-          // 批次生成描述
           const descriptionMap = await batchGenerateDescriptions(
             chunk.map(p => ({ name: p.name, address: p.address, types: p.types })),
             district.nameZh
           );
           
-          // 儲存到 cache
           for (const place of chunk) {
             try {
               const description = descriptionMap.get(place.name) || `探索${district.nameZh}的特色景點`;
@@ -6838,21 +6966,14 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
               });
 
               existingCachePlaceIds.add(place.placeId);
-
-              savedPlaces.push({
-                id: cached.id,
-                placeName: cached.placeName,
-                placeId: cached.placeId
-              });
+              savedPlaces.push({ id: cached.id, placeName: cached.placeName, placeId: cached.placeId });
               savedCount++;
             } catch (e: any) {
               console.error(`[BatchGenerate] Failed to save ${place.name}:`, e.message);
             }
           }
           
-          // 冷卻時間
           if (i + CHUNK_SIZE < placesToProcess.length) {
-            console.log(`[BatchGenerate] 冷卻 ${DELAY_BETWEEN_CHUNKS/1000} 秒...`);
             await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_CHUNKS));
           }
         }
@@ -6864,7 +6985,7 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
         saved: savedCount,
         skipped: skippedCount,
         total: result.places.length,
-        savedPlaces: savedPlaces.slice(0, 20), // 只回傳前 20 筆
+        savedPlaces: savedPlaces.slice(0, 20),
         message: `成功採集 ${result.places.length} 個地點，儲存 ${savedCount} 筆，跳過 ${skippedCount} 筆重複`
       });
     } catch (error: any) {

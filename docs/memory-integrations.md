@@ -30,7 +30,8 @@ GET https://maps.googleapis.com/maps/api/place/textsearch/json
 ```
 
 ### 使用位置
-- `server/routes.ts`: AutoDraft 景點驗證
+- `server/routes.ts`: 批次採集地點
+- `server/lib/placeGenerator.ts`: 批次地點搜尋
 - 地址 → 經緯度轉換
 
 ### 配額
@@ -85,6 +86,24 @@ const response = await fetch(
 ### 配額
 - 免費: 15 req/min
 - 付費: 360+ req/min
+
+### Rate Limit 防護（2025-12-25 新增）
+```typescript
+// placeGenerator.ts 中的 callGemini 已內建重試機制
+export async function callGemini(prompt: string, retryCount = 0): Promise<string>
+// 429 時執行 Exponential Backoff: 3s → 6s → 12s
+
+// 批次生成描述（單次 API 處理多個地點）
+export async function batchGenerateDescriptions(
+  places: { name: string; address: string; types: string[] }[],
+  district: string
+): Promise<Map<string, string>>
+// 429 時執行 Exponential Backoff: 5s → 10s → 20s
+```
+
+### 調用規範
+- 所有 Gemini 調用應使用 `placeGenerator.ts` 導出的函數
+- 避免各模組自建調用函數，確保 Rate Limit 防護一致
 
 ---
 

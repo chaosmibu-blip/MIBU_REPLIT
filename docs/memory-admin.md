@@ -46,10 +46,10 @@ SUPER_ADMIN_PASSWORD=xxx
 - `POST /api/admin/places/drafts/:id/reject` - 拒絕
 - `GET /api/admin/places/applications` - 用戶申請
 
-### AI 審核系統
-- `POST /api/admin/cache/review` - 執行 AI 審核
-- `GET /api/admin/cache/stats` - 審核統計
-- `POST /api/admin/autodraft/run` - 手動執行 AutoDraft
+### 批次採集（取代 AutoDraft）
+- `POST /api/admin/places/batch-preview` - 預覽採集結果
+- `POST /api/admin/places/batch-generate` - 執行批次採集
+- 手動腳本：`npx tsx server/scripts/short-batch-review.ts`
 
 ### 資料同步
 - `GET /api/admin/export-places` - 匯出景點（開發→生產同步）
@@ -83,10 +83,10 @@ Body: { key: 'mibu2024migrate', data: [...] }
 ## 排程任務
 | 任務 | 頻率 | 功能 |
 |------|------|------|
-| AutoDraft | 30 秒 | 自動生成景點草稿 |
-| AIReview | 30 秒 | AI 審核 place_cache |
 | AutoCleanup | 1 小時 | 清理過期 SOS 事件 |
 | DataCleanup | 48 小時 | 資料清理（重複、無效） |
+
+> ⚠️ **已移除**：AutoDraft（30秒自動採集）和 AIReview（30秒自動審核）已於 2025-12-25 移除，改為手動批次採集。
 
 ## 監控指標
 - 每日活躍用戶 (DAU)
@@ -105,13 +105,13 @@ Body: { key: 'mibu2024migrate', data: [...] }
 
 ## Changelog
 
-### 2025-12-25 - 批次採集進度顯示
-- 前端顯示詳細進度狀態：
-  - 「正在擴散關鍵字...」
-  - 「正在搜尋 Google 地圖 (第 1/5 頁)...」
-  - 「AI 正在生成描述 (10/50)...」
-- 進度條 UI 顯示百分比
-- 修改檔案：`client/src/pages/admin/BatchGeneratePage.tsx`
+### 2025-12-25 - 批次採集真實進度顯示（SSE）
+- 後端新增 SSE（Server-Sent Events）串流支援
+- 前端使用 ReadableStream 接收真實進度（非模擬）
+- 顯示階段：關鍵字擴散 → Google 搜尋 → 過濾去重 → AI 生成描述 → 儲存
+- 移除 `simulateProgress()` 模擬邏輯
+- 參數：`useSSE: true` 啟用串流模式
+- 修改檔案：`server/routes.ts`, `client/src/pages/admin/BatchGeneratePage.tsx`
 
 ### 2025-12-25 - 廢除自建廣告管理
 - 決定使用 AdMob 官方後台管理廣告
