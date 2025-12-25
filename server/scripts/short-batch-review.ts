@@ -88,7 +88,8 @@ async function reviewPlaceWithAI(
 }
 
 async function shortBatchReview() {
-  const BATCH_SIZE = 5;
+  // 測試更大批次：從命令列參數讀取，預設 10
+  const BATCH_SIZE = parseInt(process.argv[2] || '10');
   
   const unreviewed = await db.select().from(schema.placeCache)
     .where(or(
