@@ -7123,10 +7123,23 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
   app.post("/api/admin/places/reclassify", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
-      if (!userId) return res.status(401).json({ error: "Authentication required" });
-
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+      const userEmail = req.user?.claims?.email;
+      
+      // 嘗試用 ID 或 email 查找用戶
+      let user = userId ? await storage.getUser(userId) : null;
+      if (!user && userEmail) {
+        user = await storage.getUserByEmail(userEmail);
+      }
+      
+      if (!user) {
+        console.log('[Reclassify] User not found - userId:', userId, 'email:', userEmail);
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      
+      if (user.role !== 'admin') {
+        console.log('[Reclassify] Not admin - user:', user.email, 'role:', user.role);
+        return res.status(403).json({ error: "Admin access required" });
+      }
 
       const { target = 'cache', limit = 100 } = req.body;
       const results = { updated: 0, skipped: 0, errors: 0, details: [] as any[] };
