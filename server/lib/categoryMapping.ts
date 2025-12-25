@@ -301,7 +301,17 @@ export const TYPE_TO_SUBCATEGORY: Record<string, string> = {
   'flea_market': '跳蚤市場',
   'outlet_store': '暢貨中心',
   'souvenir_shop': '紀念品店',
+  'souvenir_store': '紀念品店',
   'art_store': '美術用品店',
+  'art_supply_store': '美術用品店',
+  'stationery_store': '文具店',
+  'toy_store': '玩具店',
+  'sporting_goods_store': '運動用品店',
+  'cosmetics_store': '美妝店',
+  'beauty_salon': '美容院',
+  'hair_salon': '髮廊',
+  'nail_salon': '美甲店',
+  'barbershop': '理髮店',
   'antique_store': '古董店',
 };
 
@@ -325,6 +335,18 @@ export function determineCategory(primaryType: string | null, googleTypes: strin
   return '景點';
 }
 
+// Category → 預設子分類（當無法映射時使用）
+const CATEGORY_DEFAULT_SUBCATEGORY: Record<MibuCategory, string> = {
+  '美食': '餐廳',
+  '住宿': '旅館',
+  '生態文化教育': '教育場所',
+  '遊程體驗': '體驗活動',
+  '娛樂設施': '娛樂場所',
+  '活動': '休閒活動',
+  '景點': '觀光景點',
+  '購物': '商店',
+};
+
 /**
  * 根據 primary_type 和 google_types 判斷 subcategory
  */
@@ -341,14 +363,9 @@ export function determineSubcategory(primaryType: string | null, googleTypes: st
     }
   }
 
-  // Step 3: 如果有 primary_type 但沒對照，嘗試翻譯常見詞
-  if (primaryType) {
-    // 移除底線並首字大寫
-    return primaryType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-  }
-
-  // Step 4: 預設
-  return '景點';
+  // Step 3: 根據 category 返回預設中文子分類
+  const category = determineCategory(primaryType, googleTypes);
+  return CATEGORY_DEFAULT_SUBCATEGORY[category] || '景點';
 }
 
 /**
