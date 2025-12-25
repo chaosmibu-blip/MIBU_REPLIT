@@ -7,7 +7,17 @@
  * 3. 白名單過濾 - 使用 includedType 參數
  * 4. 黑名單過濾 - 排除非旅遊地點
  * 5. place_id 去重
+ * 6. 規則映射分類 - 使用 google_types 對照表判斷 category/subcategory
+ * 7. AI 只生成 description - 分類交給規則，AI 專注文案
  */
+
+import { 
+  determineCategory, 
+  determineSubcategory, 
+  generateFallbackDescription,
+  classifyPlace,
+  type MibuCategory 
+} from './categoryMapping';
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
@@ -695,4 +705,201 @@ export async function searchSinglePlace(
     console.error("[PlaceGenerator] Single search error:", error);
     return null;
   }
+}
+
+// ============ 新版：規則映射分類 + AI 只生成描述 ============
+export interface PlaceWithClassification {
+  name: string;
+  category: MibuCategory;
+  subcategory: string;
+  description: string;
+  descriptionSource: 'ai' | 'fallback';
+}
+
+/**
+ * AI 專注生成描述（不做分類）
+ */
+export async function batchGenerateDescriptionsOnly(
+  places: { name: string; category: string; subcategory: string }[],
+  city: string,
+  retryCount = 0
+): Promise<Map<string, string>> {
+  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const MAX_RETRIES = 3;
+  
+  if (!baseUrl || !apiKey) {
+    console.warn('[DescOnly] AI not configured, will use fallback');
+    return new Map();
+  }
+
+  const placesJson = places.map((p, idx) => ({
+    id: idx + 1,
+    name: p.name,
+    category: p.category,
+    subcategory: p.subcategory
+  }));
+
+  const prompt = `你是旅遊文案專家。請為以下 ${places.length} 個地點各寫一段 30-50 字的吸引人描述。
+
+【地點列表】
+${JSON.stringify(placesJson, null, 2)}
+
+【要求】
+1. 描述要突出地點特色，吸引遊客前往
+2. 簡潔有力，30-50 字
+3. 根據 category 和 subcategory 調整語氣
+4. 只回傳 JSON Array
+
+【回傳格式】
+[
+  { "id": 1, "description": "描述文字" },
+  { "id": 2, "description": "描述文字" }
+]
+
+只回傳 JSON Array，不要其他文字。`;
+
+  try {
+    const response = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 4096,
+        }
+      }),
+    });
+
+    if (response.status === 429) {
+      if (retryCount < MAX_RETRIES) {
+        const backoffTime = Math.pow(2, retryCount) * 5000;
+        console.log(`[DescOnly] 429 Rate Limit，等待 ${backoffTime / 1000} 秒後重試...`);
+        await sleep(backoffTime);
+        return batchGenerateDescriptionsOnly(places, city, retryCount + 1);
+      }
+      console.warn('[DescOnly] Rate limit exceeded, returning empty map');
+      return new Map();
+    }
+
+    if (!response.ok) {
+      console.warn('[DescOnly] API failed:', response.status);
+      return new Map();
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.warn('[DescOnly] Failed to parse JSON from response');
+      return new Map();
+    }
+    
+    const parsed = JSON.parse(jsonMatch[0]) as { id: number; description: string }[];
+    const resultMap = new Map<string, string>();
+    
+    for (const item of parsed) {
+      const place = places[item.id - 1];
+      if (place && item.description?.trim()) {
+        resultMap.set(place.name, item.description.trim());
+      }
+    }
+    
+    console.log(`[DescOnly] Generated ${resultMap.size}/${places.length} descriptions via AI`);
+    return resultMap;
+  } catch (e: any) {
+    if (e.message?.includes('429') && retryCount < MAX_RETRIES) {
+      const backoffTime = Math.pow(2, retryCount) * 5000;
+      await sleep(backoffTime);
+      return batchGenerateDescriptionsOnly(places, city, retryCount + 1);
+    }
+    console.warn('[DescOnly] Error:', e.message);
+    return new Map();
+  }
+}
+
+/**
+ * 整合函數：規則映射分類 + AI 生成描述 + 智能 fallback
+ */
+export async function classifyAndDescribePlaces(
+  places: PlaceResult[],
+  city: string
+): Promise<Map<string, PlaceWithClassification>> {
+  const resultMap = new Map<string, PlaceWithClassification>();
+  
+  // Step 1: 先用規則映射分類所有地點
+  const classifiedPlaces = places.map(p => {
+    const { category, subcategory, fallbackDescription } = classifyPlace(
+      p.name,
+      city,
+      p.primaryType,
+      p.types
+    );
+    return {
+      name: p.name,
+      category,
+      subcategory,
+      fallbackDescription
+    };
+  });
+  
+  console.log(`[Classify] 規則映射分類完成: ${classifiedPlaces.length} 個地點`);
+
+  // Step 2: AI 批次生成描述
+  const aiDescriptions = await batchGenerateDescriptionsOnly(
+    classifiedPlaces.map(p => ({ name: p.name, category: p.category, subcategory: p.subcategory })),
+    city
+  );
+
+  // Step 3: 組合結果（AI 成功用 AI，失敗用 fallback）
+  for (const p of classifiedPlaces) {
+    const aiDesc = aiDescriptions.get(p.name);
+    resultMap.set(p.name, {
+      name: p.name,
+      category: p.category,
+      subcategory: p.subcategory,
+      description: aiDesc || p.fallbackDescription,
+      descriptionSource: aiDesc ? 'ai' : 'fallback'
+    });
+  }
+
+  const aiCount = Array.from(resultMap.values()).filter(v => v.descriptionSource === 'ai').length;
+  console.log(`[Classify] 完成: AI 描述 ${aiCount}/${resultMap.size}，Fallback ${resultMap.size - aiCount}/${resultMap.size}`);
+
+  return resultMap;
+}
+
+/**
+ * 重新分類現有資料（用於修復舊資料）
+ */
+export function reclassifyPlace(
+  name: string,
+  city: string,
+  primaryType: string | null,
+  googleTypes: string[],
+  currentDescription: string
+): PlaceWithClassification {
+  const { category, subcategory, fallbackDescription } = classifyPlace(
+    name,
+    city,
+    primaryType,
+    googleTypes
+  );
+  
+  // 如果現有描述是通用模板，則替換為智能 fallback
+  const isGenericDescription = 
+    currentDescription.includes('探索') && currentDescription.includes('的特色景點');
+  
+  return {
+    name,
+    category,
+    subcategory,
+    description: isGenericDescription ? fallbackDescription : currentDescription,
+    descriptionSource: isGenericDescription ? 'fallback' : 'ai'
+  };
 }
