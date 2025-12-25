@@ -37,6 +37,7 @@ Mibu 是專為自由行旅客打造的旅遊 App，包含兩大核心模組：
 |---------|---------|---------|
 | 新增記憶庫檔案 | 記憶庫索引 | 在 docs/ 建立新的 memory-*.md |
 | 刪除/合併記憶庫 | 記憶庫索引 | 移除或重組記憶庫檔案 |
+| 記憶庫新增重要功能 | 記憶庫索引（內容欄位） | 該模組新增核心功能、重大邏輯變更 |
 | 技術棧變更 | 技術規範 | 新增框架、ORM、重大依賴 |
 | API 協議變更 | 輸出協議 | 改變 API 回應格式、新增通用欄位 |
 | 新增判斷規則 | 自主判斷 | 發現需要固化的決策模式 |
@@ -56,12 +57,12 @@ Mibu 是專為自由行旅客打造的旅遊 App，包含兩大核心模組：
 
 | 檔案 | 模組 | 內容 |
 |------|------|------|
-| memory-travel-gacha.md | 行程扭蛋 | Gacha 邏輯、去重、批次採集 |
+| memory-travel-gacha.md | 行程扭蛋 | Gacha 邏輯、去重、批次採集、規則映射分類 |
 | memory-trip-planner.md | 旅程策劃 | 天數管理、活動、旅伴 |
 | memory-user-client.md | 用戶端 | 認證、背包、通知、額度 |
 | memory-merchant.md | 商家端 | 認領、優惠券、訂閱、數據 |
 | memory-specialist.md | 專員端 | 服務、訂單、等級 |
-| memory-admin.md | 管理端 | 審核、排程、同步 |
+| memory-admin.md | 管理端 | 審核、排程、同步、資料修復 |
 | memory-api-dictionary.md | API 字典 | 端點、錯誤、分頁 |
 | memory-data-schema.md | 資料架構 | 47 張表、關聯、約束 |
 | memory-payment-commerce.md | 金流商品 | Stripe、購物車、訂單 |
