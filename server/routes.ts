@@ -6788,10 +6788,12 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
       const user = await storage.getUser(userId);
       if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
 
+      // 支援更大的批次，最多 500 筆
       const { limit = 50 } = req.body as { limit?: number };
+      const effectiveLimit = Math.min(limit, 500);
 
       // 取得尚未審核的快取資料
-      const unreviewed = await storage.getUnreviewedPlaceCache(limit);
+      const unreviewed = await storage.getUnreviewedPlaceCache(effectiveLimit);
       
       if (unreviewed.length === 0) {
         const stats = await storage.getPlaceCacheReviewStats();
