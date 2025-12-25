@@ -16,7 +16,7 @@ import { createPlannerServiceRoutes } from "../modules/trip-planner/server/plann
 import { registerStripeRoutes } from "./stripeRoutes";
 import { getUncachableStripeClient } from "./stripeClient";
 import { checkGeofence } from "./lib/geofencing";
-import { callGemini, generatePlaceWithAI, verifyPlaceWithGoogle, reviewPlaceWithAI } from "./lib/placeGenerator";
+import { callGemini } from "./lib/placeGenerator";
 import twilio from "twilio";
 import appleSignin from "apple-signin-auth";
 const { AccessToken } = twilio.jwt;
@@ -2446,7 +2446,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
 
   // ============ Gacha Pull Route ============
 
-  // Helper function to generate a single place for a subcategory in a specific district
+  // Helper function to get a place for a subcategory from cache (no AI generation)
   async function generatePlaceForSubcategory(
     districtNameZh: string,
     regionNameZh: string,
@@ -2465,7 +2465,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
     const subcategoryNameZh = subcategory.nameZh;
     const categoryNameZh = category.nameZh;
 
-    // Check cache first
+    // Check cache only (AI generation disabled)
     const cachedPlace = await storage.getCachedPlace(
       subcategoryNameZh,
       districtNameZh,
@@ -2496,82 +2496,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
       };
     }
 
-    // Generate with AI and verify
-    const MAX_RETRIES = 2;
-    let attempts = 0;
-    let failedAttempts: string[] = [];
-
-    while (attempts < MAX_RETRIES) {
-      attempts++;
-      
-      // Combine failed attempts with already used places
-      const allExclusions = [...excludePlaceNames, ...failedAttempts];
-      
-      const aiResult = await generatePlaceWithAI(
-        districtNameZh,
-        regionNameZh,
-        countryNameZh,
-        subcategoryNameZh,
-        categoryNameZh,
-        allExclusions
-      );
-
-      if (aiResult) {
-        const verification = await verifyPlaceWithGoogle(
-          aiResult.placeName,
-          districtNameZh,
-          regionNameZh
-        );
-
-        if (verification.verified) {
-          // Save to cache
-          const cacheEntry = await storage.savePlaceToCache({
-            subCategory: subcategoryNameZh,
-            district: districtNameZh,
-            city: regionNameZh,
-            country: countryNameZh,
-            placeName: verification.verifiedName || aiResult.placeName,
-            description: aiResult.description,
-            category: categoryNameZh,
-            searchQuery: `${subcategoryNameZh} ${districtNameZh} ${regionNameZh}`,
-            placeId: verification.placeId || null,
-            verifiedName: verification.verifiedName || null,
-            verifiedAddress: verification.verifiedAddress || null,
-            googleRating: verification.rating?.toString() || null,
-            googleTypes: verification.googleTypes?.join(',') || null,
-            primaryType: verification.primaryType || null,
-            locationLat: verification.location?.lat?.toString() || null,
-            locationLng: verification.location?.lng?.toString() || null,
-            isLocationVerified: true
-          });
-
-          console.log(`[${categoryNameZh}] Verified: ${aiResult.placeName}`);
-          return {
-            category,
-            subcategory,
-            place: {
-              name: cacheEntry.placeName,
-              description: cacheEntry.description,
-              address: cacheEntry.verifiedAddress,
-              placeId: cacheEntry.placeId,
-              rating: cacheEntry.googleRating,
-              googleTypes: cacheEntry.googleTypes?.split(',').filter(Boolean) || [],
-              primaryType: cacheEntry.primaryType || null,
-              location: cacheEntry.locationLat && cacheEntry.locationLng ? {
-                lat: parseFloat(cacheEntry.locationLat),
-                lng: parseFloat(cacheEntry.locationLng)
-              } : null
-            },
-            source: 'ai',
-            isVerified: true
-          };
-        } else {
-          failedAttempts.push(aiResult.placeName);
-        }
-      }
-    }
-
-    // Return a placeholder if no verified place found
+    // No cache available - return placeholder (AI generation disabled)
     return {
       category,
       subcategory,
@@ -2584,7 +2509,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
         location: null,
         warning: `該區域目前較少此類型店家`
       },
-      source: 'ai',
+      source: 'cache',
       isVerified: false
     };
   }
@@ -6776,128 +6701,6 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     } catch (error) {
       console.error("Admin backfill review count error:", error);
       res.status(500).json({ error: "回填評論數失敗" });
-    }
-  });
-
-  // 管理員：批次 AI 審核快取資料
-  // 重要：每次只處理少量資料（預設 5 筆）以避免 Replit 60 秒執行限制
-  app.post("/api/admin/place-cache/batch-review", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.claims?.sub;
-      if (!userId) return res.status(401).json({ error: "Authentication required" });
-
-      const user = await storage.getUser(userId);
-      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
-
-      // 短批次模式：預設 5 筆，最多 10 筆（避免超過 60 秒限制）
-      const { limit = 5 } = req.body as { limit?: number };
-      const effectiveLimit = Math.min(limit, 10);
-
-      // 取得尚未審核的快取資料
-      const unreviewed = await storage.getUnreviewedPlaceCache(effectiveLimit);
-      
-      if (unreviewed.length === 0) {
-        const stats = await storage.getPlaceCacheReviewStats();
-        return res.json({ 
-          success: true, 
-          reviewed: 0, 
-          passed: 0,
-          deleted: 0,
-          remaining: 0,
-          stats,
-          message: "所有快取資料都已審核完成" 
-        });
-      }
-
-      const passedIds: number[] = [];
-      const movedToDraftIds: number[] = [];
-      const errors: { id: number; placeName: string; error: string }[] = [];
-
-      // 預載分類和地區資料以提高效率
-      const categories = await storage.getCategories();
-      const allSubcategories = await storage.getAllSubcategoriesWithCategory();
-
-      for (const place of unreviewed) {
-        try {
-          const reviewResult = await reviewPlaceWithAI(
-            place.placeName,
-            place.description,
-            place.category,
-            place.subCategory,
-            place.district,
-            place.city
-          );
-
-          console.log(`[CacheReview] ${place.placeName}: ${reviewResult.passed ? 'PASS' : 'FAIL'} - ${reviewResult.reason} (confidence: ${reviewResult.confidence})`);
-
-          if (reviewResult.passed && reviewResult.confidence >= 0.6) {
-            // 通過審核，標記為已審核
-            await storage.markPlaceCacheReviewed(place.id, true);
-            passedIds.push(place.id);
-          } else {
-            // 未通過審核，移至草稿表並記錄原因
-            // 查找對應的分類 ID（place_cache 現在使用英文 code）
-            const category = categories.find(c => c.code === place.category);
-            const subcategory = allSubcategories.find(s => s.nameZh === place.subCategory);
-            
-            // 查找對應的地區 ID
-            const districtInfo = await storage.getDistrictByNames(place.district, place.city, place.country);
-            
-            if (districtInfo) {
-              // 建立草稿，包含退回原因
-              const rejectionNote = `[AI審核不通過] ${reviewResult.reason} (信心度: ${(reviewResult.confidence * 100).toFixed(0)}%)`;
-              
-              await storage.createPlaceDraft({
-                source: 'ai',
-                placeName: place.placeName,
-                description: `${rejectionNote}\n\n原描述：${place.description}`,
-                categoryId: category?.id || 1,
-                subcategoryId: subcategory?.id || 1,
-                districtId: districtInfo.district.id,
-                regionId: districtInfo.region.id,
-                countryId: districtInfo.country.id,
-                address: place.verifiedAddress || undefined,
-                googlePlaceId: place.placeId || undefined,
-                googleRating: place.googleRating ? parseFloat(place.googleRating) : undefined,
-                locationLat: place.locationLat || undefined,
-                locationLng: place.locationLng || undefined,
-                status: 'pending', // 設為人工待審
-              });
-              
-              // 刪除快取中的記錄
-              await storage.deletePlaceCache(place.id);
-              movedToDraftIds.push(place.id);
-              console.log(`[CacheReview] Moved to drafts: ${place.placeName} - ${reviewResult.reason}`);
-            } else {
-              // 找不到地區資訊，標記為已審核但失敗
-              await storage.markPlaceCacheReviewed(place.id, true);
-              errors.push({ id: place.id, placeName: place.placeName, error: `找不到地區資訊: ${place.district}, ${place.city}` });
-            }
-          }
-
-          // 避免 API 速率限制
-          await new Promise(resolve => setTimeout(resolve, 200));
-        } catch (e: any) {
-          console.error(`[CacheReview] Error for ${place.placeName}:`, e.message);
-          errors.push({ id: place.id, placeName: place.placeName, error: e.message });
-        }
-      }
-
-      const stats = await storage.getPlaceCacheReviewStats();
-
-      res.json({
-        success: true,
-        reviewed: passedIds.length + movedToDraftIds.length,
-        passed: passedIds.length,
-        movedToDraft: movedToDraftIds.length,
-        remaining: stats.unreviewed,
-        stats,
-        errors: errors.length > 0 ? errors : undefined,
-        message: `審核完成：${passedIds.length} 筆通過，${movedToDraftIds.length} 筆移至草稿`
-      });
-    } catch (error) {
-      console.error("Admin cache review error:", error);
-      res.status(500).json({ error: "快取審核失敗" });
     }
   });
 

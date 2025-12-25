@@ -10,7 +10,6 @@ import { WebhookHandlers } from "./webhookHandlers";
 import { storage } from "./storage";
 import { verifyJwtToken, initializeSuperAdmin } from "./replitAuth";
 import { checkGeofence } from "./lib/geofencing";
-import { generatePlaceWithAI, verifyPlaceWithGoogle, reviewPlaceWithAI } from "./lib/placeGenerator";
 import { setupSocketIO } from "./socketHandler";
 import { runDataCleanup } from "./lib/dataCleanup";
 import { z } from "zod";
@@ -343,19 +342,7 @@ async function startServer() {
       console.log("Server is running on port " + port);
 
       // ============================================================
-      // 6. 自動生成行程卡草稿（已關閉以節省 AI 費用）
-      // 改用手動批次生成：POST /api/admin/places/batch-generate
-      // ============================================================
-      console.log('[AutoDraft] Automatic draft generation DISABLED (cost saving mode)');
-
-      // ============================================================
-      // 7. AI 自動審查（已關閉以節省 AI 費用）
-      // 改用手動批次審查：POST /api/admin/places/batch-review
-      // ============================================================
-      console.log('[AIReview] AI review scheduler DISABLED (cost saving mode)');
-
-      // ============================================================
-      // 8. 每小時自動清除過期活動 (快閃活動、節日限定活動)
+      // 6. 每小時自動清除過期活動 (快閃活動、節日限定活動)
       // ============================================================
       setInterval(async () => {
         try {

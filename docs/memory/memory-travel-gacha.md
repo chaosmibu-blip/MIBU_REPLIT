@@ -136,6 +136,14 @@ place_cache (ai_reviewed=null)
 
 ## Changelog
 
+### 2025-12-25 - 刪除 AutoDraft 和自動 AI 審查
+- 刪除 `server/scripts/batch-review-all.ts`
+- 刪除 `server/scripts/loop-batch-review.sh`
+- 刪除 `POST /api/admin/place-cache/batch-review` API
+- 簡化 `placeGenerator.ts` 只保留 `callGemini` 函數
+- V1 Gacha 的 `generatePlaceForSubcategory` 改為只用 cache，不再呼叫 AI
+- 保留手動腳本：`short-batch-review.ts`、`promote-to-places.ts`
+
 ### 2025-12-25 - 升級腳本 & 資料遷移
 - 新增 `promote-to-places.ts` 升級腳本
 - 將 2,092 筆已審核 place_cache 升級到 places
