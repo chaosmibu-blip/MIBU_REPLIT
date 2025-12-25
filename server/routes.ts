@@ -7119,6 +7119,141 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     }
   });
 
+  // 管理員：重新分類現有資料（Backfill）
+  app.post("/api/admin/places/reclassify", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const { target = 'cache', limit = 100 } = req.body;
+      const results = { updated: 0, skipped: 0, errors: 0, details: [] as any[] };
+
+      if (target === 'cache' || target === 'all') {
+        const cacheItems = await db.execute(sql`
+          SELECT id, place_name, city, primary_type, google_types, description, category, sub_category
+          FROM place_cache
+          WHERE (category = '景點' AND sub_category IN ('attraction', '景點'))
+             OR description LIKE '%探索%的特色景點%'
+          LIMIT ${limit}
+        `);
+        
+        for (const item of cacheItems.rows as any[]) {
+          try {
+            const googleTypes = item.google_types ? item.google_types.split(',') : [];
+            const reclassified = reclassifyPlace(
+              item.place_name,
+              item.city,
+              item.primary_type,
+              googleTypes,
+              item.description || ''
+            );
+            
+            await db.execute(sql`
+              UPDATE place_cache
+              SET category = ${reclassified.category},
+                  sub_category = ${reclassified.subcategory},
+                  description = ${reclassified.description}
+              WHERE id = ${item.id}
+            `);
+            
+            results.updated++;
+            results.details.push({
+              id: item.id,
+              name: item.place_name,
+              oldCategory: item.category,
+              newCategory: reclassified.category,
+              oldSubcategory: item.sub_category,
+              newSubcategory: reclassified.subcategory
+            });
+          } catch (e: any) {
+            results.errors++;
+          }
+        }
+      }
+
+      if (target === 'drafts' || target === 'all') {
+        const draftItems = await db.execute(sql`
+          SELECT id, place_name, city, primary_type, google_types, description, category, sub_category
+          FROM place_drafts
+          WHERE (category = '景點' AND sub_category IN ('attraction', '景點'))
+             OR description LIKE '%探索%的特色景點%'
+          LIMIT ${limit}
+        `);
+        
+        for (const item of draftItems.rows as any[]) {
+          try {
+            const googleTypes = item.google_types ? item.google_types.split(',') : [];
+            const reclassified = reclassifyPlace(
+              item.place_name,
+              item.city,
+              item.primary_type,
+              googleTypes,
+              item.description || ''
+            );
+            
+            await db.execute(sql`
+              UPDATE place_drafts
+              SET category = ${reclassified.category},
+                  sub_category = ${reclassified.subcategory},
+                  description = ${reclassified.description}
+              WHERE id = ${item.id}
+            `);
+            
+            results.updated++;
+          } catch (e: any) {
+            results.errors++;
+          }
+        }
+      }
+
+      if (target === 'places' || target === 'all') {
+        const placeItems = await db.execute(sql`
+          SELECT id, name, city, google_place_id, description, category, sub_category
+          FROM places
+          WHERE (category = '景點' AND sub_category IN ('attraction', '景點'))
+             OR description LIKE '%探索%的特色景點%'
+          LIMIT ${limit}
+        `);
+        
+        for (const item of placeItems.rows as any[]) {
+          try {
+            const reclassified = reclassifyPlace(
+              item.name,
+              item.city,
+              null,
+              [],
+              item.description || ''
+            );
+            
+            await db.execute(sql`
+              UPDATE places
+              SET category = ${reclassified.category},
+                  sub_category = ${reclassified.subcategory},
+                  description = ${reclassified.description}
+              WHERE id = ${item.id}
+            `);
+            
+            results.updated++;
+          } catch (e: any) {
+            results.errors++;
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `重新分類完成：更新 ${results.updated} 筆，錯誤 ${results.errors} 筆`,
+        ...results
+      });
+    } catch (error: any) {
+      console.error("Reclassify error:", error);
+      res.status(500).json({ error: "重新分類失敗", details: error.message });
+    }
+  });
+
   // 管理員：取得快取審核統計
   app.get("/api/admin/place-cache/review-stats", isAuthenticated, async (req: any, res) => {
     try {
