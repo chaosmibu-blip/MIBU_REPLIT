@@ -16,7 +16,7 @@ import { createPlannerServiceRoutes } from "../modules/trip-planner/server/plann
 import { registerStripeRoutes } from "./stripeRoutes";
 import { getUncachableStripeClient } from "./stripeClient";
 import { checkGeofence } from "./lib/geofencing";
-import { callGemini } from "./lib/placeGenerator";
+import { callGemini, batchGeneratePlaces, type PlaceResult } from "./lib/placeGenerator";
 import twilio from "twilio";
 import appleSignin from "apple-signin-auth";
 const { AccessToken } = twilio.jwt;
@@ -6701,6 +6701,202 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     } catch (error) {
       console.error("Admin backfill review count error:", error);
       res.status(500).json({ error: "回填評論數失敗" });
+    }
+  });
+
+  // ============ 批次生成地點 API ============
+  // 管理員：批次採集地點（AI 關鍵字擴散 + 分頁 + 去重）
+  app.post("/api/admin/places/batch-generate", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const { 
+        keyword, 
+        districtId, 
+        categoryId,
+        subcategoryId,
+        maxKeywords: rawMaxKeywords = 8,
+        maxPagesPerKeyword: rawMaxPages = 3,
+        enableAIExpansion = true,
+        saveToDrafts = true
+      } = req.body;
+
+      // 強制限制上限：最多 10 個關鍵字、最多 3 頁
+      const maxKeywords = Math.min(Math.max(1, rawMaxKeywords), 10);
+      const maxPagesPerKeyword = Math.min(Math.max(1, rawMaxPages), 3);
+
+      if (!keyword || !districtId) {
+        return res.status(400).json({ error: "keyword 和 districtId 為必填" });
+      }
+
+      // 取得地區資訊
+      const districtInfo = await storage.getDistrictWithParents(districtId);
+      if (!districtInfo) {
+        return res.status(400).json({ error: "無效的 districtId" });
+      }
+
+      const { district, region, country } = districtInfo;
+      console.log(`[BatchGenerate] Admin ${userId} generating for: ${region.nameZh}${district.nameZh}, keyword: ${keyword}`);
+
+      // 執行批次生成
+      const result = await batchGeneratePlaces(
+        keyword,
+        district.nameZh,
+        region.nameZh,
+        { maxKeywords, maxPagesPerKeyword, enableAIExpansion }
+      );
+
+      // 如果需要儲存到 drafts
+      let savedCount = 0;
+      let skippedCount = 0;
+      const savedPlaces: any[] = [];
+
+      if (saveToDrafts && result.places.length > 0) {
+        // 取得類別資訊
+        let category = null;
+        let subcategory = null;
+        
+        if (categoryId) {
+          const categories = await storage.getCategories();
+          category = categories.find(c => c.id === categoryId);
+        }
+        if (subcategoryId) {
+          const subcategories = category ? await storage.getSubcategoriesByCategory(categoryId) : [];
+          subcategory = subcategories.find(s => s.id === subcategoryId);
+        }
+
+        // 檢查已存在的 place_id（在 drafts、cache、places 中）
+        const existingDrafts = await storage.getAllPlaceDrafts();
+        const existingDraftPlaceIds = new Set(existingDrafts.map(d => d.googlePlaceId).filter(Boolean));
+        
+        // 也檢查 places 表
+        const existingPlaces = await storage.getOfficialPlacesByCity(region.nameZh, 1000);
+        const existingPlacePlaceIds = new Set(existingPlaces.map(p => p.googlePlaceId).filter(Boolean));
+
+        for (const place of result.places) {
+          // 跳過已存在的
+          if (existingDraftPlaceIds.has(place.placeId) || existingPlacePlaceIds.has(place.placeId)) {
+            skippedCount++;
+            continue;
+          }
+
+          try {
+            // 使用 AI 生成描述
+            const descPrompt = `請為以下景點寫一段 30-50 字的吸引人描述，適合推薦給遊客：
+景點名稱：${place.name}
+地址：${place.address}
+類型：${place.types?.join(', ') || '未知'}
+
+只輸出描述文字，不要有其他內容。`;
+
+            let description = '';
+            try {
+              description = await callGemini(descPrompt);
+              description = description.trim().replace(/^["']|["']$/g, '');
+            } catch (e) {
+              description = `探索${district.nameZh}的特色景點`;
+            }
+
+            const draft = await storage.createPlaceDraft({
+              merchantId: null,
+              source: 'ai',
+              placeName: place.name,
+              categoryId: categoryId || 1,
+              subcategoryId: subcategoryId || null,
+              description,
+              districtId,
+              regionId: region.id,
+              countryId: country.id,
+              address: place.address,
+              googlePlaceId: place.placeId,
+              googleRating: place.rating,
+              googleReviewCount: place.reviewCount,
+              locationLat: place.location?.lat?.toString() || null,
+              locationLng: place.location?.lng?.toString() || null,
+              status: 'pending'
+            });
+
+            savedPlaces.push({
+              id: draft.id,
+              placeName: draft.placeName,
+              googlePlaceId: draft.googlePlaceId
+            });
+            savedCount++;
+          } catch (e: any) {
+            console.error(`[BatchGenerate] Failed to save ${place.name}:`, e.message);
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        stats: result.stats,
+        saved: savedCount,
+        skipped: skippedCount,
+        total: result.places.length,
+        savedPlaces: savedPlaces.slice(0, 20), // 只回傳前 20 筆
+        message: `成功採集 ${result.places.length} 個地點，儲存 ${savedCount} 筆，跳過 ${skippedCount} 筆重複`
+      });
+    } catch (error: any) {
+      console.error("Admin batch generate error:", error);
+      res.status(500).json({ error: "批次生成失敗", details: error.message });
+    }
+  });
+
+  // 管理員：預覽批次採集結果（不儲存）
+  app.post("/api/admin/places/batch-preview", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(userId);
+      if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+      const { 
+        keyword, 
+        districtId,
+        maxKeywords: rawMaxKeywords = 5,
+        maxPagesPerKeyword: rawMaxPages = 1,
+        enableAIExpansion = true
+      } = req.body;
+
+      // 預覽模式限制更嚴格：最多 5 個關鍵字、最多 2 頁
+      const maxKeywords = Math.min(Math.max(1, rawMaxKeywords), 5);
+      const maxPagesPerKeyword = Math.min(Math.max(1, rawMaxPages), 2);
+
+      if (!keyword || !districtId) {
+        return res.status(400).json({ error: "keyword 和 districtId 為必填" });
+      }
+
+      const districtInfo = await storage.getDistrictWithParents(districtId);
+      if (!districtInfo) {
+        return res.status(400).json({ error: "無效的 districtId" });
+      }
+
+      const { district, region } = districtInfo;
+
+      // 只做預覽，限制頁數
+      const result = await batchGeneratePlaces(
+        keyword,
+        district.nameZh,
+        region.nameZh,
+        { maxKeywords, maxPagesPerKeyword, enableAIExpansion }
+      );
+
+      res.json({
+        success: true,
+        stats: result.stats,
+        places: result.places.slice(0, 50), // 只回傳前 50 筆預覽
+        total: result.places.length,
+        message: `預覽找到 ${result.places.length} 個地點`
+      });
+    } catch (error: any) {
+      console.error("Admin batch preview error:", error);
+      res.status(500).json({ error: "預覽失敗", details: error.message });
     }
   });
 
