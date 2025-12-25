@@ -22,6 +22,7 @@ interface PlaceForReview {
 }
 
 interface BatchReviewResult {
+  id: number;
   place_name: string;
   passed: boolean;
   reason: string;
@@ -38,7 +39,8 @@ async function batchReviewPlacesWithAI(
     throw new Error("Gemini API not configured");
   }
 
-  const placesJson = places.map(p => ({
+  const placesJson = places.map((p, idx) => ({
+    id: idx + 1,
     name: p.placeName,
     description: p.description || '',
     category: `${p.category} > ${p.subCategory}`,
@@ -57,10 +59,10 @@ ${JSON.stringify(placesJson, null, 2)}
 4. 是否適合作為旅遊推薦（排除：殯儀、政府機關、醫療機構）
 
 【回傳格式】
-請回傳純 JSON Array，每個元素對應一個景點：
+請回傳純 JSON Array，每個元素必須包含原始 id：
 [
-  { "place_name": "景點名稱", "passed": true, "reason": "適合推薦", "confidence": 0.9 },
-  { "place_name": "另一景點", "passed": false, "reason": "非旅遊景點", "confidence": 0.8 }
+  { "id": 1, "place_name": "景點名稱", "passed": true, "reason": "適合推薦", "confidence": 0.9 },
+  { "id": 2, "place_name": "另一景點", "passed": false, "reason": "非旅遊景點", "confidence": 0.8 }
 ]
 
 只回傳 JSON Array，不要其他文字。`;
@@ -156,13 +158,16 @@ async function shortBatchReview() {
     try {
       const results = await batchReviewPlacesWithAI(placesToReview);
       
-      const resultMap = new Map<string, BatchReviewResult>();
+      const resultMap = new Map<number, BatchReviewResult>();
       for (const r of results) {
-        resultMap.set(r.place_name, r);
+        if (r.id) {
+          resultMap.set(r.id, r);
+        }
       }
       
-      for (const place of batch) {
-        const result = resultMap.get(place.placeName);
+      for (let idx = 0; idx < batch.length; idx++) {
+        const place = batch[idx];
+        const result = resultMap.get(idx + 1);
         
         if (!result) {
           console.log(`⚠️ ${place.placeName}: 無審核結果，預設通過`);

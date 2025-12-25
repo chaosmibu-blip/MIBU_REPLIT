@@ -57,6 +57,15 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
     total: 0,
     message: ''
   });
+  const [progressTimers, setProgressTimers] = useState<number[]>([]);
+
+  const clearProgressTimers = () => {
+    progressTimers.forEach(id => {
+      clearTimeout(id);
+      clearInterval(id);
+    });
+    setProgressTimers([]);
+  };
 
   useEffect(() => {
     fetch('/api/locations/countries', { credentials: 'include' })
@@ -96,6 +105,9 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
   };
 
   const simulateProgress = (keywordCount: number, pageCount: number) => {
+    clearProgressTimers();
+    const newTimers: number[] = [];
+    
     const stages: { stage: ProgressStage; duration: number; getMessage: (current: number, total: number) => string }[] = [
       { 
         stage: 'expanding_keywords', 
@@ -126,14 +138,14 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
 
     let totalElapsed = 0;
     
-    stages.forEach((stageInfo, idx) => {
+    stages.forEach((stageInfo) => {
       const searchTotal = keywordCount * pageCount;
       const estimatedPlaces = searchTotal * 15;
       
-      setTimeout(() => {
+      const timerId = window.setTimeout(() => {
         if (stageInfo.stage === 'searching_google') {
           let searchStep = 0;
-          const searchInterval = setInterval(() => {
+          const searchInterval = window.setInterval(() => {
             searchStep++;
             if (searchStep <= searchTotal) {
               setProgress({
@@ -147,9 +159,10 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
               clearInterval(searchInterval);
             }
           }, 1200);
+          newTimers.push(searchInterval);
         } else if (stageInfo.stage === 'generating_descriptions' || stageInfo.stage === 'saving_places') {
           let step = 0;
-          const interval = setInterval(() => {
+          const interval = window.setInterval(() => {
             step += 5;
             if (step <= estimatedPlaces) {
               setProgress({
@@ -163,6 +176,7 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
               clearInterval(interval);
             }
           }, 300);
+          newTimers.push(interval);
         } else {
           setProgress({
             stage: stageInfo.stage,
@@ -173,8 +187,11 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
         }
       }, totalElapsed);
       
+      newTimers.push(timerId);
       totalElapsed += stageInfo.duration;
     });
+    
+    setProgressTimers(newTimers);
   };
 
   const handlePreview = async () => {
@@ -267,6 +284,7 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '生成失敗');
 
+      clearProgressTimers();
       setGenerateResult({
         saved: data.saved || 0,
         skipped: data.skipped || 0
@@ -278,6 +296,7 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
         message: `完成！儲存 ${data.saved} 筆` 
       });
     } catch (err: any) {
+      clearProgressTimers();
       setError(err.message);
       setProgress({ stage: 'idle', current: 0, total: 0, message: '' });
     } finally {
