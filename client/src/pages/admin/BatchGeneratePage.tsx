@@ -95,7 +95,7 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
     return '';
   };
 
-  // SSE 串流處理真實進度
+  // SSE 串流處理真實進度（帶緩衝區處理跨 chunk 事件）
   const handleSSEGenerate = async (body: object): Promise<{ saved: number; skipped: number; total: number } | null> => {
     return new Promise((resolve, reject) => {
       fetch('/api/admin/places/batch-generate', {
@@ -117,42 +117,74 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
           return;
         }
 
+        let buffer = '';
+        let resolved = false;
+
+        const processEvents = (text: string) => {
+          buffer += text;
+          
+          // 按 SSE 事件分割（每個事件以 \n\n 結尾）
+          const events = buffer.split('\n\n');
+          // 保留最後一個可能不完整的部分
+          buffer = events.pop() || '';
+
+          for (const event of events) {
+            const lines = event.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+                  
+                  if (data.stage === 'done') {
+                    resolved = true;
+                    resolve({ saved: data.saved, skipped: data.skipped, total: data.total });
+                    return true;
+                  } else if (data.stage === 'error') {
+                    resolved = true;
+                    reject(new Error(data.error));
+                    return true;
+                  } else {
+                    setProgress({
+                      stage: data.stage as ProgressStage,
+                      current: data.current || 0,
+                      total: data.total || 0,
+                      message: data.message || ''
+                    });
+                  }
+                } catch (e) {
+                  // 忽略解析錯誤
+                }
+              }
+            }
+          }
+          return false;
+        };
+
         const readStream = async () => {
           try {
             while (true) {
               const { done, value } = await reader.read();
-              if (done) break;
+              
+              if (done) {
+                // 處理緩衝區中剩餘的數據
+                if (buffer.trim()) {
+                  processEvents('\n\n');
+                }
+                // 如果串流結束但沒有收到 done/error，視為意外關閉
+                if (!resolved) {
+                  reject(new Error('串流連線意外中斷'));
+                }
+                break;
+              }
 
               const text = decoder.decode(value, { stream: true });
-              const lines = text.split('\n');
-
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  try {
-                    const data = JSON.parse(line.slice(6));
-                    
-                    if (data.stage === 'done') {
-                      resolve({ saved: data.saved, skipped: data.skipped, total: data.total });
-                      return;
-                    } else if (data.stage === 'error') {
-                      reject(new Error(data.error));
-                      return;
-                    } else {
-                      setProgress({
-                        stage: data.stage as ProgressStage,
-                        current: data.current || 0,
-                        total: data.total || 0,
-                        message: data.message || ''
-                      });
-                    }
-                  } catch (e) {
-                    // 忽略解析錯誤
-                  }
-                }
-              }
+              const shouldStop = processEvents(text);
+              if (shouldStop) break;
             }
           } catch (e: any) {
-            reject(e);
+            if (!resolved) {
+              reject(e);
+            }
           }
         };
 
