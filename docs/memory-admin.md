@@ -105,8 +105,20 @@ Body: { key: 'mibu2024migrate', data: [...] }
 
 ## Changelog
 
-### 2025-12-25 - 批次採集 AI 智能分類系統
-- 新增 `batchGenerateWithClassification()` 函數：單次 AI 呼叫同時生成描述、判斷種類與子分類
+### 2025-12-25 - 規則映射分類系統（取代純 AI 分類）
+- **新增** `server/lib/categoryMapping.ts`：Google Types → Mibu Category/Subcategory 對照表
+- **分類流程改進**：
+  1. `determineCategory(primaryType, googleTypes)` → 規則映射 Category
+  2. `determineSubcategory(primaryType, googleTypes)` → 規則映射 Subcategory
+  3. `batchGenerateDescriptionsOnly()` → AI 只生成描述（專注單一任務）
+  4. `generateFallbackDescription()` → 智能 fallback 模板（非通用「探索XX的特色景點」）
+  5. `classifyAndDescribePlaces()` → 整合函數
+- **新增 API**：`POST /api/admin/places/reclassify` - 重新分類現有 cache/drafts/places 資料
+- **優點**：分類穩定、零成本、100% 成功率；AI 失敗時仍有智能 fallback
+- 修改檔案：`server/lib/categoryMapping.ts`, `server/lib/placeGenerator.ts`, `server/routes.ts`
+
+### 2025-12-25 - 批次採集 AI 智能分類系統（已被規則映射取代）
+- ~~新增 `batchGenerateWithClassification()` 函數~~（保留但不再使用）
 - 支援彈性地區選擇：`regionId`（必填）+ `districtId`（可選）+ `categoryId`（可選）
 - 八大種類選擇：美食、住宿、生態文化教育、遊程體驗、娛樂設施、活動、景點、購物
 - 未選擇種類時 AI 隨機選擇一種並根據種類擴散關鍵字
