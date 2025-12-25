@@ -74,7 +74,7 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
     
     fetch('/api/categories', { credentials: 'include' })
       .then(res => res.json())
-      .then(data => setCategories(data || []))
+      .then(data => setCategories(data.categories || []))
       .catch(console.error);
   }, []);
 
