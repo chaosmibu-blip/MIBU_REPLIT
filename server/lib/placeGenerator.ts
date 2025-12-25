@@ -269,6 +269,142 @@ ${JSON.stringify(placesJson, null, 2)}
   }
 }
 
+// 八大種類常量
+const EIGHT_CATEGORIES = ['美食', '住宿', '生態文化教育', '遊程體驗', '娛樂設施', '活動', '景點', '購物'];
+
+// ============ 批次生成描述 + 分類判斷 ============
+export interface PlaceClassification {
+  description: string;
+  category: string;
+  subcategory: string;
+}
+
+export async function batchGenerateWithClassification(
+  places: { name: string; address: string; types: string[] }[],
+  city: string,
+  retryCount = 0
+): Promise<Map<string, PlaceClassification>> {
+  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const MAX_RETRIES = 3;
+  
+  const defaultResult = (name: string) => ({
+    description: `探索${city}的特色景點`,
+    category: '景點',
+    subcategory: 'attraction'
+  });
+  
+  if (!baseUrl || !apiKey) {
+    return new Map(places.map(p => [p.name, defaultResult(p.name)]));
+  }
+
+  const placesJson = places.map((p, idx) => ({
+    id: idx + 1,
+    name: p.name,
+    address: p.address,
+    types: p.types?.join(', ') || ''
+  }));
+
+  const prompt = `你是旅遊分類專家。請為以下 ${places.length} 個地點：
+1. 寫一段 30-50 字的吸引人描述
+2. 判斷屬於哪個種類（只能從八大種類選擇）
+3. 判斷適合的子分類名稱
+
+【八大種類】
+${EIGHT_CATEGORIES.join('、')}
+
+【地點列表】
+${JSON.stringify(placesJson, null, 2)}
+
+【回傳格式】
+[
+  { "id": 1, "description": "描述文字", "category": "美食", "subcategory": "咖啡廳" },
+  { "id": 2, "description": "描述文字", "category": "景點", "subcategory": "自然風景" }
+]
+
+【要求】
+1. category 必須是八大種類之一
+2. subcategory 用中文，簡潔 2-6 字（如：咖啡廳、日式料理、溫泉旅館、文化古蹟）
+3. 只回傳 JSON Array，不要其他文字`;
+
+  try {
+    const response = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.5,
+          maxOutputTokens: 4096,
+        }
+      }),
+    });
+
+    if (response.status === 429) {
+      if (retryCount < MAX_RETRIES) {
+        const backoffTime = Math.pow(2, retryCount) * 5000;
+        console.log(`[BatchClassify] 429 Rate Limit，等待 ${backoffTime / 1000} 秒後重試...`);
+        await sleep(backoffTime);
+        return batchGenerateWithClassification(places, city, retryCount + 1);
+      }
+      return new Map(places.map(p => [p.name, defaultResult(p.name)]));
+    }
+
+    if (!response.ok) {
+      return new Map(places.map(p => [p.name, defaultResult(p.name)]));
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      return new Map(places.map(p => [p.name, defaultResult(p.name)]));
+    }
+    
+    const parsed = JSON.parse(jsonMatch[0]) as { 
+      id: number; 
+      description: string; 
+      category: string; 
+      subcategory: string 
+    }[];
+    
+    const resultMap = new Map<string, PlaceClassification>();
+    
+    for (const item of parsed) {
+      const place = places[item.id - 1];
+      if (place) {
+        // 驗證 category 必須在八大種類內
+        const validCategory = EIGHT_CATEGORIES.includes(item.category) ? item.category : '景點';
+        resultMap.set(place.name, {
+          description: item.description?.trim() || `探索${city}的特色景點`,
+          category: validCategory,
+          subcategory: item.subcategory?.trim() || 'attraction'
+        });
+      }
+    }
+    
+    // 補充缺失的地點
+    for (const p of places) {
+      if (!resultMap.has(p.name)) {
+        resultMap.set(p.name, defaultResult(p.name));
+      }
+    }
+    
+    return resultMap;
+  } catch (e: any) {
+    if (e.message?.includes('429') && retryCount < MAX_RETRIES) {
+      const backoffTime = Math.pow(2, retryCount) * 5000;
+      await sleep(backoffTime);
+      return batchGenerateWithClassification(places, city, retryCount + 1);
+    }
+    return new Map(places.map(p => [p.name, defaultResult(p.name)]));
+  }
+}
+
 // ============ AI 關鍵字擴散 ============
 export async function expandKeywords(
   baseKeyword: string,

@@ -12,6 +12,12 @@ interface LocationOption {
   nameEn: string;
 }
 
+interface CategoryOption {
+  id: number;
+  nameZh: string;
+  nameEn: string;
+}
+
 interface PreviewPlace {
   name: string;
   address: string;
@@ -40,9 +46,11 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
   const [countries, setCountries] = useState<LocationOption[]>([]);
   const [regions, setRegions] = useState<LocationOption[]>([]);
   const [districts, setDistricts] = useState<LocationOption[]>([]);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [selectedCountryId, setSelectedCountryId] = useState<number | null>(null);
   const [selectedRegionId, setSelectedRegionId] = useState<number | null>(null);
   const [selectedDistrictId, setSelectedDistrictId] = useState<number | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [keywords, setKeywords] = useState('');
   const [maxPages, setMaxPages] = useState(2);
   const [loading, setLoading] = useState(false);
@@ -62,6 +70,11 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
     fetch('/api/locations/countries', { credentials: 'include' })
       .then(res => res.json())
       .then(data => setCountries(data.countries || []))
+      .catch(console.error);
+    
+    fetch('/api/categories', { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => setCategories(data || []))
       .catch(console.error);
   }, []);
 
@@ -194,16 +207,15 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
   };
 
   const handlePreview = async () => {
-    if (!selectedDistrictId || !keywords.trim()) {
-      setError('請選擇地區並輸入關鍵字');
+    if (!selectedRegionId) {
+      setError('請至少選擇城市');
       return;
     }
 
-    const keywordList = keywords.split(/[,，\n]/).map(k => k.trim()).filter(k => k);
-    if (keywordList.length === 0) {
-      setError('請輸入至少一個關鍵字');
-      return;
-    }
+    const keywordList = keywords.trim() 
+      ? keywords.split(/[,，\n]/).map(k => k.trim()).filter(k => k)
+      : [];
+    
     if (keywordList.length > 5) {
       setError('預覽模式最多 5 個關鍵字');
       return;
@@ -216,7 +228,7 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
     setProgress({
       stage: 'searching_google',
       current: 0,
-      total: keywordList.length,
+      total: 1,
       message: '正在搜尋 Google 地圖...'
     });
 
@@ -226,8 +238,10 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          districtId: selectedDistrictId,
-          keyword: keywordList.join(', '),
+          regionId: selectedRegionId,
+          districtId: selectedDistrictId || null,
+          categoryId: selectedCategoryId || null,
+          keyword: keywordList.length > 0 ? keywordList.join(', ') : '',
           maxPagesPerKeyword: Math.min(maxPages, 2)
         })
       });
@@ -247,16 +261,15 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
   };
 
   const handleGenerate = async () => {
-    if (!selectedDistrictId || !keywords.trim()) {
-      setError('請選擇地區並輸入關鍵字');
+    if (!selectedRegionId) {
+      setError('請至少選擇城市');
       return;
     }
 
-    const keywordList = keywords.split(/[,，\n]/).map(k => k.trim()).filter(k => k);
-    if (keywordList.length === 0) {
-      setError('請輸入至少一個關鍵字');
-      return;
-    }
+    const keywordList = keywords.trim() 
+      ? keywords.split(/[,，\n]/).map(k => k.trim()).filter(k => k)
+      : [];
+    
     if (keywordList.length > 10) {
       setError('批次生成最多 10 個關鍵字');
       return;
@@ -273,10 +286,11 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
     });
 
     try {
-      // 使用 SSE 串流接收真實進度
       const result = await handleSSEGenerate({
-        districtId: selectedDistrictId,
-        keyword: keywordList.join(', '),
+        regionId: selectedRegionId,
+        districtId: selectedDistrictId || null,
+        categoryId: selectedCategoryId || null,
+        keyword: keywordList.length > 0 ? keywordList.join(', ') : '',
         maxPagesPerKeyword: Math.min(maxPages, 3)
       });
 
@@ -363,7 +377,7 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
             className="px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
             data-testid="select-district"
           >
-            <option value="">選擇鄉鎮區</option>
+            <option value="">全部區域（可選）</option>
             {districts.map(d => (
               <option key={d.id} value={d.id}>{d.nameZh}</option>
             ))}
@@ -372,17 +386,35 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
 
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
-            搜尋關鍵字（每行一個，或用逗號分隔）
+            選擇種類（可選）
+          </label>
+          <select
+            value={selectedCategoryId || ''}
+            onChange={e => setSelectedCategoryId(parseInt(e.target.value) || null)}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            data-testid="select-category"
+          >
+            <option value="">隨機選擇</option>
+            {categories.map(c => (
+              <option key={c.id} value={c.id}>{c.nameZh}</option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-500 mt-1">不選則隨機從八大種類中選擇</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-2">
+            搜尋關鍵字（可選，每行一個或用逗號分隔）
           </label>
           <textarea
             value={keywords}
             onChange={e => setKeywords(e.target.value)}
-            placeholder="例如：&#10;咖啡廳&#10;日式料理&#10;夜市"
+            placeholder="例如：&#10;咖啡廳&#10;日式料理&#10;夜市&#10;&#10;若選了種類，會組合如「美食-咖啡廳」"
             rows={4}
             className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             data-testid="textarea-keywords"
           />
-          <p className="text-xs text-slate-500 mt-1">預覽最多 5 個，生成最多 10 個</p>
+          <p className="text-xs text-slate-500 mt-1">不填則 AI 根據種類自動擴散</p>
         </div>
 
         <div>

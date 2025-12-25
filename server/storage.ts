@@ -806,6 +806,14 @@ export class DatabaseStorage implements IStorage {
     return region || null;
   }
 
+  async getCountryById(countryId: number): Promise<Country | null> {
+    const [country] = await db
+      .select()
+      .from(countries)
+      .where(eq(countries.id, countryId));
+    return country || null;
+  }
+
   async getRegionsByCountry(countryId: number): Promise<Region[]> {
     return await db
       .select()

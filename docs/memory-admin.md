@@ -105,6 +105,15 @@ Body: { key: 'mibu2024migrate', data: [...] }
 
 ## Changelog
 
+### 2025-12-25 - 批次採集 AI 智能分類系統
+- 新增 `batchGenerateWithClassification()` 函數：單次 AI 呼叫同時生成描述、判斷種類與子分類
+- 支援彈性地區選擇：`regionId`（必填）+ `districtId`（可選）+ `categoryId`（可選）
+- 八大種類選擇：美食、住宿、生態文化教育、遊程體驗、娛樂設施、活動、景點、購物
+- 未選擇種類時 AI 隨機選擇一種並根據種類擴散關鍵字
+- 關鍵字組合邏輯：`{種類}-{關鍵字}`（如「美食-咖啡廳」）
+- 自動新增子分類：若 AI 判斷的子分類不存在則自動建立
+- 修改檔案：`server/routes.ts`, `server/storage.ts`, `server/lib/placeGenerator.ts`, `client/src/pages/admin/BatchGeneratePage.tsx`
+
 ### 2025-12-25 - 批次採集真實進度顯示（SSE）
 - 後端新增 SSE（Server-Sent Events）串流支援
 - 前端使用 ReadableStream 接收真實進度（非模擬）
