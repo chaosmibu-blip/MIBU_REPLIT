@@ -103,38 +103,170 @@ export interface BatchGenerateResult {
   };
 }
 
-// ============ Gemini AI 呼叫 ============
-export async function callGemini(prompt: string): Promise<string> {
+// ============ 工具函數 ============
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// ============ Gemini AI 呼叫（含重試機制） ============
+export async function callGemini(prompt: string, retryCount = 0): Promise<string> {
   const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
   const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const MAX_RETRIES = 3;
   
   if (!baseUrl || !apiKey) {
     throw new Error("Gemini API not configured");
   }
 
-  const response = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-    },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 2048,
-      }
-    }),
-  });
+  try {
+    const response = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 2048,
+        }
+      }),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("Gemini API error:", errorText);
-    throw new Error(`Gemini API failed: ${response.status}`);
+    if (response.status === 429) {
+      if (retryCount < MAX_RETRIES) {
+        const backoffTime = Math.pow(2, retryCount) * 3000;
+        console.log(`[Gemini] 429 Rate Limit，等待 ${backoffTime / 1000} 秒後重試...`);
+        await sleep(backoffTime);
+        return callGemini(prompt, retryCount + 1);
+      }
+      throw new Error(`429 Rate Limit exceeded after ${MAX_RETRIES} retries`);
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Gemini API error:", errorText);
+      throw new Error(`Gemini API failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  } catch (e: any) {
+    if (e.message?.includes('429') && retryCount < MAX_RETRIES) {
+      const backoffTime = Math.pow(2, retryCount) * 3000;
+      console.log(`[Gemini] 網路錯誤 429，等待 ${backoffTime / 1000} 秒後重試...`);
+      await sleep(backoffTime);
+      return callGemini(prompt, retryCount + 1);
+    }
+    throw e;
+  }
+}
+
+// ============ 批次生成描述（單次 API 呼叫處理多個地點） ============
+export async function batchGenerateDescriptions(
+  places: { name: string; address: string; types: string[] }[],
+  district: string,
+  retryCount = 0
+): Promise<Map<string, string>> {
+  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const MAX_RETRIES = 3;
+  
+  if (!baseUrl || !apiKey) {
+    return new Map(places.map(p => [p.name, `探索${district}的特色景點`]));
   }
 
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const placesJson = places.map((p, idx) => ({
+    id: idx + 1,
+    name: p.name,
+    address: p.address,
+    types: p.types?.join(', ') || '景點'
+  }));
+
+  const prompt = `你是旅遊文案專家。請為以下 ${places.length} 個景點各寫一段 30-50 字的吸引人描述。
+
+【景點列表】
+${JSON.stringify(placesJson, null, 2)}
+
+【要求】
+1. 每個描述要突出景點特色，吸引遊客
+2. 簡潔有力，不超過 50 字
+3. 回傳 JSON Array 格式
+
+【回傳格式】
+[
+  { "id": 1, "description": "景點描述文字" },
+  { "id": 2, "description": "另一個景點描述" }
+]
+
+只回傳 JSON Array，不要其他文字。`;
+
+  try {
+    const response = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 4096,
+        }
+      }),
+    });
+
+    if (response.status === 429) {
+      if (retryCount < MAX_RETRIES) {
+        const backoffTime = Math.pow(2, retryCount) * 5000;
+        console.log(`[BatchDesc] 429 Rate Limit，等待 ${backoffTime / 1000} 秒後重試...`);
+        await sleep(backoffTime);
+        return batchGenerateDescriptions(places, district, retryCount + 1);
+      }
+      console.warn('[BatchDesc] Rate limit exceeded, using fallback descriptions');
+      return new Map(places.map(p => [p.name, `探索${district}的特色景點`]));
+    }
+
+    if (!response.ok) {
+      console.warn('[BatchDesc] API failed, using fallback descriptions');
+      return new Map(places.map(p => [p.name, `探索${district}的特色景點`]));
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      return new Map(places.map(p => [p.name, `探索${district}的特色景點`]));
+    }
+    
+    const parsed = JSON.parse(jsonMatch[0]) as { id: number; description: string }[];
+    const resultMap = new Map<string, string>();
+    
+    for (const item of parsed) {
+      const place = places[item.id - 1];
+      if (place) {
+        resultMap.set(place.name, item.description?.trim() || `探索${district}的特色景點`);
+      }
+    }
+    
+    for (const p of places) {
+      if (!resultMap.has(p.name)) {
+        resultMap.set(p.name, `探索${district}的特色景點`);
+      }
+    }
+    
+    return resultMap;
+  } catch (e: any) {
+    if (e.message?.includes('429') && retryCount < MAX_RETRIES) {
+      const backoffTime = Math.pow(2, retryCount) * 5000;
+      console.log(`[BatchDesc] 網路錯誤，等待 ${backoffTime / 1000} 秒後重試...`);
+      await sleep(backoffTime);
+      return batchGenerateDescriptions(places, district, retryCount + 1);
+    }
+    console.warn('[BatchDesc] Error, using fallback:', e.message);
+    return new Map(places.map(p => [p.name, `探索${district}的特色景點`]));
+  }
 }
 
 // ============ AI 關鍵字擴散 ============

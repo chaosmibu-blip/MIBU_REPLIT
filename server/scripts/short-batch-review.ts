@@ -29,11 +29,15 @@ interface BatchReviewResult {
   confidence: number;
 }
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 async function batchReviewPlacesWithAI(
-  places: PlaceForReview[]
+  places: PlaceForReview[],
+  retryCount = 0
 ): Promise<BatchReviewResult[]> {
   const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
   const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const MAX_RETRIES = 3;
   
   if (!baseUrl || !apiKey) {
     throw new Error("Gemini API not configured");
@@ -67,65 +71,89 @@ ${JSON.stringify(placesJson, null, 2)}
 
 只回傳 JSON Array，不要其他文字。`;
 
-  const response = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-    },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 4096,
-      }
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Gemini API failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  
-  const jsonMatch = text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) {
-    console.error('AI 回傳無法解析:', text.substring(0, 500));
-    return places.map(p => ({
-      place_name: p.placeName,
-      passed: true,
-      reason: "解析失敗預設通過",
-      confidence: 0.6
-    }));
-  }
-  
   try {
-    const parsed = JSON.parse(jsonMatch[0]) as BatchReviewResult[];
-    return parsed;
-  } catch (e) {
-    console.error('JSON 解析失敗:', e);
-    return places.map(p => ({
-      place_name: p.placeName,
-      passed: true,
-      reason: "JSON解析失敗預設通過",
-      confidence: 0.6
-    }));
+    const response = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 4096,
+        }
+      }),
+    });
+
+    if (response.status === 429) {
+      if (retryCount < MAX_RETRIES) {
+        const backoffTime = Math.pow(2, retryCount) * 5000;
+        console.log(`⚠️ 429 Rate Limit，等待 ${backoffTime / 1000} 秒後重試 (${retryCount + 1}/${MAX_RETRIES})...`);
+        await sleep(backoffTime);
+        return batchReviewPlacesWithAI(places, retryCount + 1);
+      }
+      throw new Error(`429 Rate Limit exceeded after ${MAX_RETRIES} retries`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`Gemini API failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.error('AI 回傳無法解析:', text.substring(0, 500));
+      return places.map((p, idx) => ({
+        id: idx + 1,
+        place_name: p.placeName,
+        passed: true,
+        reason: "解析失敗預設通過",
+        confidence: 0.6
+      }));
+    }
+    
+    try {
+      const parsed = JSON.parse(jsonMatch[0]) as BatchReviewResult[];
+      return parsed;
+    } catch (e) {
+      console.error('JSON 解析失敗:', e);
+      return places.map((p, idx) => ({
+        id: idx + 1,
+        place_name: p.placeName,
+        passed: true,
+        reason: "JSON解析失敗預設通過",
+        confidence: 0.6
+      }));
+    }
+  } catch (e: any) {
+    if (e.message.includes('429') && retryCount < MAX_RETRIES) {
+      const backoffTime = Math.pow(2, retryCount) * 5000;
+      console.log(`⚠️ 網路錯誤 429，等待 ${backoffTime / 1000} 秒後重試 (${retryCount + 1}/${MAX_RETRIES})...`);
+      await sleep(backoffTime);
+      return batchReviewPlacesWithAI(places, retryCount + 1);
+    }
+    throw e;
   }
 }
 
 async function shortBatchReview() {
-  const BATCH_SIZE = parseInt(process.argv[2] || '20');
-  const MAX_PER_CALL = 20;
+  const TOTAL_LIMIT = parseInt(process.argv[2] || '100');
+  const CHUNK_SIZE = 10;
+  const DELAY_BETWEEN_CHUNKS = 3000;
   
-  console.log(`🚀 真・批次 AI 審查模式 (每次 ${MAX_PER_CALL} 筆打包呼叫)`);
+  console.log(`🚀 真・批次 AI 審查模式`);
+  console.log(`📋 設定: 總數上限=${TOTAL_LIMIT}, 每批=${CHUNK_SIZE}筆, 間隔=${DELAY_BETWEEN_CHUNKS/1000}秒`);
   
   const unreviewed = await db.select().from(schema.placeCache)
     .where(or(
       eq(schema.placeCache.aiReviewed, false),
       isNull(schema.placeCache.aiReviewed)
     ))
-    .limit(BATCH_SIZE);
+    .limit(TOTAL_LIMIT);
   
   if (unreviewed.length === 0) {
     console.log("✅ 沒有待審核的資料");
@@ -137,15 +165,17 @@ async function shortBatchReview() {
   
   let totalPassed = 0;
   let totalFailed = 0;
+  let apiCallCount = 0;
   
-  for (let i = 0; i < unreviewed.length; i += MAX_PER_CALL) {
-    const batch = unreviewed.slice(i, i + MAX_PER_CALL);
-    const batchNum = Math.floor(i / MAX_PER_CALL) + 1;
-    const totalBatches = Math.ceil(unreviewed.length / MAX_PER_CALL);
+  const totalChunks = Math.ceil(unreviewed.length / CHUNK_SIZE);
+  
+  for (let i = 0; i < unreviewed.length; i += CHUNK_SIZE) {
+    const chunk = unreviewed.slice(i, i + CHUNK_SIZE);
+    const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
     
-    console.log(`\n🔄 批次 ${batchNum}/${totalBatches}: 審核 ${batch.length} 個地點...`);
+    console.log(`\n🔄 批次 ${chunkNum}/${totalChunks}: 審核 ${chunk.length} 個地點...`);
     
-    const placesToReview: PlaceForReview[] = batch.map(p => ({
+    const placesToReview: PlaceForReview[] = chunk.map(p => ({
       id: p.id,
       placeName: p.placeName,
       description: p.description || '',
@@ -157,6 +187,7 @@ async function shortBatchReview() {
     
     try {
       const results = await batchReviewPlacesWithAI(placesToReview);
+      apiCallCount++;
       
       const resultMap = new Map<number, BatchReviewResult>();
       for (const r of results) {
@@ -165,8 +196,8 @@ async function shortBatchReview() {
         }
       }
       
-      for (let idx = 0; idx < batch.length; idx++) {
-        const place = batch[idx];
+      for (let idx = 0; idx < chunk.length; idx++) {
+        const place = chunk[idx];
         const result = resultMap.get(idx + 1);
         
         if (!result) {
@@ -192,18 +223,21 @@ async function shortBatchReview() {
         }
       }
       
-      if (i + MAX_PER_CALL < unreviewed.length) {
-        console.log('⏳ 等待 2 秒避免 API 限流...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
+      if (i + CHUNK_SIZE < unreviewed.length) {
+        console.log(`⏳ 冷卻 ${DELAY_BETWEEN_CHUNKS/1000} 秒避免 API 限流...`);
+        await sleep(DELAY_BETWEEN_CHUNKS);
       }
     } catch (e: any) {
-      console.error(`⚠️ 批次 ${batchNum} 失敗: ${e.message}`);
-      for (const place of batch) {
+      console.error(`⚠️ 批次 ${chunkNum} 失敗: ${e.message}`);
+      console.log(`🔄 跳過此批次，${chunk.length} 筆預設通過`);
+      for (const place of chunk) {
         await db.update(schema.placeCache)
           .set({ aiReviewed: true })
           .where(eq(schema.placeCache.id, place.id));
         totalPassed++;
       }
+      console.log(`⏳ 額外冷卻 10 秒...`);
+      await sleep(10000);
     }
   }
   
@@ -213,8 +247,13 @@ async function shortBatchReview() {
       isNull(schema.placeCache.aiReviewed)
     ));
   
-  console.log(`\n📊 審核完成: 通過 ${totalPassed}, 刪除 ${totalFailed}, 剩餘 ${remaining.length}`);
-  console.log(`📈 API 呼叫次數: ${Math.ceil(unreviewed.length / MAX_PER_CALL)} 次（舊版需 ${unreviewed.length} 次）`);
+  console.log(`\n${'='.repeat(50)}`);
+  console.log(`📊 審核完成統計`);
+  console.log(`   通過: ${totalPassed} 筆`);
+  console.log(`   刪除: ${totalFailed} 筆`);
+  console.log(`   剩餘: ${remaining.length} 筆`);
+  console.log(`   API 呼叫: ${apiCallCount} 次（舊版需 ${unreviewed.length} 次）`);
+  console.log(`${'='.repeat(50)}`);
   
   await pool.end();
 }

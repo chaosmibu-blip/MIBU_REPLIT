@@ -16,7 +16,7 @@ import { createPlannerServiceRoutes } from "../modules/trip-planner/server/plann
 import { registerStripeRoutes } from "./stripeRoutes";
 import { getUncachableStripeClient } from "./stripeClient";
 import { checkGeofence } from "./lib/geofencing";
-import { callGemini, batchGeneratePlaces, type PlaceResult } from "./lib/placeGenerator";
+import { callGemini, batchGeneratePlaces, batchGenerateDescriptions, type PlaceResult } from "./lib/placeGenerator";
 import twilio from "twilio";
 import appleSignin from "apple-signin-auth";
 const { AccessToken } = twilio.jwt;
@@ -6777,74 +6777,83 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
         const existingPlaces = await storage.getOfficialPlacesByCity(region.nameZh, 1000);
         const existingPlacePlaceIds = new Set(existingPlaces.map(p => p.googlePlaceId).filter(Boolean));
 
-        for (const place of result.places) {
-          // 跳過已存在的（包含批次內去重）
-          if (existingCachePlaceIds.has(place.placeId) || existingPlacePlaceIds.has(place.placeId)) {
-            skippedCount++;
-            continue;
-          }
+        // 先過濾出需要處理的地點
+        const placesToProcess = result.places.filter(place => 
+          !existingCachePlaceIds.has(place.placeId) && !existingPlacePlaceIds.has(place.placeId)
+        );
+        skippedCount = result.places.length - placesToProcess.length;
 
-          try {
-            // 使用 AI 生成描述
-            const descPrompt = `請為以下景點寫一段 30-50 字的吸引人描述，適合推薦給遊客：
-景點名稱：${place.name}
-地址：${place.address}
-類型：${place.types?.join(', ') || '未知'}
+        console.log(`[BatchGenerate] 需處理 ${placesToProcess.length} 筆，跳過 ${skippedCount} 筆重複`);
 
-只輸出描述文字，不要有其他內容。`;
-
-            let description = '';
+        // 分批生成描述（每批 15 個，避免 Rate Limit）
+        const CHUNK_SIZE = 15;
+        const DELAY_BETWEEN_CHUNKS = 2000;
+        
+        for (let i = 0; i < placesToProcess.length; i += CHUNK_SIZE) {
+          const chunk = placesToProcess.slice(i, i + CHUNK_SIZE);
+          const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
+          const totalChunks = Math.ceil(placesToProcess.length / CHUNK_SIZE);
+          
+          console.log(`[BatchGenerate] 批次 ${chunkNum}/${totalChunks}: 生成 ${chunk.length} 筆描述...`);
+          
+          // 批次生成描述
+          const descriptionMap = await batchGenerateDescriptions(
+            chunk.map(p => ({ name: p.name, address: p.address, types: p.types })),
+            district.nameZh
+          );
+          
+          // 儲存到 cache
+          for (const place of chunk) {
             try {
-              description = await callGemini(descPrompt);
-              description = description.trim().replace(/^["']|["']$/g, '');
-            } catch (e) {
-              description = `探索${district.nameZh}的特色景點`;
+              const description = descriptionMap.get(place.name) || `探索${district.nameZh}的特色景點`;
+              const categoryName = category?.nameZh || '景點';
+              const subcategoryName = subcategory?.nameZh || place.primaryType || 'attraction';
+
+              const cached = await storage.savePlaceToCache({
+                subCategory: subcategoryName,
+                district: district.nameZh,
+                city: region.nameZh,
+                country: country.nameZh,
+                placeName: place.name,
+                description,
+                category: categoryName,
+                suggestedTime: null,
+                duration: null,
+                searchQuery: keyword,
+                rarity: null,
+                colorHex: null,
+                placeId: place.placeId,
+                verifiedName: place.name,
+                verifiedAddress: place.address,
+                googleRating: place.rating?.toString() || null,
+                googleTypes: place.types?.join(',') || null,
+                primaryType: place.primaryType || null,
+                locationLat: place.location?.lat?.toString() || null,
+                locationLng: place.location?.lng?.toString() || null,
+                isLocationVerified: true,
+                businessStatus: place.businessStatus || null,
+                lastVerifiedAt: new Date(),
+                aiReviewed: false,
+                aiReviewedAt: null
+              });
+
+              existingCachePlaceIds.add(place.placeId);
+
+              savedPlaces.push({
+                id: cached.id,
+                placeName: cached.placeName,
+                placeId: cached.placeId
+              });
+              savedCount++;
+            } catch (e: any) {
+              console.error(`[BatchGenerate] Failed to save ${place.name}:`, e.message);
             }
-
-            // 根據 Google types 判斷類別
-            const categoryName = category?.nameZh || '景點';
-            const subcategoryName = subcategory?.nameZh || place.primaryType || 'attraction';
-
-            // 存入 place_cache
-            const cached = await storage.savePlaceToCache({
-              subCategory: subcategoryName,
-              district: district.nameZh,
-              city: region.nameZh,
-              country: country.nameZh,
-              placeName: place.name,
-              description,
-              category: categoryName,
-              suggestedTime: null,
-              duration: null,
-              searchQuery: keyword,
-              rarity: null,
-              colorHex: null,
-              placeId: place.placeId,
-              verifiedName: place.name,
-              verifiedAddress: place.address,
-              googleRating: place.rating?.toString() || null,
-              googleTypes: place.types?.join(',') || null,
-              primaryType: place.primaryType || null,
-              locationLat: place.location?.lat?.toString() || null,
-              locationLng: place.location?.lng?.toString() || null,
-              isLocationVerified: true,
-              businessStatus: place.businessStatus || null,
-              lastVerifiedAt: new Date(),
-              aiReviewed: false,
-              aiReviewedAt: null
-            });
-
-            // 加入 Set 防止批次內重複
-            existingCachePlaceIds.add(place.placeId);
-
-            savedPlaces.push({
-              id: cached.id,
-              placeName: cached.placeName,
-              placeId: cached.placeId
-            });
-            savedCount++;
-          } catch (e: any) {
-            console.error(`[BatchGenerate] Failed to save ${place.name}:`, e.message);
+          }
+          
+          // 冷卻時間
+          if (i + CHUNK_SIZE < placesToProcess.length) {
+            console.log(`[BatchGenerate] 冷卻 ${DELAY_BETWEEN_CHUNKS/1000} 秒...`);
+            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_CHUNKS));
           }
         }
       }

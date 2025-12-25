@@ -136,6 +136,13 @@ place_cache (ai_reviewed=null)
 
 ## Changelog
 
+### 2025-12-25 - 解決 429 Rate Limit 錯誤
+- 實作分批處理：每批 10-15 個地點，序列執行
+- 加入冷卻時間：批次間隔 2-3 秒
+- 加入重試機制：Exponential Backoff（3/6/12 秒）
+- 批次生成描述：`batchGenerateDescriptions()` 單次 API 處理多個地點
+- 修改檔案：`placeGenerator.ts`, `routes.ts`, `short-batch-review.ts`
+
 ### 2025-12-25 - 真・批次 AI 審查（模式 B）
 - 重構 `server/scripts/short-batch-review.ts`
 - 原模式 A：每個地點單獨呼叫 1 次 Gemini API（N 次呼叫）
