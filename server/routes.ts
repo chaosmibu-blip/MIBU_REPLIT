@@ -4272,57 +4272,8 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
         categoryStats[cat] = (categoryStats[cat] || 0) + 1;
       }
       
-      // ========== Step 4: AI 生成主題介紹 ==========
-      let themeIntro = '';
-      try {
-        const placeNames = finalPlaces.slice(0, 5).map(p => p.placeName).join('、');
-        const prompt = `地點：${placeNames}
-任務：為${anchorDistrict || city}一日遊寫一句主題介紹
-規則：只輸出20-30個中文字，不要英文、不要解釋、不要標點
-範例：悠遊溫泉山海品嚐在地美食的療癒小旅行`;
-        
-        const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-        const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-        const response = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey || ''
-          },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 100, temperature: 0.5 }
-          })
-        });
-        
-        const data = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>, error?: { code?: string; message?: string } };
-        console.log('[Gacha V3] Gemini response:', JSON.stringify(data).slice(0, 500));
-        
-        if (data.error) {
-          console.error('[Gacha V3] Gemini API error:', data.error);
-          throw new Error(data.error.message || 'Gemini API error');
-        }
-        
-        let rawTheme = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-        // 清理格式標記和英文內容
-        themeIntro = rawTheme
-          .replace(/\*\*/g, '')  // 移除加粗
-          .replace(/\s*\(\d+字?\)\s*/g, '')  // 移除字數標記
-          .replace(/[a-zA-Z]+/g, '')  // 移除所有英文
-          .replace(/["""''`*#\-_]/g, '')  // 移除引號和特殊符號
-          .replace(/\s+/g, '')  // 移除空白
-          .replace(/[.,!?;:。，！？；：、]/g, '')  // 移除標點
-          .trim();
-        console.log('[Gacha V3] AI Theme (raw):', rawTheme, '-> (clean):', themeIntro);
-        
-        // 如果清理後太短或太長，使用 fallback
-        if (!themeIntro || themeIntro.length < 8 || themeIntro.length > 50) {
-          themeIntro = `探索${anchorDistrict || city}的在地風情`;
-        }
-      } catch (aiError) {
-        console.error('[Gacha V3] AI theme generation failed:', aiError);
-        themeIntro = `探索${anchorDistrict || city}的在地風情`;
-      }
+      // ========== Step 4: 主題介紹（已關閉 AI 生成以節省費用）==========
+      const themeIntro = null;
       
       // 成功後遞增每日抽卡計數
       let newDailyCount = 0;
