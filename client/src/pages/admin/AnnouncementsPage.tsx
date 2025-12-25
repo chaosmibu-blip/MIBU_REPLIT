@@ -13,7 +13,6 @@ interface Announcement {
   type: string;
   priority: number;
   isActive: boolean;
-  targetRoles: string[];
   startDate: string | null;
   endDate: string | null;
   createdAt: string;
@@ -25,7 +24,6 @@ const TYPE_OPTIONS = [
   { value: 'holiday_event', label: '節慶活動', color: 'bg-green-100 text-green-700' },
 ];
 
-const ROLE_OPTIONS = ['traveler', 'merchant', 'specialist', 'admin'];
 
 export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ language, t }) => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -41,7 +39,6 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ language, 
     type: 'announcement',
     priority: 1,
     isActive: true,
-    targetRoles: ['traveler'] as string[],
     startDate: '',
     endDate: ''
   });
@@ -124,7 +121,6 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ language, 
       type: item.type,
       priority: item.priority,
       isActive: item.isActive,
-      targetRoles: item.targetRoles || ['traveler'],
       startDate: item.startDate ? item.startDate.split('T')[0] : '',
       endDate: item.endDate ? item.endDate.split('T')[0] : ''
     });
@@ -173,7 +169,6 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ language, 
       type: 'announcement',
       priority: 1,
       isActive: true,
-      targetRoles: ['traveler'],
       startDate: '',
       endDate: ''
     });
@@ -183,14 +178,6 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ language, 
     return TYPE_OPTIONS.find(t => t.value === type) || TYPE_OPTIONS[0];
   };
 
-  const toggleRole = (role: string) => {
-    setFormData(prev => ({
-      ...prev,
-      targetRoles: prev.targetRoles.includes(role)
-        ? prev.targetRoles.filter(r => r !== role)
-        : [...prev.targetRoles, role]
-    }));
-  };
 
   return (
     <div className="space-y-6">
@@ -288,27 +275,6 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ language, 
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">目標對象</label>
-              <div className="flex flex-wrap gap-2">
-                {ROLE_OPTIONS.map(role => (
-                  <button
-                    key={role}
-                    type="button"
-                    onClick={() => toggleRole(role)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      formData.targetRoles.includes(role)
-                        ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                        : 'bg-slate-100 text-slate-600 border border-slate-200'
-                    }`}
-                    data-testid={`button-role-${role}`}
-                  >
-                    {role === 'traveler' ? '旅客' : role === 'merchant' ? '商家' : role === 'specialist' ? '專員' : '管理員'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">開始日期</label>
@@ -397,7 +363,6 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ language, 
                       <div className="text-xs text-slate-400 mt-2">
                         {item.startDate && `開始: ${new Date(item.startDate).toLocaleDateString()}`}
                         {item.endDate && ` | 結束: ${new Date(item.endDate).toLocaleDateString()}`}
-                        {item.targetRoles?.length > 0 && ` | 對象: ${item.targetRoles.join(', ')}`}
                       </div>
                     </div>
                     <div className="flex gap-2 flex-shrink-0">
