@@ -58,7 +58,7 @@ async function reviewPlaceWithAI(
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.3,
-        maxOutputTokens: 256,
+        maxOutputTokens: 1024,
       }
     }),
   });
@@ -119,6 +119,7 @@ async function deletePlaceCache(id: number) {
 
 async function batchReviewAllCache() {
   console.log("🚀 開始批次審核 place_cache 資料...\n");
+  console.log(`時間: ${new Date().toISOString()}\n`);
   
   let totalProcessed = 0;
   let totalPassed = 0;
@@ -127,49 +128,58 @@ async function batchReviewAllCache() {
   
   const batchSize = 50;
   let hasMore = true;
+  let batchCount = 0;
   
   while (hasMore) {
-    const unreviewed = await getUnreviewedPlaceCache(batchSize);
-    
-    if (unreviewed.length === 0) {
-      hasMore = false;
-      break;
-    }
-    
-    console.log(`📦 批次處理: ${unreviewed.length} 筆 (累計已處理: ${totalProcessed})`);
-    
-    for (const place of unreviewed) {
-      try {
-        const result = await reviewPlaceWithAI(
-          place.placeName,
-          place.description || '',
-          place.category || '',
-          place.subCategory || '',
-          place.district || '',
-          place.city || ''
-        );
-        
-        if (result.passed && result.confidence >= 0.6) {
-          await markPlaceCacheReviewed(place.id);
-          totalPassed++;
-          console.log(`✅ ${place.placeName}: PASS (${(result.confidence * 100).toFixed(0)}%)`);
-        } else {
-          await deletePlaceCache(place.id);
-          totalFailed++;
-          console.log(`❌ ${place.placeName}: FAIL - ${result.reason}`);
-        }
-        
-        totalProcessed++;
-        await new Promise(resolve => setTimeout(resolve, 150));
-      } catch (e: any) {
-        console.error(`⚠️ ${place.placeName}: ERROR - ${e.message}`);
-        await markPlaceCacheReviewed(place.id);
-        totalErrors++;
-        totalProcessed++;
+    try {
+      batchCount++;
+      const unreviewed = await getUnreviewedPlaceCache(batchSize);
+      
+      if (unreviewed.length === 0) {
+        hasMore = false;
+        break;
       }
+      
+      console.log(`📦 批次 #${batchCount}: ${unreviewed.length} 筆 (累計: ${totalProcessed})`);
+      
+      for (const place of unreviewed) {
+        try {
+          const result = await reviewPlaceWithAI(
+            place.placeName,
+            place.description || '',
+            place.category || '',
+            place.subCategory || '',
+            place.district || '',
+            place.city || ''
+          );
+          
+          if (result.passed && result.confidence >= 0.6) {
+            await markPlaceCacheReviewed(place.id);
+            totalPassed++;
+            console.log(`✅ ${place.placeName}: PASS (${(result.confidence * 100).toFixed(0)}%)`);
+          } else {
+            await deletePlaceCache(place.id);
+            totalFailed++;
+            console.log(`❌ ${place.placeName}: FAIL - ${result.reason}`);
+          }
+          
+          totalProcessed++;
+          await new Promise(resolve => setTimeout(resolve, 200));
+        } catch (e: any) {
+          console.error(`⚠️ ${place.placeName}: ERROR - ${e.message}`);
+          await markPlaceCacheReviewed(place.id);
+          totalErrors++;
+          totalProcessed++;
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+      
+      console.log(`📊 批次 #${batchCount} 完成，累計處理: ${totalProcessed} 筆\n`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } catch (batchError: any) {
+      console.error(`❌ 批次 #${batchCount} 錯誤: ${batchError.message}`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
-    
-    console.log(`\n📊 進度: ${totalProcessed} 筆\n`);
   }
   
   console.log("\n" + "=".repeat(50));
