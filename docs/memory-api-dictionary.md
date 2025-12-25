@@ -122,6 +122,48 @@ NO_PLACES_AVAILABLE   // 200 (success=false) 無景點
 | GET | /api/config/mapbox | Mapbox Token |
 | GET | /api/config/app | App 設定 |
 
+### 管理 (Admin)
+| Method | Endpoint | 說明 |
+|--------|----------|------|
+| POST | /api/admin/places/batch-generate | 批次採集景點 |
+| POST | /api/admin/places/batch-preview | 預覽採集結果 |
+| POST | /api/admin/places/reclassify | 重新分類現有資料 ⭐ |
+| GET | /api/admin/place-drafts | 待審核列表 |
+| POST | /api/admin/place-drafts/:id/approve | 批准景點 |
+| DELETE | /api/admin/place-drafts/:id | 刪除草稿 |
+| GET | /api/admin/users | 用戶列表 |
+| PATCH | /api/admin/users/:id | 更新用戶 |
+
+#### POST /api/admin/places/reclassify（2025-12-26 新增）
+重新分類現有的 cache/drafts/places 資料
+
+**Request Body:**
+```typescript
+interface ReclassifyRequest {
+  target: 'cache' | 'drafts' | 'places' | 'all';  // 預設 'cache'
+  limit?: number;  // 預設 100
+}
+```
+
+**Response:**
+```typescript
+interface ReclassifyResponse {
+  success: boolean;
+  message: string;
+  updated: number;
+  skipped: number;
+  errors: number;
+  details: Array<{
+    id: number;
+    name: string;
+    oldCategory: string;
+    newCategory: string;
+    oldSubcategory: string;
+    newSubcategory: string;
+  }>;
+}
+```
+
 ## 分頁參數
 ```typescript
 // 標準分頁
