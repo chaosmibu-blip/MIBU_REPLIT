@@ -8,7 +8,8 @@ interface BatchGeneratePageProps {
 
 interface LocationOption {
   id: number;
-  name: string;
+  nameZh: string;
+  nameEn: string;
 }
 
 interface PreviewPlace {
@@ -72,8 +73,8 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
   const getLocationName = () => {
     const district = districts.find(d => d.id === selectedDistrictId);
     const region = regions.find(r => r.id === selectedRegionId);
-    if (district && region) return `${region.name} ${district.name}`;
-    if (region) return region.name;
+    if (district && region) return `${region.nameZh} ${district.nameZh}`;
+    if (region) return region.nameZh;
     return '';
   };
 
@@ -188,7 +189,7 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
           >
             <option value="">選擇國家</option>
             {countries.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>{c.nameZh}</option>
             ))}
           </select>
 
@@ -201,7 +202,7 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
           >
             <option value="">選擇城市</option>
             {regions.map(r => (
-              <option key={r.id} value={r.id}>{r.name}</option>
+              <option key={r.id} value={r.id}>{r.nameZh}</option>
             ))}
           </select>
 
@@ -214,7 +215,7 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
           >
             <option value="">選擇鄉鎮區</option>
             {districts.map(d => (
-              <option key={d.id} value={d.id}>{d.name}</option>
+              <option key={d.id} value={d.id}>{d.nameZh}</option>
             ))}
           </select>
         </div>

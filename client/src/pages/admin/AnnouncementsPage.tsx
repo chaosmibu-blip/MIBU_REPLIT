@@ -20,11 +20,9 @@ interface Announcement {
 }
 
 const TYPE_OPTIONS = [
-  { value: 'info', label: '一般公告', color: 'bg-blue-100 text-blue-700' },
-  { value: 'warning', label: '警告', color: 'bg-amber-100 text-amber-700' },
-  { value: 'urgent', label: '緊急', color: 'bg-red-100 text-red-700' },
-  { value: 'promotion', label: '促銷活動', color: 'bg-green-100 text-green-700' },
-  { value: 'maintenance', label: '維護通知', color: 'bg-purple-100 text-purple-700' },
+  { value: 'announcement', label: '一般公告', color: 'bg-blue-100 text-blue-700' },
+  { value: 'flash_event', label: '限時活動', color: 'bg-amber-100 text-amber-700' },
+  { value: 'holiday_event', label: '節慶活動', color: 'bg-green-100 text-green-700' },
 ];
 
 const ROLE_OPTIONS = ['traveler', 'merchant', 'specialist', 'admin'];
@@ -40,7 +38,7 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ language, 
   const [formData, setFormData] = useState({
     title: '',
     content: '',
-    type: 'info',
+    type: 'announcement',
     priority: 1,
     isActive: true,
     targetRoles: ['traveler'] as string[],
@@ -88,15 +86,24 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ language, 
           type: formData.type,
           priority: formData.priority,
           isActive: formData.isActive,
-          targetRoles: formData.targetRoles,
-          startDate: formData.startDate || null,
-          endDate: formData.endDate || null
+          startDate: formData.startDate ? new Date(formData.startDate).toISOString() : undefined,
+          endDate: formData.endDate ? new Date(formData.endDate).toISOString() : null
         })
       });
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || '操作失敗');
+        let errorMsg = '操作失敗';
+        if (data.error) {
+          if (Array.isArray(data.error)) {
+            errorMsg = data.error.map((e: any) => e.message || e.path?.join('.') || JSON.stringify(e)).join(', ');
+          } else if (typeof data.error === 'string') {
+            errorMsg = data.error;
+          } else {
+            errorMsg = JSON.stringify(data.error);
+          }
+        }
+        throw new Error(errorMsg);
       }
 
       setSuccess(editingItem ? '公告已更新' : '公告已新增');
@@ -163,7 +170,7 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ language, 
     setFormData({
       title: '',
       content: '',
-      type: 'info',
+      type: 'announcement',
       priority: 1,
       isActive: true,
       targetRoles: ['traveler'],
