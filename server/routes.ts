@@ -6780,6 +6780,7 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
   });
 
   // 管理員：批次 AI 審核快取資料
+  // 重要：每次只處理少量資料（預設 5 筆）以避免 Replit 60 秒執行限制
   app.post("/api/admin/place-cache/batch-review", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
@@ -6788,9 +6789,9 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
       const user = await storage.getUser(userId);
       if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
 
-      // 支援更大的批次，最多 500 筆
-      const { limit = 50 } = req.body as { limit?: number };
-      const effectiveLimit = Math.min(limit, 500);
+      // 短批次模式：預設 5 筆，最多 10 筆（避免超過 60 秒限制）
+      const { limit = 5 } = req.body as { limit?: number };
+      const effectiveLimit = Math.min(limit, 10);
 
       // 取得尚未審核的快取資料
       const unreviewed = await storage.getUnreviewedPlaceCache(effectiveLimit);
