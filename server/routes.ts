@@ -6778,7 +6778,7 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
         const existingPlacePlaceIds = new Set(existingPlaces.map(p => p.googlePlaceId).filter(Boolean));
 
         for (const place of result.places) {
-          // 跳過已存在的
+          // 跳過已存在的（包含批次內去重）
           if (existingCachePlaceIds.has(place.placeId) || existingPlacePlaceIds.has(place.placeId)) {
             skippedCount++;
             continue;
@@ -6801,15 +6801,19 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
               description = `探索${district.nameZh}的特色景點`;
             }
 
-            // 存入 place_cache 而非 place_drafts
+            // 根據 Google types 判斷類別
+            const categoryName = category?.nameZh || '景點';
+            const subcategoryName = subcategory?.nameZh || place.primaryType || 'attraction';
+
+            // 存入 place_cache
             const cached = await storage.savePlaceToCache({
-              subCategory: subcategory?.slug || category?.slug || 'attraction',
+              subCategory: subcategoryName,
               district: district.nameZh,
               city: region.nameZh,
               country: country.nameZh,
               placeName: place.name,
               description,
-              category: category?.slug || 'attraction',
+              category: categoryName,
               suggestedTime: null,
               duration: null,
               searchQuery: keyword,
@@ -6829,6 +6833,9 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
               aiReviewed: false,
               aiReviewedAt: null
             });
+
+            // 加入 Set 防止批次內重複
+            existingCachePlaceIds.add(place.placeId);
 
             savedPlaces.push({
               id: cached.id,
