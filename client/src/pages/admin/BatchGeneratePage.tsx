@@ -472,7 +472,7 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
         <div className="flex gap-3">
           <button
             onClick={handlePreview}
-            disabled={previewing || loading || !selectedDistrictId}
+            disabled={previewing || loading || !selectedRegionId}
             className="flex-1 px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors disabled:opacity-50"
             data-testid="button-preview"
           >
@@ -480,7 +480,7 @@ export const BatchGeneratePage: React.FC<BatchGeneratePageProps> = ({ language, 
           </button>
           <button
             onClick={handleGenerate}
-            disabled={loading || previewing || !selectedDistrictId}
+            disabled={loading || previewing || !selectedRegionId}
             className="flex-1 px-6 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors disabled:opacity-50"
             data-testid="button-generate"
           >

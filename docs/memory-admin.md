@@ -112,6 +112,7 @@ Body: { key: 'mibu2024migrate', data: [...] }
 - 未選擇種類時 AI 隨機選擇一種並根據種類擴散關鍵字
 - 關鍵字組合邏輯：`{種類}-{關鍵字}`（如「美食-咖啡廳」）
 - 自動新增子分類：若 AI 判斷的子分類不存在則自動建立
+- **修復**：按鈕 disabled 條件從 `!selectedDistrictId` 改為 `!selectedRegionId`，允許城市級別採集
 - 修改檔案：`server/routes.ts`, `server/storage.ts`, `server/lib/placeGenerator.ts`, `client/src/pages/admin/BatchGeneratePage.tsx`
 
 ### 2025-12-25 - 批次採集真實進度顯示（SSE）
