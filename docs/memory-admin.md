@@ -103,7 +103,58 @@ Body: { key: 'mibu2024migrate', data: [...] }
 
 ---
 
+## 資料庫管理流程（開發 → 正式）
+
+### 架構設計
+```
+開發環境                           正式環境
+┌─────────────────┐               ┌─────────────────┐
+│ DATABASE_URL    │               │ PRODUCTION_DB   │
+├─────────────────┤               ├─────────────────┤
+│ place_cache     │ ──審查後──→   │ places          │ ← App 抽卡唯一來源
+│ place_drafts    │ ──審查後──→   │                 │
+│ places          │               │                 │
+└─────────────────┘               └─────────────────┘
+```
+
+### 流程說明
+1. **批次採集**：在開發環境執行，結果存入 `place_cache`
+2. **人工審查**：管理員審核 cache，通過的移至 `place_drafts`
+3. **批准發布**：drafts 通過審核後轉入 `places`
+4. **同步正式**：定期將開發 `places` 匯出並匯入正式資料庫
+5. **App 抽卡**：正式環境的 `places` 表是唯一資料來源
+
+### 同步指令
+```bash
+# 設定正式資料庫連線（環境變數）
+export PRODUCTION_DATABASE_URL="postgresql://..."
+
+# 匯出開發資料庫 places
+psql "$DATABASE_URL" -c "\COPY (SELECT ... FROM places WHERE is_active = true) TO '/tmp/places.csv' WITH CSV HEADER"
+
+# 匯入正式資料庫（跳過重複）
+psql "$PRODUCTION_DATABASE_URL" << 'EOF'
+CREATE TEMP TABLE temp_places (...);
+\COPY temp_places FROM '/tmp/places.csv' WITH CSV HEADER
+INSERT INTO places (...) SELECT ... FROM temp_places ON CONFLICT (google_place_id) DO NOTHING;
+EOF
+```
+
+### 正式環境注意事項
+- **不使用 cache/drafts**：正式環境的 `place_cache` 和 `place_drafts` 應保持空白
+- **google_place_id 唯一約束**：防止重複景點
+- **分類標準化**：所有 `category` 欄位統一使用英文（food/scenery/activity 等）
+
+---
+
 ## Changelog
+
+### 2025-12-26 - 正式資料庫清洗與同步
+- **分類標準化**：正式資料庫 527 筆中文分類轉為英文（美食→food, 景點→scenery 等）
+- **描述修復**：3 筆空描述使用智能 fallback 模板補上
+- **清除暫存**：刪除正式資料庫 place_cache（4,082 筆）與 place_drafts（3,212 筆）
+- **資料同步**：開發資料庫 places（2,198 筆）匯入正式資料庫，新增 740 筆（跳過 1,458 筆重複）
+- **最終狀態**：正式資料庫 places 共 2,373 筆
 
 ### 2025-12-26 - 舊資料分類修復
 - **修復範圍**：place_cache（662 筆）、place_drafts（1 筆）、places（4 筆）

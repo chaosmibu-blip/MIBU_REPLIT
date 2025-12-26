@@ -62,7 +62,7 @@ Mibu 是專為自由行旅客打造的旅遊 App，包含兩大核心模組：
 | memory-user-client.md | 用戶端 | 認證、背包、通知、額度 |
 | memory-merchant.md | 商家端 | 認領、優惠券、訂閱、數據 |
 | memory-specialist.md | 專員端 | 服務、訂單、等級 |
-| memory-admin.md | 管理端 | 審核、排程、同步、資料修復 |
+| memory-admin.md | 管理端 | 審核、排程、同步、資料修復、開發→正式資料管理流程 |
 | memory-api-dictionary.md | API 字典 | 端點、錯誤、分頁 |
 | memory-data-schema.md | 資料架構 | 47 張表、關聯、約束 |
 | memory-payment-commerce.md | 金流商品 | Stripe、購物車、訂單 |
