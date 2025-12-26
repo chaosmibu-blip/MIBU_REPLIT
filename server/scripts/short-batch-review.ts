@@ -31,6 +31,35 @@ interface BatchReviewResult {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// 方案三：Pre-filtering 前置過濾關鍵字（不需要 AI 判斷的垃圾資料）
+const EXCLUDE_KEYWORDS = [
+  // 政府機關
+  '區公所', '市公所', '鄉公所', '鎮公所', '戶政事務所', '地政事務所',
+  '國稅局', '稅捐處', '監理站', '監理所', '警察局', '派出所', '消防局', '消防隊',
+  '法院', '地檢署', '調解委員會', '兵役課', '役政署',
+  // 醫療機構
+  '衛生所', '衛生局', '疾病管制', '健保署', '長照中心',
+  // 殯葬
+  '殯儀館', '火葬場', '納骨塔', '靈骨塔', '墓園', '公墓', '殯葬',
+  // 基礎設施
+  '停車場', '停車塔', '加油站', '變電所', '汙水處理', '自來水', '焚化爐',
+  '垃圾場', '回收站', '資源回收',
+  // 金融（非旅遊相關）
+  '銀行分行', '郵局', '農會信用部',
+  // 教育行政（非觀光）
+  '教育局', '學區', '督學',
+];
+
+function shouldPreFilter(placeName: string): { filtered: boolean; reason: string } {
+  const lowerName = placeName.toLowerCase();
+  for (const keyword of EXCLUDE_KEYWORDS) {
+    if (lowerName.includes(keyword.toLowerCase())) {
+      return { filtered: true, reason: `包含排除關鍵字: ${keyword}` };
+    }
+  }
+  return { filtered: false, reason: '' };
+}
+
 async function batchReviewPlacesWithAI(
   places: PlaceForReview[],
   retryCount = 0
@@ -142,10 +171,10 @@ ${JSON.stringify(placesJson, null, 2)}
 
 async function shortBatchReview() {
   const TOTAL_LIMIT = parseInt(process.argv[2] || '100');
-  const CHUNK_SIZE = 10;
-  const DELAY_BETWEEN_CHUNKS = 3000;
+  const CHUNK_SIZE = 50;  // 方案一：從 10 提升到 50
+  const DELAY_BETWEEN_CHUNKS = 1000;  // 方案一：從 3 秒降到 1 秒
   
-  console.log(`🚀 真・批次 AI 審查模式`);
+  console.log(`🚀 優化版批次 AI 審查模式`);
   console.log(`📋 設定: 總數上限=${TOTAL_LIMIT}, 每批=${CHUNK_SIZE}筆, 間隔=${DELAY_BETWEEN_CHUNKS/1000}秒`);
   
   const unreviewed = await db.select().from(schema.placeCache)
@@ -163,14 +192,41 @@ async function shortBatchReview() {
   
   console.log(`📦 取得 ${unreviewed.length} 筆待審核資料`);
   
+  // 方案三：Pre-filtering 前置過濾
+  let preFilteredCount = 0;
+  const toReview: typeof unreviewed = [];
+  
+  for (const place of unreviewed) {
+    const filterResult = shouldPreFilter(place.placeName);
+    if (filterResult.filtered) {
+      // 直接刪除，不需要 AI 審核
+      await db.delete(schema.placeCache)
+        .where(eq(schema.placeCache.id, place.id));
+      preFilteredCount++;
+      console.log(`🗑️ 前置過濾: ${place.placeName} - ${filterResult.reason}`);
+    } else {
+      toReview.push(place);
+    }
+  }
+  
+  if (preFilteredCount > 0) {
+    console.log(`\n📊 前置過濾完成: 刪除 ${preFilteredCount} 筆，剩餘 ${toReview.length} 筆送 AI 審核\n`);
+  }
+  
+  if (toReview.length === 0) {
+    console.log("✅ 全部已過濾完成");
+    await pool.end();
+    return;
+  }
+  
   let totalPassed = 0;
-  let totalFailed = 0;
+  let totalFailed = preFilteredCount;  // 前置過濾的算作 failed
   let apiCallCount = 0;
   
-  const totalChunks = Math.ceil(unreviewed.length / CHUNK_SIZE);
+  const totalChunks = Math.ceil(toReview.length / CHUNK_SIZE);
   
-  for (let i = 0; i < unreviewed.length; i += CHUNK_SIZE) {
-    const chunk = unreviewed.slice(i, i + CHUNK_SIZE);
+  for (let i = 0; i < toReview.length; i += CHUNK_SIZE) {
+    const chunk = toReview.slice(i, i + CHUNK_SIZE);
     const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
     
     console.log(`\n🔄 批次 ${chunkNum}/${totalChunks}: 審核 ${chunk.length} 個地點...`);
@@ -223,7 +279,7 @@ async function shortBatchReview() {
         }
       }
       
-      if (i + CHUNK_SIZE < unreviewed.length) {
+      if (i + CHUNK_SIZE < toReview.length) {
         console.log(`⏳ 冷卻 ${DELAY_BETWEEN_CHUNKS/1000} 秒避免 API 限流...`);
         await sleep(DELAY_BETWEEN_CHUNKS);
       }
@@ -236,8 +292,8 @@ async function shortBatchReview() {
           .where(eq(schema.placeCache.id, place.id));
         totalPassed++;
       }
-      console.log(`⏳ 額外冷卻 10 秒...`);
-      await sleep(10000);
+      console.log(`⏳ 額外冷卻 5 秒...`);
+      await sleep(5000);
     }
   }
   
@@ -249,10 +305,11 @@ async function shortBatchReview() {
   
   console.log(`\n${'='.repeat(50)}`);
   console.log(`📊 審核完成統計`);
-  console.log(`   通過: ${totalPassed} 筆`);
-  console.log(`   刪除: ${totalFailed} 筆`);
-  console.log(`   剩餘: ${remaining.length} 筆`);
-  console.log(`   API 呼叫: ${apiCallCount} 次（舊版需 ${unreviewed.length} 次）`);
+  console.log(`   前置過濾刪除: ${preFilteredCount} 筆`);
+  console.log(`   AI 審核通過: ${totalPassed} 筆`);
+  console.log(`   AI 審核刪除: ${totalFailed - preFilteredCount} 筆`);
+  console.log(`   剩餘待審核: ${remaining.length} 筆`);
+  console.log(`   API 呼叫次數: ${apiCallCount} 次`);
   console.log(`${'='.repeat(50)}`);
   
   await pool.end();
