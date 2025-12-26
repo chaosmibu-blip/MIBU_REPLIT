@@ -8940,6 +8940,60 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     }
   });
 
+  // ============ Category 統一 API（開發/正式環境都可用）============
+  app.post("/api/admin/unify-categories", async (req: any, res) => {
+    try {
+      const { key } = req.body;
+      const MIGRATION_KEY = process.env.ADMIN_MIGRATION_KEY || "mibu2024migrate";
+      
+      if (key !== MIGRATION_KEY) {
+        return res.status(403).json({ error: "需要密鑰" });
+      }
+      
+      // 統一 category 值到八大類標準名稱
+      const updates = [
+        { from: ['food', '食'], to: '美食' },
+        { from: ['stay', '宿'], to: '住宿' },
+        { from: ['scenery'], to: '景點' },
+        { from: ['shopping'], to: '購物' },
+        { from: ['activity'], to: '活動' },
+        { from: ['entertainment'], to: '娛樂設施' },
+        { from: ['education'], to: '生態文化教育' },
+        { from: ['experience'], to: '遊程體驗' },
+      ];
+      
+      const results: { category: string; updated: number }[] = [];
+      
+      for (const update of updates) {
+        const fromList = update.from.map(f => `'${f}'`).join(',');
+        const result = await db.execute(sql.raw(`
+          UPDATE places SET category = '${update.to}' 
+          WHERE category IN (${fromList})
+        `));
+        results.push({ category: update.to, updated: (result as any).rowCount || 0 });
+      }
+      
+      // 統計結果
+      const categoryCounts = await db.execute(sql`
+        SELECT category, COUNT(*) as count 
+        FROM places 
+        WHERE is_active = true 
+        GROUP BY category 
+        ORDER BY count DESC
+      `);
+      
+      res.json({
+        success: true,
+        message: 'Category 統一完成',
+        updates: results,
+        currentStats: categoryCounts.rows
+      });
+    } catch (error) {
+      console.error("Unify categories error:", error);
+      res.status(500).json({ error: "統一 category 失敗", details: String(error) });
+    }
+  });
+
   // ============ 導出景點資料 API（給其他環境獲取）============
   app.get("/api/admin/export-places", async (req: any, res) => {
     try {
