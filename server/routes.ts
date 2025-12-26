@@ -2549,6 +2549,18 @@ ${uncachedSkeleton.map((item, idx) => `  {
         }
       };
 
+      const getLocalizedDescription = (place: any, lang: string): string => {
+        const i18n = place.descriptionI18n || place.description_i18n;
+        const defaultDesc = place.description || '';
+        if (!i18n) return defaultDesc;
+        switch (lang) {
+          case 'ja': return i18n.ja || defaultDesc;
+          case 'ko': return i18n.ko || defaultDesc;
+          case 'en': return i18n.en || defaultDesc;
+          default: return defaultDesc;
+        }
+      };
+
       const districtNameZh = districtWithParents.district.nameZh;
       const regionNameZh = districtWithParents.region.nameZh;
       const countryNameZh = districtWithParents.country.nameZh;
@@ -4159,12 +4171,13 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
         const colorHex = categoryColorMap[place.category] || '#6366f1';
         
         // 同時提供攤平格式和巢狀格式，確保向下相容
+        const localizedDesc = getLocalizedDescription(place, language);
         itinerary.push({
           id: place.id,
           placeName: place.placeName,
           category: categoryZh,
           subCategory: place.subcategory,
-          description: place.description,
+          description: localizedDesc,
           address: place.address,
           rating: place.rating,
           locationLat: place.locationLat,
@@ -4180,7 +4193,7 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
             placeName: place.placeName,
             category: categoryZh,
             subcategory: place.subcategory,
-            description: place.description,
+            description: localizedDesc,
             address: place.address,
             rating: place.rating,
             locationLat: place.locationLat,
@@ -7007,7 +7020,9 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
                 city: cityName,
                 country: countryName,
                 placeName: place.name,
+                placeNameI18n: null,
                 description: classResult.description,
+                descriptionI18n: classResult.descriptionI18n || null,
                 category: classResult.category,
                 suggestedTime: null,
                 duration: null,

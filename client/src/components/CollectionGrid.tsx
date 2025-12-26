@@ -32,13 +32,30 @@ const cleanPlaceName = (name: string): string => {
     .trim();
 };
 
-const getDescription = (item: any): string => {
-  const desc = item.description || item.ai_description || '';
-  if (typeof desc === 'string') return desc;
-  if (typeof desc === 'object') {
-    return desc['en'] || desc['zh-TW'] || '';
+const getDescription = (item: any, language: Language = 'zh-TW'): string => {
+  const i18n = item.descriptionI18n || item.description_i18n;
+  const rawDesc = item.description || item.ai_description || '';
+  
+  const resolveDesc = (desc: any): string => {
+    if (typeof desc === 'string') return desc;
+    if (desc && typeof desc === 'object') {
+      return desc['zh-TW'] || desc['en'] || desc['ja'] || desc['ko'] || '';
+    }
+    return '';
+  };
+  
+  const defaultDesc = resolveDesc(rawDesc);
+  
+  if (i18n && typeof i18n === 'object') {
+    switch (language) {
+      case 'ja': return i18n.ja || defaultDesc;
+      case 'ko': return i18n.ko || defaultDesc;
+      case 'en': return i18n.en || defaultDesc;
+      default: return defaultDesc;
+    }
   }
-  return '';
+  
+  return defaultDesc;
 };
 
 const getPlaceId = (item: any): string | null => {
@@ -109,7 +126,7 @@ const PlaceDetailModal: React.FC<{
   const placeName = getPlaceName(item);
   const placeId = getPlaceId(item);
   const location = getLocation(item);
-  const description = getDescription(item);
+  const description = getDescription(item, language);
   const category = getCategory(item);
   const categoryColor = getCategoryColor(category);
   const date = formatDate(getCollectedAt(item));
@@ -368,7 +385,7 @@ export const CollectionGrid: React.FC<CollectionGridProps> = ({ items, language 
                                 <div className="mt-2 space-y-2 pl-2">
                                   {categoryItems.map((item: any, idx: number) => {
                                     const placeName = getPlaceName(item);
-                                    const description = getDescription(item);
+                                    const description = getDescription(item, language);
                                     const date = formatDate(getCollectedAt(item));
                                     const districtForDisplay = getDistrictDisplay(item);
                                     const location = getLocation(item);

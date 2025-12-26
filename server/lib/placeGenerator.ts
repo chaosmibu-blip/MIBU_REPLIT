@@ -707,12 +707,21 @@ export async function searchSinglePlace(
   }
 }
 
+// ============ 多語系類型定義 ============
+export interface I18nText {
+  en?: string;
+  ja?: string;
+  ko?: string;
+}
+
 // ============ 新版：規則映射分類 + AI 只生成描述 ============
 export interface PlaceWithClassification {
   name: string;
+  nameI18n?: I18nText;
   category: MibuCategory;
   subcategory: string;
   description: string;
+  descriptionI18n?: I18nText;
   descriptionSource: 'ai' | 'fallback';
 }
 
@@ -824,11 +833,120 @@ ${JSON.stringify(placesJson, null, 2)}
 }
 
 /**
- * 整合函數：規則映射分類 + AI 生成描述 + 智能 fallback
+ * AI 批次生成多語系描述（繁中 + 英 + 日 + 韓）
+ * 一次 API 呼叫生成所有語言，節省成本
+ */
+export async function batchGenerateDescriptionsI18n(
+  places: { name: string; category: string; subcategory: string }[],
+  city: string,
+  retryCount = 0
+): Promise<Map<string, { zhTw: string; en: string; ja: string; ko: string }>> {
+  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const MAX_RETRIES = 3;
+  
+  if (!baseUrl || !apiKey) {
+    console.warn('[DescI18n] AI not configured, will use fallback');
+    return new Map();
+  }
+
+  const placesJson = places.map((p, idx) => ({
+    id: idx + 1,
+    name: p.name,
+    category: p.category,
+    subcategory: p.subcategory
+  }));
+
+  const prompt = `你是多語系旅遊文案專家。請為以下 ${places.length} 個地點各寫 4 種語言版本的描述（繁體中文、English、日本語、한국어）。
+
+【地點列表】
+${JSON.stringify(placesJson, null, 2)}
+
+【要求】
+1. 每個描述 30-50 字，突出地點特色
+2. 各語言版本風格要符合當地文化習慣
+3. 只回傳 JSON Array
+
+【回傳格式】
+[
+  { "id": 1, "zhTw": "繁中描述", "en": "English description", "ja": "日本語説明", "ko": "한국어 설명" },
+  { "id": 2, "zhTw": "繁中描述", "en": "English description", "ja": "日本語説明", "ko": "한국어 설명" }
+]
+
+只回傳 JSON Array，不要其他文字。`;
+
+  try {
+    const response = await fetch(`${baseUrl}/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.7, maxOutputTokens: 8192 }
+      })
+    });
+
+    if (response.status === 429 && retryCount < MAX_RETRIES) {
+      const backoffTime = Math.pow(2, retryCount) * 5000;
+      console.log(`[DescI18n] Rate limited, waiting ${backoffTime}ms...`);
+      await sleep(backoffTime);
+      return batchGenerateDescriptionsI18n(places, city, retryCount + 1);
+    }
+
+    if (!response.ok) {
+      console.warn('[DescI18n] API failed:', response.status);
+      return new Map();
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.warn('[DescI18n] Failed to parse JSON from response');
+      return new Map();
+    }
+    
+    const parsed = JSON.parse(jsonMatch[0]) as { 
+      id: number; 
+      zhTw: string; 
+      en: string; 
+      ja: string; 
+      ko: string 
+    }[];
+    const resultMap = new Map<string, { zhTw: string; en: string; ja: string; ko: string }>();
+    
+    for (const item of parsed) {
+      const place = places[item.id - 1];
+      if (place && item.zhTw?.trim()) {
+        resultMap.set(place.name, {
+          zhTw: item.zhTw.trim(),
+          en: item.en?.trim() || '',
+          ja: item.ja?.trim() || '',
+          ko: item.ko?.trim() || ''
+        });
+      }
+    }
+    
+    console.log(`[DescI18n] Generated ${resultMap.size}/${places.length} i18n descriptions via AI`);
+    return resultMap;
+  } catch (e: any) {
+    if (e.message?.includes('429') && retryCount < MAX_RETRIES) {
+      const backoffTime = Math.pow(2, retryCount) * 5000;
+      await sleep(backoffTime);
+      return batchGenerateDescriptionsI18n(places, city, retryCount + 1);
+    }
+    console.warn('[DescI18n] Error:', e.message);
+    return new Map();
+  }
+}
+
+/**
+ * 整合函數：規則映射分類 + AI 生成多語系描述 + 智能 fallback
  */
 export async function classifyAndDescribePlaces(
   places: PlaceResult[],
-  city: string
+  city: string,
+  enableI18n = true
 ): Promise<Map<string, PlaceWithClassification>> {
   const resultMap = new Map<string, PlaceWithClassification>();
   
@@ -850,22 +968,42 @@ export async function classifyAndDescribePlaces(
   
   console.log(`[Classify] 規則映射分類完成: ${classifiedPlaces.length} 個地點`);
 
-  // Step 2: AI 批次生成描述
-  const aiDescriptions = await batchGenerateDescriptionsOnly(
-    classifiedPlaces.map(p => ({ name: p.name, category: p.category, subcategory: p.subcategory })),
-    city
-  );
+  // Step 2: AI 批次生成描述（多語系或單語）
+  if (enableI18n) {
+    const aiDescriptionsI18n = await batchGenerateDescriptionsI18n(
+      classifiedPlaces.map(p => ({ name: p.name, category: p.category, subcategory: p.subcategory })),
+      city
+    );
 
-  // Step 3: 組合結果（AI 成功用 AI，失敗用 fallback）
-  for (const p of classifiedPlaces) {
-    const aiDesc = aiDescriptions.get(p.name);
-    resultMap.set(p.name, {
-      name: p.name,
-      category: p.category,
-      subcategory: p.subcategory,
-      description: aiDesc || p.fallbackDescription,
-      descriptionSource: aiDesc ? 'ai' : 'fallback'
-    });
+    // Step 3: 組合結果（AI 成功用 AI，失敗用 fallback）
+    for (const p of classifiedPlaces) {
+      const aiDesc = aiDescriptionsI18n.get(p.name);
+      resultMap.set(p.name, {
+        name: p.name,
+        category: p.category,
+        subcategory: p.subcategory,
+        description: aiDesc?.zhTw || p.fallbackDescription,
+        descriptionI18n: aiDesc ? { en: aiDesc.en, ja: aiDesc.ja, ko: aiDesc.ko } : undefined,
+        descriptionSource: aiDesc ? 'ai' : 'fallback'
+      });
+    }
+  } else {
+    // 舊版單語模式（向後相容）
+    const aiDescriptions = await batchGenerateDescriptionsOnly(
+      classifiedPlaces.map(p => ({ name: p.name, category: p.category, subcategory: p.subcategory })),
+      city
+    );
+
+    for (const p of classifiedPlaces) {
+      const aiDesc = aiDescriptions.get(p.name);
+      resultMap.set(p.name, {
+        name: p.name,
+        category: p.category,
+        subcategory: p.subcategory,
+        description: aiDesc || p.fallbackDescription,
+        descriptionSource: aiDesc ? 'ai' : 'fallback'
+      });
+    }
   }
 
   const aiCount = Array.from(resultMap.values()).filter(v => v.descriptionSource === 'ai').length;

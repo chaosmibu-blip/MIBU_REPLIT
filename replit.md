@@ -70,6 +70,7 @@ Mibu 是專為自由行旅客打造的旅遊 App，包含兩大核心模組：
 | memory-integrations.md | 第三方整合 | Google、Gemini、Mapbox |
 | memory-auth.md | 認證權限 | JWT、Session、RBAC |
 | memory-deployment.md | 部署環境 | 環境變數、同步、排程 |
+| memory-i18n.md | 國際化 | 四語支援（zh-TW/en/ja/ko）、JSONB 多語欄位、Fallback 機制 |
 
 ## 技術規範
 - **server/**: Node.js, Express, Drizzle ORM｜禁止 React, JSX
