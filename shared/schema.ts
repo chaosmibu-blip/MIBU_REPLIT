@@ -275,6 +275,8 @@ export const places = pgTable("places", {
   locationLat: doublePrecision("location_lat"),
   locationLng: doublePrecision("location_lng"),
   googlePlaceId: text("google_place_id").unique(),
+  googleTypes: text("google_types"),
+  primaryType: text("primary_type"),
   rating: doublePrecision("rating"),
   photoReference: text("photo_reference"),
   category: text("category").notNull(),

@@ -117,12 +117,39 @@ Body: { key: 'mibu2024migrate', data: [...] }
 └─────────────────┘               └─────────────────┘
 ```
 
-### 流程說明
-1. **批次採集**：在開發環境執行，結果存入 `place_cache`
-2. **人工審查**：管理員審核 cache，通過的移至 `place_drafts`
-3. **批准發布**：drafts 通過審核後轉入 `places`
-4. **同步正式**：定期將開發 `places` 匯出並匯入正式資料庫
-5. **App 抽卡**：正式環境的 `places` 表是唯一資料來源
+### 流程說明（2025-12-26 V3 更新）
+```
+批次採集（classifyPlace 規則映射）
+    ↓
+place_cache（規則分類 + google_types/primary_type 可追溯）
+    ↓
+migrate-with-descriptions.ts
+  ├── 階段一：匯入 places（含 google_types, primary_type）
+  └── 階段二：8 類別並行生成描述（專屬 Prompt）
+    ↓
+places（12,516 筆，100% 正確分類）
+    ↓
+同步正式資料庫
+```
+
+### 分類系統（規則映射取代 AI）
+- **核心檔案**：`server/lib/categoryMapping.ts`
+- **classifyPlace() 函數**：根據 primaryType/googleTypes 規則映射
+- **八大類別**：美食、住宿、生態文化教育、遊程體驗、娛樂設施、活動、景點、購物
+- **可追溯**：places 表新增 google_types, primary_type 欄位
+
+### 批次採集腳本
+| 腳本 | 用途 |
+|------|------|
+| `batch-parallel-collect.ts` | 採集（8類別 × 10關鍵字並行） |
+| `short-batch-review.ts` | AI 審核（50筆/批） |
+| `migrate-with-descriptions.ts` | 匯入 + 8類別並行生成描述 |
+| `generate-descriptions.ts` | 修復舊資料通用描述 |
+
+### 描述生成共用模組
+- **檔案**：`server/lib/descriptionGenerator.ts`
+- **功能**：8 類別專屬 Prompt、自動重試（2次）、批次處理
+- **批次大小**：10 筆/批，maxOutputTokens: 8192
 
 ### 同步指令
 ```bash
@@ -148,6 +175,40 @@ EOF
 ---
 
 ## Changelog
+
+### 2025-12-26 - 規則映射分類重新採集（V3）
+- **問題**：舊版分類有 91 筆英文分類 + 370 筆重複子分類，來自 AI fallback
+- **解決方案**：
+  1. Schema 更新：places 新增 `google_types`, `primary_type` 欄位（可追溯）
+  2. 採集腳本改造：`batch-parallel-collect.ts` 改用 `classifyPlace()` 規則映射
+  3. 匯入腳本更新：`migrate-with-descriptions.ts` 寫入新欄位
+  4. 全台重新採集：清空 places + place_cache → 22 縣市全量採集 → 匯入
+- **結果**：
+  - 12,516 筆景點（0 筆錯誤分類）
+  - 100% google_types 可追溯
+  - 89% primary_type 可追溯
+- **新欄位**：
+  - `places.google_types` TEXT：Google 分類陣列（逗號分隔）
+  - `places.primary_type` TEXT：Google 主要分類
+- **修改檔案**：`shared/schema.ts`, `batch-parallel-collect.ts`, `migrate-with-descriptions.ts`
+
+### 2025-12-26 - 描述生成系統優化
+- **問題**：批次採集產生通用描述（如「台北市知名的美食」），影響用戶體驗
+- **解決方案**：
+  1. 建立 8 類別專屬 Prompt（美食、住宿、景點等）
+  2. 分離描述生成步驟：採集後 → 審核通過 → 8 類別並行生成描述 → 匯入
+  3. 批次大小從 30 降至 10，maxOutputTokens 從 4096 升至 8192
+- **新增腳本**：
+  - `migrate-with-descriptions.ts`：整合匯入 + 描述生成
+  - `generate-descriptions.ts`：修復舊資料通用描述
+- **新增共用模組**：`server/lib/descriptionGenerator.ts`
+  - 8 類別專屬 Prompt
+  - 自動重試機制（2次，指數退避）
+  - 批次處理函數
+- **舊資料修復**：1,755 筆通用描述全部更新為精細描述（100% 成功率）
+- **效能提升**：
+  - 8 類別並行 + 10 關鍵字並行採集
+  - 單城市採集時間：8-10 分鐘 → 15-20 秒
 
 ### 2025-12-26 - 正式資料庫清洗與同步
 - **分類標準化**：正式資料庫 527 筆中文分類轉為英文（美食→food, 景點→scenery 等）
