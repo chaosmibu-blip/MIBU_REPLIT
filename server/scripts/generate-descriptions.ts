@@ -56,7 +56,7 @@ interface PlaceData {
   placeName: string;
   category: string;
   address: string | null;
-  rating: string | null;
+  rating: number | null;
   city: string;
 }
 
@@ -96,7 +96,7 @@ ${JSON.stringify(placesInfo, null, 2)}
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 4096 }
+        generationConfig: { temperature: 0.7, maxOutputTokens: 8192 }
       }),
     });
 
@@ -107,20 +107,32 @@ ${JSON.stringify(placesInfo, null, 2)}
 
     const data = await response.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    
+    let jsonMatch = text.match(/```json\s*([\s\S]*?)```/);
+    if (jsonMatch) {
+      jsonMatch = [jsonMatch[1]];
+    } else {
+      jsonMatch = text.match(/\[[\s\S]*?\]/);
+    }
+    
     if (!jsonMatch) {
-      console.error('   無法解析 JSON');
+      console.error('   無法解析 JSON，原始回應:', text.slice(0, 200));
       return new Map();
     }
 
-    const results = JSON.parse(jsonMatch[0]);
-    const map = new Map<number, string>();
-    for (const r of results) {
-      if (r.id && r.description) {
-        map.set(r.id, r.description);
+    try {
+      const results = JSON.parse(jsonMatch[0]);
+      const map = new Map<number, string>();
+      for (const r of results) {
+        if (r.id && r.description) {
+          map.set(r.id, r.description);
+        }
       }
+      return map;
+    } catch (parseErr) {
+      console.error('   JSON 解析錯誤:', (parseErr as Error).message);
+      return new Map();
     }
-    return map;
   } catch (e: any) {
     console.error(`   生成錯誤: ${e.message}`);
     return new Map();
@@ -234,12 +246,13 @@ async function main() {
   }
 
   console.log('\n📊 類別分布:');
-  for (const [cat, places] of categorizedPlaces) {
+  categorizedPlaces.forEach((places, cat) => {
     console.log(`   ${cat}: ${places.length} 筆`);
-  }
+  });
 
+  const batchSize = parseInt(process.argv[4] || '10');
   const categoryPromises = Array.from(categorizedPlaces.entries()).map(
-    ([category, places]) => processCategory(category, places, 20)
+    ([category, places]) => processCategory(category, places, batchSize)
   );
 
   const results = await Promise.all(categoryPromises);
