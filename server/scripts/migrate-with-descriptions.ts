@@ -135,24 +135,17 @@ async function generateDescriptionsForCategory(
 }
 
 async function migrateCacheToPlaces() {
-  const cityArg = process.argv[2];
+  const city = process.argv[2] || '台北市';
   const startTime = Date.now();
   
-  if (cityArg) {
-    console.log(`🚀 將 ${cityArg} 的審核通過資料從 place_cache 移到 places（含描述生成）`);
-  } else {
-    console.log(`🚀 將所有審核通過資料從 place_cache 移到 places（含描述生成）`);
-  }
+  console.log(`🚀 將 ${city} 的審核通過資料從 place_cache 移到 places（含描述生成）`);
   console.log('='.repeat(60));
   
-  const reviewedCache = cityArg
-    ? await db.select().from(schema.placeCache)
-        .where(and(
-          eq(schema.placeCache.city, cityArg),
-          eq(schema.placeCache.aiReviewed, true)
-        ))
-    : await db.select().from(schema.placeCache)
-        .where(eq(schema.placeCache.aiReviewed, true));
+  const reviewedCache = await db.select().from(schema.placeCache)
+    .where(and(
+      eq(schema.placeCache.city, city),
+      eq(schema.placeCache.aiReviewed, true)
+    ));
   
   if (reviewedCache.length === 0) {
     console.log('❌ 沒有已審核的資料');
@@ -163,10 +156,11 @@ async function migrateCacheToPlaces() {
   console.log(`📦 找到 ${reviewedCache.length} 筆已審核資料`);
   
   const existingPlaces = await db.select({ googlePlaceId: schema.places.googlePlaceId })
-    .from(schema.places);
+    .from(schema.places)
+    .where(eq(schema.places.city, city));
   
   const existingPlaceIds = new Set(existingPlaces.map(p => p.googlePlaceId).filter(Boolean));
-  console.log(`📍 已有 ${existingPlaceIds.size} 個正式景點`);
+  console.log(`📍 ${city} 已有 ${existingPlaceIds.size} 個正式景點`);
   
   const newPlacesByCategory = new Map<string, number[]>();
   let inserted = 0;
@@ -223,14 +217,15 @@ async function migrateCacheToPlaces() {
   console.log('\n📝 階段二：生成描述（8 類別並行）');
   
   const categoryPromises = Array.from(newPlacesByCategory.entries()).map(
-    ([category, ids]) => generateDescriptionsForCategory(category, ids, cityArg || '全部')
+    ([category, ids]) => generateDescriptionsForCategory(category, ids, city)
   );
   
   const descResults = await Promise.all(categoryPromises);
   const totalDescriptions = descResults.reduce((sum, n) => sum + n, 0);
   
   const finalCount = await db.select({ id: schema.places.id })
-    .from(schema.places);
+    .from(schema.places)
+    .where(eq(schema.places.city, city));
   
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   
@@ -238,7 +233,7 @@ async function migrateCacheToPlaces() {
   console.log('📊 完成統計');
   console.log(`   新增景點: ${inserted} 筆`);
   console.log(`   描述生成: ${totalDescriptions} 筆`);
-  console.log(`   正式景點總數: ${finalCount.length} 筆`);
+  console.log(`   ${city} 正式景點總數: ${finalCount.length} 筆`);
   console.log(`   總耗時: ${elapsed} 秒`);
   console.log('='.repeat(60));
   
