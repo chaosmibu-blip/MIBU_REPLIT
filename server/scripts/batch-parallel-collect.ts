@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as schema from '../../shared/schema';
 import { eq } from 'drizzle-orm';
+import { classifyPlace } from '../lib/categoryMapping';
 
 const { Pool } = pg;
 
@@ -150,16 +151,20 @@ async function collectKeywordsParallel(
   }
 
   if (allPlaces.length > 0) {
-    const descriptions = await generateDescriptionsBatch(allPlaces, cityName);
-    
     for (const place of allPlaces) {
       try {
-        const desc = descriptions.get(place.name);
+        const classified = classifyPlace(
+          place.name,
+          cityName,
+          place.primaryType || null,
+          place.types || []
+        );
+        
         await db.insert(schema.placeCache).values({
           placeName: place.name,
-          description: desc?.description || `${cityName}知名的${categoryName}`,
-          category: categoryName,
-          subCategory: desc?.subcategory || categoryName,
+          description: '',
+          category: classified.category,
+          subCategory: classified.subcategory,
           district: cityName,
           city: cityName,
           country: '台灣',
