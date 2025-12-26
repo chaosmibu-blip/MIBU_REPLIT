@@ -2,7 +2,6 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as schema from '../../shared/schema';
 import { eq } from 'drizzle-orm';
-import { classifyPlace } from '../lib/categoryMapping';
 
 const { Pool } = pg;
 
@@ -14,56 +13,8 @@ const pool = new Pool({
 const db = drizzle(pool, { schema });
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
-
-// ============ 黑名單：非旅遊類別（從 placeGenerator.ts 同步） ============
-const EXCLUDED_PLACE_TYPES = [
-  'travel_agency', 'tour_agency', 'insurance_agency', 'real_estate_agency', 'lawyer', 'accounting', 
-  'bank', 'library', 'local_government_office', 'city_hall', 'courthouse', 'post_office',
-  'police', 'fire_station', 'hospital', 'doctor', 'dentist', 'pharmacy', 'veterinary_care',
-  'school', 'primary_school', 'secondary_school', 'university', 'car_dealer', 'car_rental',
-  'car_repair', 'car_wash', 'gas_station', 'parking', 'transit_station', 'bus_station',
-  'train_station', 'subway_station', 'taxi_stand', 'atm', 'funeral_home', 'cemetery',
-  'supermarket', 'convenience_store', 'laundry', 'locksmith', 'moving_company',
-  'plumber', 'electrician', 'roofing_contractor', 'painter', 'storage',
-  'employment_agency', 'government_office'
-];
-
-const EXCLUDED_BUSINESS_STATUS = ['CLOSED_PERMANENTLY', 'CLOSED_TEMPORARILY'];
-
-const GENERIC_NAME_PATTERNS = [
-  '旅行社', 'Travel Agency', 'Tour',
-  '農會', '公所', '區公所', '鄉公所', '鎮公所', '市公所', '縣政府', '市政府', '衛生所', '戶政事務所',
-  '警察局', '派出所', '消防隊', '消防局', '郵局', '稅務局', '地政事務所', '國稅局', '監理',
-  '診所', '牙醫', '醫院', '藥局', '獸醫', '銀行', '加油站', '停車場', '汽車', '機車行',
-  '葬儀', '殯儀館', '靈骨塔', '納骨塔',
-  '超市', '便利商店', '7-11', '全家', '萊爾富', '小北',
-  '補習班', '安親班', '幼兒園', '幼稚園', '托兒所',
-  '自來水', '污水', '垃圾', '資源回收', '工廠', '倉庫'
-];
-
-function isPlaceValid(place: { name: string; types?: string[]; primaryType?: string; businessStatus?: string }): boolean {
-  if (place.businessStatus && EXCLUDED_BUSINESS_STATUS.includes(place.businessStatus)) {
-    return false;
-  }
-  
-  if (place.primaryType && EXCLUDED_PLACE_TYPES.includes(place.primaryType)) {
-    return false;
-  }
-  
-  if (place.types && place.types.some(t => EXCLUDED_PLACE_TYPES.includes(t))) {
-    return false;
-  }
-  
-  if (place.name && GENERIC_NAME_PATTERNS.some(pattern => place.name.includes(pattern))) {
-    return false;
-  }
-  
-  if (place.name && place.name.length <= 3 && !place.name.includes('館') && !place.name.includes('園') && !place.name.includes('寺')) {
-    return false;
-  }
-  
-  return true;
-}
+const GEMINI_BASE_URL = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+const GEMINI_API_KEY = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
 
 const CATEGORIES = [
   { id: 1, code: 'food', nameZh: '美食', keywords: ['餐廳', '小吃', '咖啡廳', '甜點', '夜市美食', '早午餐', '火鍋', '燒烤'] },
@@ -181,19 +132,16 @@ async function collectKeywordsParallel(
     const results = await Promise.all(searchPromises);
     
     for (const { keyword, places } of results) {
-      const validPlaces = places.filter(p => isPlaceValid(p));
-      const filteredOut = places.length - validPlaces.length;
-      
-      const newPlaces = validPlaces.filter(p => !existingPlaceIds.has(p.placeId));
-      const duplicates = validPlaces.length - newPlaces.length;
-      totalSkipped += duplicates + filteredOut;
+      const newPlaces = places.filter(p => !existingPlaceIds.has(p.placeId));
+      const skipped = places.length - newPlaces.length;
+      totalSkipped += skipped;
       
       if (newPlaces.length > 0) {
         allPlaces.push(...newPlaces.map(p => ({ ...p, keyword, category: categoryName })));
         newPlaces.forEach(p => existingPlaceIds.add(p.placeId));
       }
       
-      console.log(`   [${categoryName}] ${keyword}: ${newPlaces.length} 新 / ${duplicates} 重複 / ${filteredOut} 過濾`);
+      console.log(`   [${categoryName}] ${keyword}: ${newPlaces.length} 新 / ${skipped} 重複`);
     }
     
     if (i + CONCURRENCY < keywords.length) {
@@ -202,20 +150,16 @@ async function collectKeywordsParallel(
   }
 
   if (allPlaces.length > 0) {
+    const descriptions = await generateDescriptionsBatch(allPlaces, cityName);
+    
     for (const place of allPlaces) {
       try {
-        const classified = classifyPlace(
-          place.name,
-          cityName,
-          place.primaryType || null,
-          place.types || []
-        );
-        
+        const desc = descriptions.get(place.name);
         await db.insert(schema.placeCache).values({
           placeName: place.name,
-          description: '',
-          category: classified.category,
-          subCategory: classified.subcategory,
+          description: desc?.description || `${cityName}知名的${categoryName}`,
+          category: categoryName,
+          subCategory: desc?.subcategory || categoryName,
           district: cityName,
           city: cityName,
           country: '台灣',
