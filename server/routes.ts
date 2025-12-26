@@ -55,7 +55,7 @@ function getRecentlyDrawnPlaceIds(userId: string, city: string): Set<number> {
   // 合併所有最近抽過的 ID
   const recentIds = new Set<number>();
   for (const h of validHistory) {
-    for (const id of Array.from(h.placeIds)) {
+    for (const id of h.placeIds) {
       recentIds.add(id);
     }
   }
@@ -4094,7 +4094,7 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
               const allNumbers = reorderText.match(/\d+/g);
               if (allNumbers && allNumbers.length > 0) {
                 const newOrder = allNumbers.map(n => parseInt(n)).filter(n => !isNaN(n) && n >= 1 && n <= nonStayPlaces.length);
-                const uniqueOrder = Array.from(new Set(newOrder));
+                const uniqueOrder = [...new Set(newOrder)];
                 
                 if (uniqueOrder.length === nonStayPlaces.length) {
                   const reorderedNonStay = uniqueOrder.map(idx => nonStayPlaces[idx - 1]);
@@ -9219,13 +9219,12 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
       `);
       
       // 統計結果
-      const statsResult = await db.execute(sql`
+      const [stats] = await db.execute(sql`
         SELECT 
           (SELECT COUNT(*) FROM places WHERE is_active = true) as total_places,
           (SELECT COUNT(DISTINCT city) FROM places WHERE is_active = true) as total_cities,
           (SELECT COUNT(*) FROM place_cache WHERE is_location_verified = true) as total_cache
       `);
-      const stats = statsResult.rows[0];
       
       console.log('[Migration] Complete:', stats);
       
