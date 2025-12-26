@@ -119,6 +119,32 @@ npx tsx server/scripts/short-batch-review.ts [數量]
 npx tsx server/scripts/promote-to-places.ts [數量]
 ```
 
+## 採集過濾機制（2025-12-26 整合）
+
+### isPlaceValid() 過濾邏輯
+採集階段就過濾不適合的景點，治本而非事後清理。
+
+**黑名單 Type**：
+- travel_agency, tour_agency, insurance_agency, bank, supermarket, convenience_store
+- local_government_office, government_office, city_hall, courthouse
+- school, university, primary_school, secondary_school
+- hospital, doctor, dentist, pharmacy, veterinary_care
+- parking, gas_station, atm, funeral_home, cemetery
+
+**黑名單名稱關鍵字**：
+- 旅行社、公所、衛生所、派出所、郵局、診所、醫院、銀行、加油站、停車場
+- 補習班、安親班、幼兒園、葬儀、殯儀館
+- 超市、便利商店、7-11、全家、萊爾富
+- 自來水、污水、垃圾、工廠、倉庫
+
+**其他規則**：
+- 名稱 ≤3 字且不含「館」「園」「寺」→ 過濾
+- businessStatus = CLOSED_PERMANENTLY / CLOSED_TEMPORARILY → 過濾
+
+### 資料清理紀錄
+- 2025-12-26: 565 筆問題資料設為 isActive=false（旅行社 71、政府機關 66、過於廣泛地名 367、學校 28、銀行/超市 34）
+- 最終活躍景點：11,951 筆
+
 ## 注意事項
 - `isActive = false` 的景點不會出現在扭蛋結果
 - 原子更新 `pull_count` 防止 Race Condition
