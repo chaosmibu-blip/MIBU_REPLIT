@@ -108,7 +108,7 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 
 ### 行程卡顯示標籤
 - 前端使用 **`category`** 欄位透過 `getCategoryLabel()` 顯示
-- 映射：`food` → 美食、`scenery` → 景點、`stay` → 住宿
+- 資料庫統一使用中文八大類：美食、住宿、景點、購物、活動、娛樂設施、生態文化教育、遊程體驗
 
 ### 手動審核腳本（保留）
 ```bash
@@ -127,6 +127,12 @@ npx tsx server/scripts/promote-to-places.ts [數量]
 ---
 
 ## Changelog
+
+### 2025-12-26 - Category 欄位統一（治本修正）
+- 問題：資料庫 category 欄位混用三種格式（英文 food/stay、中文短形 食/宿、中文全形 美食/住宿）
+- 修正：統一轉換為 categoryMapping.ts 定義的八大類（美食、住宿、景點、購物、活動、娛樂設施、生態文化教育、遊程體驗）
+- 更新 V3 Gacha 選點邏輯使用標準名稱
+- 影響：修正住宿無法排到最後的問題
 
 ### 2025-12-25 - 解決 429 Rate Limit 錯誤
 - 實作分批處理：每批 10-15 個地點，序列執行

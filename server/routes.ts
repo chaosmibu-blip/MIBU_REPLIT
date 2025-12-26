@@ -3939,14 +3939,14 @@ ${uncachedSkeleton.map((item, idx) => `  {
         usedIds.clear(); // 清空已用 ID，重新開始
       }
       
-      // 選取「食」的基本配額
-      const foodPicks = pickFromCategory('食', foodQuota, cityPlaces);
+      // 選取「美食」的基本配額
+      const foodPicks = pickFromCategory('美食', foodQuota, cityPlaces);
       selectedPlaces.push(...foodPicks);
       console.log('[Gacha V3] Food picks:', foodPicks.length);
       
-      // 選取「宿」的基本配額
+      // 選取「住宿」的基本配額
       if (stayQuota > 0) {
-        const stayPicks = pickFromCategory('宿', stayQuota, cityPlaces);
+        const stayPicks = pickFromCategory('住宿', stayQuota, cityPlaces);
         selectedPlaces.push(...stayPicks);
         console.log('[Gacha V3] Stay picks:', stayPicks.length);
       }
@@ -3958,11 +3958,11 @@ ${uncachedSkeleton.map((item, idx) => `  {
       let totalWeight = 0;
       
       for (const [cat, places] of Object.entries(cityByCategory)) {
-        // 完全排除「宿」類別從權重分配（住宿只能通過基本配額獲得，最多 1 個）
-        if (cat === '宿') {
+        // 完全排除「住宿」類別從權重分配（住宿只能通過基本配額獲得，最多 1 個）
+        if (cat === '住宿') {
           continue;
         }
-        // 使用等權重（每個類別權重 = 1），避免資料量大的類別（如「食」）佔比過高
+        // 使用等權重（每個類別權重 = 1），避免資料量大的類別（如「美食」）佔比過高
         categoryWeights[cat] = 1;
         totalWeight += 1;
       }
@@ -4043,9 +4043,9 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const coordinateSortedPlaces = sortByCoordinates(selectedPlaces);
       
       // ========== Step 3b: 住宿排最後 ==========
-      // 把「宿」類別的地點抽出，放到最後（晚上才入住）
-      const stayPlaces = coordinateSortedPlaces.filter(p => p.category === '宿');
-      const nonStayPlaces = coordinateSortedPlaces.filter(p => p.category !== '宿');
+      // 把「住宿」類別的地點抽出，放到最後（晚上才入住）
+      const stayPlaces = coordinateSortedPlaces.filter(p => p.category === '住宿');
+      const nonStayPlaces = coordinateSortedPlaces.filter(p => p.category !== '住宿');
       const sortedPlaces = [...nonStayPlaces, ...stayPlaces];
       
       console.log('[Gacha V3] After stay reorder:', { nonStay: nonStayPlaces.length, stay: stayPlaces.length });
