@@ -116,7 +116,7 @@ async function collectKeywordsParallel(
   categoryName: string,
   existingPlaceIds: Set<string>
 ): Promise<{ places: any[]; saved: number; skipped: number }> {
-  const CONCURRENCY = 3;
+  const CONCURRENCY = 10;
   const allPlaces: any[] = [];
   let totalSaved = 0;
   let totalSkipped = 0;
