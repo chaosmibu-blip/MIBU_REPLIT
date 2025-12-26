@@ -97,6 +97,7 @@ export interface IStorage {
   getAllSubcategoriesWithCategory(): Promise<Array<Subcategory & { category: Category }>>;
   getRandomCategory(): Promise<Category | undefined>;
   getRandomSubcategoryByCategory(categoryId: number): Promise<Subcategory | undefined>;
+  createSubcategory(data: { categoryId: number; nameZh: string; nameEn: string; icon?: string }): Promise<Subcategory>;
 
   // Place Feedback (exclusion tracking)
   getPlacePenalty(userId: string, placeName: string, district: string, city: string): Promise<number>;
@@ -949,6 +950,21 @@ export class DatabaseStorage implements IStorage {
       ...r.subcategory,
       category: r.category
     }));
+  }
+
+  async createSubcategory(data: { categoryId: number; nameZh: string; nameEn: string; icon?: string }): Promise<Subcategory> {
+    const code = data.nameEn.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    const [subcategory] = await db
+      .insert(subcategories)
+      .values({
+        categoryId: data.categoryId,
+        code: code,
+        nameZh: data.nameZh,
+        nameEn: data.nameEn,
+        isActive: true
+      })
+      .returning();
+    return subcategory;
   }
 
   // Place Feedback methods
