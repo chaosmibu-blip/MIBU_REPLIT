@@ -4125,6 +4125,7 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
         id: number;
         placeName: string;
         category: string;
+        categoryCode: string;
         subCategory?: string | null;
         description?: string | null;
         address?: string | null;
@@ -4137,6 +4138,8 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
         isCoupon: boolean;
         couponData?: { id: number; title: string; code: string; terms?: string | null } | null;
         rarity?: string | null;
+        place?: any;
+        couponWon?: any;
       }> = [];
       
       const couponsWon: Array<{ couponId: number; placeId: number; placeName: string; title: string; code: string; terms?: string | null }> = [];
@@ -4172,27 +4175,28 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
           }
         }
 
-        // Category 中文映射
-        const categoryZhMap: Record<string, string> = {
-          'food': '美食', 'stay': '住宿', 'education': '生態文化教育',
-          'activity': '遊程體驗', 'entertainment': '娛樂設施', 'scenery': '景點', 'shopping': '購物',
-          'experience': '遊程體驗'
+        // Category 中文 → 英文 code 映射（資料庫現在存中文八大類）
+        const categoryCodeMap: Record<string, string> = {
+          '美食': 'food', '住宿': 'stay', '生態文化教育': 'education',
+          '遊程體驗': 'experience', '娛樂設施': 'entertainment', '景點': 'scenery', '購物': 'shopping',
+          '活動': 'activity'
         };
-        // 顏色映射
+        // 顏色映射（使用英文 code）
         const categoryColorMap: Record<string, string> = {
           'food': '#FF6B6B', 'stay': '#4ECDC4', 'education': '#45B7D1',
           'activity': '#96CEB4', 'entertainment': '#FFEAA7', 'scenery': '#DDA0DD', 'shopping': '#FFB347',
           'experience': '#96CEB4'
         };
-        const categoryZh = categoryZhMap[place.category] || place.category;
-        const colorHex = categoryColorMap[place.category] || '#6366f1';
+        const categoryCode = categoryCodeMap[place.category] || place.category.toLowerCase();
+        const colorHex = categoryColorMap[categoryCode] || '#6366f1';
         
         // 同時提供攤平格式和巢狀格式，確保向下相容
         const localizedDesc = getLocalizedDescription(place, language);
         itinerary.push({
           id: place.id,
           placeName: place.placeName,
-          category: categoryZh,
+          category: place.category,
+          categoryCode: categoryCode,
           subCategory: place.subcategory,
           description: localizedDesc,
           address: place.address,
@@ -4208,7 +4212,8 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
           place: {
             id: place.id,
             placeName: place.placeName,
-            category: categoryZh,
+            category: place.category,
+            categoryCode: categoryCode,
             subcategory: place.subcategory,
             description: localizedDesc,
             address: place.address,
