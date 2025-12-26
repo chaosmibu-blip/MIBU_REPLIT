@@ -20,6 +20,8 @@ import { callGemini, batchGeneratePlaces, batchGenerateDescriptions, batchGenera
 import { determineCategory, determineSubcategory, generateFallbackDescription, classifyPlace } from "./lib/categoryMapping";
 import twilio from "twilio";
 import appleSignin from "apple-signin-auth";
+import { gachaRateLimiter, apiRateLimiter, strictRateLimiter } from "./middleware/rateLimit";
+import { queryLogger } from "./middleware/queryLogger";
 const { AccessToken } = twilio.jwt;
 const ChatGrant = AccessToken.ChatGrant;
 const VoiceGrant = AccessToken.VoiceGrant;
@@ -221,6 +223,9 @@ function isWithinRadius(
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth
   await setupAuth(app);
+
+  // ============ Global Middleware ============
+  app.use('/api', queryLogger);
 
   // ============ Health Check ============
   app.get('/api/health', (req, res) => {
@@ -2516,7 +2521,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
   }
 
   // New endpoint: Generate a complete itinerary using parallel time-slot AI architecture
-  app.post("/api/gacha/itinerary", async (req, res) => {
+  app.post("/api/gacha/itinerary", gachaRateLimiter, async (req, res) => {
     try {
       const { countryId, regionId, language = 'zh-TW', itemCount = 8 } = req.body;
 
@@ -3738,7 +3743,19 @@ ${uncachedSkeleton.map((item, idx) => `  {
 
       const validated = itinerarySchema.parse(req.body);
       let { city, district, pace } = validated;
-      const { regionId, itemCount } = validated;
+      const { regionId, itemCount, language = 'zh-TW' } = validated;
+      
+      const getLocalizedDescription = (place: any, lang: string): string => {
+        const i18n = place.descriptionI18n || place.description_i18n;
+        const defaultDesc = place.description || '';
+        if (!i18n) return defaultDesc;
+        switch (lang) {
+          case 'ja': return i18n.ja || defaultDesc;
+          case 'ko': return i18n.ko || defaultDesc;
+          case 'en': return i18n.en || defaultDesc;
+          default: return defaultDesc;
+        }
+      };
       
       // ========== 每日抽卡限制檢查 ==========
       const DAILY_PULL_LIMIT = 36; // 每人每天最多抽 36 張卡

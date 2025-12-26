@@ -17,6 +17,17 @@ interface AuthenticatedSocket extends Socket {
 const userSocketMap = new Map<string, Set<string>>();
 const specialistSocketMap = new Map<string, Set<string>>();
 
+const lastLocationUpdate = new Map<string, number>();
+const LOCATION_THROTTLE_MS = 3000;
+
+interface PendingLocation {
+  lat: number;
+  lng: number;
+  timestamp: number;
+}
+const pendingLocationUpdates = new Map<string, PendingLocation>();
+const BATCH_SYNC_INTERVAL_MS = 30000;
+
 export function setupSocketIO(httpServer: HttpServer): Server {
   const io = new Server(httpServer, {
     cors: {
@@ -92,7 +103,17 @@ export function setupSocketIO(httpServer: HttpServer): Server {
           return;
         }
 
-        await storage.upsertUserLocation(userId, data.lat, data.lng, true);
+        const now = Date.now();
+        const lastUpdate = lastLocationUpdate.get(userId) || 0;
+        
+        if (now - lastUpdate < LOCATION_THROTTLE_MS) {
+          pendingLocationUpdates.set(userId, { lat: data.lat, lng: data.lng, timestamp: now });
+          socket.emit('location_ack', { success: true, timestamp: now, throttled: true });
+          return;
+        }
+        
+        lastLocationUpdate.set(userId, now);
+        pendingLocationUpdates.set(userId, { lat: data.lat, lng: data.lng, timestamp: now });
 
         const activeService = await storage.getActiveServiceRelationByTraveler(userId);
         
@@ -109,21 +130,19 @@ export function setupSocketIO(httpServer: HttpServer): Server {
                 serviceId: activeService.id,
                 lat: data.lat,
                 lng: data.lng,
-                timestamp: data.timestamp || Date.now(),
+                timestamp: data.timestamp || now,
               };
 
               specialistSockets.forEach(socketId => {
                 io.to(socketId).emit('traveler_location', locationPayload);
               });
-
-              console.log(`📍 Location forwarded: ${userId} → Specialist ${specialistUserId}`);
             }
           }
         }
 
         socket.emit('location_ack', { 
           success: true, 
-          timestamp: Date.now(),
+          timestamp: now,
           serviceActive: !!activeService 
         });
 
@@ -166,7 +185,7 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       }
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       console.log(`🔌 Socket disconnected: ${userId}`);
       
       const userSockets = userSocketMap.get(userId);
@@ -174,6 +193,18 @@ export function setupSocketIO(httpServer: HttpServer): Server {
         userSockets.delete(socket.id);
         if (userSockets.size === 0) {
           userSocketMap.delete(userId);
+          lastLocationUpdate.delete(userId);
+          
+          const pendingLoc = pendingLocationUpdates.get(userId);
+          if (pendingLoc) {
+            try {
+              await storage.upsertUserLocation(userId, pendingLoc.lat, pendingLoc.lng, true);
+              console.log(`📍 [Disconnect] Flushed location for ${userId}`);
+            } catch (error) {
+              console.error(`[Disconnect] Failed to flush location for ${userId}:`, error);
+            }
+            pendingLocationUpdates.delete(userId);
+          }
         }
       }
 
@@ -188,6 +219,23 @@ export function setupSocketIO(httpServer: HttpServer): Server {
       }
     });
   });
+
+  setInterval(async () => {
+    if (pendingLocationUpdates.size === 0) return;
+    
+    const batch = Array.from(pendingLocationUpdates.entries());
+    pendingLocationUpdates.clear();
+    
+    console.log(`📦 [Location Batch] Syncing ${batch.length} locations to DB`);
+    
+    for (const [userId, loc] of batch) {
+      try {
+        await storage.upsertUserLocation(userId, loc.lat, loc.lng, true);
+      } catch (error) {
+        console.error(`[Location Batch] Failed to sync ${userId}:`, error);
+      }
+    }
+  }, BATCH_SYNC_INTERVAL_MS);
 
   console.log('🚀 Socket.IO initialized for real-time location tracking');
   

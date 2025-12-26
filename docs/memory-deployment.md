@@ -261,7 +261,48 @@ Response: { status: 'ok', timestamp: Date }
 
 ---
 
+## 效能優化設定
+
+### 資料庫連線池（server/db.ts）
+```typescript
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 15,                      // 最大連線數（建議 10~20）
+  idleTimeoutMillis: 30000,     // 閒置 30 秒斷開
+  connectionTimeoutMillis: 5000, // 連線超時 5 秒
+});
+```
+
+### Socket 位置追蹤優化（server/socketHandler.ts）
+| 設定 | 值 | 說明 |
+|------|------|------|
+| LOCATION_THROTTLE_MS | 3000 | 同一用戶 3 秒內只處理一次位置更新 |
+| BATCH_SYNC_INTERVAL_MS | 30000 | 每 30 秒批次同步位置到 DB |
+| Disconnect Flush | ✅ | 斷線時立即 flush 暫存位置 |
+
+### API 速率限制（server/middleware/rateLimit.ts）
+| 限制器 | 頻率 | 用途 |
+|-------|------|------|
+| gachaRateLimiter | 10 req/min | 扭蛋抽卡 API |
+| apiRateLimiter | 100 req/min | 一般 API |
+| strictRateLimiter | 5 req/min | 敏感操作 |
+
+### 慢查詢監控（server/middleware/queryLogger.ts）
+- 記錄超過 **500ms** 的請求
+- 套用於 `/api` 全域路由
+
+### 支援規模
+目前設定支援 **500~1000 人同時上線**
+
+---
+
 ## Changelog
+
+### 2025-12-26 - 效能優化（500~1000 用戶）
+- 新增資料庫連線池設定（max: 15, idle: 30s）
+- 新增 Socket 位置追蹤節流（3 秒）+ 批次同步（30 秒）
+- 新增 API 速率限制中間件
+- 新增慢查詢監控日誌
 
 ### 2024-12-24 - 開發→生產資料同步成功
 - 新增跨環境同步 API：`/api/admin/export-places` + `/api/admin/seed-places`
