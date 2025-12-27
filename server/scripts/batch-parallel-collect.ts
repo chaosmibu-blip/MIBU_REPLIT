@@ -29,33 +29,40 @@ const CATEGORIES = [
   { id: 8, code: 'shopping', nameZh: '購物', baseKeyword: '購物商店' },
 ];
 
+const usedKeywordsCache: Map<string, Set<string>> = new Map();
+
 async function expandKeywordsWithAI(baseKeyword: string, categoryName: string, cityName: string, count: number = 10): Promise<string[]> {
   if (!GEMINI_BASE_URL || !GEMINI_API_KEY) {
     console.log(`   ⚠️ 無 Gemini API，使用預設關鍵字`);
     return [baseKeyword];
   }
 
-  const prompt = `你是台灣旅遊專家。請為「${cityName}」的「${categoryName}」類別生成 ${count} 個搜尋關鍵字。
+  const cacheKey = `${cityName}:${categoryName}`;
+  if (!usedKeywordsCache.has(cacheKey)) {
+    usedKeywordsCache.set(cacheKey, new Set());
+  }
+  const usedKeywords = usedKeywordsCache.get(cacheKey)!;
+  const usedList = Array.from(usedKeywords).slice(-30);
 
-要求：
-1. 每個關鍵字要具體、可搜尋到實際店家或景點
-2. 涵蓋不同面向（類型、特色、風格）
-3. 每次生成要有變化，不要總是相同的關鍵字
-4. 適合該地區的特色（例如宜蘭有溫泉、海鮮）
+  const avoidSection = usedList.length > 0 
+    ? `\n⚠️ 以下關鍵字已經用過，請勿重複：\n${usedList.join('、')}\n`
+    : '';
 
-範例（美食類別）：
-海鮮餐廳
-溫泉美食
-在地小吃
-特色咖啡廳
-夜市攤販
-日式料理
-義式餐廳
-早午餐
-甜點下午茶
-燒烤店
+  const prompt = `為「${cityName}」的「${categoryName}」生成 ${count} 個 Google Maps 搜尋關鍵字。
+${avoidSection}
+規則：每個 3-8 字，挖掘冷門角度
 
-請直接輸出 ${count} 個關鍵字，每行一個，不要編號：`;
+直接輸出關鍵字，不要編號、不要說明：
+泰式料理
+深夜食堂
+老屋咖啡
+溪邊露營
+手作體驗
+古道健行
+漁港海鮮
+農場民宿
+文創市集
+秘境瀑布`;
 
   try {
     const response = await fetch(`${GEMINI_BASE_URL}/models/gemini-2.5-flash:generateContent`, {
@@ -74,9 +81,14 @@ async function expandKeywordsWithAI(baseKeyword: string, categoryName: string, c
     const keywords = text
       .split('\n')
       .map((k: string) => k.trim())
-      .filter((k: string) => k.length > 0 && k.length < 20)
+      .map((k: string) => k.replace(/^\d+[\.\)、]\s*/, '').replace(/^\*+\s*/, '').trim()) // 清除編號
+      .filter((k: string) => k.length >= 3 && k.length <= 15) // 3-15 字
+      .filter((k: string) => !k.includes('以下') && !k.includes('關鍵字') && !k.includes('：')) // 過濾說明文字
       .slice(0, count);
 
+    // 記錄已使用的關鍵字
+    keywords.forEach(kw => usedKeywords.add(kw));
+    
     return keywords.length > 0 ? keywords : [baseKeyword];
   } catch (e) {
     return [baseKeyword];
