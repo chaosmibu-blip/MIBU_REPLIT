@@ -213,10 +213,16 @@ async function collectCategoryParallel(
 
 async function main() {
   const cityName = process.argv[2] || '嘉義市';
+  const categoryFilter = process.argv[3]; // 可選：指定類別（中文或英文代碼）
   const startTime = Date.now();
   
   console.log('🚀 並行批次採集模式');
   console.log(`📍 目標城市: ${cityName}`);
+  if (categoryFilter) {
+    console.log(`🏷️ 指定類別: ${categoryFilter}`);
+  } else {
+    console.log('🏷️ 類別: 全部（8類別）');
+  }
   console.log('='.repeat(50));
   
   const existingPlaces = await db.select({ googlePlaceId: schema.places.googlePlaceId })
@@ -232,7 +238,19 @@ async function main() {
   
   console.log(`📊 已有 ${existingPlaceIds.size} 個重複地點將被跳過`);
 
-  const categoryPromises = CATEGORIES.map(category => 
+  // 過濾類別（支援中文名稱或英文代碼）
+  const categoriesToCollect = categoryFilter
+    ? CATEGORIES.filter(c => c.nameZh === categoryFilter || c.code === categoryFilter)
+    : CATEGORIES;
+
+  if (categoriesToCollect.length === 0) {
+    console.error(`❌ 找不到類別: ${categoryFilter}`);
+    console.log('可用類別: ' + CATEGORIES.map(c => `${c.nameZh}(${c.code})`).join(', '));
+    await pool.end();
+    process.exit(1);
+  }
+
+  const categoryPromises = categoriesToCollect.map(category => 
     collectCategoryParallel(category, cityName, existingPlaceIds)
   );
 
