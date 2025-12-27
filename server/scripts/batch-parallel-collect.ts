@@ -48,21 +48,39 @@ async function expandKeywordsWithAI(baseKeyword: string, categoryName: string, c
     ? `\n⚠️ 以下關鍵字已經用過，請勿重複：\n${usedList.join('、')}\n`
     : '';
 
+  // 各類別的通用子分類關鍵字庫
+  const subcategoryHints: Record<string, string> = {
+    '美食': '熱炒、宵夜、餐酒館、燒烤、火鍋、拉麵、咖哩、披薩、漢堡、素食、早午餐、下午茶、甜點、冰品、飲料店',
+    '住宿': '民宿、飯店、旅館、汽車旅館、露營區、Villa、包棟、青旅、溫泉旅館、親子飯店',
+    '景點': '公園、步道、瀑布、海灘、漁港、老街、車站、吊橋、觀景台、夜景',
+    '購物': '市場、夜市、百貨、量販店、伴手禮、特產店、文創商店、二手店、書店',
+    '遊程體驗': 'DIY體驗、農場體驗、手作課程、導覽行程、一日遊、半日遊、採果、釣魚',
+    '娛樂設施': 'KTV、電影院、遊樂園、保齡球、桌遊、密室逃脫、網咖、撞球',
+    '活動': '展覽、市集、音樂會、節慶、運動賽事、工作坊、講座',
+    '生態文化教育': '博物館、美術館、紀念館、古蹟、寺廟、教堂、生態園區、農場'
+  };
+  
+  const hints = subcategoryHints[categoryName] || '';
+  
   const prompt = `為「${cityName}」的「${categoryName}」生成 ${count} 個 Google Maps 搜尋關鍵字。
 ${avoidSection}
-規則：每個 3-8 字，挖掘冷門角度
+規則：
+1. 混合「通用分類」和「在地特色」兩種類型
+2. 通用分類參考：${hints}
+3. 在地特色可加入地名或當地食材/文化
+4. 每個 2-8 字
 
-直接輸出關鍵字，不要編號、不要說明：
-泰式料理
-深夜食堂
-老屋咖啡
-溪邊露營
-手作體驗
-古道健行
+直接輸出關鍵字，不要編號：
+熱炒店
+宵夜攤
+餐酒館
+三星蔥料理
+溫泉拉麵
 漁港海鮮
-農場民宿
-文創市集
-秘境瀑布`;
+老街冰品
+田園咖啡
+手作工坊
+秘境步道`;
 
   try {
     const response = await fetch(`${GEMINI_BASE_URL}/models/gemini-2.5-flash:generateContent`, {
