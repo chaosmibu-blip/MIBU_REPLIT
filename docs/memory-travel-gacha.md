@@ -223,6 +223,14 @@ npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
 
 ## Changelog
 
+### 2025-12-27 - 地址解析器與城市驗證
+- **新增 `addressParser.ts`**：從地址字串解析縣市和鄉鎮區
+- **修正 `batch-parallel-collect.ts`**：
+  - 使用 `parseAddress()` 從地址提取實際鄉鎮區（原本錯誤地將 city 填入 district）
+  - 使用 `isAddressInCity()` 過濾不屬於目標城市的結果
+- **效果**：district 欄位現在正確顯示「羅東鎮」「礁溪鄉」等，而非整個「宜蘭縣」
+- **重要**：解決扭蛋選區時抓到非該區地點的問題
+
 ### 2025-12-27 - 腳本清理與資料庫重置
 - **刪除 8 個一次性修復腳本**：fix-google-types, regenerate-star-descriptions, reclassify-data, cleanup-places, migrate-cache-to-places, batch-taipei-all-categories, test-batch-generate, test-batch-with-save
 - **保留 5 個核心腳本**：batch-parallel-collect, short-batch-review, migrate-with-descriptions, promote-to-places, generate-descriptions
