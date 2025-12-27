@@ -63,7 +63,6 @@ async function callGeminiForDescriptions(
     id: p.id,
     name: p.placeName,
     address: p.address || '',
-    rating: p.rating || '',
     city: p.city
   }));
 
@@ -75,9 +74,10 @@ ${JSON.stringify(placesInfo, null, 2)}
 請回傳 JSON Array：[{ "id": 數字, "description": "描述文字" }]
 規則：
 1. 每個描述必須獨特，不可使用「知名的」「必訪」「特色體驗」「在地人氣」「深度感受」等通用詞
-2. 結合地點名稱、地址區域、評分等資訊
+2. 結合地點名稱、地址區域等資訊
 3. 描述要具體、有畫面感
-4. 只回傳 JSON，不要其他文字`;
+4. 禁止在描述中加入評分或星級（如「4.5星」）
+5. 只回傳 JSON，不要其他文字`;
 
   const response = await fetch(`${GEMINI_BASE_URL}/models/gemini-2.5-flash:generateContent`, {
     method: 'POST',

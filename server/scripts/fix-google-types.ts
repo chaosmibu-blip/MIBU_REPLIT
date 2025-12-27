@@ -73,6 +73,7 @@ async function main() {
     })
     .from(schema.places)
     .where(and(...conditions))
+    .orderBy(sql`id DESC`)
     .limit(limit);
 
   if (placesToFix.length === 0) {
