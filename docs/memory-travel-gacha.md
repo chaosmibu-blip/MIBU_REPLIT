@@ -165,28 +165,53 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 - 前端使用 **`category`** 欄位透過 `getCategoryLabel()` 顯示
 - 資料庫統一使用中文八大類：美食、住宿、景點、購物、活動、娛樂設施、生態文化教育、遊程體驗
 
-### 核心腳本（5 個）
+### 核心腳本（4 個）
 ```bash
-# 1. 批次採集：8 類別×10 關鍵字並行採集
+# 1. 批次採集
 npx tsx server/scripts/batch-parallel-collect.ts 城市名 [類別]
 
-# 2. AI 審核：黑名單過濾 + AI 品質審核
+# 2. AI 審核
 npx tsx server/scripts/short-batch-review.ts [數量]
 
-# 3. 帶描述遷移：從 drafts 升級到 places（含 AI 描述生成）
+# 3. 升級到正式表（含描述生成）
 npx tsx server/scripts/migrate-with-descriptions.ts [數量]
 
-# 4. 快速升級：從 drafts 升級到 places（不含描述）
-npx tsx server/scripts/promote-to-places.ts [數量]
-
-# 5. 補描述：為 places 中缺描述的地點生成
+# 4. 補描述（選用）
 npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
 ```
 
-### 標準採集流程
+### 標準採集流程（詳細）
+
 ```
-batch-parallel-collect → short-batch-review → migrate-with-descriptions
-      (採集)               (AI審核)              (升級+描述)
+第 1 步：批次採集
+腳本：batch-parallel-collect.ts
+輸入：城市名稱、[可選類別]
+輸出：寫入 place_drafts 表（ai_reviewed = false）
+動作：8 類別各 10 關鍵字，Google Places API 採集
+
+↓
+
+第 2 步：AI 審核
+腳本：short-batch-review.ts
+輸入：place_drafts 中 ai_reviewed = false 的資料
+輸出：更新 ai_reviewed = true（通過）或刪除（不通過）
+動作：黑名單過濾 + Gemini AI 品質審核
+
+↓
+
+第 3 步：升級到正式表
+腳本：migrate-with-descriptions.ts
+輸入：place_drafts 中 ai_reviewed = true 的資料
+輸出：寫入 places 表（正式卡池）+ 刪除 drafts 原資料
+動作：去重檢查 + 按類別批次生成 AI 描述
+
+↓
+
+第 4 步：補描述（選用）
+腳本：generate-descriptions.ts
+輸入：places 中 description = null 的資料
+輸出：更新 description 欄位
+用途：修復遺漏或失敗的描述
 ```
 
 ## 注意事項
