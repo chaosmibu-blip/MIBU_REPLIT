@@ -3734,7 +3734,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
         regionId: z.number().optional(),
         countryId: z.number().optional(),
         language: z.string().optional(),
-        itemCount: z.number().min(1).max(15).optional(),
+        itemCount: z.number().min(5).max(12).optional(),
         // Legacy format
         city: z.string().optional(),
         district: z.string().optional(),
