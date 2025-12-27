@@ -3,6 +3,7 @@ import pg from 'pg';
 import * as schema from '../../shared/schema';
 import { eq } from 'drizzle-orm';
 import { classifyPlace } from '../lib/categoryMapping';
+import { parseAddress, isAddressInCity } from '../lib/addressParser';
 
 const { Pool } = pg;
 
@@ -153,6 +154,17 @@ async function collectKeywordsParallel(
   if (allPlaces.length > 0) {
     for (const place of allPlaces) {
       try {
+        // 驗證地址是否屬於目標城市
+        if (!isAddressInCity(place.address, cityName)) {
+          console.log(`   ⚠️ 城市不符跳過: ${place.name} (${place.address})`);
+          totalSkipped++;
+          continue;
+        }
+        
+        // 從地址解析實際的鄉鎮區
+        const parsed = parseAddress(place.address);
+        const district = parsed.district || cityName;
+        
         const classified = classifyPlace(
           place.name,
           cityName,
@@ -165,7 +177,7 @@ async function collectKeywordsParallel(
           description: '',
           category: classified.category,
           subCategory: classified.subcategory,
-          district: cityName,
+          district: district,
           city: cityName,
           country: '台灣',
           placeId: place.placeId,
