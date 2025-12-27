@@ -16,7 +16,7 @@ SUPER_ADMIN_PASSWORD=xxx
 ```
 
 ## 相關資料表
-
+-
 ### 用戶管理
 - `users`: 用戶基本資料
 - `user_profiles`: 用戶詳細資料
