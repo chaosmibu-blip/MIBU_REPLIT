@@ -55,9 +55,7 @@ function getRecentlyDrawnPlaceIds(userId: string, city: string): Set<number> {
   // 合併所有最近抽過的 ID
   const recentIds = new Set<number>();
   for (const h of validHistory) {
-    for (const id of h.placeIds) {
-      recentIds.add(id);
-    }
+    Array.from(h.placeIds).forEach(id => recentIds.add(id));
   }
   return recentIds;
 }
@@ -4094,7 +4092,7 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
               const allNumbers = reorderText.match(/\d+/g);
               if (allNumbers && allNumbers.length > 0) {
                 const newOrder = allNumbers.map(n => parseInt(n)).filter(n => !isNaN(n) && n >= 1 && n <= nonStayPlaces.length);
-                const uniqueOrder = [...new Set(newOrder)];
+                const uniqueOrder = Array.from(new Set(newOrder));
                 
                 if (uniqueOrder.length === nonStayPlaces.length) {
                   const reorderedNonStay = uniqueOrder.map(idx => nonStayPlaces[idx - 1]);
@@ -6896,18 +6894,8 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
                   const existingSubcategory = existingSubcategories.find(s => s.nameZh === classResult.subcategory);
                   
                   if (!existingSubcategory && classResult.subcategory) {
-                    // 自動新增子分類
-                    try {
-                      await storage.createSubcategory({
-                        categoryId: matchedCategory.id,
-                        nameZh: classResult.subcategory,
-                        nameEn: classResult.subcategory,
-                        icon: '📍'
-                      });
-                      console.log(`[BatchGenerate] 自動新增子分類: ${classResult.subcategory} (${matchedCategory.nameZh})`);
-                    } catch (subErr: any) {
-                      console.log(`[BatchGenerate] 子分類已存在或新增失敗: ${classResult.subcategory}`);
-                    }
+                    // 子分類不存在時，記錄 log（手動新增即可）
+                    console.log(`[BatchGenerate] 子分類不存在: ${classResult.subcategory} (${matchedCategory.nameZh})`);
                   }
                 }
 
@@ -7023,16 +7011,7 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
                 const existingSubcategory = existingSubcategories.find(s => s.nameZh === classResult.subcategory);
                 
                 if (!existingSubcategory && classResult.subcategory) {
-                  try {
-                    await storage.createSubcategory({
-                      categoryId: matchedCategory.id,
-                      nameZh: classResult.subcategory,
-                      nameEn: classResult.subcategory,
-                      icon: '📍'
-                    });
-                  } catch (subErr: any) {
-                    // Ignore if already exists
-                  }
+                  console.log(`[BatchCollect] 子分類不存在: ${classResult.subcategory}`);
                 }
               }
 
@@ -9273,12 +9252,13 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
       `);
       
       // 統計結果
-      const [stats] = await db.execute(sql`
+      const statsResult = await db.execute(sql`
         SELECT 
           (SELECT COUNT(*) FROM places WHERE is_active = true) as total_places,
           (SELECT COUNT(DISTINCT city) FROM places WHERE is_active = true) as total_cities,
           (SELECT COUNT(*) FROM place_cache WHERE is_location_verified = true) as total_cache
       `);
+      const stats = statsResult.rows?.[0] || {};
       
       console.log('[Migration] Complete:', stats);
       
