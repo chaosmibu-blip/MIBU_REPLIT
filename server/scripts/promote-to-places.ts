@@ -62,6 +62,8 @@ async function promoteToPlaces() {
         locationLat: cache.locationLat ? parseFloat(cache.locationLat) : null,
         locationLng: cache.locationLng ? parseFloat(cache.locationLng) : null,
         googlePlaceId: cache.placeId || null,
+        googleTypes: cache.googleTypes || null,
+        primaryType: cache.primaryType || null,
         rating: cache.googleRating ? parseFloat(cache.googleRating) : null,
         photoReference: null,
         category: cache.category,

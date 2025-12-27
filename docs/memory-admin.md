@@ -137,10 +137,12 @@ places（高品質描述）
 ### 批次採集腳本
 | 腳本 | 用途 |
 |------|------|
-| `batch-parallel-collect.ts` | 採集（8類別 × 10關鍵字並行） |
+| `batch-parallel-collect.ts` | 採集（8類別 × 10關鍵字並行，支援類別過濾） |
 | `short-batch-review.ts` | AI 審核（50筆/批） |
 | `migrate-with-descriptions.ts` | 匯入 + 8類別並行生成描述 |
+| `promote-to-places.ts` | 快速升級（已含 googleTypes/primaryType 複製） |
 | `generate-descriptions.ts` | 修復舊資料通用描述 |
+| `fix-google-types.ts` | 從 Google API 補上 google_types 和 primary_type |
 
 ### 描述生成共用模組
 - **檔案**：`server/lib/descriptionGenerator.ts`
