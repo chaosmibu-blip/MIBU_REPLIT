@@ -3894,16 +3894,10 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const usedIds = new Set<number>(recentlyDrawnIds);
       console.log('[Gacha V3] Initial dedup exclusion:', recentlyDrawnIds.size, 'places');
       
-      // 輔助函數：從類別中隨機選取
-      const pickFromCategory = (category: string, count: number, fallbackPlaces?: any[]) => {
+      // 輔助函數：從類別中隨機選取（嚴格鎖定錨點區，不跨區）
+      const pickFromCategory = (category: string, count: number) => {
         const picked: any[] = [];
         let pool = [...(anchorByCategory[category] || [])];
-        
-        // 如果錨點區不夠，從 fallback 補充
-        if (pool.length < count && fallbackPlaces) {
-          const fallbackByCategory = groupByCategory(fallbackPlaces);
-          pool = [...pool, ...(fallbackByCategory[category] || [])];
-        }
         
         // 打亂並選取
         for (let i = pool.length - 1; i > 0; i--) {
@@ -3921,15 +3915,12 @@ ${uncachedSkeleton.map((item, idx) => `  {
         return picked;
       };
       
-      // ========== Step 2a: 擴散備案 (Fallback) ==========
-      // 預先查詢整個縣市的地點作為 fallback
-      const cityPlaces = anchorDistrict 
-        ? await storage.getOfficialPlacesByCity(city, 200)
-        : anchorPlaces;
+      // 錨點區的所有地點（不再查詢整個縣市作為 fallback）
+      const districtPlaces = anchorPlaces;
       
       // ========== 去重安全檢查 ==========
       // 如果去重後剩餘景點不足以完成本次抽卡，清空去重記錄
-      const availableAfterDedup = cityPlaces.filter(p => !usedIds.has(p.id)).length;
+      const availableAfterDedup = districtPlaces.filter(p => !usedIds.has(p.id)).length;
       if (availableAfterDedup < targetCount) {
         console.log('[Gacha V3] Dedup safety: only', availableAfterDedup, 'available (need', targetCount, '), clearing cache');
         const cacheKey = `${userId}:${city}`;
@@ -3937,25 +3928,25 @@ ${uncachedSkeleton.map((item, idx) => `  {
         usedIds.clear(); // 清空已用 ID，重新開始
       }
       
-      // 選取「美食」的基本配額
-      const foodPicks = pickFromCategory('美食', foodQuota, cityPlaces);
+      // 選取「美食」的基本配額（嚴格鎖定錨點區）
+      const foodPicks = pickFromCategory('美食', foodQuota);
       selectedPlaces.push(...foodPicks);
       console.log('[Gacha V3] Food picks:', foodPicks.length);
       
       // 選取「住宿」的基本配額
       if (stayQuota > 0) {
-        const stayPicks = pickFromCategory('住宿', stayQuota, cityPlaces);
+        const stayPicks = pickFromCategory('住宿', stayQuota);
         selectedPlaces.push(...stayPicks);
         console.log('[Gacha V3] Stay picks:', stayPicks.length);
       }
       
       // ========== Step 2b: 權重分配剩餘 ==========
-      // 計算各類別權重（基於資料庫數量）
-      const cityByCategory = groupByCategory(cityPlaces);
+      // 計算各類別權重（基於錨點區數量）
+      const districtByCategory = groupByCategory(districtPlaces);
       const categoryWeights: Record<string, number> = {};
       let totalWeight = 0;
       
-      for (const [cat, places] of Object.entries(cityByCategory)) {
+      for (const [cat, places] of Object.entries(districtByCategory)) {
         // 完全排除「住宿」類別從權重分配（住宿只能通過基本配額獲得，最多 1 個）
         if (cat === '住宿') {
           continue;
@@ -3965,9 +3956,9 @@ ${uncachedSkeleton.map((item, idx) => `  {
         totalWeight += 1;
       }
       
-      // 按權重隨機選取剩餘地點
+      // 按權重隨機選取剩餘地點（嚴格鎖定錨點區）
       let remaining = remainingCount;
-      while (remaining > 0 && usedIds.size < cityPlaces.length) {
+      while (remaining > 0 && usedIds.size < districtPlaces.length) {
         // 加權隨機選擇類別
         let rand = Math.random() * totalWeight;
         let selectedCategory = '';
@@ -3980,8 +3971,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
         }
         if (!selectedCategory) selectedCategory = Object.keys(categoryWeights)[0];
         
-        // 從該類別選一個
-        const picks = pickFromCategory(selectedCategory, 1, cityPlaces);
+        // 從該類別選一個（不跨區）
+        const picks = pickFromCategory(selectedCategory, 1);
         if (picks.length > 0) {
           selectedPlaces.push(...picks);
           remaining--;
