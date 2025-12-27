@@ -19,15 +19,69 @@ const GEMINI_BASE_URL = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
 const GEMINI_API_KEY = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
 
 const CATEGORIES = [
-  { id: 1, code: 'food', nameZh: '美食', keywords: ['餐廳', '小吃', '咖啡廳', '甜點', '夜市美食', '早午餐', '火鍋', '燒烤'] },
-  { id: 2, code: 'stay', nameZh: '住宿', keywords: ['飯店', '民宿', '旅館', '青年旅社', '溫泉旅館'] },
-  { id: 3, code: 'education', nameZh: '生態文化教育', keywords: ['博物館', '展覽館', '古蹟', '寺廟', '生態園區', '文化中心'] },
-  { id: 4, code: 'experience', nameZh: '遊程體驗', keywords: ['一日遊', 'DIY體驗', '導覽', '課程體驗', '手作工坊'] },
-  { id: 5, code: 'entertainment', nameZh: '娛樂設施', keywords: ['遊樂園', 'KTV', '電影院', '桌遊', '密室逃脫', '保齡球'] },
-  { id: 6, code: 'activity', nameZh: '活動', keywords: ['演唱會', '展覽', '市集', '節慶活動', '運動賽事'] },
-  { id: 7, code: 'scenery', nameZh: '景點', keywords: ['公園', '觀景台', '步道', '地標', '風景區', '老街'] },
-  { id: 8, code: 'shopping', nameZh: '購物', keywords: ['百貨公司', '商圈', '特色商店', '伴手禮', '市場'] },
+  { id: 1, code: 'food', nameZh: '美食', baseKeyword: '美食餐廳' },
+  { id: 2, code: 'stay', nameZh: '住宿', baseKeyword: '住宿旅館' },
+  { id: 3, code: 'education', nameZh: '生態文化教育', baseKeyword: '博物館文化' },
+  { id: 4, code: 'experience', nameZh: '遊程體驗', baseKeyword: '體驗活動' },
+  { id: 5, code: 'entertainment', nameZh: '娛樂設施', baseKeyword: '娛樂休閒' },
+  { id: 6, code: 'activity', nameZh: '活動', baseKeyword: '活動展覽' },
+  { id: 7, code: 'scenery', nameZh: '景點', baseKeyword: '景點觀光' },
+  { id: 8, code: 'shopping', nameZh: '購物', baseKeyword: '購物商店' },
 ];
+
+async function expandKeywordsWithAI(baseKeyword: string, categoryName: string, cityName: string, count: number = 10): Promise<string[]> {
+  if (!GEMINI_BASE_URL || !GEMINI_API_KEY) {
+    console.log(`   ⚠️ 無 Gemini API，使用預設關鍵字`);
+    return [baseKeyword];
+  }
+
+  const prompt = `你是台灣旅遊專家。請為「${cityName}」的「${categoryName}」類別生成 ${count} 個搜尋關鍵字。
+
+要求：
+1. 每個關鍵字要具體、可搜尋到實際店家或景點
+2. 涵蓋不同面向（類型、特色、風格）
+3. 每次生成要有變化，不要總是相同的關鍵字
+4. 適合該地區的特色（例如宜蘭有溫泉、海鮮）
+
+範例（美食類別）：
+海鮮餐廳
+溫泉美食
+在地小吃
+特色咖啡廳
+夜市攤販
+日式料理
+義式餐廳
+早午餐
+甜點下午茶
+燒烤店
+
+請直接輸出 ${count} 個關鍵字，每行一個，不要編號：`;
+
+  try {
+    const response = await fetch(`${GEMINI_BASE_URL}/models/gemini-2.5-flash:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.9, maxOutputTokens: 1024 }
+      }),
+    });
+
+    if (!response.ok) return [baseKeyword];
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const keywords = text
+      .split('\n')
+      .map((k: string) => k.trim())
+      .filter((k: string) => k.length > 0 && k.length < 20)
+      .slice(0, count);
+
+    return keywords.length > 0 ? keywords : [baseKeyword];
+  } catch (e) {
+    return [baseKeyword];
+  }
+}
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -210,10 +264,14 @@ async function collectCategoryParallel(
   cityName: string,
   existingPlaceIds: Set<string>
 ): Promise<{ category: string; saved: number; skipped: number }> {
-  console.log(`\n📦 [${category.nameZh}] 開始並行採集 (${category.keywords.length} 關鍵字)`);
+  console.log(`\n📦 [${category.nameZh}] AI 關鍵字擴散中...`);
+  
+  // 使用 AI 動態生成關鍵字
+  const keywords = await expandKeywordsWithAI(category.baseKeyword, category.nameZh, cityName, 10);
+  console.log(`   🎯 生成 ${keywords.length} 個關鍵字: ${keywords.slice(0, 5).join(', ')}...`);
   
   const result = await collectKeywordsParallel(
-    category.keywords,
+    keywords,
     cityName,
     category.nameZh,
     existingPlaceIds
