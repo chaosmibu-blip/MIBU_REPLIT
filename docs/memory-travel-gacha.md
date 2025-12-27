@@ -186,14 +186,14 @@ npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
 第 1 步：批次採集
 腳本：batch-parallel-collect.ts
 輸入：城市名稱、[可選類別]
-輸出：寫入 place_drafts 表（ai_reviewed = false）
+輸出：寫入 place_cache 表（ai_reviewed = false）
 動作：8 類別各 10 關鍵字，Google Places API 採集
 
 ↓
 
 第 2 步：AI 審核
 腳本：short-batch-review.ts
-輸入：place_drafts 中 ai_reviewed = false 的資料
+輸入：place_cache 中 ai_reviewed = false 的資料
 輸出：更新 ai_reviewed = true（通過）或刪除（不通過）
 動作：黑名單過濾 + Gemini AI 品質審核
 
@@ -201,8 +201,8 @@ npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
 
 第 3 步：升級到正式表
 腳本：migrate-with-descriptions.ts
-輸入：place_drafts 中 ai_reviewed = true 的資料
-輸出：寫入 places 表（正式卡池）+ 刪除 drafts 原資料
+輸入：place_cache 中 ai_reviewed = true 的資料
+輸出：寫入 places 表（正式卡池）+ 刪除 cache 原資料
 動作：去重檢查 + 按類別批次生成 AI 描述
 
 ↓
