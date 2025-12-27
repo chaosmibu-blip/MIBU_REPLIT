@@ -100,11 +100,66 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 - API: `POST /api/admin/places/batch-generate`
 - 流程: AI 關鍵字擴散 → Google 搜尋 → **規則映射分類** → AI 批次生成描述 → 存入 place_cache
 
+### 關鍵字擴散系統
+- **檔案**：`server/lib/placeGenerator.ts` → `expandKeywords()`
+- **功能**：用 Gemini AI 將基礎關鍵字擴散成多個子關鍵字
+- **範例**：輸入「火鍋」→ 擴散為「麻辣鍋、涮涮鍋、石頭火鍋、薑母鴨」
+- **用途**：增加 Google 搜尋覆蓋率，採集更多相關地點
+- **呼叫時機**：管理後台批次採集時自動執行
+
+### 黑名單/白名單過濾機制
+
+#### 1. 前置過濾（Pre-filtering）
+- **檔案**：`server/scripts/short-batch-review.ts`
+- **時機**：AI 審核前，先排除明顯不適合的地點
+- **黑名單關鍵字**（`EXCLUDE_KEYWORDS`）：
+```
+區公所、市公所、戶政事務所、警察局、派出所、
+衛生所、殯儀館、火葬場、納骨塔、墓園、
+停車場、加油站、焚化爐、銀行分行、郵局
+```
+- **效果**：減少 AI 審核負擔，提升效率
+
+#### 2. 清理腳本過濾
+- **檔案**：`server/scripts/cleanup-places.ts`
+- **用途**：清理已存入的不適合資料
+- **名稱黑名單**（`NAME_BLACKLIST`）：同上
+- **類別黑名單**（`CATEGORY_BLACKLIST`）：
+```
+殯葬、政府機關、醫療機構、金融服務、教育行政
+```
+
 ### 分類邏輯（2025-12-25 改版）
 1. **Category 判斷**：`determineCategory(primaryType, googleTypes)` - 規則映射，100% 成功
 2. **Subcategory 判斷**：`determineSubcategory(primaryType, googleTypes)` - 規則映射
 3. **描述生成**：`batchGenerateDescriptionsOnly()` - AI 只生成描述（不做分類）
 4. **Fallback 模板**：AI 失敗時用 `generateFallbackDescription()` 智能模板（非通用文字）
+
+### 八大分類與子分類結構
+- **檔案**：`server/lib/categoryMapping.ts`
+- **對照來源**：Google Places API 的 `primaryType` 和 `types[]`
+
+| Category | Google Types 範例 | Subcategory 範例 |
+|----------|------------------|-----------------|
+| 美食 | restaurant, cafe, bakery, bar | 在地早餐、火鍋、燒烤、甜點 |
+| 住宿 | lodging, hotel, hostel, campground | 星級飯店、民宿、露營、青年旅社 |
+| 景點 | park, temple, beach, monument | 城市公園、宗教聖地、自然風光 |
+| 購物 | store, shopping_mall, market | 百貨公司、夜市、特色商店 |
+| 活動 | spa, gym, hiking_area, golf_course | 登山步道、水上活動、按摩/足湯 |
+| 娛樂設施 | amusement_park, movie_theater, karaoke | 主題樂園、電影院、KTV |
+| 生態文化教育 | museum, zoo, aquarium, library | 博物館、生態園區、文化中心 |
+| 遊程體驗 | tourist_attraction, farm, winery | 一日遊、DIY體驗、農場體驗 |
+
+### place_cache 資料結構
+```typescript
+{
+  category: '美食',           // 八大類之一
+  subCategory: '在地早餐',     // 規則映射產生
+  googleTypes: 'restaurant,cafe',  // Google 原始類型（保留追溯）
+  primaryType: 'restaurant',       // Google 主要類型
+  aiReviewed: false,          // 是否已通過 AI 審核
+}
+```
 
 ### 行程卡顯示標籤
 - 前端使用 **`category`** 欄位透過 `getCategoryLabel()` 顯示
