@@ -165,13 +165,28 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 - 前端使用 **`category`** 欄位透過 `getCategoryLabel()` 顯示
 - 資料庫統一使用中文八大類：美食、住宿、景點、購物、活動、娛樂設施、生態文化教育、遊程體驗
 
-### 手動審核腳本（保留）
+### 核心腳本（5 個）
 ```bash
-# AI 審核（每批 10 筆，含 Rate Limit 防護）
+# 1. 批次採集：8 類別×10 關鍵字並行採集
+npx tsx server/scripts/batch-parallel-collect.ts 城市名 [類別]
+
+# 2. AI 審核：黑名單過濾 + AI 品質審核
 npx tsx server/scripts/short-batch-review.ts [數量]
 
-# 升級到 places 表
+# 3. 帶描述遷移：從 drafts 升級到 places（含 AI 描述生成）
+npx tsx server/scripts/migrate-with-descriptions.ts [數量]
+
+# 4. 快速升級：從 drafts 升級到 places（不含描述）
 npx tsx server/scripts/promote-to-places.ts [數量]
+
+# 5. 補描述：為 places 中缺描述的地點生成
+npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
+```
+
+### 標準採集流程
+```
+batch-parallel-collect → short-batch-review → migrate-with-descriptions
+      (採集)               (AI審核)              (升級+描述)
 ```
 
 ## 注意事項
@@ -182,6 +197,13 @@ npx tsx server/scripts/promote-to-places.ts [數量]
 ---
 
 ## Changelog
+
+### 2025-12-27 - 腳本清理與資料庫重置
+- **刪除 8 個一次性修復腳本**：fix-google-types, regenerate-star-descriptions, reclassify-data, cleanup-places, migrate-cache-to-places, batch-taipei-all-categories, test-batch-generate, test-batch-with-save
+- **保留 5 個核心腳本**：batch-parallel-collect, short-batch-review, migrate-with-descriptions, promote-to-places, generate-descriptions
+- **清空開發環境資料庫**：place_cache (0)、place_drafts (922)、places (6,378) → 全部歸零
+- **修正描述生成規則**：禁止「X.X分」格式（原只禁「X.X星」）
+- **目的**：從零建立高品質旅遊資料，避免低品質資料混入
 
 ### 2025-12-26 - Category 欄位統一（治本修正）
 - 問題：資料庫 category 欄位混用三種格式（英文 food/stay、中文短形 食/宿、中文全形 美食/住宿）
