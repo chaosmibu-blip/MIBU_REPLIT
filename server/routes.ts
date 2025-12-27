@@ -967,7 +967,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const updateData: any = { ...validated };
       if (validated.birthDate) {
-        updateData.birthDate = new Date(validated.birthDate);
+        let dateStr = validated.birthDate.replace(/[\/\.\-\s]/g, '');
+        if (/^\d{8}$/.test(dateStr)) {
+          dateStr = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+        }
+        updateData.birthDate = new Date(dateStr);
       }
 
       const updatedUser = await storage.updateUser(userId, updateData);
