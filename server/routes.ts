@@ -218,6 +218,39 @@ function isWithinRadius(
   return distance <= radiusKm;
 }
 
+function getDistanceMeters(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number
+): number {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lng2 - lng1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+function getGeoDedupeRadiusMeters(category: string): number {
+  switch (category) {
+    case '景點':
+    case '生態文化教育':
+    case '遊程體驗':
+      return 200;
+    case '美食':
+    case '購物':
+      return 50;
+    case '活動':
+    case '娛樂設施':
+      return 100;
+    case '住宿':
+    default:
+      return 0;
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth
   await setupAuth(app);
@@ -3898,7 +3931,30 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const usedIds = new Set<number>(recentlyDrawnIds);
       console.log('[Gacha V3] Initial dedup exclusion:', recentlyDrawnIds.size, 'places');
       
-      // 輔助函數：從類別中隨機選取（嚴格鎖定錨點區，不跨區）
+      // 輔助函數：檢查新地點是否與已選地點距離過近
+      const isTooCloseToSelected = (place: any, selected: any[]): boolean => {
+        const radius = getGeoDedupeRadiusMeters(place.category || '其他');
+        if (radius === 0) return false;
+        
+        const lat1 = place.locationLat || place.location_lat;
+        const lng1 = place.locationLng || place.location_lng;
+        if (!lat1 || !lng1) return false;
+        
+        for (const s of selected) {
+          const lat2 = s.locationLat || s.location_lat;
+          const lng2 = s.locationLng || s.location_lng;
+          if (!lat2 || !lng2) continue;
+          
+          const distance = getDistanceMeters(lat1, lng1, lat2, lng2);
+          if (distance < radius) {
+            console.log(`[Gacha V3] Geo-dedupe: ${place.placeName} too close to ${s.placeName} (${Math.round(distance)}m < ${radius}m)`);
+            return true;
+          }
+        }
+        return false;
+      };
+      
+      // 輔助函數：從類別中隨機選取（嚴格鎖定錨點區，不跨區，含地理去重）
       const pickFromCategory = (category: string, count: number) => {
         const picked: any[] = [];
         let pool = [...(anchorByCategory[category] || [])];
@@ -3911,10 +3967,11 @@ ${uncachedSkeleton.map((item, idx) => `  {
         
         for (const p of pool) {
           if (picked.length >= count) break;
-          if (!usedIds.has(p.id)) {
-            picked.push(p);
-            usedIds.add(p.id);
-          }
+          if (usedIds.has(p.id)) continue;
+          if (isTooCloseToSelected(p, [...selectedPlaces, ...picked])) continue;
+          
+          picked.push(p);
+          usedIds.add(p.id);
         }
         return picked;
       };
