@@ -203,7 +203,7 @@ ${JSON.stringify(placesJson, null, 2)}
 
 async function shortBatchReview() {
   const TOTAL_LIMIT = parseInt(process.argv[2] || '100');
-  const CHUNK_SIZE = 15;  // 縮小批次避免 token 超限截斷
+  const CHUNK_SIZE = 20;  // 穩定值：25 偶爾截斷，20 更可靠（含長名稱地點）
   const DELAY_BETWEEN_CHUNKS = 1000;
   
   console.log(`🚀 優化版批次 AI 審查模式`);
