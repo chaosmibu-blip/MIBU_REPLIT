@@ -47,20 +47,63 @@ const CATEGORIES = [
   { id: 8, code: 'shopping', nameZh: '購物', baseKeyword: '購物商店' },
 ];
 
-const usedKeywordsCache: Map<string, Set<string>> = new Map();
+const USED_KEYWORDS_FILE = 'server/data/used-keywords.json';
+
+function loadUsedKeywords(): Map<string, Set<string>> {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = path.resolve(USED_KEYWORDS_FILE);
+    if (fs.existsSync(filePath)) {
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      const map = new Map<string, Set<string>>();
+      for (const [key, arr] of Object.entries(data)) {
+        map.set(key, new Set(arr as string[]));
+      }
+      return map;
+    }
+  } catch (e) {
+    console.log('⚠️ 無法載入已用關鍵字，使用空快取');
+  }
+  return new Map();
+}
+
+function saveUsedKeywords(cache: Map<string, Set<string>>): void {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const dir = path.dirname(USED_KEYWORDS_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const obj: Record<string, string[]> = {};
+    cache.forEach((set, key) => {
+      obj[key] = Array.from(set);
+    });
+    fs.writeFileSync(path.resolve(USED_KEYWORDS_FILE), JSON.stringify(obj, null, 2));
+  } catch (e) {
+    console.log('⚠️ 無法儲存已用關鍵字');
+  }
+}
+
+const usedKeywordsCache: Map<string, Set<string>> = loadUsedKeywords();
+
+const MAX_KEYWORDS_PER_CATEGORY = 100;
 
 async function expandKeywordsWithAI(baseKeyword: string, categoryName: string, cityName: string, count: number = 10): Promise<string[]> {
-  if (!GEMINI_BASE_URL || !GEMINI_API_KEY) {
-    console.log(`   ⚠️ 無 Gemini API，使用預設關鍵字`);
-    return [baseKeyword];
-  }
-
   const cacheKey = `${cityName}:${categoryName}`;
   if (!usedKeywordsCache.has(cacheKey)) {
     usedKeywordsCache.set(cacheKey, new Set());
   }
   const usedKeywords = usedKeywordsCache.get(cacheKey)!;
-  const usedList = Array.from(usedKeywords).slice(-30);
+  
+  if (!GEMINI_BASE_URL || !GEMINI_API_KEY) {
+    console.log(`   ⚠️ 無 Gemini API，使用預設關鍵字`);
+    usedKeywords.add(baseKeyword);
+    return [baseKeyword];
+  }
+
+  const usedList = Array.from(usedKeywords).slice(-50);
 
   const avoidSection = usedList.length > 0 
     ? `\n⚠️ 以下關鍵字已經用過，請勿重複：\n${usedList.join('、')}\n`
@@ -110,24 +153,40 @@ ${avoidSection}
       }),
     });
 
-    if (!response.ok) return [baseKeyword];
+    if (!response.ok) {
+      usedKeywords.add(baseKeyword);
+      return [baseKeyword];
+    }
 
     const data = await response.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const keywords = text
       .split('\n')
       .map((k: string) => k.trim())
-      .map((k: string) => k.replace(/^\d+[\.\)、]\s*/, '').replace(/^\*+\s*/, '').trim()) // 清除編號
-      .filter((k: string) => k.length >= 3 && k.length <= 15) // 3-15 字
-      .filter((k: string) => !k.includes('以下') && !k.includes('關鍵字') && !k.includes('：')) // 過濾說明文字
+      .map((k: string) => k.replace(/^\d+[\.\)、]\s*/, '').replace(/^\*+\s*/, '').trim())
+      .filter((k: string) => k.length >= 3 && k.length <= 15)
+      .filter((k: string) => !k.includes('以下') && !k.includes('關鍵字') && !k.includes('：'))
       .slice(0, count);
 
-    // 記錄已使用的關鍵字
-    keywords.forEach((kw: string) => usedKeywords.add(kw));
-    
-    return keywords.length > 0 ? keywords : [baseKeyword];
+    if (keywords.length > 0) {
+      keywords.forEach((kw: string) => usedKeywords.add(kw));
+      trimUsedKeywords(usedKeywords);
+      return keywords;
+    } else {
+      usedKeywords.add(baseKeyword);
+      return [baseKeyword];
+    }
   } catch (e) {
+    usedKeywords.add(baseKeyword);
     return [baseKeyword];
+  }
+}
+
+function trimUsedKeywords(set: Set<string>): void {
+  if (set.size > MAX_KEYWORDS_PER_CATEGORY) {
+    const arr = Array.from(set);
+    const toRemove = arr.slice(0, set.size - MAX_KEYWORDS_PER_CATEGORY);
+    toRemove.forEach(k => set.delete(k));
   }
 }
 
@@ -412,6 +471,9 @@ async function main() {
   for (const r of results) {
     console.log(`   ${r.category}: ${r.saved} 筆`);
   }
+
+  saveUsedKeywords(usedKeywordsCache);
+  console.log(`💾 已儲存 ${usedKeywordsCache.size} 組已用關鍵字`);
 
   await pool.end();
 }
