@@ -142,14 +142,18 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 區公所、市公所、戶政事務所、警察局、派出所、
 衛生所、殯儀館、火葬場、納骨塔、墓園、
 停車場、加油站、焚化爐、銀行分行、郵局
+資材行、水電行、汽車修理、輪胎行、洗衣店、乾洗店、
+當舖、禮儀公司、快餐店
 ```
 - **效果**：減少 AI 審核負擔，提升效率
 
-#### 2. 清理腳本過濾
-- **檔案**：`server/scripts/cleanup-places.ts`
-- **用途**：清理已存入的不適合資料
-- **名稱黑名單**（`NAME_BLACKLIST`）：同上
-- **類別黑名單**（`CATEGORY_BLACKLIST`）：
+#### 2. 刪除黑名單 API（2025-12-29 新增）
+- **端點**：`GET /api/admin/delete-blacklist-places?key=mibu2024migrate`
+- **功能**：查詢並刪除符合黑名單關鍵字的 places 資料
+- **保留名單**：蘭城百匯、森本屋（雖含黑名單關鍵字但有特色）
+- **參數**：`confirm=yes` 執行刪除，否則僅預覽
+
+#### 3. 類別黑名單
 ```
 殯葬、政府機關、醫療機構、金融服務、教育行政
 ```
@@ -247,6 +251,24 @@ npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
 ---
 
 ## Changelog
+
+### 2025-12-29 - 黑名單 API 與營業時間欄位
+- **新增 API**：`GET /api/admin/delete-blacklist-places`
+  - 查詢並刪除符合黑名單關鍵字的 places 資料
+  - 保留名單：蘭城百匯、森本屋
+  - 參數 `confirm=yes` 執行刪除，否則僅預覽
+- **新增黑名單關鍵字**：資材行、水電行、汽車修理、輪胎行、洗衣店、乾洗店、當舖、禮儀公司、快餐店
+- **新增 places 欄位**：
+  - `openingHours` (JSONB) - 營業時間
+  - `promoTitle` - 推廣標題
+  - `promoDescription` - 推廣描述
+  - `claimStatus` - 認領狀態（unclaimed/pending/approved/rejected）
+- **修改採集腳本**：`batch-parallel-collect.ts` 現在會順便取得營業時間
+
+### 2025-12-28 - 地理距離去重機制
+- **解決問題**：同一輪扭蛋抽到多個傳藝中心子景點
+- **實作**：依類別設定距離閾值（景點 200m、美食 50m、活動 100m）
+- **效果**：五結鄉扭蛋從 4 個傳藝中心景點降至 1 個
 
 ### 2025-12-27 - 地址解析器與城市驗證
 - **新增 `addressParser.ts`**：從地址字串解析縣市和鄉鎮區

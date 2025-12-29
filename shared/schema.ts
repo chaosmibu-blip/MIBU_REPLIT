@@ -283,8 +283,12 @@ export const places = pgTable("places", {
   subcategory: text("subcategory"),
   description: text("description"),
   descriptionI18n: jsonb("description_i18n").$type<{ en?: string; ja?: string; ko?: string }>(),
+  openingHours: jsonb("opening_hours").$type<{ weekdayText?: string[]; periods?: any[] }>(),
   merchantId: integer("merchant_id").references(() => merchants.id),
   isPromoActive: boolean("is_promo_active").default(false),
+  promoTitle: text("promo_title"),
+  promoDescription: text("promo_description"),
+  claimStatus: varchar("claim_status", { length: 20 }).default('unclaimed'),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
@@ -293,6 +297,7 @@ export const places = pgTable("places", {
   index("IDX_places_category").on(table.category),
   index("IDX_places_merchant").on(table.merchantId),
   index("IDX_places_is_active").on(table.isActive),
+  index("IDX_places_claim_status").on(table.claimStatus),
 ]);
 
 // Merchant-Place Links (ownership/claim system) - 單一認領制 / 行程卡

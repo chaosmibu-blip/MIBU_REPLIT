@@ -105,7 +105,7 @@ ${avoidSection}
       .slice(0, count);
 
     // 記錄已使用的關鍵字
-    keywords.forEach(kw => usedKeywords.add(kw));
+    keywords.forEach((kw: string) => usedKeywords.add(kw));
     
     return keywords.length > 0 ? keywords : [baseKeyword];
   } catch (e) {
@@ -127,7 +127,7 @@ async function searchGooglePlaces(query: string, location: string): Promise<any[
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.primaryType,places.businessStatus'
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.primaryType,places.businessStatus,places.currentOpeningHours,places.regularOpeningHours'
       },
       body: JSON.stringify({
         textQuery: searchQuery,
@@ -147,7 +147,8 @@ async function searchGooglePlaces(query: string, location: string): Promise<any[
       rating: p.rating,
       types: p.types || [],
       primaryType: p.primaryType,
-      businessStatus: p.businessStatus
+      businessStatus: p.businessStatus,
+      openingHours: p.regularOpeningHours || p.currentOpeningHours || null
     }));
   } catch (e) {
     return [];

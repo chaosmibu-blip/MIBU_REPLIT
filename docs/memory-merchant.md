@@ -132,3 +132,15 @@ R:   32%  // 最常見
 - [ ] 商家儀表板
 - [ ] 優惠券使用報表
 - [ ] 推播通知管理
+
+---
+
+## Changelog
+
+### 2025-12-29 - 商家認領欄位優化
+- **places 表新增欄位**：
+  - `promoTitle` - 推廣標題（商家認領後設定）
+  - `promoDescription` - 推廣描述
+  - `claimStatus` - 認領狀態（unclaimed/pending/approved/rejected）
+- **架構優化**：直接使用 `places.merchantId` 綁定，簡化認領流程
+- **設計理念**：商家認領時直接更新 places 表，優惠券透過 merchantId 關聯

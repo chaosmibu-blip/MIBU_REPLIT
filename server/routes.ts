@@ -9115,6 +9115,69 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     }
   });
 
+  // ============ 刪除黑名單地點 ============
+  app.get("/api/admin/delete-blacklist-places", async (req: any, res) => {
+    try {
+      const { key, confirm } = req.query;
+      const MIGRATION_KEY = process.env.ADMIN_MIGRATION_KEY || "mibu2024migrate";
+      
+      if (key !== MIGRATION_KEY) {
+        return res.status(403).json({ error: "需要密鑰" });
+      }
+      
+      // 黑名單關鍵字（保留蘭城百匯、森本屋）
+      const BLACKLIST_KEYWORDS = [
+        '資材行', '水電行', '汽車修理', '輪胎行', '洗衣店', '乾洗店',
+        '當舖', '禮儀公司', '快餐店',
+        '區公所', '市公所', '戶政事務所', '警察局', '派出所',
+        '衛生所', '殯儀館', '火葬場', '納骨塔', '墓園',
+        '停車場', '加油站', '銀行分行', '郵局'
+      ];
+      
+      // 保留名單（即使含黑名單關鍵字也不刪除）
+      const WHITELIST = ['蘭城百匯', '森本屋'];
+      
+      // 先查詢符合條件的資料
+      const blacklistConditions = BLACKLIST_KEYWORDS.map(kw => `place_name ILIKE '%${kw}%'`).join(' OR ');
+      const whitelistConditions = WHITELIST.map(w => `place_name NOT ILIKE '%${w}%'`).join(' AND ');
+      
+      const previewResult = await db.execute(sql.raw(`
+        SELECT id, place_name, city, district, category
+        FROM places 
+        WHERE (${blacklistConditions}) AND (${whitelistConditions})
+      `));
+      
+      if (confirm !== 'yes') {
+        return res.json({
+          preview: true,
+          message: "以下是將被刪除的黑名單地點（需加 confirm=yes 執行刪除）",
+          count: previewResult.rows.length,
+          places: previewResult.rows,
+          usage: "/api/admin/delete-blacklist-places?key=mibu2024migrate&confirm=yes"
+        });
+      }
+      
+      // 執行刪除
+      const deleteResult = await db.execute(sql.raw(`
+        DELETE FROM places 
+        WHERE (${blacklistConditions}) AND (${whitelistConditions})
+      `));
+      
+      console.log(`[Blacklist] Deleted ${previewResult.rows.length} blacklisted places`);
+      
+      res.json({
+        success: true,
+        message: "黑名單地點已刪除",
+        deletedCount: previewResult.rows.length,
+        deletedPlaces: previewResult.rows,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("[Blacklist] Error:", error);
+      res.status(500).json({ error: "刪除失敗", details: String(error) });
+    }
+  });
+
   // ============ 一鍵匯入：從遠端 API 獲取資料 ============
   app.get("/api/admin/seed-places", async (req: any, res) => {
     try {
