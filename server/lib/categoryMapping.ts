@@ -154,6 +154,9 @@ export const TYPE_TO_CATEGORY: Record<string, MibuCategory> = {
   'souvenir_shop': '購物',
   'art_store': '購物',
   'antique_store': '購物',
+  'food_supplier': '購物',
+  'specialty_grocery_store': '購物',
+  'wholesale_food_store': '購物',
 };
 
 // Google Type → 中文 Subcategory 對照表
@@ -313,6 +316,9 @@ export const TYPE_TO_SUBCATEGORY: Record<string, string> = {
   'nail_salon': '美甲店',
   'barbershop': '理髮店',
   'antique_store': '古董店',
+  'food_supplier': '食品伴手禮',
+  'specialty_grocery_store': '特產專賣',
+  'wholesale_food_store': '食品批發',
 };
 
 /**

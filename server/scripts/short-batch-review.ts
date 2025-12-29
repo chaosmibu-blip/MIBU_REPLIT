@@ -52,8 +52,18 @@ const EXCLUDE_KEYWORDS = [
   '包車', '租車', '計程車行', '客運站',
 ];
 
+const EXACT_EXCLUDE_NAMES = [
+  '台灣小吃', '台灣美食', '台灣料理', '台灣餐廳',
+  '小吃店', '美食店', '餐廳', '飯店', '旅館', '民宿',
+];
+
 function shouldPreFilter(placeName: string): { filtered: boolean; reason: string } {
   const lowerName = placeName.toLowerCase();
+  for (const exactName of EXACT_EXCLUDE_NAMES) {
+    if (lowerName === exactName.toLowerCase()) {
+      return { filtered: true, reason: `通用名稱不適合作為景點: ${exactName}` };
+    }
+  }
   for (const keyword of EXCLUDE_KEYWORDS) {
     if (lowerName.includes(keyword.toLowerCase())) {
       return { filtered: true, reason: `包含排除關鍵字: ${keyword}` };
