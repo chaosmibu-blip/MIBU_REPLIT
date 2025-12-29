@@ -111,23 +111,29 @@ async function generateDescriptionsForCategory(
 
   const prompt = CATEGORY_PROMPTS[category] || CATEGORY_PROMPTS['景點'];
   let updated = 0;
-  const batchSize = 10;
+  const batchSize = 15;
+  const updateConcurrency = 20;
 
   for (let i = 0; i < places.length; i += batchSize) {
     const batch = places.slice(i, i + batchSize);
     const descriptions = await generateDescriptionsForBatch(batch, prompt);
 
+    const updatePromises: Promise<void>[] = [];
     for (const place of batch) {
       const newDesc = descriptions.get(place.id);
       if (newDesc) {
-        await db.update(schema.places)
-          .set({ description: newDesc })
-          .where(eq(schema.places.id, place.id));
-        updated++;
+        updatePromises.push(
+          db.update(schema.places)
+            .set({ description: newDesc })
+            .where(eq(schema.places.id, place.id))
+            .then(() => { updated++; })
+        );
       }
     }
-
-    if (i + batchSize < places.length) await sleep(1000);
+    
+    for (let j = 0; j < updatePromises.length; j += updateConcurrency) {
+      await Promise.all(updatePromises.slice(j, j + updateConcurrency));
+    }
   }
 
   console.log(`   [${category}] ${updated}/${placeIds.length} 描述生成`);
@@ -171,51 +177,97 @@ async function migrateCacheToPlaces() {
   const newPlacesByCategory = new Map<string, number[]>();
   let inserted = 0;
   let skipped = 0;
+  const insertBatchSize = 50;
   
-  console.log('\n📥 階段一：匯入資料');
+  console.log('\n📥 階段一：匯入資料（批次處理）');
   
-  for (const cache of reviewedCache) {
-    if (!cache.placeId || existingPlaceIds.has(cache.placeId)) {
-      await db.delete(schema.placeCache).where(eq(schema.placeCache.id, cache.id));
-      skipped++;
-      continue;
+  const toInsert = reviewedCache.filter(cache => 
+    cache.placeId && !existingPlaceIds.has(cache.placeId)
+  );
+  const toSkip = reviewedCache.filter(cache => 
+    !cache.placeId || existingPlaceIds.has(cache.placeId)
+  );
+  
+  if (toSkip.length > 0) {
+    const skipIds = toSkip.map(c => c.id);
+    for (let i = 0; i < skipIds.length; i += 100) {
+      const batch = skipIds.slice(i, i + 100);
+      await db.delete(schema.placeCache).where(inArray(schema.placeCache.id, batch));
     }
+    skipped = toSkip.length;
+  }
+  
+  for (let i = 0; i < toInsert.length; i += insertBatchSize) {
+    const batch = toInsert.slice(i, i + insertBatchSize);
+    
+    const insertValues = batch.map(cache => ({
+      placeName: cache.placeName,
+      country: cache.country || '台灣',
+      city: cache.city,
+      district: cache.district,
+      address: cache.verifiedAddress || '',
+      locationLat: cache.locationLat ? parseFloat(cache.locationLat) : null,
+      locationLng: cache.locationLng ? parseFloat(cache.locationLng) : null,
+      googlePlaceId: cache.placeId,
+      googleTypes: cache.googleTypes || null,
+      primaryType: cache.primaryType || null,
+      rating: cache.googleRating ? parseFloat(cache.googleRating) : null,
+      category: cache.category,
+      subcategory: cache.subCategory,
+      description: '',
+      isActive: true,
+    }));
     
     try {
-      const result = await db.insert(schema.places).values({
-        placeName: cache.placeName,
-        country: cache.country || '台灣',
-        city: cache.city,
-        district: cache.district,
-        address: cache.verifiedAddress || '',
-        locationLat: cache.locationLat ? parseFloat(cache.locationLat) : null,
-        locationLng: cache.locationLng ? parseFloat(cache.locationLng) : null,
-        googlePlaceId: cache.placeId,
-        googleTypes: cache.googleTypes || null,
-        primaryType: cache.primaryType || null,
-        rating: cache.googleRating ? parseFloat(cache.googleRating) : null,
-        category: cache.category,
-        subcategory: cache.subCategory,
-        description: '',
-        isActive: true,
-      }).returning({ id: schema.places.id });
+      const results = await db.insert(schema.places).values(insertValues).returning({ 
+        id: schema.places.id,
+        category: schema.places.category
+      });
       
-      const newId = result[0]?.id;
-      if (newId) {
-        const cat = cache.category || '景點';
+      for (const r of results) {
+        const cat = r.category || '景點';
         if (!newPlacesByCategory.has(cat)) newPlacesByCategory.set(cat, []);
-        newPlacesByCategory.get(cat)!.push(newId);
+        newPlacesByCategory.get(cat)!.push(r.id);
       }
       
-      await db.delete(schema.placeCache).where(eq(schema.placeCache.id, cache.id));
-      existingPlaceIds.add(cache.placeId);
-      inserted++;
+      const cacheIds = batch.map(c => c.id);
+      await db.delete(schema.placeCache).where(inArray(schema.placeCache.id, cacheIds));
       
-      if (inserted % 50 === 0) console.log(`   ✅ 已匯入 ${inserted} 筆...`);
+      inserted += results.length;
+      console.log(`   ✅ 已匯入 ${inserted} 筆...`);
     } catch (e: any) {
-      if (e.message.includes('duplicate')) {
-        await db.delete(schema.placeCache).where(eq(schema.placeCache.id, cache.id));
-        skipped++;
+      for (const cache of batch) {
+        try {
+          const result = await db.insert(schema.places).values({
+            placeName: cache.placeName,
+            country: cache.country || '台灣',
+            city: cache.city,
+            district: cache.district,
+            address: cache.verifiedAddress || '',
+            locationLat: cache.locationLat ? parseFloat(cache.locationLat) : null,
+            locationLng: cache.locationLng ? parseFloat(cache.locationLng) : null,
+            googlePlaceId: cache.placeId,
+            googleTypes: cache.googleTypes || null,
+            primaryType: cache.primaryType || null,
+            rating: cache.googleRating ? parseFloat(cache.googleRating) : null,
+            category: cache.category,
+            subcategory: cache.subCategory,
+            description: '',
+            isActive: true,
+          }).returning({ id: schema.places.id });
+          
+          const newId = result[0]?.id;
+          if (newId) {
+            const cat = cache.category || '景點';
+            if (!newPlacesByCategory.has(cat)) newPlacesByCategory.set(cat, []);
+            newPlacesByCategory.get(cat)!.push(newId);
+            inserted++;
+          }
+          await db.delete(schema.placeCache).where(eq(schema.placeCache.id, cache.id));
+        } catch {
+          await db.delete(schema.placeCache).where(eq(schema.placeCache.id, cache.id));
+          skipped++;
+        }
       }
     }
   }
