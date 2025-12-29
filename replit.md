@@ -1,5 +1,40 @@
 # Mibu 旅遊安全平台
 
+---
+
+## ⚡ 強制查閱規則
+
+> **執行任何任務前，必須先讀取對應記憶庫**
+
+| 動作類型 | 必讀記憶庫 | 原因 |
+|---------|-----------|------|
+| 採集/審核/升級景點 | `memory-travel-gacha.md` | 唯一流程定義處 |
+| 修改資料表結構 | `memory-data-schema.md` | 確認欄位關聯 |
+| 新增/修改 API | `memory-api-dictionary.md` | 確認命名規範與錯誤碼 |
+| 認證相關修改 | `memory-auth.md` | JWT/Session 規範 |
+| 第三方 API 調用 | `memory-integrations.md` | API Key 與呼叫慣例 |
+| 金流/商品邏輯 | `memory-payment-commerce.md` | Stripe 整合規範 |
+| 部署/環境變數 | `memory-deployment.md` | 環境配置 |
+
+---
+
+## 📋 標準流程索引
+
+### 🎰 景點採集流程（唯一來源：`memory-travel-gacha.md`）
+```
+1. 採集 → npx tsx server/scripts/batch-parallel-collect.ts 城市名
+2. 審核 → npx tsx server/scripts/short-batch-review.ts
+3. 升級 → npx tsx server/scripts/migrate-with-descriptions.ts
+```
+
+### 🔄 開發→正式資料同步（唯一來源：`memory-deployment.md`）
+```
+匯出 → GET /api/admin/export-places?key=mibu2024migrate
+匯入 → POST /api/admin/seed-places
+```
+
+---
+
 ## 專案簡介
 Mibu 是專為自由行旅客打造的旅遊 App，包含兩大核心模組：
 
@@ -23,8 +58,8 @@ Mibu 是專為自由行旅客打造的旅遊 App，包含兩大核心模組：
 
 ## 原則
 1. 全程使用中文，以日常好懂的方式溝通
-2. 自行分辨該去哪個記憶庫找資料
-3. 完成任務後，將更新內容以精準描述存入所有對應記憶庫
+2. **先讀記憶庫再行動**：執行任務前必須查閱對應記憶庫（見「強制查閱規則」）
+3. 完成任務後，將更新內容以精準描述存入**唯一對應**的記憶庫
 4. 同步更新 replit.md（見下方判斷機制）
 5. **治本優先**：除非兩種方案的成本差異過大，否則應優先修正問題根源（資料、設計），而非在程式碼中打補丁
 
@@ -53,25 +88,37 @@ Mibu 是專為自由行旅客打造的旅遊 App，包含兩大核心模組：
 
 ---
 
-## 記憶庫索引
-> 📁 **位置**：所有記憶庫檔案統一存放於 `docs/` 目錄
+## 記憶庫索引與職權定義
 
-| 檔案 | 模組 | 內容 |
-|------|------|------|
-| memory-travel-gacha.md | 行程扭蛋 | Gacha 邏輯、去重、批次採集、規則映射分類、黑名單過濾、關鍵字擴散、八大分類結構 |
-| memory-trip-planner.md | 旅程策劃 | 天數管理、活動、旅伴 |
-| memory-user-client.md | 用戶端 | 認證、背包、通知、額度 |
-| memory-merchant.md | 商家端 | 認領、優惠券、訂閱、數據 |
-| memory-specialist.md | 專員端 | 服務、訂單、等級 |
-| memory-admin.md | 管理端 | 審核、排程、同步、資料修復、開發→正式資料管理流程 |
-| memory-api-dictionary.md | API 字典 | 端點、錯誤、分頁 |
-| memory-data-schema.md | 資料架構 | 47 張表、關聯、約束 |
-| memory-payment-commerce.md | 金流商品 | Stripe、購物車、訂單 |
-| memory-sos-safety.md | SOS 安全 | 求助、位置、警報 |
-| memory-integrations.md | 第三方整合 | Google、Gemini、Mapbox |
-| memory-auth.md | 認證權限 | JWT、Session、RBAC |
-| memory-deployment.md | 部署環境 | 環境變數、同步、排程 |
-| memory-i18n.md | 國際化 | 四語支援（zh-TW/en/ja/ko）、JSONB 多語欄位、Fallback 機制 |
+> 📁 **位置**：所有記憶庫檔案統一存放於 `docs/` 目錄
+> 
+> ⚠️ **唯一來源原則**：每個功能只記錄在一個記憶庫，避免重複與不同步
+
+### 功能模組（業務邏輯）
+
+| 檔案 | 職權範圍 | 唯一負責內容 |
+|------|---------|-------------|
+| memory-travel-gacha.md | 行程扭蛋 | Gacha V1/V2/V3 邏輯、**採集/審核/升級流程**、去重保護、八大分類、黑名單 |
+| memory-trip-planner.md | 旅程策劃 | 天數管理、活動排程、旅伴邀請 |
+| memory-user-client.md | 用戶端 | 用戶 App 功能：背包、通知、收藏、每日額度 |
+| memory-merchant.md | 商家端 | 商家認領、優惠券發放、訂閱方案、數據報表 |
+| memory-specialist.md | 專員端 | 策劃師服務、訂單管理、等級制度 |
+| memory-admin.md | 管理端 | 後台 UI、用戶/商家/專員審核、公告管理（不含採集流程） |
+
+### 基礎設施（跨模組共用）
+
+| 檔案 | 職權範圍 | 唯一負責內容 |
+|------|---------|-------------|
+| memory-data-schema.md | 資料架構 | 47 張表定義、欄位關聯、約束條件 |
+| memory-api-dictionary.md | API 規範 | 所有端點清單、請求/回應格式、錯誤代碼、分頁規範 |
+| memory-auth.md | 認證權限 | JWT、Session、Apple/Google Sign In、RBAC 角色 |
+| memory-payment-commerce.md | 金流商品 | Stripe 整合、購物車、訂單生命週期 |
+| memory-sos-safety.md | SOS 安全 | 緊急求助、位置分享、警報觸發 |
+| memory-integrations.md | 第三方整合 | Google Places API、Gemini AI、Mapbox、Twilio |
+| memory-deployment.md | 部署環境 | 環境變數、**開發→正式同步流程**、排程任務 |
+| memory-i18n.md | 國際化 | 四語支援、JSONB 多語欄位、Fallback 機制 |
+
+---
 
 ## 技術規範
 - **server/**: Node.js, Express, Drizzle ORM｜禁止 React, JSX
