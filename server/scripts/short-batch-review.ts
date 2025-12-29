@@ -202,27 +202,43 @@ ${JSON.stringify(placesJson, null, 2)}
 }
 
 async function shortBatchReview() {
-  const TOTAL_LIMIT = parseInt(process.argv[2] || '100');
-  const CHUNK_SIZE = 50;  // 用戶要求：50 筆（可能截斷風險較高）
+  const args = process.argv.slice(2);
+  const noLoopFlag = args.includes('--no-loop');
+  const numericArg = args.find(arg => !arg.startsWith('--') && !isNaN(parseInt(arg)));
+  
+  const BATCH_LIMIT = numericArg ? parseInt(numericArg) : 1000;  // 每輪處理上限（預設 1000）
+  const CHUNK_SIZE = 50;  // 每批 AI 審核筆數
   const DELAY_BETWEEN_CHUNKS = 5000;  // 5 秒間隔
+  const AUTO_LOOP = !noLoopFlag;  // 預設自動循環直到完成
   
   console.log(`🚀 優化版批次 AI 審查模式`);
-  console.log(`📋 設定: 總數上限=${TOTAL_LIMIT}, 每批=${CHUNK_SIZE}筆, 間隔=${DELAY_BETWEEN_CHUNKS/1000}秒`);
+  console.log(`📋 設定: 每輪上限=${BATCH_LIMIT}, 每批=${CHUNK_SIZE}筆, 間隔=${DELAY_BETWEEN_CHUNKS/1000}秒`);
+  console.log(`🔄 自動循環: ${AUTO_LOOP ? '啟用（處理全部待審資料）' : '停用（僅處理一輪）'}`);
   
-  const unreviewed = await db.select().from(schema.placeCache)
-    .where(or(
-      eq(schema.placeCache.aiReviewed, false),
-      isNull(schema.placeCache.aiReviewed)
-    ))
-    .limit(TOTAL_LIMIT);
+  let grandTotalPassed = 0;
+  let grandTotalFailed = 0;
+  let grandApiCalls = 0;
+  let loopCount = 0;
   
-  if (unreviewed.length === 0) {
-    console.log("✅ 沒有待審核的資料");
-    await pool.end();
-    return;
-  }
-  
-  console.log(`📦 取得 ${unreviewed.length} 筆待審核資料`);
+  while (true) {
+    loopCount++;
+    console.log(`\n${'═'.repeat(60)}`);
+    console.log(`🔄 第 ${loopCount} 輪`);
+    console.log(`${'═'.repeat(60)}`);
+    
+    const unreviewed = await db.select().from(schema.placeCache)
+      .where(or(
+        eq(schema.placeCache.aiReviewed, false),
+        isNull(schema.placeCache.aiReviewed)
+      ))
+      .limit(BATCH_LIMIT);
+    
+    if (unreviewed.length === 0) {
+      console.log("✅ 沒有待審核的資料，全部完成！");
+      break;
+    }
+    
+    console.log(`📦 取得 ${unreviewed.length} 筆待審核資料`);
   
   // 方案三：Pre-filtering 前置過濾
   let preFilteredCount = 0;
@@ -329,20 +345,40 @@ async function shortBatchReview() {
     }
   }
   
-  const remaining = await db.select().from(schema.placeCache)
+    grandTotalPassed += totalPassed;
+    grandTotalFailed += totalFailed;
+    grandApiCalls += apiCallCount;
+    
+    console.log(`\n📊 本輪統計: 通過=${totalPassed}, 刪除=${totalFailed}, API=${apiCallCount}次`);
+    
+    if (!AUTO_LOOP) {
+      console.log("🛑 單輪模式，結束執行");
+      break;
+    }
+    
+    if (unreviewed.length < BATCH_LIMIT) {
+      console.log("✅ 已處理完所有待審資料");
+      break;
+    }
+    
+    console.log("⏳ 輪次間隔 3 秒...");
+    await sleep(3000);
+  }
+  
+  const finalRemaining = await db.select().from(schema.placeCache)
     .where(or(
       eq(schema.placeCache.aiReviewed, false),
       isNull(schema.placeCache.aiReviewed)
     ));
   
-  console.log(`\n${'='.repeat(50)}`);
-  console.log(`📊 審核完成統計`);
-  console.log(`   前置過濾刪除: ${preFilteredCount} 筆`);
-  console.log(`   AI 審核通過: ${totalPassed} 筆`);
-  console.log(`   AI 審核刪除: ${totalFailed - preFilteredCount} 筆`);
-  console.log(`   剩餘待審核: ${remaining.length} 筆`);
-  console.log(`   API 呼叫次數: ${apiCallCount} 次`);
-  console.log(`${'='.repeat(50)}`);
+  console.log(`\n${'═'.repeat(60)}`);
+  console.log(`📊 全部審核完成統計`);
+  console.log(`   總輪次: ${loopCount} 輪`);
+  console.log(`   總通過: ${grandTotalPassed} 筆`);
+  console.log(`   總刪除: ${grandTotalFailed} 筆`);
+  console.log(`   剩餘待審: ${finalRemaining.length} 筆`);
+  console.log(`   總 API 呼叫: ${grandApiCalls} 次`);
+  console.log(`${'═'.repeat(60)}`);
   
   await pool.end();
 }

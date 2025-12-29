@@ -91,6 +91,26 @@ ${JSON.stringify(placesInfo, null, 2)}
   }
 }
 
+async function processBatchWithUpdates(
+  batch: PlaceData[],
+  prompt: string
+): Promise<number> {
+  const descriptions = await generateDescriptionsForBatch(batch, prompt);
+  let updated = 0;
+  
+  const updatePromises = batch
+    .filter(place => descriptions.has(place.id))
+    .map(place => 
+      db.update(schema.places)
+        .set({ description: descriptions.get(place.id)! })
+        .where(eq(schema.places.id, place.id))
+        .then(() => { updated++; })
+    );
+  
+  await Promise.all(updatePromises);
+  return updated;
+}
+
 async function generateDescriptionsForCategory(
   category: string,
   placeIds: number[],
@@ -110,34 +130,30 @@ async function generateDescriptionsForCategory(
   .where(inArray(schema.places.id, placeIds));
 
   const prompt = CATEGORY_PROMPTS[category] || CATEGORY_PROMPTS['景點'];
-  let updated = 0;
   const batchSize = 15;
-  const updateConcurrency = 20;
+  const aiConcurrency = 3;  // 同時 3 個 AI 請求
 
+  const batches: PlaceData[][] = [];
   for (let i = 0; i < places.length; i += batchSize) {
-    const batch = places.slice(i, i + batchSize);
-    const descriptions = await generateDescriptionsForBatch(batch, prompt);
+    batches.push(places.slice(i, i + batchSize));
+  }
 
-    const updatePromises: Promise<void>[] = [];
-    for (const place of batch) {
-      const newDesc = descriptions.get(place.id);
-      if (newDesc) {
-        updatePromises.push(
-          db.update(schema.places)
-            .set({ description: newDesc })
-            .where(eq(schema.places.id, place.id))
-            .then(() => { updated++; })
-        );
-      }
-    }
+  let totalUpdated = 0;
+  
+  for (let i = 0; i < batches.length; i += aiConcurrency) {
+    const concurrentBatches = batches.slice(i, i + aiConcurrency);
+    const results = await Promise.all(
+      concurrentBatches.map(batch => processBatchWithUpdates(batch, prompt))
+    );
+    totalUpdated += results.reduce((sum, n) => sum + n, 0);
     
-    for (let j = 0; j < updatePromises.length; j += updateConcurrency) {
-      await Promise.all(updatePromises.slice(j, j + updateConcurrency));
+    if (i + aiConcurrency < batches.length) {
+      await sleep(2000);
     }
   }
 
-  console.log(`   [${category}] ${updated}/${placeIds.length} 描述生成`);
-  return updated;
+  console.log(`   [${category}] ${totalUpdated}/${placeIds.length} 描述生成`);
+  return totalUpdated;
 }
 
 async function migrateCacheToPlaces() {
