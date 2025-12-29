@@ -123,7 +123,7 @@ ${JSON.stringify(placesJson, null, 2)}
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 16384,  // 加倍以支援 50 筆批次
           responseMimeType: "application/json",
         }
       }),
