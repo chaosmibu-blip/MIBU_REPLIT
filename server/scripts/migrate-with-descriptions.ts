@@ -65,7 +65,7 @@ ${JSON.stringify(placesInfo, null, 2)}
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 8192 }
+        generationConfig: { temperature: 0.7, maxOutputTokens: 16384 }
       }),
     });
 

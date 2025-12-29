@@ -1,9 +1,27 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as schema from '../../shared/schema';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { classifyPlace } from '../lib/categoryMapping';
 import { parseAddress, isAddressInCity } from '../lib/addressParser';
+
+async function checkExistingPlaceIds(placeIds: string[], db: any): Promise<Set<string>> {
+  if (placeIds.length === 0) return new Set();
+  
+  const existingInPlaces = await db.select({ googlePlaceId: schema.places.googlePlaceId })
+    .from(schema.places)
+    .where(inArray(schema.places.googlePlaceId, placeIds));
+  
+  const existingInCache = await db.select({ placeId: schema.placeCache.placeId })
+    .from(schema.placeCache)
+    .where(inArray(schema.placeCache.placeId, placeIds));
+  
+  const existingSet = new Set<string>();
+  existingInPlaces.forEach((p: any) => { if (p.googlePlaceId) existingSet.add(p.googlePlaceId); });
+  existingInCache.forEach((p: any) => { if (p.placeId) existingSet.add(p.placeId); });
+  
+  return existingSet;
+}
 
 const { Pool } = pg;
 
@@ -115,43 +133,62 @@ ${avoidSection}
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function searchGooglePlaces(query: string, location: string): Promise<any[]> {
+async function searchGooglePlaces(query: string, location: string, maxPages: number = 3): Promise<any[]> {
   if (!GOOGLE_MAPS_API_KEY) return [];
 
   const searchQuery = `${query} ${location}`;
   const url = `https://places.googleapis.com/v1/places:searchText`;
+  const allPlaces: any[] = [];
+  let pageToken: string | null = null;
   
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.primaryType,places.businessStatus,places.currentOpeningHours,places.regularOpeningHours'
-      },
-      body: JSON.stringify({
+    for (let page = 0; page < maxPages; page++) {
+      const requestBody: any = {
         textQuery: searchQuery,
         languageCode: 'zh-TW',
         maxResultCount: 20
-      })
-    });
+      };
+      
+      if (pageToken) {
+        requestBody.pageToken = pageToken;
+      }
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.primaryType,places.businessStatus,places.currentOpeningHours,places.regularOpeningHours,nextPageToken'
+        },
+        body: JSON.stringify(requestBody)
+      });
 
-    if (!response.ok) return [];
+      if (!response.ok) break;
 
-    const data = await response.json();
-    return (data.places || []).map((p: any) => ({
-      placeId: p.id,
-      name: p.displayName?.text || '',
-      address: p.formattedAddress || '',
-      location: p.location,
-      rating: p.rating,
-      types: p.types || [],
-      primaryType: p.primaryType,
-      businessStatus: p.businessStatus,
-      openingHours: p.regularOpeningHours || p.currentOpeningHours || null
-    }));
+      const data = await response.json();
+      const places = (data.places || []).map((p: any) => ({
+        placeId: p.id,
+        name: p.displayName?.text || '',
+        address: p.formattedAddress || '',
+        location: p.location,
+        rating: p.rating,
+        types: p.types || [],
+        primaryType: p.primaryType,
+        businessStatus: p.businessStatus,
+        openingHours: p.regularOpeningHours || p.currentOpeningHours || null
+      }));
+      
+      allPlaces.push(...places);
+      
+      pageToken = data.nextPageToken || null;
+      if (!pageToken) break;
+      
+      await sleep(2000);
+    }
+    
+    return allPlaces;
   } catch (e) {
-    return [];
+    return allPlaces;
   }
 }
 
@@ -201,7 +238,7 @@ async function collectKeywordsParallel(
   keywords: string[], 
   cityName: string, 
   categoryName: string,
-  existingPlaceIds: Set<string>
+  sessionPlaceIds: Set<string>
 ): Promise<{ places: any[]; saved: number; skipped: number }> {
   const CONCURRENCY = 10;
   const allPlaces: any[] = [];
@@ -219,13 +256,13 @@ async function collectKeywordsParallel(
     const results = await Promise.all(searchPromises);
     
     for (const { keyword, places } of results) {
-      const newPlaces = places.filter(p => !existingPlaceIds.has(p.placeId));
+      const newPlaces = places.filter(p => !sessionPlaceIds.has(p.placeId));
       const skipped = places.length - newPlaces.length;
       totalSkipped += skipped;
       
       if (newPlaces.length > 0) {
         allPlaces.push(...newPlaces.map(p => ({ ...p, keyword, category: categoryName })));
-        newPlaces.forEach(p => existingPlaceIds.add(p.placeId));
+        newPlaces.forEach(p => sessionPlaceIds.add(p.placeId));
       }
       
       console.log(`   [${categoryName}] ${keyword}: ${newPlaces.length} 新 / ${skipped} 重複`);
@@ -237,51 +274,64 @@ async function collectKeywordsParallel(
   }
 
   if (allPlaces.length > 0) {
+    const validPlaces: any[] = [];
+    
     for (const place of allPlaces) {
-      try {
-        // 驗證地址是否屬於目標城市
-        if (!isAddressInCity(place.address, cityName)) {
-          console.log(`   ⚠️ 城市不符跳過: ${place.name} (${place.address})`);
+      if (!isAddressInCity(place.address, cityName)) {
+        console.log(`   ⚠️ 城市不符跳過: ${place.name} (${place.address})`);
+        totalSkipped++;
+        continue;
+      }
+      validPlaces.push(place);
+    }
+    
+    if (validPlaces.length > 0) {
+      const placeIdsToCheck = validPlaces.map(p => p.placeId);
+      const existingInDb = await checkExistingPlaceIds(placeIdsToCheck, db);
+      
+      for (const place of validPlaces) {
+        if (existingInDb.has(place.placeId)) {
           totalSkipped++;
           continue;
         }
         
-        // 從地址解析實際的鄉鎮區
-        const parsed = parseAddress(place.address);
-        const district = parsed.district || cityName;
-        
-        const classified = classifyPlace(
-          place.name,
-          cityName,
-          place.primaryType || null,
-          place.types || []
-        );
-        
-        await db.insert(schema.placeCache).values({
-          placeName: place.name,
-          description: '',
-          category: classified.category,
-          subCategory: classified.subcategory,
-          district: district,
-          city: cityName,
-          country: '台灣',
-          placeId: place.placeId,
-          verifiedName: place.name,
-          verifiedAddress: place.address,
-          googleRating: place.rating?.toString() || null,
-          googleTypes: place.types?.join(',') || null,
-          primaryType: place.primaryType || null,
-          locationLat: place.location?.latitude?.toString() || null,
-          locationLng: place.location?.longitude?.toString() || null,
-          isLocationVerified: true,
-          businessStatus: place.businessStatus || null,
-          aiReviewed: false,
-          lastVerifiedAt: new Date()
-        });
-        totalSaved++;
-      } catch (e: any) {
-        if (!e.message.includes('duplicate')) {
-          console.error(`   ❌ ${place.name}: ${e.message}`);
+        try {
+          const parsed = parseAddress(place.address);
+          const district = parsed.district || cityName;
+          
+          const classified = classifyPlace(
+            place.name,
+            cityName,
+            place.primaryType || null,
+            place.types || []
+          );
+          
+          await db.insert(schema.placeCache).values({
+            placeName: place.name,
+            description: '',
+            category: classified.category,
+            subCategory: classified.subcategory,
+            district: district,
+            city: cityName,
+            country: '台灣',
+            placeId: place.placeId,
+            verifiedName: place.name,
+            verifiedAddress: place.address,
+            googleRating: place.rating?.toString() || null,
+            googleTypes: place.types?.join(',') || null,
+            primaryType: place.primaryType || null,
+            locationLat: place.location?.latitude?.toString() || null,
+            locationLng: place.location?.longitude?.toString() || null,
+            isLocationVerified: true,
+            businessStatus: place.businessStatus || null,
+            aiReviewed: false,
+            lastVerifiedAt: new Date()
+          });
+          totalSaved++;
+        } catch (e: any) {
+          if (!e.message.includes('duplicate')) {
+            console.error(`   ❌ ${place.name}: ${e.message}`);
+          }
         }
       }
     }
@@ -326,18 +376,8 @@ async function main() {
   }
   console.log('='.repeat(50));
   
-  const existingPlaces = await db.select({ googlePlaceId: schema.places.googlePlaceId })
-    .from(schema.places)
-    .where(eq(schema.places.city, cityName));
-  const existingCache = await db.select({ placeId: schema.placeCache.placeId })
-    .from(schema.placeCache)
-    .where(eq(schema.placeCache.city, cityName));
-  
   const existingPlaceIds = new Set<string>();
-  existingPlaces.forEach(p => { if (p.googlePlaceId) existingPlaceIds.add(p.googlePlaceId); });
-  existingCache.forEach(p => { if (p.placeId) existingPlaceIds.add(p.placeId); });
-  
-  console.log(`📊 已有 ${existingPlaceIds.size} 個重複地點將被跳過`);
+  console.log(`📊 去重模式: 存入時即時查詢（節省啟動時間）`);
 
   // 過濾類別（支援中文名稱或英文代碼）
   const categoriesToCollect = categoryFilter
