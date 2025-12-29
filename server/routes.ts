@@ -3535,12 +3535,14 @@ ${uncachedSkeleton.map((item, idx) => `  {
       }
 
       // Determine coupon drops for each place
+      // 注意：這些值必須與 /api/rarity-config 返回的值一致（Apple 審核要求）
+      // 資料庫預設值：SP 2%, SSR 8%, SR 15%, S 23%, R 32%
       const RARITY_DROP_RATES: Record<string, number> = {
-        SP: 0.02,
-        SSR: 0.08,
-        SR: 0.15,
-        S: 0.20,
-        R: 0.35,
+        SP: 0.02,   // 2%
+        SSR: 0.08,  // 8%
+        SR: 0.15,   // 15%
+        S: 0.23,    // 23% (與資料庫一致)
+        R: 0.32,    // 32% (與資料庫一致)
       };
 
       const items = await Promise.all(selectedPlaces.map(async (place) => {

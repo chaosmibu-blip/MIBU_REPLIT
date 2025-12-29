@@ -252,6 +252,12 @@ npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
 
 ## Changelog
 
+### 2025-12-29 - Apple 審核合規：優惠券機率統一
+- **問題根源**：程式碼硬編碼的機率 (S: 20%, R: 35%) 與資料庫設定 (S: 23%, R: 32%) 不一致
+- **風險**：Apple 審核要求 Loot Box 公佈機率必須與實際掉落率一致，否則會被拒
+- **修正**：統一 `RARITY_DROP_RATES` 與 `/api/rarity-config` 返回值
+- **正式機率**：SP 2%, SSR 8%, SR 15%, S 23%, R 32%
+
 ### 2025-12-29 - 黑名單 API 與營業時間欄位
 - **新增 API**：`GET /api/admin/delete-blacklist-places`
   - 查詢並刪除符合黑名單關鍵字的 places 資料
