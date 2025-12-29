@@ -146,6 +146,7 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 當舖、禮儀公司、快餐店
 ```
 - **效果**：減少 AI 審核負擔，提升效率
+- **解析失敗處理**（2025-12-29 修正）：AI 回傳無法解析時，該批資料直接刪除（非預設通過）
 
 #### 2. 刪除黑名單 API（2025-12-29 新增）
 - **端點**：`GET /api/admin/delete-blacklist-places?key=mibu2024migrate`

@@ -141,9 +141,9 @@ ${JSON.stringify(placesJson, null, 2)}
       return places.map((p, idx) => ({
         id: idx + 1,
         place_name: p.placeName,
-        passed: true,
-        reason: "解析失敗預設通過",
-        confidence: 0.6
+        passed: false,
+        reason: "解析失敗，刪除此筆資料",
+        confidence: 0
       }));
     }
     
@@ -155,9 +155,9 @@ ${JSON.stringify(placesJson, null, 2)}
       return places.map((p, idx) => ({
         id: idx + 1,
         place_name: p.placeName,
-        passed: true,
-        reason: "JSON解析失敗預設通過",
-        confidence: 0.6
+        passed: false,
+        reason: "JSON解析失敗，刪除此筆資料",
+        confidence: 0
       }));
     }
   } catch (e: any) {
