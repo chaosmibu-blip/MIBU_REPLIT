@@ -9074,6 +9074,47 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     }
   });
 
+  // ============ 清空 places 資料表（正式環境用）============
+  app.get("/api/admin/clear-places", async (req: any, res) => {
+    try {
+      const { key, confirm } = req.query;
+      const MIGRATION_KEY = process.env.ADMIN_MIGRATION_KEY || "mibu2024migrate";
+      
+      if (key !== MIGRATION_KEY) {
+        return res.status(403).json({ error: "需要密鑰" });
+      }
+      
+      if (confirm !== 'yes') {
+        return res.status(400).json({ 
+          error: "需要確認參數",
+          usage: "/api/admin/clear-places?key=mibu2024migrate&confirm=yes",
+          warning: "此操作會清空所有 places 資料，請確認後再執行"
+        });
+      }
+      
+      console.log('[Clear] Starting places table truncation...');
+      
+      // 先統計現有資料
+      const countResult = await db.execute(sql`SELECT COUNT(*) as count FROM places`);
+      const beforeCount = Number(countResult.rows[0]?.count || 0);
+      
+      // 使用 TRUNCATE CASCADE 清空資料
+      await db.execute(sql`TRUNCATE places CASCADE`);
+      
+      console.log(`[Clear] Truncated ${beforeCount} places`);
+      
+      res.json({
+        success: true,
+        message: "places 資料表已清空",
+        deletedCount: beforeCount,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("[Clear] Error:", error);
+      res.status(500).json({ error: "清空失敗", details: String(error) });
+    }
+  });
+
   // ============ 一鍵匯入：從遠端 API 獲取資料 ============
   app.get("/api/admin/seed-places", async (req: any, res) => {
     try {
