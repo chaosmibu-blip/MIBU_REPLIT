@@ -123,7 +123,8 @@ ${JSON.stringify(placesJson, null, 2)}
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 4096,
+          maxOutputTokens: 8192,
+          responseMimeType: "application/json",
         }
       }),
     });
@@ -143,16 +144,34 @@ ${JSON.stringify(placesJson, null, 2)}
     }
 
     const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const candidate = data.candidates?.[0];
+    const finishReason = candidate?.finishReason;
+    let text = candidate?.content?.parts?.[0]?.text || '';
+    
+    // 檢查是否因 token 超限被截斷
+    if (finishReason === 'MAX_TOKENS') {
+      console.error('⚠️ AI 回傳被截斷 (MAX_TOKENS)，保留此批次待重試');
+      return places.map((p, idx) => ({
+        id: idx + 1,
+        place_name: p.placeName,
+        passed: true,  // 保留資料，標記為待重試
+        reason: "待重試",
+        confidence: 0
+      }));
+    }
+    
+    // 清除 markdown 標記
+    text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
     
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
       console.error('AI 回傳無法解析:', text.substring(0, 500));
+      // 保留資料，不刪除
       return places.map((p, idx) => ({
         id: idx + 1,
         place_name: p.placeName,
-        passed: false,
-        reason: "解析失敗，刪除此筆資料",
+        passed: true,  // 改為保留
+        reason: "解析失敗，保留待人工審核",
         confidence: 0
       }));
     }
@@ -162,11 +181,12 @@ ${JSON.stringify(placesJson, null, 2)}
       return parsed;
     } catch (e) {
       console.error('JSON 解析失敗:', e);
+      // 保留資料，不刪除
       return places.map((p, idx) => ({
         id: idx + 1,
         place_name: p.placeName,
-        passed: false,
-        reason: "JSON解析失敗，刪除此筆資料",
+        passed: true,  // 改為保留
+        reason: "JSON解析失敗，保留待人工審核",
         confidence: 0
       }));
     }
@@ -183,8 +203,8 @@ ${JSON.stringify(placesJson, null, 2)}
 
 async function shortBatchReview() {
   const TOTAL_LIMIT = parseInt(process.argv[2] || '100');
-  const CHUNK_SIZE = 50;  // 方案一：從 10 提升到 50
-  const DELAY_BETWEEN_CHUNKS = 1000;  // 方案一：從 3 秒降到 1 秒
+  const CHUNK_SIZE = 15;  // 縮小批次避免 token 超限截斷
+  const DELAY_BETWEEN_CHUNKS = 1000;
   
   console.log(`🚀 優化版批次 AI 審查模式`);
   console.log(`📋 設定: 總數上限=${TOTAL_LIMIT}, 每批=${CHUNK_SIZE}筆, 間隔=${DELAY_BETWEEN_CHUNKS/1000}秒`);
