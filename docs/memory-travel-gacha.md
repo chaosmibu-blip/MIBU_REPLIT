@@ -203,8 +203,8 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 
 ### 核心腳本（4 個）
 ```bash
-# 1. 批次採集
-npx tsx server/scripts/batch-parallel-collect.ts 城市名 [類別]
+# 1. 批次採集（支援關鍵字模式）
+npx tsx server/scripts/batch-parallel-collect.ts 城市名 [類別] [--mode=generic|local|mixed]
 
 # 2. AI 審核
 npx tsx server/scripts/short-batch-review.ts [數量]
@@ -215,6 +215,15 @@ npx tsx server/scripts/migrate-with-descriptions.ts [數量]
 # 4. 補描述（選用）
 npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
 ```
+
+### 關鍵字模式（2025-12-30 新增）
+| 模式 | 說明 | 範例關鍵字 |
+|------|------|-----------|
+| `generic` | 只生成通用分類關鍵字 | 火鍋、咖啡廳、民宿、夜市 |
+| `local` | 只生成在地特色關鍵字 | 台南牛肉湯、安平老街、赤崁擔仔麵 |
+| `mixed` | 混合兩種（預設） | 熱炒店、三星蔥料理、漁港海鮮 |
+
+**使用策略**：建議先用 `generic` 採集通用景點，再用 `local` 補充在地特色，避免關鍵字重複。
 
 ### 標準採集流程（詳細）
 

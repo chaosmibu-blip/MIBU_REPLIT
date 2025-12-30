@@ -49,6 +49,9 @@ const CATEGORIES = [
 
 const USED_KEYWORDS_FILE = 'server/data/used-keywords.json';
 
+type KeywordMode = 'generic' | 'local' | 'mixed';
+let globalKeywordMode: KeywordMode = 'mixed';
+
 function loadUsedKeywords(): Map<string, Set<string>> {
   try {
     const fs = require('fs');
@@ -123,9 +126,33 @@ async function expandKeywordsWithAI(baseKeyword: string, categoryName: string, c
   
   const hints = subcategoryHints[categoryName] || '';
   
-  const prompt = `為「${cityName}」的「${categoryName}」生成 ${count} 個 Google Maps 搜尋關鍵字。
-${avoidSection}
-規則：
+  const modeInstructions = {
+    generic: `規則：
+1. 只生成「通用分類」關鍵字，不要加入地名或在地特色
+2. 參考：${hints}
+3. 每個 2-6 字
+
+直接輸出關鍵字，不要編號：
+熱炒店
+宵夜攤
+咖啡廳
+火鍋店
+早午餐
+民宿推薦
+商務飯店
+親子餐廳`,
+    local: `規則：
+1. 只生成「在地特色」關鍵字，必須包含${cityName}地名、當地食材或文化特色
+2. 參考當地知名景點、美食、特產
+3. 每個 3-10 字
+
+直接輸出關鍵字，不要編號：
+${cityName}小吃
+${cityName}老街
+${cityName}名產
+在地推薦
+古蹟巡禮`,
+    mixed: `規則：
 1. 混合「通用分類」和「在地特色」兩種類型
 2. 通用分類參考：${hints}
 3. 在地特色可加入地名或當地食材/文化
@@ -141,7 +168,12 @@ ${avoidSection}
 老街冰品
 田園咖啡
 手作工坊
-秘境步道`;
+秘境步道`
+  };
+  
+  const prompt = `為「${cityName}」的「${categoryName}」生成 ${count} 個 Google Maps 搜尋關鍵字。
+${avoidSection}
+${modeInstructions[globalKeywordMode]}`;
 
   try {
     const response = await fetch(`${GEMINI_BASE_URL}/models/gemini-2.5-flash:generateContent`, {
@@ -422,12 +454,24 @@ async function collectCategoryParallel(
 }
 
 async function main() {
-  const cityName = process.argv[2] || '嘉義市';
-  const categoryFilter = process.argv[3]; // 可選：指定類別（中文或英文代碼）
+  const args = process.argv.slice(2);
+  const modeArg = args.find(a => a.startsWith('--mode='));
+  const cityName = args.find(a => !a.startsWith('--')) || '嘉義市';
+  const categoryFilter = args.filter(a => !a.startsWith('--'))[1];
+  
+  if (modeArg) {
+    const mode = modeArg.split('=')[1] as KeywordMode;
+    if (['generic', 'local', 'mixed'].includes(mode)) {
+      globalKeywordMode = mode;
+    }
+  }
+  
   const startTime = Date.now();
+  const modeLabel = { generic: '通用關鍵字', local: '在地特色', mixed: '混合模式' }[globalKeywordMode];
   
   console.log('🚀 並行批次採集模式');
   console.log(`📍 目標城市: ${cityName}`);
+  console.log(`🎯 關鍵字模式: ${modeLabel}`);
   if (categoryFilter) {
     console.log(`🏷️ 指定類別: ${categoryFilter}`);
   } else {
