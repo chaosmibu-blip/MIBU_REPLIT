@@ -131,7 +131,7 @@ async function generateDescriptionsForCategory(
 
   const prompt = CATEGORY_PROMPTS[category] || CATEGORY_PROMPTS['景點'];
   const batchSize = 15;
-  const aiConcurrency = 3;  // 同時 3 個 AI 請求
+  const aiConcurrency = 10;  // 同時 10 個 AI 請求
 
   const batches: PlaceData[][] = [];
   for (let i = 0; i < places.length; i += batchSize) {

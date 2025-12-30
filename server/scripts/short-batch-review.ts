@@ -213,7 +213,7 @@ async function shortBatchReview() {
   
   const BATCH_LIMIT = numericArg ? parseInt(numericArg) : 1000;  // 每輪處理上限（預設 1000）
   const CHUNK_SIZE = 50;  // 每批 AI 審核筆數
-  const DELAY_BETWEEN_CHUNKS = 5000;  // 5 秒間隔
+  const DELAY_BETWEEN_CHUNKS = 1000;  // 1 秒間隔
   const AUTO_LOOP = !noLoopFlag;  // 預設自動循環直到完成
   
   console.log(`🚀 優化版批次 AI 審查模式`);
