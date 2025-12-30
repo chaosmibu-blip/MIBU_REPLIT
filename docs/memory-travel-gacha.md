@@ -209,8 +209,8 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 
 ### 核心腳本（4 個）
 ```bash
-# 1. 批次採集（支援關鍵字模式）
-npx tsx server/scripts/batch-parallel-collect.ts 城市名 [類別] [--mode=generic|local|mixed]
+# 1. 批次採集（支援關鍵字模式與區域指定）
+npx tsx server/scripts/batch-parallel-collect.ts 城市名 [類別] [--mode=generic|local|mixed] [--district=區域名]
 
 # 2. AI 審核
 npx tsx server/scripts/short-batch-review.ts [數量]
@@ -220,6 +220,12 @@ npx tsx server/scripts/migrate-with-descriptions.ts [數量]
 
 # 4. 補描述（選用）
 npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
+```
+
+**區域補強採集範例**：
+```bash
+# 補強桃園市觀音區
+npx tsx server/scripts/batch-parallel-collect.ts 桃園市 --district=觀音區 --mode=mixed
 ```
 
 ### 執行規範

@@ -325,7 +325,8 @@ async function generateDescriptionsBatch(places: any[], cityName: string): Promi
 
 async function collectKeywordsParallel(
   keywords: string[], 
-  cityName: string, 
+  cityName: string,
+  searchLocation: string,
   categoryName: string,
   sessionPlaceIds: Set<string>
 ): Promise<{ places: any[]; saved: number; skipped: number }> {
@@ -338,7 +339,7 @@ async function collectKeywordsParallel(
     const batch = keywords.slice(i, i + CONCURRENCY);
     
     const searchPromises = batch.map(async (keyword) => {
-      const places = await searchGooglePlaces(keyword, cityName);
+      const places = await searchGooglePlaces(keyword, searchLocation);
       return { keyword, places };
     });
 
@@ -432,6 +433,7 @@ async function collectKeywordsParallel(
 async function collectCategoryParallel(
   category: typeof CATEGORIES[0],
   cityName: string,
+  searchLocation: string,
   existingPlaceIds: Set<string>
 ): Promise<{ category: string; saved: number; skipped: number }> {
   console.log(`\n📦 [${category.nameZh}] AI 關鍵字擴散中...`);
@@ -443,6 +445,7 @@ async function collectCategoryParallel(
   const result = await collectKeywordsParallel(
     keywords,
     cityName,
+    searchLocation,
     category.nameZh,
     existingPlaceIds
   );
@@ -454,8 +457,10 @@ async function collectCategoryParallel(
 async function main() {
   const args = process.argv.slice(2);
   const modeArg = args.find(a => a.startsWith('--mode='));
+  const districtArg = args.find(a => a.startsWith('--district='));
   const cityName = args.find(a => !a.startsWith('--')) || '嘉義市';
   const categoryFilter = args.filter(a => !a.startsWith('--'))[1];
+  const targetDistrict = districtArg?.split('=')[1] || null;
   
   if (modeArg) {
     const mode = modeArg.split('=')[1] as KeywordMode;
@@ -466,14 +471,18 @@ async function main() {
   
   const startTime = Date.now();
   const modeLabel = { generic: '通用關鍵字', local: '在地特色', mixed: '混合模式' }[globalKeywordMode];
+  const searchLocation = targetDistrict ? `${cityName}${targetDistrict}` : cityName;
   
   console.log('🚀 並行批次採集模式');
   console.log(`📍 目標城市: ${cityName}`);
+  if (targetDistrict) {
+    console.log(`📍 指定區域: ${targetDistrict}`);
+  }
   console.log(`🎯 關鍵字模式: ${modeLabel}`);
   if (categoryFilter) {
     console.log(`🏷️ 指定類別: ${categoryFilter}`);
   } else {
-    console.log('🏷️ 類別: 全部（8類別）');
+    console.log('🏷️ 類別: 全部（7類別）');
   }
   console.log('='.repeat(50));
   
@@ -493,7 +502,7 @@ async function main() {
   }
 
   const categoryPromises = categoriesToCollect.map(category => 
-    collectCategoryParallel(category, cityName, existingPlaceIds)
+    collectCategoryParallel(category, cityName, searchLocation, existingPlaceIds)
   );
 
   const results = await Promise.all(categoryPromises);
