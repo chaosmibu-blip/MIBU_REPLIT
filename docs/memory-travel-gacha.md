@@ -195,7 +195,7 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 ### place_cache 資料結構
 ```typescript
 {
-  category: '美食',           // 八大類之一
+  category: '美食',           // 七大類之一
   subCategory: '在地早餐',     // 規則映射產生
   googleTypes: 'restaurant,cafe',  // Google 原始類型（保留追溯）
   primaryType: 'restaurant',       // Google 主要類型
@@ -238,7 +238,7 @@ npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
 腳本：batch-parallel-collect.ts
 輸入：城市名稱、[可選類別]
 輸出：寫入 place_cache 表（ai_reviewed = false）
-動作：8 類別各 10 關鍵字，Google Places API 採集
+動作：7 類別各 10 關鍵字，Google Places API 採集
 
 ↓
 

@@ -101,6 +101,19 @@ export async function batchGenerateDescriptions(
 // 429 時執行 Exponential Backoff: 5s → 10s → 20s
 ```
 
+### 採集腳本參數（2025-12-30）
+| 腳本 | 參數 | 預設值 | 說明 |
+|------|------|--------|------|
+| short-batch-review.ts | BATCH_LIMIT | 1000 | 每輪處理上限 |
+| short-batch-review.ts | CHUNK_SIZE | 50 | 每批 AI 審核筆數 |
+| short-batch-review.ts | DELAY_BETWEEN_CHUNKS | 1000ms | 批次間隔 |
+| short-batch-review.ts | MAX_RETRIES | 3 | 429 錯誤重試次數 |
+| short-batch-review.ts | maxOutputTokens | 16384 | AI 回應 token 上限 |
+| migrate-with-descriptions.ts | batchSize | 15 | 每批描述生成筆數 |
+| migrate-with-descriptions.ts | aiConcurrency | 10 | AI 並行請求數 |
+| migrate-with-descriptions.ts | maxOutputTokens | 16384 | AI 回應 token 上限 |
+| batch-parallel-collect.ts | CONCURRENCY | 10 | 類別內並行請求數 |
+
 ### 調用規範
 - 所有 Gemini 調用應使用 `placeGenerator.ts` 導出的函數
 - 避免各模組自建調用函數，確保 Rate Limit 防護一致

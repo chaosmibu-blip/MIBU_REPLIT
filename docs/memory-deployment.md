@@ -181,11 +181,11 @@ npm run db:studio
 
 | 任務 | 頻率 | 功能 | 狀態 |
 |------|------|------|------|
-| AutoDraft | 30 秒 | 自動生成景點草稿 | ✅ 運行中 |
-| AIReview | 30 秒 | AI 審核 place_cache | ✅ 運行中 |
 | AutoCleanup | 1 小時 | 清理過期 SOS | ✅ 運行中 |
 | DataCleanup | 48 小時 | 資料清理 | ✅ 運行中 |
 | Stripe Sync | 啟動時 | Stripe 資料同步 | ✅ 運行中 |
+
+> ⚠️ **已移除**：AutoDraft 和 AIReview 已於 2025-12-25 移除，改為手動腳本執行（見 `memory-travel-gacha.md`）
 
 ---
 

@@ -20,7 +20,7 @@ countries (國家)
 
 ### 2. 類別階層 (Category Hierarchy)
 ```
-categories (大類別: 食、遊、購、宿、行)
+categories (七大類別: 美食、住宿、景點、購物、娛樂設施、生態文化教育、遊程體驗)
   └── subcategories (子類別)
 ```
 
@@ -109,7 +109,7 @@ message_highlights (訊息重點)
   placeName: text NOT NULL;
   city: text NOT NULL;
   district: text;
-  category: text;           // 食、遊、購、宿、行
+  category: text;           // 七大類：美食、住宿、景點、購物、娛樂設施、生態文化教育、遊程體驗
   subcategory: text;
   googlePlaceId: text UNIQUE;
   googleRating: numeric;
@@ -179,10 +179,10 @@ DO UPDATE SET pullCount = pullCount + :count
 - 會產生破壞性 ALTER TABLE
 - 使用 `npm run db:push --force` 同步
 
-## 資料量統計 (2024-12)
-- places: 1,633 筆
+## 資料量統計 (2025-12-30)
+- places: 14,612 筆（已完成 6 縣市：台北市、宜蘭縣、高雄市、臺南市、臺中市、新北市）
 - users: ~500 筆
-- regions: 22 個城市有資料
+- regions: 22 個縣市
 
 ---
 
