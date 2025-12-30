@@ -9,6 +9,28 @@ const TAIWAN_CITIES = [
   '台東縣', '臺東縣', '澎湖縣', '金門縣', '連江縣'
 ];
 
+// 離島郵遞區號對應（Google Places API 有時只回傳郵遞區號）
+const ZIPCODE_TO_CITY: Record<string, { city: string; district: string }> = {
+  // 金門縣 890-894
+  '890': { city: '金門縣', district: '金沙鎮' },
+  '891': { city: '金門縣', district: '金湖鎮' },
+  '892': { city: '金門縣', district: '金寧鄉' },
+  '893': { city: '金門縣', district: '金城鎮' },
+  '894': { city: '金門縣', district: '烈嶼鄉' },
+  // 連江縣 209-212
+  '209': { city: '連江縣', district: '南竿鄉' },
+  '210': { city: '連江縣', district: '北竿鄉' },
+  '211': { city: '連江縣', district: '莒光鄉' },
+  '212': { city: '連江縣', district: '東引鄉' },
+  // 澎湖縣 880-885
+  '880': { city: '澎湖縣', district: '馬公市' },
+  '881': { city: '澎湖縣', district: '西嶼鄉' },
+  '882': { city: '澎湖縣', district: '望安鄉' },
+  '883': { city: '澎湖縣', district: '七美鄉' },
+  '884': { city: '澎湖縣', district: '白沙鄉' },
+  '885': { city: '澎湖縣', district: '湖西鄉' },
+};
+
 const DISTRICT_SUFFIXES = ['市', '區', '鄉', '鎮'];
 
 interface ParsedAddress {
@@ -22,12 +44,23 @@ interface ParsedAddress {
  * 範例：
  * - "265台灣宜蘭縣羅東鎮興東路8-1號" → { city: "宜蘭縣", district: "羅東鎮" }
  * - "320台灣桃園市中壢區中正路333號" → { city: "桃園市", district: "中壢區" }
+ * - "893前水頭45" → { city: "金門縣", district: "金城鎮" } (透過郵遞區號辨識)
  */
 export function parseAddress(address: string | null | undefined): ParsedAddress {
   if (!address) return { city: null, district: null };
 
   let city: string | null = null;
   let district: string | null = null;
+
+  // 先嘗試透過郵遞區號識別離島地址（Google Places API 常省略縣市名）
+  const zipcodeMatch = address.match(/^(\d{3})/);
+  if (zipcodeMatch) {
+    const zipcode = zipcodeMatch[1];
+    const mapped = ZIPCODE_TO_CITY[zipcode];
+    if (mapped) {
+      return { city: mapped.city, district: mapped.district };
+    }
+  }
 
   // 移除郵遞區號和「台灣」前綴
   const cleanAddress = address.replace(/^\d{3,5}/, '').replace(/^台灣/, '');
