@@ -3,9 +3,11 @@
  * 用於規則映射，不依賴 AI，100% 成功率
  */
 
-// 八大種類
-export const EIGHT_CATEGORIES = ['美食', '住宿', '生態文化教育', '遊程體驗', '娛樂設施', '活動', '景點', '購物'] as const;
-export type MibuCategory = typeof EIGHT_CATEGORIES[number];
+// 七大種類（2025-12-30 移除活動類別）
+export const SEVEN_CATEGORIES = ['美食', '住宿', '生態文化教育', '遊程體驗', '娛樂設施', '景點', '購物'] as const;
+export type MibuCategory = typeof SEVEN_CATEGORIES[number];
+// 保留舊名稱作為別名
+export const EIGHT_CATEGORIES = SEVEN_CATEGORIES;
 
 // Google Type → Category 對照表
 export const TYPE_TO_CATEGORY: Record<string, MibuCategory> = {
@@ -75,28 +77,52 @@ export const TYPE_TO_CATEGORY: Record<string, MibuCategory> = {
   'go_kart_track': '娛樂設施',
   'miniature_golf': '娛樂設施',
   
-  // 活動
-  'spa': '活動',
-  'gym': '活動',
-  'fitness_center': '活動',
-  'yoga_studio': '活動',
-  'golf_course': '活動',
-  'stadium': '活動',
-  'sports_club': '活動',
-  'swimming_pool': '活動',
-  'ski_resort': '活動',
-  'hiking_area': '活動',
-  'bicycle_store': '活動',
-  'bicycle_rental': '活動',
-  'surfing_area': '活動',
-  'diving_center': '活動',
-  'sports_complex': '活動',
-  'tennis_court': '活動',
-  'basketball_court': '活動',
-  'soccer_field': '活動',
-  'horse_riding': '活動',
-  'rock_climbing': '活動',
-  'rafting': '活動',
+  // 戶外體驗與 SPA（原活動類別，重新映射到遊程體驗）
+  'spa': '遊程體驗',
+  'massage': '遊程體驗',
+  'massage_parlor': '遊程體驗',
+  'hot_spring': '遊程體驗',
+  'hot_spring_resort': '遊程體驗',
+  'fishing': '遊程體驗',
+  'fishing_charter': '遊程體驗',
+  'fishing_pond': '遊程體驗',
+  'hiking_area': '遊程體驗',
+  'surfing_area': '遊程體驗',
+  'diving_center': '遊程體驗',
+  'horse_riding': '遊程體驗',
+  'rock_climbing': '遊程體驗',
+  'rafting': '遊程體驗',
+  'ski_resort': '遊程體驗',
+  'bicycle_rental': '遊程體驗',
+  'kayak_rental': '遊程體驗',
+  'boat_rental': '遊程體驗',
+  'scuba_diving': '遊程體驗',
+  'snorkeling': '遊程體驗',
+  'paragliding': '遊程體驗',
+  'bungee_jumping': '遊程體驗',
+  'zip_line': '遊程體驗',
+  'public_bath': '遊程體驗',
+  'adventure_sports_center': '遊程體驗',
+  'tour_agency': '遊程體驗',
+  'community_center': '遊程體驗',
+  // 以下會被黑名單過濾，但仍需映射避免 fallback 錯誤
+  'gym': '娛樂設施',
+  'fitness_center': '娛樂設施',
+  'yoga_studio': '娛樂設施',
+  'golf_course': '娛樂設施',
+  'stadium': '娛樂設施',
+  'sports_club': '娛樂設施',
+  'swimming_pool': '娛樂設施',
+  'bicycle_store': '購物',
+  'sports_complex': '娛樂設施',
+  'tennis_court': '娛樂設施',
+  'basketball_court': '娛樂設施',
+  'soccer_field': '娛樂設施',
+  'athletic_field': '娛樂設施',
+  'event_venue': '娛樂設施',
+  'skateboard_park': '娛樂設施',
+  'ice_skating_rink': '娛樂設施',
+  'health': '娛樂設施',
   
   // 景點
   'park': '景點',
@@ -120,7 +146,6 @@ export const TYPE_TO_CATEGORY: Record<string, MibuCategory> = {
   'beach': '景點',
   'mountain': '景點',
   'waterfall': '景點',
-  'hot_spring': '景點',
   'national_park': '景點',
   'state_park': '景點',
   'garden': '景點',
@@ -210,6 +235,33 @@ export const TYPE_TO_SUBCATEGORY: Record<string, string> = {
   'winery': '酒莊',
   'distillery': '蒸餾酒廠',
   'brewery': '啤酒廠',
+  'spa': 'SPA按摩',
+  'massage': '按摩',
+  'massage_parlor': '按摩館',
+  'hot_spring': '溫泉體驗',
+  'hot_spring_resort': '溫泉度假村',
+  'fishing': '釣魚',
+  'fishing_charter': '海釣船',
+  'fishing_pond': '釣魚池',
+  'hiking_area': '健行步道',
+  'surfing_area': '衝浪區',
+  'diving_center': '潛水中心',
+  'horse_riding': '馬術體驗',
+  'rock_climbing': '攀岩',
+  'rafting': '泛舟',
+  'ski_resort': '滑雪場',
+  'bicycle_rental': '自行車租賃',
+  'kayak_rental': '獨木舟租賃',
+  'boat_rental': '遊船租賃',
+  'scuba_diving': '水肺潛水',
+  'snorkeling': '浮潛',
+  'paragliding': '飛行傘',
+  'bungee_jumping': '高空彈跳',
+  'zip_line': '高空滑索',
+  'public_bath': '大眾浴場',
+  'adventure_sports_center': '冒險運動中心',
+  'tour_agency': '旅行社',
+  'community_center': '社區中心',
   
   // 娛樂設施
   'amusement_park': '遊樂園',
@@ -227,8 +279,7 @@ export const TYPE_TO_SUBCATEGORY: Record<string, string> = {
   'go_kart_track': '卡丁車場',
   'miniature_golf': '迷你高爾夫',
   
-  // 活動
-  'spa': 'SPA',
+  // 運動設施（會被黑名單過濾，但保留映射避免錯誤）
   'gym': '健身房',
   'fitness_center': '健身中心',
   'yoga_studio': '瑜伽教室',
@@ -236,19 +287,16 @@ export const TYPE_TO_SUBCATEGORY: Record<string, string> = {
   'stadium': '體育場',
   'sports_club': '運動俱樂部',
   'swimming_pool': '游泳池',
-  'ski_resort': '滑雪場',
-  'hiking_area': '健行步道',
-  'bicycle_store': '自行車店',
-  'bicycle_rental': '自行車租賃',
-  'surfing_area': '衝浪區',
-  'diving_center': '潛水中心',
   'sports_complex': '運動中心',
   'tennis_court': '網球場',
   'basketball_court': '籃球場',
   'soccer_field': '足球場',
-  'horse_riding': '馬術',
-  'rock_climbing': '攀岩',
-  'rafting': '泛舟',
+  'bicycle_store': '自行車店',
+  'athletic_field': '田徑場',
+  'event_venue': '活動場地',
+  'skateboard_park': '滑板公園',
+  'ice_skating_rink': '溜冰場',
+  'health': '健康中心',
   
   // 景點
   'park': '公園',
@@ -272,7 +320,6 @@ export const TYPE_TO_SUBCATEGORY: Record<string, string> = {
   'beach': '海灘',
   'mountain': '山岳',
   'waterfall': '瀑布',
-  'hot_spring': '溫泉',
   'national_park': '國家公園',
   'state_park': '州立公園',
   'garden': '花園',
@@ -348,7 +395,6 @@ const CATEGORY_DEFAULT_SUBCATEGORY: Record<MibuCategory, string> = {
   '生態文化教育': '教育場所',
   '遊程體驗': '體驗活動',
   '娛樂設施': '娛樂場所',
-  '活動': '休閒活動',
   '景點': '觀光景點',
   '購物': '商店',
 };
@@ -389,7 +435,6 @@ export function generateFallbackDescription(
     '景點': `${city}必訪景點「${name}」，感受在地自然與人文魅力。`,
     '購物': `${city}特色${subcategory}「${name}」，挖寶好去處。`,
     '娛樂設施': `${city}人氣${subcategory}「${name}」，適合闔家同樂。`,
-    '活動': `在${city}體驗「${name}」，創造難忘回憶。`,
     '遊程體驗': `${city}特色體驗「${name}」，深度感受在地文化。`,
     '生態文化教育': `${city}生態教育景點「${name}」，寓教於樂的好選擇。`,
   };

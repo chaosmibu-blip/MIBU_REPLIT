@@ -171,20 +171,26 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 3. **描述生成**：`batchGenerateDescriptionsOnly()` - AI 只生成描述（不做分類）
 4. **Fallback 模板**：AI 失敗時用 `generateFallbackDescription()` 智能模板（非通用文字）
 
-### 八大分類與子分類結構
+### 七大分類與子分類結構（2025-12-30 更新）
 - **檔案**：`server/lib/categoryMapping.ts`
 - **對照來源**：Google Places API 的 `primaryType` 和 `types[]`
+- **重要變更**：移除「活動」類別（時效性強），活動相關 Google Types 已重新映射到其他類別
 
 | Category | Google Types 範例 | Subcategory 範例 |
 |----------|------------------|-----------------|
-| 美食 | restaurant, cafe, bakery, bar | 在地早餐、火鍋、燒烤、甜點 |
+| 美食 | restaurant, cafe, bakery, bar | 在地早餐、火鍋、燒烤、甜點、熱炒、素食 |
 | 住宿 | lodging, hotel, hostel, campground | 星級飯店、民宿、露營、青年旅社 |
-| 景點 | park, temple, beach, monument | 城市公園、宗教聖地、自然風光 |
-| 購物 | store, shopping_mall, market | 百貨公司、夜市、特色商店 |
-| 活動 | spa, gym, hiking_area, golf_course | 登山步道、水上活動、按摩/足湯 |
-| 娛樂設施 | amusement_park, movie_theater, karaoke | 主題樂園、電影院、KTV |
+| 景點 | park, temple, beach, monument | 城市公園、宗教聖地、自然風光、特色建築 |
+| 購物 | store, shopping_mall, market | 百貨公司、夜市、特色商店、在地超市 |
+| 娛樂設施 | amusement_park, arcade | 主題樂園、遊樂園區 |
 | 生態文化教育 | museum, zoo, aquarium, library | 博物館、生態園區、文化中心 |
-| 遊程體驗 | tourist_attraction, farm, winery | 一日遊、DIY體驗、農場體驗 |
+| 遊程體驗 | tourist_attraction, farm, spa, hiking | 一日遊、DIY體驗、農場體驗、登山步道、SPA按摩 |
+
+> 📌 **活動類別 Types 重新映射**：
+> - `spa`, `massage`, `hot_spring` → 遊程體驗
+> - `hiking_area`, `fishing_charter` → 遊程體驗
+> - `sports_complex`, `swimming_pool` → 娛樂設施
+> - `gym`, `karaoke`, `movie_theater`, `bowling_alley` → 黑名單
 
 ### place_cache 資料結構
 ```typescript
@@ -199,7 +205,7 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 
 ### 行程卡顯示標籤
 - 前端使用 **`category`** 欄位透過 `getCategoryLabel()` 顯示
-- 資料庫統一使用中文八大類：美食、住宿、景點、購物、活動、娛樂設施、生態文化教育、遊程體驗
+- 資料庫統一使用中文七大類：美食、住宿、景點、購物、娛樂設施、生態文化教育、遊程體驗（2025-12-30 移除活動類別）
 
 ### 核心腳本（4 個）
 ```bash
@@ -267,6 +273,34 @@ npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
 ---
 
 ## Changelog
+
+### 2025-12-30 - 類別架構優化與臺中市採集
+
+#### 類別架構重大變更
+- **移除活動類別**：八大類→七大類，移除時效性強的「活動」類別
+- **活動 Google Types 重新映射**：
+  - `spa`, `massage`, `hot_spring`, `hiking_area` → 遊程體驗
+  - `sports_complex`, `swimming_pool` → 娛樂設施
+  - `gym`, `karaoke`, `movie_theater`, `bowling_alley` → 黑名單
+- **黑名單擴充**：影城、KTV、健身房、保齡球、撞球、網咖、展覽、市集、音樂會、節慶、運動賽事
+
+#### 採集進度
+- **臺中市採集完成**：通用 1,933 筆 + 在地 791 筆 = 2,724 筆採集、2,157 筆升級
+- **正式表總數**：11,831 筆（遷移活動類別後刪除 95 筆黑名單）
+- **已完成縣市**：台北市、宜蘭縣、高雄市、臺南市、臺中市（5/22）
+
+#### 活動類別遷移
+- 121 筆 spa/hiking 等遷移到「遊程體驗」
+- 9 筆購物相關遷移到「購物」
+- 1 筆 massage 遷移到「遊程體驗」
+- 95 筆黑名單（gym/yoga/sports）已刪除
+- 3 筆其他遷移到「娛樂設施」
+
+#### 子分類擴充
+- 美食：15→25 項（新增熱炒、素食、排骨飯、雞肉飯等）
+- 景點：移除車站/吊橋，新增特色建築/地標
+- 購物：移除書店，新增在地超市
+- 娛樂設施：移除 KTV/電影院/保齡球等（併入黑名單）
 
 ### 2025-12-29 - 採集與升級效能優化
 
