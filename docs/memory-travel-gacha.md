@@ -99,7 +99,7 @@ userRecentGachaCache: Map<string, RecentGachaResult[]>
 |------|------------|------|
 | 景點、生態文化教育、遊程體驗 | 200 | 大型園區容易有子景點問題 |
 | 美食、購物 | 50 | 夜市/商圈店家密集，保留多樣性 |
-| 活動、娛樂設施 | 100 | 適中距離 |
+| 娛樂設施 | 100 | 適中距離 |
 | 住宿 | 0（不去重） | 每輪最多 1 個，無需去重 |
 
 ### 實作位置
@@ -351,7 +351,7 @@ npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
 
 ### 2025-12-28 - 地理距離去重機制
 - **解決問題**：同一輪扭蛋抽到多個傳藝中心子景點
-- **實作**：依類別設定距離閾值（景點 200m、美食 50m、活動 100m）
+- **實作**：依類別設定距離閾值（景點 200m、美食 50m、娛樂設施 100m）
 - **效果**：五結鄉扭蛋從 4 個傳藝中心景點降至 1 個
 
 ### 2025-12-27 - 地址解析器與城市驗證
@@ -364,7 +364,7 @@ npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
 
 ### 2025-12-27 - 腳本清理與資料庫重置
 - **刪除 8 個一次性修復腳本**：fix-google-types, regenerate-star-descriptions, reclassify-data, cleanup-places, migrate-cache-to-places, batch-taipei-all-categories, test-batch-generate, test-batch-with-save
-- **保留 5 個核心腳本**：batch-parallel-collect, short-batch-review, migrate-with-descriptions, promote-to-places, generate-descriptions
+- **保留 4 個核心腳本**：batch-parallel-collect, short-batch-review, migrate-with-descriptions, generate-descriptions
 - **清空開發環境資料庫**：place_cache (0)、place_drafts (922)、places (6,378) → 全部歸零
 - **修正描述生成規則**：禁止「X.X分」格式（原只禁「X.X星」）
 - **目的**：從零建立高品質旅遊資料，避免低品質資料混入
