@@ -18,6 +18,7 @@ import { getUncachableStripeClient } from "./stripeClient";
 import { checkGeofence } from "./lib/geofencing";
 import { callGemini, batchGeneratePlaces, batchGenerateDescriptions, batchGenerateWithClassification, classifyAndDescribePlaces, reclassifyPlace, type PlaceResult, type PlaceWithClassification } from "./lib/placeGenerator";
 import { determineCategory, determineSubcategory, generateFallbackDescription, classifyPlace } from "./lib/categoryMapping";
+import { inferTimeSlot, sortPlacesByTimeSlot, type TimeSlot } from "./lib/timeSlotInferrer";
 import twilio from "twilio";
 import appleSignin from "apple-signin-auth";
 import { gachaRateLimiter, apiRateLimiter, strictRateLimiter } from "./middleware/rateLimit";
@@ -4094,13 +4095,20 @@ ${uncachedSkeleton.map((item, idx) => `  {
       
       const coordinateSortedPlaces = sortByCoordinates(selectedPlaces);
       
-      // ========== Step 3b: 住宿排最後 ==========
-      // 把「住宿」類別的地點抽出，放到最後（晚上才入住）
-      const stayPlaces = coordinateSortedPlaces.filter(p => p.category === '住宿');
-      const nonStayPlaces = coordinateSortedPlaces.filter(p => p.category !== '住宿');
-      const sortedPlaces = [...nonStayPlaces, ...stayPlaces];
+      // ========== Step 3b: 智慧時段排序 ==========
+      // 根據營業時間/類別推斷最佳時段，早餐排前面、宵夜排後面、住宿最後
+      const timeSlotSortedPlaces = sortPlacesByTimeSlot(coordinateSortedPlaces);
       
-      console.log('[Gacha V3] After stay reorder:', { nonStay: nonStayPlaces.length, stay: stayPlaces.length });
+      // 記錄排序結果
+      const stayPlaces = timeSlotSortedPlaces.filter(p => p.category === '住宿');
+      const nonStayPlaces = timeSlotSortedPlaces.filter(p => p.category !== '住宿');
+      const sortedPlaces = timeSlotSortedPlaces;
+      
+      console.log('[Gacha V3] After time slot sort:', { 
+        nonStay: nonStayPlaces.length, 
+        stay: stayPlaces.length,
+        order: timeSlotSortedPlaces.slice(0, 5).map(p => `${p.placeName}(${inferTimeSlot(p).slot})`)
+      });
 
       // ========== Step 3c: AI 在地人調整順序 ==========
       let finalPlaces = sortedPlaces;
@@ -4196,12 +4204,20 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
       
       const couponsWon: Array<{ couponId: number; placeId: number; placeName: string; title: string; code: string; terms?: string | null }> = [];
       
-      // 時段分配
-      const timeSlots = ['breakfast', 'morning', 'lunch', 'afternoon', 'dinner', 'evening'];
+      // 時段分配：使用智慧推斷取代 modulo 循環
+      const timeSlotLabelMap: Record<TimeSlot, string> = {
+        morning: 'morning',
+        noon: 'lunch',
+        afternoon: 'afternoon',
+        evening: 'dinner',
+        night: 'evening',
+        flexible: 'afternoon'
+      };
       
       for (let i = 0; i < finalPlaces.length; i++) {
         const place = finalPlaces[i];
-        const timeSlot = timeSlots[i % timeSlots.length];
+        const inferredSlot = inferTimeSlot(place);
+        const timeSlot = timeSlotLabelMap[inferredSlot.slot];
         
         let couponWon = null;
         const claimInfo = await storage.getClaimByOfficialPlaceId(place.id);
