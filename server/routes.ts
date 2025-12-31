@@ -4205,13 +4205,14 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
       const couponsWon: Array<{ couponId: number; placeId: number; placeName: string; title: string; code: string; terms?: string | null }> = [];
       
       // 時段分配：使用智慧推斷取代 modulo 循環
+      // 映射到舊的標籤名稱以保持向下相容
       const timeSlotLabelMap: Record<TimeSlot, string> = {
-        morning: 'morning',
-        noon: 'lunch',
-        afternoon: 'afternoon',
-        evening: 'dinner',
-        night: 'evening',
-        flexible: 'afternoon'
+        morning: 'breakfast',   // 早上 → breakfast（早餐時段）
+        noon: 'lunch',          // 中午 → lunch（午餐時段）
+        afternoon: 'afternoon', // 下午 → afternoon
+        evening: 'dinner',      // 晚上 → dinner（晚餐時段）
+        night: 'evening',       // 深夜 → evening（晚間活動）
+        flexible: 'afternoon'   // 彈性 → afternoon（預設下午）
       };
       
       for (let i = 0; i < finalPlaces.length; i++) {
