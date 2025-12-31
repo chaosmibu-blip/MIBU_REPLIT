@@ -156,6 +156,81 @@ async function generateDescriptionsForCategory(
   return totalUpdated;
 }
 
+async function fillMissingDescriptions(targetCity?: string) {
+  const startTime = Date.now();
+  
+  console.log('🔧 補齊缺失描述模式');
+  if (targetCity) {
+    console.log(`📍 目標城市: ${targetCity}`);
+  } else {
+    console.log('📍 目標: 全部縣市');
+  }
+  console.log('='.repeat(60));
+  
+  const whereCondition = targetCity
+    ? and(
+        eq(schema.places.city, targetCity),
+        eq(schema.places.isActive, true),
+        eq(schema.places.description, '')
+      )
+    : and(
+        eq(schema.places.isActive, true),
+        eq(schema.places.description, '')
+      );
+  
+  const placesNeedingDesc = await db.select({
+    id: schema.places.id,
+    placeName: schema.places.placeName,
+    category: schema.places.category,
+    address: schema.places.address,
+    rating: schema.places.rating,
+    city: schema.places.city
+  })
+  .from(schema.places)
+  .where(whereCondition);
+  
+  if (placesNeedingDesc.length === 0) {
+    console.log('✅ 沒有缺失描述的景點');
+    await pool.end();
+    return;
+  }
+  
+  console.log(`📦 找到 ${placesNeedingDesc.length} 筆缺失描述`);
+  
+  const placesByCategory = new Map<string, number[]>();
+  for (const place of placesNeedingDesc) {
+    const cat = place.category || '景點';
+    if (!placesByCategory.has(cat)) placesByCategory.set(cat, []);
+    placesByCategory.get(cat)!.push(place.id);
+  }
+  
+  console.log('\n📊 類別分布:');
+  placesByCategory.forEach((ids, cat) => {
+    console.log(`   ${cat}: ${ids.length} 筆`);
+  });
+  
+  console.log('\n📝 開始生成描述（各類別並行）');
+  
+  const categoryPromises = Array.from(placesByCategory.entries()).map(
+    ([category, ids]) => generateDescriptionsForCategory(category, ids, targetCity || '全部')
+  );
+  
+  const descResults = await Promise.all(categoryPromises);
+  const totalDescriptions = descResults.reduce((sum, n) => sum + n, 0);
+  
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  
+  console.log('\n' + '='.repeat(60));
+  console.log('📊 補描述完成統計');
+  console.log(`   處理景點: ${placesNeedingDesc.length} 筆`);
+  console.log(`   成功生成: ${totalDescriptions} 筆`);
+  console.log(`   失敗: ${placesNeedingDesc.length - totalDescriptions} 筆`);
+  console.log(`   總耗時: ${elapsed} 秒`);
+  console.log('='.repeat(60));
+  
+  await pool.end();
+}
+
 async function migrateCacheToPlaces() {
   const cityArg = process.argv[2];
   const startTime = Date.now();
@@ -315,8 +390,20 @@ async function migrateCacheToPlaces() {
   await pool.end();
 }
 
-migrateCacheToPlaces().catch(e => {
-  console.error('Error:', e);
-  pool.end();
-  process.exit(1);
-});
+const args = process.argv.slice(2);
+const isFillMode = args.includes('--fill');
+
+if (isFillMode) {
+  const cityArg = args.find(arg => !arg.startsWith('--'));
+  fillMissingDescriptions(cityArg).catch(e => {
+    console.error('Error:', e);
+    pool.end();
+    process.exit(1);
+  });
+} else {
+  migrateCacheToPlaces().catch(e => {
+    console.error('Error:', e);
+    pool.end();
+    process.exit(1);
+  });
+}
