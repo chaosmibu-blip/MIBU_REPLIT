@@ -409,6 +409,12 @@ npx tsx server/scripts/batch-parallel-collect.ts 桃園市 --district=觀音區 
 - **修正**：統一 `RARITY_DROP_RATES` 與 `/api/rarity-config` 返回值
 - **正式機率**：SP 2%, SSR 8%, SR 15%, S 23%, R 32%
 
+### 2025-12-31 - 黑名單擴充與清理
+- **擴充 EXCLUDE_KEYWORDS**：新增 `電影院`, `電影`, `健身`, `gym`, `瑜珈`, `yoga`
+- **清理 places 表**：刪除 217 筆符合擴充黑名單的資料
+  - KTV: 55 筆、市集: 50 筆、電影/影城: 49 筆、健身/gym: 21 筆
+  - 展覽: 12 筆、保齡球: 9 筆、音樂會: 7 筆、瑜珈/yoga: 6 筆、撞球: 3 筆、網咖: 1 筆
+
 ### 2025-12-29 - 黑名單 API 與營業時間欄位
 - **新增 API**：`GET /api/admin/delete-blacklist-places`
   - 查詢並刪除符合黑名單關鍵字的 places 資料
