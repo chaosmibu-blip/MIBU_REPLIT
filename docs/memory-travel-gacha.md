@@ -388,6 +388,21 @@ npx tsx server/scripts/batch-parallel-collect.ts 桃園市 --district=觀音區 
 - 原子更新 `pull_count` 防止 Race Condition
 - 無 API 快取，每次都重新隨機選取
 
+## ⚠️ 腳本穩定性原則（2026-01-01 新增）
+> **未經用戶同意，不得隨意修改以下腳本**
+
+| 腳本 | 用途 | 狀態 |
+|------|------|------|
+| `batch-parallel-collect.ts` | 批次採集 | 🔒 穩定 |
+| `short-batch-review.ts` | AI 審核（place_cache） | 🔒 穩定 |
+| `migrate-with-descriptions.ts` | 升級到正式表 | 🔒 穩定 |
+| `deep-review-places.ts` | 深度審核（places） | 🔒 穩定 |
+
+**修改前必須**：
+1. 向用戶說明修改原因
+2. 獲得用戶明確同意
+3. 記錄變更到 Changelog
+
 ---
 
 ## Changelog
