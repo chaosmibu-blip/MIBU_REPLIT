@@ -33,51 +33,15 @@ const UNLIMITED_GENERATION_EMAILS = ["s8869420@gmail.com"];
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
 // ========== 扭蛋去重保護機制 ==========
-// 記錄每個用戶最近 N 次抽卡結果的景點 ID，避免連續抽到相同行程
-interface RecentGachaResult {
-  placeIds: Set<number>;
+// 新機制：從用戶圖鑑讀取最近 36 張，完全排除這些地點
+const GACHA_DEDUP_LIMIT = 36;
+
+// Guest 用戶的 session 級別去重快取（30 分鐘 TTL）
+interface GuestSessionDedup {
+  placeIds: number[];
   timestamp: number;
 }
-const userRecentGachaCache = new Map<string, RecentGachaResult[]>();
-const GACHA_CACHE_MAX_HISTORY = 3; // 記住最近 3 次抽卡結果
-const GACHA_CACHE_TTL = 30 * 60 * 1000; // 30 分鐘後過期
-
-function getRecentlyDrawnPlaceIds(userId: string, city: string): Set<number> {
-  const cacheKey = `${userId}:${city}`;
-  const history = userRecentGachaCache.get(cacheKey) || [];
-  const now = Date.now();
-  
-  // 過濾過期的記錄
-  const validHistory = history.filter(h => now - h.timestamp < GACHA_CACHE_TTL);
-  if (validHistory.length !== history.length) {
-    userRecentGachaCache.set(cacheKey, validHistory);
-  }
-  
-  // 合併所有最近抽過的 ID
-  const recentIds = new Set<number>();
-  for (const h of validHistory) {
-    Array.from(h.placeIds).forEach(id => recentIds.add(id));
-  }
-  return recentIds;
-}
-
-function recordGachaResult(userId: string, city: string, placeIds: number[]): void {
-  const cacheKey = `${userId}:${city}`;
-  const history = userRecentGachaCache.get(cacheKey) || [];
-  
-  // 新增本次結果
-  history.push({
-    placeIds: new Set(placeIds),
-    timestamp: Date.now()
-  });
-  
-  // 只保留最近 N 次
-  while (history.length > GACHA_CACHE_MAX_HISTORY) {
-    history.shift();
-  }
-  
-  userRecentGachaCache.set(cacheKey, history);
-}
+const guestSessionDedup = new Map<string, GuestSessionDedup>();
 
 interface PlaceSearchResult {
   name: string;
@@ -3875,29 +3839,26 @@ ${uncachedSkeleton.map((item, idx) => `  {
       }
       
       // ========== Step 2: 結構化選點 (Structured Selection) ==========
-      // 定義類別配比：基本配額 + 權重分配
-      const getFoodQuota = (count: number) => count <= 7 ? 2 : 3;
-      const getStayQuota = (count: number) => count >= 9 ? 1 : 0;
+      // 六大類別等權重隨機分配，美食不超過總數一半，住宿最多 1 個
+      const SIX_CATEGORIES = ['美食', '景點', '購物', '娛樂設施', '生態文化教育', '遊程體驗'];
+      const maxFoodCount = Math.floor(targetCount / 2); // 美食不超過一半
+      const maxStayCount = 1; // 住宿最多 1 個
       
-      const foodQuota = getFoodQuota(targetCount);
-      const stayQuota = getStayQuota(targetCount);
-      const remainingCount = targetCount - foodQuota - stayQuota;
-      
-      console.log('[Gacha V3] Quotas:', { foodQuota, stayQuota, remainingCount, targetCount });
+      console.log('[Gacha V3] Selection config:', { targetCount, maxFoodCount, maxStayCount });
       
       // 查詢錨點區域的地點
       let anchorPlaces = anchorDistrict 
-        ? await storage.getOfficialPlacesByDistrict(city, anchorDistrict, 100)
-        : await storage.getOfficialPlacesByCity(city, 100);
+        ? await storage.getOfficialPlacesByDistrict(city, anchorDistrict, 200)
+        : await storage.getOfficialPlacesByCity(city, 200);
       
       console.log('[Gacha V3] Anchor places found:', anchorPlaces.length, 'in', anchorDistrict || city);
       
       // Fallback: 如果錨點區沒有地點，擴展到整個城市
       if (anchorPlaces.length === 0 && anchorDistrict) {
         console.log('[Gacha V3] Anchor district empty, falling back to city-wide search');
-        anchorPlaces = await storage.getOfficialPlacesByCity(city, 100);
+        anchorPlaces = await storage.getOfficialPlacesByCity(city, 200);
         console.log('[Gacha V3] City-wide places found:', anchorPlaces.length);
-        anchorDistrict = undefined; // 清除錨點區，改用城市範圍
+        anchorDistrict = undefined;
       }
       
       // 只有整個城市都沒有地點時才返回錯誤
@@ -3929,40 +3890,30 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const anchorByCategory = groupByCategory(anchorPlaces);
       const selectedPlaces: any[] = [];
       
-      // ========== 去重保護：排除最近抽過的景點 ==========
-      let recentlyDrawnIds = getRecentlyDrawnPlaceIds(userId, city);
-      const usedIds = new Set<number>(recentlyDrawnIds);
-      console.log('[Gacha V3] Initial dedup exclusion:', recentlyDrawnIds.size, 'places');
+      // ========== 去重保護：排除用戶圖鑑最近 36 張地點 ==========
+      let recentCollectionIds: number[] = [];
+      if (userId && userId !== 'guest') {
+        recentCollectionIds = await storage.getRecentCollectionPlaceIds(userId, GACHA_DEDUP_LIMIT);
+      }
       
-      // 輔助函數：檢查新地點是否與已選地點距離過近
-      const isTooCloseToSelected = (place: any, selected: any[]): boolean => {
-        const radius = getGeoDedupeRadiusMeters(place.category || '其他');
-        if (radius === 0) return false;
-        
-        const lat1 = place.locationLat || place.location_lat;
-        const lng1 = place.locationLng || place.location_lng;
-        if (!lat1 || !lng1) return false;
-        
-        for (const s of selected) {
-          const lat2 = s.locationLat || s.location_lat;
-          const lng2 = s.locationLng || s.location_lng;
-          if (!lat2 || !lng2) continue;
-          
-          const distance = getDistanceMeters(lat1, lng1, lat2, lng2);
-          if (distance < radius) {
-            console.log(`[Gacha V3] Geo-dedupe: ${place.placeName} too close to ${s.placeName} (${Math.round(distance)}m < ${radius}m)`);
-            return true;
-          }
+      // Guest 用戶：從 session 快取中取得去重 ID（同一次 session 內不重複）
+      const sessionKey = `guest:${city}`;
+      if (userId === 'guest') {
+        const sessionDedup = guestSessionDedup.get(sessionKey);
+        if (sessionDedup && Date.now() - sessionDedup.timestamp < 30 * 60 * 1000) {
+          recentCollectionIds = sessionDedup.placeIds;
         }
-        return false;
-      };
+      }
       
-      // 輔助函數：從類別中隨機選取（嚴格鎖定錨點區，不跨區，含地理去重）
-      const pickFromCategory = (category: string, count: number) => {
+      const usedIds = new Set<number>(recentCollectionIds);
+      console.log('[Gacha V3] Collection dedup exclusion:', recentCollectionIds.length, 'places');
+      
+      // 輔助函數：從類別中隨機選取
+      const pickFromCategory = (category: string, count: number): any[] => {
         const picked: any[] = [];
         let pool = [...(anchorByCategory[category] || [])];
         
-        // 打亂並選取
+        // 打亂
         for (let i = pool.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
           [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -3971,58 +3922,40 @@ ${uncachedSkeleton.map((item, idx) => `  {
         for (const p of pool) {
           if (picked.length >= count) break;
           if (usedIds.has(p.id)) continue;
-          if (isTooCloseToSelected(p, [...selectedPlaces, ...picked])) continue;
-          
           picked.push(p);
           usedIds.add(p.id);
         }
         return picked;
       };
       
-      // 錨點區的所有地點（不再查詢整個縣市作為 fallback）
+      // 錨點區的所有地點
       const districtPlaces = anchorPlaces;
       
       // ========== 去重安全檢查 ==========
-      // 如果去重後剩餘景點不足以完成本次抽卡，清空去重記錄
       const availableAfterDedup = districtPlaces.filter(p => !usedIds.has(p.id)).length;
       if (availableAfterDedup < targetCount) {
-        console.log('[Gacha V3] Dedup safety: only', availableAfterDedup, 'available (need', targetCount, '), clearing cache');
-        const cacheKey = `${userId}:${city}`;
-        userRecentGachaCache.delete(cacheKey);
-        usedIds.clear(); // 清空已用 ID，重新開始
+        console.log('[Gacha V3] Dedup safety: only', availableAfterDedup, 'available (need', targetCount, '), ignoring dedup');
+        usedIds.clear(); // 清空去重限制
       }
       
-      // 選取「美食」的基本配額（嚴格鎖定錨點區）
-      const foodPicks = pickFromCategory('美食', foodQuota);
-      selectedPlaces.push(...foodPicks);
-      console.log('[Gacha V3] Food picks:', foodPicks.length);
-      
-      // 選取「住宿」的基本配額
-      if (stayQuota > 0) {
-        const stayPicks = pickFromCategory('住宿', stayQuota);
-        selectedPlaces.push(...stayPicks);
-        console.log('[Gacha V3] Stay picks:', stayPicks.length);
-      }
-      
-      // ========== Step 2b: 權重分配剩餘 ==========
-      // 計算各類別權重（基於錨點區數量）
-      const districtByCategory = groupByCategory(districtPlaces);
+      // ========== 六大類別等權重隨機分配 ==========
       const categoryWeights: Record<string, number> = {};
       let totalWeight = 0;
       
-      for (const [cat, places] of Object.entries(districtByCategory)) {
-        // 完全排除「住宿」類別從權重分配（住宿只能通過基本配額獲得，最多 1 個）
-        if (cat === '住宿') {
-          continue;
+      // 初始化權重（所有六大類別 + 住宿各權重 1）
+      for (const cat of [...SIX_CATEGORIES, '住宿']) {
+        if (anchorByCategory[cat] && anchorByCategory[cat].length > 0) {
+          categoryWeights[cat] = 1;
+          totalWeight += 1;
         }
-        // 使用等權重（每個類別權重 = 1），避免資料量大的類別（如「美食」）佔比過高
-        categoryWeights[cat] = 1;
-        totalWeight += 1;
       }
       
-      // 按權重隨機選取剩餘地點（嚴格鎖定錨點區）
-      let remaining = remainingCount;
-      while (remaining > 0 && usedIds.size < districtPlaces.length) {
+      // 追蹤各類別選取數量
+      const categoryPickCounts: Record<string, number> = {};
+      
+      // 按權重隨機選取地點
+      let remaining = targetCount;
+      while (remaining > 0 && totalWeight > 0) {
         // 加權隨機選擇類別
         let rand = Math.random() * totalWeight;
         let selectedCategory = '';
@@ -4035,19 +3968,33 @@ ${uncachedSkeleton.map((item, idx) => `  {
         }
         if (!selectedCategory) selectedCategory = Object.keys(categoryWeights)[0];
         
-        // 從該類別選一個（不跨區）
+        // 檢查美食和住宿限制
+        const currentCategoryCount = categoryPickCounts[selectedCategory] || 0;
+        if (selectedCategory === '美食' && currentCategoryCount >= maxFoodCount) {
+          categoryWeights[selectedCategory] = 0;
+          totalWeight = Object.values(categoryWeights).reduce((a, b) => a + b, 0);
+          continue;
+        }
+        if (selectedCategory === '住宿' && currentCategoryCount >= maxStayCount) {
+          categoryWeights[selectedCategory] = 0;
+          totalWeight = Object.values(categoryWeights).reduce((a, b) => a + b, 0);
+          continue;
+        }
+        
+        // 從該類別選一個
         const picks = pickFromCategory(selectedCategory, 1);
         if (picks.length > 0) {
           selectedPlaces.push(...picks);
+          categoryPickCounts[selectedCategory] = (categoryPickCounts[selectedCategory] || 0) + 1;
           remaining--;
         } else {
-          // 該類別沒地點了，降低權重
+          // 該類別沒地點了，移除權重
           categoryWeights[selectedCategory] = 0;
           totalWeight = Object.values(categoryWeights).reduce((a, b) => a + b, 0);
-          if (totalWeight === 0) break;
         }
       }
       
+      console.log('[Gacha V3] Selection result:', categoryPickCounts);
       console.log('[Gacha V3] Total selected:', selectedPlaces.length);
       
       // ========== Step 3: 經緯度排序 (Coordinate Sorting) ==========
@@ -4110,26 +4057,54 @@ ${uncachedSkeleton.map((item, idx) => `  {
         order: timeSlotSortedPlaces.slice(0, 5).map(p => `${p.placeName}(${inferTimeSlot(p).slot})`)
       });
 
-      // ========== Step 3c: AI 在地人調整順序 ==========
+      // ========== Step 3c: AI 智慧行程排序（權重最高）==========
       let finalPlaces = sortedPlaces;
       let aiReorderResult = 'skipped';
+      let rejectedPlaceIds: number[] = [];
       
-      if (nonStayPlaces.length >= 3) {
+      if (selectedPlaces.length >= 2) {
         try {
           const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
           const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
           
-          const placesInfo = nonStayPlaces.map((p, idx) => ({
+          // 格式化營業時間
+          const formatOpeningHours = (hours: any): string => {
+            if (!hours) return '未提供';
+            if (Array.isArray(hours)) return hours.slice(0, 2).join('; ');
+            if (hours.weekday_text) return hours.weekday_text.slice(0, 2).join('; ');
+            return '未提供';
+          };
+          
+          // 準備完整的地點資訊（包含住宿）
+          const allPlacesInfo = selectedPlaces.map((p, idx) => ({
             idx: idx + 1,
             name: p.placeName,
             category: p.category,
-            address: p.address || ''
+            subcategory: p.subcategory || '一般',
+            lat: p.locationLat || 0,
+            lng: p.locationLng || 0,
+            description: (p.description || '').slice(0, 80),
+            hours: formatOpeningHours(p.openingHours)
           }));
           
-          const exampleOrder = Array.from({length: nonStayPlaces.length}, (_, i) => i + 1).join(',');
-          const reorderPrompt = `調整以下景點順序（早餐店排前面、夜店排最後）：
-${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
-只回覆數字順序如：${exampleOrder}`;
+          const reorderPrompt = `我要去以下 ${selectedPlaces.length} 個點一日遊，請幫我安排最佳行程順序：
+
+${allPlacesInfo.map(p => `${p.idx}. ${p.name}
+   - 類別：${p.category} / ${p.subcategory}
+   - 位置：${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}
+   - 簡介：${p.description || '無'}
+   - 營業：${p.hours}`).join('\n\n')}
+
+排序規則：
+1. 早餐/早午餐店排早上、午餐排中午、晚餐/夜市排傍晚、宵夜/酒吧排最後
+2. 住宿永遠排最後
+3. 美食類不要連續出現超過2個，需用其他類別隔開
+4. 考慮地理位置，減少迂迴
+5. 若某地點明顯不適合一日遊行程（如已永久歇業、非旅遊點），回傳 X:編號
+
+請回傳：
+- 順序：用逗號分隔的數字（如 3,1,5,2,4）
+- 若有不適合的點：X:編號（如 X:3）`;
           
           const reorderResponse = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
             method: 'POST',
@@ -4139,7 +4114,7 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
             },
             body: JSON.stringify({
               contents: [{ role: 'user', parts: [{ text: reorderPrompt }] }],
-              generationConfig: { maxOutputTokens: 500, temperature: 0.2 }
+              generationConfig: { maxOutputTokens: 1000, temperature: 0.3 }
             })
           });
           
@@ -4148,27 +4123,53 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
           console.log('[Gacha V3] AI Reorder response:', reorderText);
           
           if (reorderText) {
-            if (reorderText === 'OK' || reorderText.includes('OK') || reorderText.includes('順序合理')) {
-              aiReorderResult = 'no_change';
-            } else {
-              const allNumbers = reorderText.match(/\d+/g);
-              if (allNumbers && allNumbers.length > 0) {
-                const newOrder = allNumbers.map(n => parseInt(n)).filter(n => !isNaN(n) && n >= 1 && n <= nonStayPlaces.length);
-                const uniqueOrder = Array.from(new Set(newOrder));
-                
-                if (uniqueOrder.length === nonStayPlaces.length) {
-                  const reorderedNonStay = uniqueOrder.map(idx => nonStayPlaces[idx - 1]);
-                  finalPlaces = [...reorderedNonStay, ...stayPlaces];
-                  aiReorderResult = 'reordered';
-                  console.log('[Gacha V3] AI reordered:', uniqueOrder);
-                } else {
-                  aiReorderResult = 'partial_response';
-                  console.log('[Gacha V3] AI reorder partial (got', uniqueOrder.length, 'of', nonStayPlaces.length, '), keeping original');
+            // 解析被拒絕的地點 (X:數字 格式)
+            const rejectMatches = reorderText.match(/X:\s*(\d+)/gi);
+            if (rejectMatches) {
+              for (const match of rejectMatches) {
+                const idx = parseInt(match.replace(/X:\s*/i, ''));
+                if (idx >= 1 && idx <= selectedPlaces.length) {
+                  rejectedPlaceIds.push(selectedPlaces[idx - 1].id);
                 }
-              } else {
-                aiReorderResult = 'no_numbers';
-                console.log('[Gacha V3] AI returned text without numbers:', reorderText.slice(0, 50));
               }
+              console.log('[Gacha V3] AI rejected places:', rejectedPlaceIds);
+            }
+            
+            // 解析順序
+            const allNumbers = reorderText.match(/\d+/g);
+            if (allNumbers && allNumbers.length > 0) {
+              const newOrder = allNumbers
+                .map(n => parseInt(n))
+                .filter(n => !isNaN(n) && n >= 1 && n <= selectedPlaces.length)
+                .filter(n => !rejectedPlaceIds.includes(selectedPlaces[n - 1]?.id)); // 排除被拒絕的
+              const uniqueOrder = Array.from(new Set(newOrder));
+              
+              // 只要有有效順序就使用
+              if (uniqueOrder.length >= 2) {
+                const reorderedPlaces = uniqueOrder.map(idx => selectedPlaces[idx - 1]).filter(p => p);
+                
+                // 補全遺漏的地點（AI 可能只回傳部分編號）
+                const reorderedIds = new Set(reorderedPlaces.map(p => p.id));
+                const missingPlaces = selectedPlaces.filter(p => 
+                  !reorderedIds.has(p.id) && !rejectedPlaceIds.includes(p.id)
+                );
+                if (missingPlaces.length > 0) {
+                  console.log('[Gacha V3] Adding missing places:', missingPlaces.length);
+                  reorderedPlaces.push(...missingPlaces);
+                }
+                
+                // 確保住宿在最後
+                const reorderedStay = reorderedPlaces.filter(p => p.category === '住宿');
+                const reorderedNonStay = reorderedPlaces.filter(p => p.category !== '住宿');
+                finalPlaces = [...reorderedNonStay, ...reorderedStay];
+                
+                aiReorderResult = rejectedPlaceIds.length > 0 ? 'reordered_with_rejects' : 'reordered';
+                console.log('[Gacha V3] AI reordered:', uniqueOrder, 'final count:', finalPlaces.length);
+              } else {
+                aiReorderResult = 'partial_response';
+              }
+            } else {
+              aiReorderResult = 'no_numbers';
             }
           } else {
             aiReorderResult = 'empty_response';
@@ -4179,7 +4180,112 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
         }
       }
       
-      console.log('[Gacha V3] AI reorder result:', aiReorderResult);
+      console.log('[Gacha V3] AI reorder result:', aiReorderResult, 'rejected:', rejectedPlaceIds.length);
+      
+      // ========== 補充被拒絕的地點 ==========
+      // 如果 AI 拒絕了某些地點，從備用池中補充（遵守類別配額）
+      if (rejectedPlaceIds.length > 0 && finalPlaces.length < targetCount) {
+        const shortfall = targetCount - finalPlaces.length;
+        console.log('[Gacha V3] Need to replace', shortfall, 'rejected places');
+        
+        // 計算當前各類別數量
+        const currentCategoryCounts: Record<string, number> = {};
+        for (const p of finalPlaces) {
+          const cat = p.category || '其他';
+          currentCategoryCounts[cat] = (currentCategoryCounts[cat] || 0) + 1;
+        }
+        
+        // 建立已使用 ID 集合（包含所有已選地點）
+        const currentUsedIds = new Set([
+          ...Array.from(usedIds), // 用戶圖鑑去重
+          ...selectedPlaces.map(p => p.id), // 本次選取
+          ...rejectedPlaceIds // 被拒絕的
+        ]);
+        
+        // 補充迴圈：持續嘗試直到達到目標數量或耗盡可用地點
+        let addedCount = 0;
+        const maxAttempts = 10; // 最多嘗試 10 輪（因為有類別限制）
+        
+        for (let attempt = 0; attempt < maxAttempts && finalPlaces.length < targetCount; attempt++) {
+          // 從 anchorPlaces 中尋找替換地點（遵守類別配額）
+          const replacementPool = anchorPlaces.filter(p => {
+            if (currentUsedIds.has(p.id)) return false;
+            
+            const cat = p.category || '其他';
+            const currentCount = currentCategoryCounts[cat] || 0;
+            
+            // 遵守類別配額
+            if (cat === '美食' && currentCount >= maxFoodCount) return false;
+            if (cat === '住宿' && currentCount >= maxStayCount) return false;
+            
+            return true;
+          });
+          
+          if (replacementPool.length === 0) {
+            console.log('[Gacha V3] Replacement pool exhausted after', attempt, 'attempts');
+            break;
+          }
+          
+          // 打亂替換池
+          for (let i = replacementPool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [replacementPool[i], replacementPool[j]] = [replacementPool[j], replacementPool[i]];
+          }
+          
+          // 每輪選取一個（確保類別計數正確更新）
+          const replacement = replacementPool[0];
+          finalPlaces.push(replacement);
+          currentUsedIds.add(replacement.id);
+          usedIds.add(replacement.id);
+          
+          const cat = replacement.category || '其他';
+          currentCategoryCounts[cat] = (currentCategoryCounts[cat] || 0) + 1;
+          addedCount++;
+        }
+        
+        console.log('[Gacha V3] Added', addedCount, 'replacement places, final count:', finalPlaces.length);
+        
+        // 確保美食不連續超過 2 個（本地排序調整）
+        const reorderToAvoidFoodClustering = (places: any[]): any[] => {
+          const result: any[] = [];
+          const foodPlaces = places.filter(p => p.category === '美食');
+          const nonFoodPlaces = places.filter(p => p.category !== '美食');
+          
+          let foodIdx = 0;
+          let nonFoodIdx = 0;
+          let consecutiveFood = 0;
+          
+          while (foodIdx < foodPlaces.length || nonFoodIdx < nonFoodPlaces.length) {
+            // 如果美食連續達到 2 個，優先插入非美食
+            if (consecutiveFood >= 2 && nonFoodIdx < nonFoodPlaces.length) {
+              result.push(nonFoodPlaces[nonFoodIdx++]);
+              consecutiveFood = 0;
+            } else if (foodIdx < foodPlaces.length && nonFoodIdx < nonFoodPlaces.length) {
+              // 交替插入
+              if (consecutiveFood < 2) {
+                result.push(foodPlaces[foodIdx++]);
+                consecutiveFood++;
+              } else {
+                result.push(nonFoodPlaces[nonFoodIdx++]);
+                consecutiveFood = 0;
+              }
+            } else if (foodIdx < foodPlaces.length) {
+              result.push(foodPlaces[foodIdx++]);
+              consecutiveFood++;
+            } else {
+              result.push(nonFoodPlaces[nonFoodIdx++]);
+              consecutiveFood = 0;
+            }
+          }
+          return result;
+        };
+        
+        // 確保住宿在最後
+        const stayPlaces = finalPlaces.filter(p => p.category === '住宿');
+        const nonStayPlaces = finalPlaces.filter(p => p.category !== '住宿');
+        const reorderedNonStay = reorderToAvoidFoodClustering(nonStayPlaces);
+        finalPlaces = [...reorderedNonStay, ...stayPlaces];
+      }
 
       const itinerary: Array<{
         id: number;
@@ -4305,6 +4411,16 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
       // ========== Step 4: 主題介紹（已關閉 AI 生成以節省費用）==========
       const themeIntro = null;
       
+      // 記錄 guest 用戶的去重資料（30 分鐘 TTL）
+      if (userId === 'guest') {
+        const drawnIds = itinerary.map(p => p.id);
+        const existingDedup = guestSessionDedup.get(sessionKey);
+        const existingIds = existingDedup?.placeIds || [];
+        const newIds = [...existingIds, ...drawnIds].slice(-GACHA_DEDUP_LIMIT); // 只保留最近 36 個
+        guestSessionDedup.set(sessionKey, { placeIds: newIds, timestamp: Date.now() });
+        console.log('[Gacha V3] Guest dedup recorded:', newIds.length, 'places');
+      }
+      
       // 成功後遞增每日抽卡計數
       let newDailyCount = 0;
       let remainingQuota = DAILY_PULL_LIMIT;
@@ -4312,11 +4428,6 @@ ${placesInfo.map(p => `${p.idx}.${p.name}(${p.category})`).join(' ')}
         newDailyCount = await storage.incrementUserDailyGachaCount(userId, itinerary.length);
         remainingQuota = DAILY_PULL_LIMIT - newDailyCount;
       }
-      
-      // ========== 記錄本次抽卡結果（去重保護）==========
-      const drawnPlaceIds = finalPlaces.map(p => p.id);
-      recordGachaResult(userId, city, drawnPlaceIds);
-      console.log('[Gacha V3] Recorded', drawnPlaceIds.length, 'places for dedup protection');
       
       // ========== 張數不足提示 ==========
       const isShortfall = itinerary.length < targetCount;

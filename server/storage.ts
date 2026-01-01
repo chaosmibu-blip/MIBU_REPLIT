@@ -56,6 +56,7 @@ export interface IStorage {
   // Collections
   getUserCollections(userId: string): Promise<Collection[]>;
   addToCollection(collection: InsertCollection): Promise<Collection>;
+  getRecentCollectionPlaceIds(userId: string, limit?: number): Promise<number[]>;
 
   // Merchants
   getMerchantByUserId(userId: string): Promise<Merchant | undefined>;
@@ -468,6 +469,19 @@ export class DatabaseStorage implements IStorage {
       .from(collections)
       .where(eq(collections.userId, userId))
       .orderBy(desc(collections.collectedAt));
+  }
+
+  async getRecentCollectionPlaceIds(userId: string, limit: number = 36): Promise<number[]> {
+    const results = await db
+      .select({ officialPlaceId: collections.officialPlaceId })
+      .from(collections)
+      .where(and(
+        eq(collections.userId, userId),
+        isNotNull(collections.officialPlaceId)
+      ))
+      .orderBy(desc(collections.collectedAt))
+      .limit(limit);
+    return results.map(r => r.officialPlaceId!).filter(id => id !== null);
   }
 
   async addToCollection(collection: InsertCollection): Promise<Collection> {
