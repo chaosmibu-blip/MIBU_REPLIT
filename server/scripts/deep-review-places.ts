@@ -228,127 +228,164 @@ ${SEVEN_CATEGORIES.join('、')}
 
 async function deepReviewPlaces() {
   const args = process.argv.slice(2);
-  const batchSize = parseInt(args[0]) || 500;
-  const startId = parseInt(args[1]) || 0;
+  const autoMode = args.includes('--auto');
+  const numericArgs = args.filter(arg => !arg.startsWith('--') && !isNaN(parseInt(arg)));
+  const batchSize = parseInt(numericArgs[0]) || 500;
+  let currentStartId = parseInt(numericArgs[1]) || 0;
+
+  const DELAY_BETWEEN_BATCHES = 3000;
+
+  let grandTotalKeep = 0;
+  let grandTotalFix = 0;
+  let grandTotalDelete = 0;
+  let grandTotalError = 0;
+  let batchCount = 0;
+  const allNewSubcategories: Set<string> = new Set();
+  const grandStartTime = Date.now();
 
   console.log(`\n${'═'.repeat(60)}`);
   console.log(`🔍 深度審核 places 表`);
   console.log(`${'═'.repeat(60)}`);
-  console.log(`📋 設定: 每批=${batchSize}筆, 起始ID=${startId}`);
+  console.log(`📋 設定: 每批=${batchSize}筆, 起始ID=${currentStartId}`);
   console.log(`🤖 模型: gemini-3-pro-preview`);
   console.log(`📦 maxOutputTokens: 65536 (最大值)`);
+  console.log(`🔄 自動模式: ${autoMode ? '啟用（處理全部資料）' : '停用（僅處理一批）'}`);
   console.log(`${'═'.repeat(60)}\n`);
 
-  const places = await db.select({
-    id: schema.places.id,
-    placeName: schema.places.placeName,
-    category: schema.places.category,
-    subcategory: schema.places.subcategory,
-    description: schema.places.description,
-    address: schema.places.address,
-    googleTypes: schema.places.googleTypes,
-    openingHours: schema.places.openingHours,
-  })
-  .from(schema.places)
-  .where(and(
-    eq(schema.places.isActive, true),
-    gte(schema.places.id, startId)
-  ))
-  .orderBy(schema.places.id)
-  .limit(batchSize);
+  while (true) {
+    batchCount++;
+    
+    const places = await db.select({
+      id: schema.places.id,
+      placeName: schema.places.placeName,
+      category: schema.places.category,
+      subcategory: schema.places.subcategory,
+      description: schema.places.description,
+      address: schema.places.address,
+      googleTypes: schema.places.googleTypes,
+      openingHours: schema.places.openingHours,
+    })
+    .from(schema.places)
+    .where(and(
+      eq(schema.places.isActive, true),
+      gte(schema.places.id, currentStartId)
+    ))
+    .orderBy(schema.places.id)
+    .limit(batchSize);
 
-  if (places.length === 0) {
-    console.log('✅ 沒有待審核的資料');
-    await pool.end();
-    return;
-  }
-
-  console.log(`📊 本批次: ${places.length} 筆 (ID ${places[0].id} ~ ${places[places.length - 1].id})`);
-  console.log(`\n正在呼叫 Gemini 3 Pro Preview...\n`);
-
-  const startTime = Date.now();
-  const results = await batchReviewWithAI(places);
-  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-
-  console.log(`⏱️ AI 回應耗時: ${elapsed} 秒`);
-
-  let keepCount = 0;
-  let fixCount = 0;
-  let deleteCount = 0;
-  let errorCount = 0;
-  const newSubcategories: Set<string> = new Set();
-
-  for (const result of results) {
-    try {
-      if (result.action === 'keep') {
-        keepCount++;
-      } else if (result.action === 'delete') {
-        await db.update(schema.places)
-          .set({ isActive: false })
-          .where(eq(schema.places.id, result.id));
-        deleteCount++;
-        console.log(`   ❌ 刪除 #${result.id}: ${result.reason || '不適合旅遊'}`);
-      } else if (result.action === 'fix' && result.category && result.subcategory) {
-        if (!SEVEN_CATEGORIES.includes(result.category as any)) {
-          console.log(`   ⚠️ #${result.id}: 無效種類 "${result.category}"，跳過`);
-          errorCount++;
-          continue;
-        }
-
-        await db.update(schema.places)
-          .set({ 
-            category: result.category,
-            subcategory: result.subcategory 
-          })
-          .where(eq(schema.places.id, result.id));
-        fixCount++;
-        newSubcategories.add(`${result.category}/${result.subcategory}`);
-        console.log(`   🔧 修正 #${result.id}: → ${result.category}/${result.subcategory}`);
-      }
-    } catch (e: any) {
-      console.error(`   ⚠️ 處理 #${result.id} 失敗:`, e.message);
-      errorCount++;
+    if (places.length === 0) {
+      console.log('✅ 沒有待審核的資料');
+      break;
     }
+
+    console.log(`\n${'─'.repeat(60)}`);
+    console.log(`🔄 第 ${batchCount} 批次`);
+    console.log(`${'─'.repeat(60)}`);
+    console.log(`📊 本批次: ${places.length} 筆 (ID ${places[0].id} ~ ${places[places.length - 1].id})`);
+    console.log(`正在呼叫 Gemini 3 Pro Preview...`);
+
+    const startTime = Date.now();
+    const results = await batchReviewWithAI(places);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    console.log(`⏱️ AI 回應耗時: ${elapsed} 秒`);
+
+    let keepCount = 0;
+    let fixCount = 0;
+    let deleteCount = 0;
+    let errorCount = 0;
+
+    for (const result of results) {
+      try {
+        if (result.action === 'keep') {
+          keepCount++;
+        } else if (result.action === 'delete') {
+          await db.update(schema.places)
+            .set({ isActive: false })
+            .where(eq(schema.places.id, result.id));
+          deleteCount++;
+          console.log(`   ❌ 刪除 #${result.id}: ${result.reason || '不適合旅遊'}`);
+        } else if (result.action === 'fix' && result.category && result.subcategory) {
+          if (!SEVEN_CATEGORIES.includes(result.category as any)) {
+            console.log(`   ⚠️ #${result.id}: 無效種類 "${result.category}"，跳過`);
+            errorCount++;
+            continue;
+          }
+
+          await db.update(schema.places)
+            .set({ 
+              category: result.category,
+              subcategory: result.subcategory 
+            })
+            .where(eq(schema.places.id, result.id));
+          fixCount++;
+          allNewSubcategories.add(`${result.category}/${result.subcategory}`);
+          console.log(`   🔧 修正 #${result.id}: → ${result.category}/${result.subcategory}`);
+        }
+      } catch (e: any) {
+        console.error(`   ⚠️ 處理 #${result.id} 失敗:`, e.message);
+        errorCount++;
+      }
+    }
+
+    grandTotalKeep += keepCount;
+    grandTotalFix += fixCount;
+    grandTotalDelete += deleteCount;
+    grandTotalError += errorCount;
+
+    console.log(`📊 本批: ✅${keepCount} 🔧${fixCount} ❌${deleteCount}`);
+
+    const lastId = places[places.length - 1].id;
+    currentStartId = lastId + 1;
+
+    const remainingCount = await db.select({ count: sql<number>`count(*)::int` })
+      .from(schema.places)
+      .where(and(
+        eq(schema.places.isActive, true),
+        gte(schema.places.id, currentStartId)
+      ));
+
+    const remaining = remainingCount[0]?.count || 0;
+    console.log(`📍 剩餘: ${remaining} 筆`);
+
+    if (remaining === 0) {
+      break;
+    }
+
+    if (!autoMode) {
+      console.log(`\n${'═'.repeat(60)}`);
+      console.log(`💡 繼續審核請執行:`);
+      console.log(`   npx tsx server/scripts/deep-review-places.ts ${batchSize} ${currentStartId}`);
+      console.log(`   或使用自動模式: npx tsx server/scripts/deep-review-places.ts --auto`);
+      console.log(`${'═'.repeat(60)}`);
+      break;
+    }
+
+    console.log(`⏳ 等待 ${DELAY_BETWEEN_BATCHES / 1000} 秒後繼續下一批...`);
+    await sleep(DELAY_BETWEEN_BATCHES);
   }
 
-  console.log(`\n${'─'.repeat(60)}`);
-  console.log(`📊 本批次統計`);
-  console.log(`${'─'.repeat(60)}`);
-  console.log(`   ✅ 保留: ${keepCount} 筆`);
-  console.log(`   🔧 修正: ${fixCount} 筆`);
-  console.log(`   ❌ 刪除: ${deleteCount} 筆`);
-  if (errorCount > 0) console.log(`   ⚠️ 錯誤: ${errorCount} 筆`);
+  const grandElapsed = ((Date.now() - grandStartTime) / 1000 / 60).toFixed(1);
 
-  if (newSubcategories.size > 0) {
-    console.log(`\n📝 新增子分類（需加入 categoryMapping.ts）:`);
-    Array.from(newSubcategories).forEach(sub => {
+  console.log(`\n${'═'.repeat(60)}`);
+  console.log(`🎉 審核完成！`);
+  console.log(`${'═'.repeat(60)}`);
+  console.log(`📊 總計統計:`);
+  console.log(`   ✅ 保留: ${grandTotalKeep} 筆`);
+  console.log(`   🔧 修正: ${grandTotalFix} 筆`);
+  console.log(`   ❌ 刪除: ${grandTotalDelete} 筆`);
+  if (grandTotalError > 0) console.log(`   ⚠️ 錯誤: ${grandTotalError} 筆`);
+  console.log(`   ⏱️ 總耗時: ${grandElapsed} 分鐘`);
+  console.log(`   📦 批次數: ${batchCount}`);
+
+  if (allNewSubcategories.size > 0) {
+    console.log(`\n📝 所有新增子分類（需加入 categoryMapping.ts）:`);
+    Array.from(allNewSubcategories).forEach(sub => {
       console.log(`   - ${sub}`);
     });
   }
 
-  const lastId = places[places.length - 1].id;
-  const nextStartId = lastId + 1;
-
-  const remainingCount = await db.select({ count: sql<number>`count(*)::int` })
-    .from(schema.places)
-    .where(and(
-      eq(schema.places.isActive, true),
-      gte(schema.places.id, nextStartId)
-    ));
-
-  const remaining = remainingCount[0]?.count || 0;
-
-  console.log(`\n${'═'.repeat(60)}`);
-  console.log(`📍 下一批次起始 ID: ${nextStartId}`);
-  console.log(`📊 剩餘待審核: ${remaining} 筆`);
-  console.log(`${'═'.repeat(60)}`);
-
-  if (remaining > 0) {
-    console.log(`\n💡 繼續審核請執行:`);
-    console.log(`   npx tsx server/scripts/deep-review-places.ts ${batchSize} ${nextStartId}`);
-  } else {
-    console.log(`\n🎉 全部審核完成！`);
-  }
+  console.log(`${'═'.repeat(60)}\n`);
 
   await pool.end();
 }
