@@ -1,5 +1,5 @@
 /**
- * 深度審核腳本 - 對 places 表進行重新審核（並行處理版）
+ * 深度審核腳本 - 對 places 表進行重新審核（串行處理版）
  * 
  * 功能：
  * 1. 判斷地點是否適合旅遊推薦
@@ -7,15 +7,16 @@
  * 3. 刪除不適合的地點（軟刪除）
  * 
  * 用法：
- * npx tsx server/scripts/deep-review-places.ts [總批次大小] [起始ID]
+ * npx tsx server/scripts/deep-review-places.ts [起始ID] [--auto]
  * 
  * 範例：
- * npx tsx server/scripts/deep-review-places.ts 1000      # 從頭開始，每批1000筆（內部100筆並行）
- * npx tsx server/scripts/deep-review-places.ts 1000 500  # 從 ID>=500 開始
+ * npx tsx server/scripts/deep-review-places.ts           # 從頭開始
+ * npx tsx server/scripts/deep-review-places.ts 1000      # 從 ID>=1000 開始
+ * npx tsx server/scripts/deep-review-places.ts 1000 --auto  # 自動模式
  * 
  * 設計：
- * - 一批次 1000 筆
- * - 批次內每次 100 筆並行處理（10 個並行請求）
+ * - 每批 500 筆，串行處理
+ * - maxOutputTokens: 16384（Gemini 3 思考型模型需要足夠空間）
  */
 
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -172,7 +173,7 @@ ${SEVEN_CATEGORIES.join('、')}
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.1,
-          maxOutputTokens: 65536,
+          maxOutputTokens: 16384,
           responseMimeType: "application/json",
         }
       }),
@@ -264,12 +265,10 @@ async function deepReviewPlaces() {
   const args = process.argv.slice(2);
   const autoMode = args.includes('--auto');
   const numericArgs = args.filter(arg => !arg.startsWith('--') && !isNaN(parseInt(arg)));
-  const totalBatchSize = parseInt(numericArgs[0]) || 1000;
-  let currentStartId = parseInt(numericArgs[1]) || 0;
+  let currentStartId = parseInt(numericArgs[0]) || 0;
 
-  const CHUNK_SIZE = 100;
-  const STAGGER_DELAY = 3000;
-  const DELAY_BETWEEN_BATCHES = 5000;
+  const BATCH_SIZE = 500;
+  const DELAY_BETWEEN_BATCHES = 3000;
 
   let grandTotalKeep = 0;
   let grandTotalFix = 0;
@@ -280,12 +279,12 @@ async function deepReviewPlaces() {
   const grandStartTime = Date.now();
 
   console.log(`\n${'═'.repeat(60)}`);
-  console.log(`🔍 深度審核 places 表（錯開發送版）`);
+  console.log(`🔍 深度審核 places 表（串行處理版）`);
   console.log(`${'═'.repeat(60)}`);
-  console.log(`📋 設定: 總批次=${totalBatchSize}筆, 每 chunk=${CHUNK_SIZE}筆`);
-  console.log(`📋 錯開間隔=${STAGGER_DELAY/1000}秒, 起始ID=${currentStartId}`);
+  console.log(`📋 設定: 每批=${BATCH_SIZE}筆, 串行處理`);
+  console.log(`📋 起始ID=${currentStartId}`);
   console.log(`🤖 模型: gemini-3-pro-preview`);
-  console.log(`📦 maxOutputTokens: 65536 (最大值)`);
+  console.log(`📦 maxOutputTokens: 16384`);
   console.log(`🔄 自動模式: ${autoMode ? '啟用（處理全部資料）' : '停用（僅處理一批）'}`);
   console.log(`${'═'.repeat(60)}\n`);
 
@@ -308,7 +307,7 @@ async function deepReviewPlaces() {
       gte(schema.places.id, currentStartId)
     ))
     .orderBy(schema.places.id)
-    .limit(totalBatchSize);
+    .limit(BATCH_SIZE);
 
     if (places.length === 0) {
       console.log('✅ 沒有待審核的資料');
@@ -319,65 +318,48 @@ async function deepReviewPlaces() {
     console.log(`🔄 第 ${batchCount} 批次`);
     console.log(`${'─'.repeat(60)}`);
     console.log(`📊 本批次: ${places.length} 筆 (ID ${places[0].id} ~ ${places[places.length - 1].id})`);
-
-    const chunks: PlaceData[][] = [];
-    for (let i = 0; i < places.length; i += CHUNK_SIZE) {
-      chunks.push(places.slice(i, i + CHUNK_SIZE));
-    }
-    
-    console.log(`🚀 分成 ${chunks.length} 個 chunks，錯開 ${STAGGER_DELAY/1000} 秒發送...`);
+    console.log(`正在呼叫 Gemini 3 Pro Preview...`);
 
     const startTime = Date.now();
-    
-    const chunkPromises = chunks.map((chunk, idx) => 
-      processChunkWithDelay(chunk, idx, idx * STAGGER_DELAY)
-    );
-    const chunkResults = await Promise.all(chunkPromises);
-    
+    const results = await batchReviewWithAI(places);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`⏱️ 錯開發送 AI 處理耗時: ${elapsed} 秒`);
+    console.log(`⏱️ AI 回應耗時: ${elapsed} 秒`);
 
     let keepCount = 0;
     let fixCount = 0;
     let deleteCount = 0;
     let errorCount = 0;
 
-    for (const chunkResult of chunkResults) {
-      if (chunkResult.error) {
-        console.log(`   ⚠️ Chunk ${chunkResult.chunkIndex + 1} 有錯誤: ${chunkResult.error}`);
-      }
-      
-      for (const result of chunkResult.results) {
-        try {
-          if (result.action === 'keep') {
-            keepCount++;
-          } else if (result.action === 'delete') {
-            await db.update(schema.places)
-              .set({ isActive: false })
-              .where(eq(schema.places.id, result.id));
-            deleteCount++;
-            console.log(`   ❌ 刪除 #${result.id}: ${result.reason || '不適合旅遊'}`);
-          } else if (result.action === 'fix' && result.category && result.subcategory) {
-            if (!SEVEN_CATEGORIES.includes(result.category as any)) {
-              console.log(`   ⚠️ #${result.id}: 無效種類 "${result.category}"，跳過`);
-              errorCount++;
-              continue;
-            }
-
-            await db.update(schema.places)
-              .set({ 
-                category: result.category,
-                subcategory: result.subcategory 
-              })
-              .where(eq(schema.places.id, result.id));
-            fixCount++;
-            allNewSubcategories.add(`${result.category}/${result.subcategory}`);
-            console.log(`   🔧 修正 #${result.id}: → ${result.category}/${result.subcategory}`);
+    for (const result of results) {
+      try {
+        if (result.action === 'keep') {
+          keepCount++;
+        } else if (result.action === 'delete') {
+          await db.update(schema.places)
+            .set({ isActive: false })
+            .where(eq(schema.places.id, result.id));
+          deleteCount++;
+          console.log(`   ❌ 刪除 #${result.id}: ${result.reason || '不適合旅遊'}`);
+        } else if (result.action === 'fix' && result.category && result.subcategory) {
+          if (!SEVEN_CATEGORIES.includes(result.category as any)) {
+            console.log(`   ⚠️ #${result.id}: 無效種類 "${result.category}"，跳過`);
+            errorCount++;
+            continue;
           }
-        } catch (e: any) {
-          console.error(`   ⚠️ 處理 #${result.id} 失敗:`, e.message);
-          errorCount++;
+
+          await db.update(schema.places)
+            .set({ 
+              category: result.category,
+              subcategory: result.subcategory 
+            })
+            .where(eq(schema.places.id, result.id));
+          fixCount++;
+          allNewSubcategories.add(`${result.category}/${result.subcategory}`);
+          console.log(`   🔧 修正 #${result.id}: → ${result.category}/${result.subcategory}`);
         }
+      } catch (e: any) {
+        console.error(`   ⚠️ 處理 #${result.id} 失敗:`, e.message);
+        errorCount++;
       }
     }
 
@@ -408,8 +390,8 @@ async function deepReviewPlaces() {
     if (!autoMode) {
       console.log(`\n${'═'.repeat(60)}`);
       console.log(`💡 繼續審核請執行:`);
-      console.log(`   npx tsx server/scripts/deep-review-places.ts ${totalBatchSize} ${currentStartId}`);
-      console.log(`   或使用自動模式: npx tsx server/scripts/deep-review-places.ts --auto`);
+      console.log(`   npx tsx server/scripts/deep-review-places.ts ${currentStartId}`);
+      console.log(`   或使用自動模式: npx tsx server/scripts/deep-review-places.ts ${currentStartId} --auto`);
       console.log(`${'═'.repeat(60)}`);
       break;
     }

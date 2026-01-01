@@ -120,13 +120,29 @@ export async function batchGenerateDescriptions(
 ### 採集腳本參數（2026-01-01 更新）
 | 腳本 | 參數 | 預設值 | AI 模型 | 說明 |
 |------|------|--------|---------|------|
+| **deep-review-places.ts** | BATCH_SIZE | 500 | **Gemini 3** | 每批審核筆數（串行） |
+| **deep-review-places.ts** | maxOutputTokens | 16384 | **Gemini 3** | AI 回應 token 上限 |
 | short-batch-review.ts | BATCH_LIMIT | 1000 | **Gemini 3** | 每輪處理上限 |
 | short-batch-review.ts | CHUNK_SIZE | 50 | **Gemini 3** | 每批 AI 審核筆數 |
 | short-batch-review.ts | maxOutputTokens | 16384 | **Gemini 3** | AI 回應 token 上限 |
 | migrate-with-descriptions.ts | batchSize | 15 | **Gemini 3** | 每批描述生成筆數 |
+| migrate-with-descriptions.ts | aiConcurrency | 10 | **Gemini 3** | 並行 AI 請求數 |
 | migrate-with-descriptions.ts | maxOutputTokens | 16384 | **Gemini 3** | AI 回應 token 上限 |
 | batch-parallel-collect.ts | CONCURRENCY | 10 | Flash | 類別內並行請求數 |
 | descriptionGenerator.ts | maxOutputTokens | 16384 | **Gemini 3** | 函式庫描述生成 |
+
+### 並行 vs 串行策略（2026-01-01 新增）
+
+| 任務類型 | 建議策略 | 原因 |
+|---------|---------|------|
+| **描述生成** | 並行（10併發 × 15筆） | Prompt 短、輸出小、判斷簡單 |
+| **審核判斷** | 串行（500筆/次） | Prompt 長、需要思考、容易觸發 Rate Limit |
+| **採集關鍵字** | 並行（10併發） | 使用 Flash 模型、快速 |
+
+> ⚠️ **Gemini 3 並行注意事項**：
+> - 思考型模型每次請求需 30-60 秒
+> - 多個並行請求會累積 Rate Limit 壓力
+> - 審核任務建議串行處理，避免 429 錯誤
 
 ### 廢棄腳本（2026-01-01）
 | 腳本 | 狀態 | 說明 |
