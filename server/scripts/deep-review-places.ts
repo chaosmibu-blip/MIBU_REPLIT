@@ -228,7 +228,7 @@ ${SEVEN_CATEGORIES.join('、')}
 
 async function deepReviewPlaces() {
   const args = process.argv.slice(2);
-  const batchSize = parseInt(args[0]) || 1000;
+  const batchSize = parseInt(args[0]) || 500;
   const startId = parseInt(args[1]) || 0;
 
   console.log(`\n${'═'.repeat(60)}`);
