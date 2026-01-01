@@ -291,11 +291,11 @@ npx tsx server/scripts/deep-review-places.ts [批次大小] [起始ID]
 
 #### 使用方式
 ```bash
-# 從頭開始，每批 500 筆
-npx tsx server/scripts/deep-review-places.ts 500
+# 從頭開始，每批 1000 筆（預設）
+npx tsx server/scripts/deep-review-places.ts
 
-# 從 ID=1000 開始，每批 500 筆
-npx tsx server/scripts/deep-review-places.ts 500 1000
+# 從 ID=5000 開始
+npx tsx server/scripts/deep-review-places.ts 1000 5000
 ```
 
 #### 配置
@@ -304,7 +304,7 @@ npx tsx server/scripts/deep-review-places.ts 500 1000
 | AI 模型 | gemini-3-pro-preview |
 | maxOutputTokens | 65536（最大值） |
 | temperature | 0.1 |
-| 建議批次大小 | 500 筆（可調整） |
+| 預設批次大小 | 1000 筆 |
 
 #### 費用預估（35,661 筆）
 | 項目 | 費用 |
