@@ -4344,6 +4344,18 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}
           }
         }
       }
+      
+      // ========== 安全網：確保住宿永遠排最後 ==========
+      // 即使 AI 沒有正確排序，也保證住宿在最後
+      const stayPlacesInFinal = finalPlaces.filter(p => p.category === '住宿');
+      const nonStayPlacesInFinal = finalPlaces.filter(p => p.category !== '住宿');
+      if (stayPlacesInFinal.length > 0) {
+        const lastPlace = finalPlaces[finalPlaces.length - 1];
+        if (lastPlace.category !== '住宿') {
+          finalPlaces = [...nonStayPlacesInFinal, ...stayPlacesInFinal];
+          console.log('[Gacha V3] Safety net: moved stay to end');
+        }
+      }
 
       const itinerary: Array<{
         id: number;
