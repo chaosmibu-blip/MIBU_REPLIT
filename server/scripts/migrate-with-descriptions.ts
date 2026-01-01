@@ -60,12 +60,12 @@ ${JSON.stringify(placesInfo, null, 2)}
 規則：每個描述必須獨特，不可使用「知名的」「必訪」「特色體驗」等通用詞。只回傳 JSON。`;
 
   try {
-    const response = await fetch(`${GEMINI_BASE_URL}/models/gemini-2.5-flash:generateContent`, {
+    const response = await fetch(`${GEMINI_BASE_URL}/models/gemini-3-pro-preview:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 16384 }
+        generationConfig: { temperature: 0.3, maxOutputTokens: 16384 }
       }),
     });
 

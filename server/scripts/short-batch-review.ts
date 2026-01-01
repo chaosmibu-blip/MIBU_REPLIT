@@ -118,7 +118,7 @@ ${JSON.stringify(placesJson, null, 2)}
 只回傳 JSON Array，不要其他文字。`;
 
   try {
-    const response = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
+    const response = await fetch(`${baseUrl}/models/gemini-3-pro-preview:generateContent`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -127,8 +127,8 @@ ${JSON.stringify(placesJson, null, 2)}
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 16384,  // 加倍以支援 50 筆批次
+          temperature: 0.1,
+          maxOutputTokens: 16384,  // Gemini 3 需要足夠 token 空間用於思考
           responseMimeType: "application/json",
         }
       }),

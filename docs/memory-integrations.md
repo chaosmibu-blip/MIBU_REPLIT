@@ -53,19 +53,29 @@ AI_INTEGRATIONS_GEMINI_API_KEY
 AI_INTEGRATIONS_GEMINI_BASE_URL
 ```
 
-### 主要模型
-```typescript
-// 快速任務
-gemini-2.5-flash
+### 主要模型（2026-01-01 升級）
 
-// 複雜推理（備用）
-gemini-2.5-pro
-```
+| 模型 | 用途 | 特性 |
+|------|------|------|
+| `gemini-2.5-flash` | 採集（關鍵字擴散） | 快速、低成本 |
+| `gemini-3-pro-preview` | 審核、描述生成、扭蛋排序 | 高品質推理 |
+
+### 模型配置規範
+
+| 用途 | 模型 | temperature | maxOutputTokens |
+|------|------|-------------|-----------------|
+| 採集 | gemini-2.5-flash | 0.7 | 8192 |
+| **審核** | gemini-3-pro-preview | 0.1 | 16384 |
+| **描述生成** | gemini-3-pro-preview | 0.3 | 16384 |
+| **扭蛋排序** | gemini-3-pro-preview | 0.1 | 8192 |
+
+> ⚠️ **Gemini 3 重要提醒**：Gemini 3 是推理模型，會消耗 1000-4000 tokens 進行「思考」，必須設定足夠的 maxOutputTokens
 
 ### 使用方式
 ```typescript
+// Gemini 3 Pro Preview（審核/描述/排序）
 const response = await fetch(
-  `${baseUrl}/models/gemini-2.5-flash:generateContent`,
+  `${baseUrl}/models/gemini-3-pro-preview:generateContent`,
   {
     method: 'POST',
     headers: {
@@ -75,11 +85,17 @@ const response = await fetch(
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 2048
+        temperature: 0.1,  // 低 temperature 確保穩定輸出
+        maxOutputTokens: 16384  // 足夠空間給思考 + 回應
       }
     })
   }
+);
+
+// Gemini 2.5 Flash（採集用）
+const response = await fetch(
+  `${baseUrl}/models/gemini-2.5-flash:generateContent`,
+  // ...同上，但 maxOutputTokens 可較小
 );
 ```
 
@@ -101,18 +117,21 @@ export async function batchGenerateDescriptions(
 // 429 時執行 Exponential Backoff: 5s → 10s → 20s
 ```
 
-### 採集腳本參數（2025-12-30）
-| 腳本 | 參數 | 預設值 | 說明 |
-|------|------|--------|------|
-| short-batch-review.ts | BATCH_LIMIT | 1000 | 每輪處理上限 |
-| short-batch-review.ts | CHUNK_SIZE | 50 | 每批 AI 審核筆數 |
-| short-batch-review.ts | DELAY_BETWEEN_CHUNKS | 1000ms | 批次間隔 |
-| short-batch-review.ts | MAX_RETRIES | 3 | 429 錯誤重試次數 |
-| short-batch-review.ts | maxOutputTokens | 16384 | AI 回應 token 上限 |
-| migrate-with-descriptions.ts | batchSize | 15 | 每批描述生成筆數 |
-| migrate-with-descriptions.ts | aiConcurrency | 10 | AI 並行請求數 |
-| migrate-with-descriptions.ts | maxOutputTokens | 16384 | AI 回應 token 上限 |
-| batch-parallel-collect.ts | CONCURRENCY | 10 | 類別內並行請求數 |
+### 採集腳本參數（2026-01-01 更新）
+| 腳本 | 參數 | 預設值 | AI 模型 | 說明 |
+|------|------|--------|---------|------|
+| short-batch-review.ts | BATCH_LIMIT | 1000 | **Gemini 3** | 每輪處理上限 |
+| short-batch-review.ts | CHUNK_SIZE | 50 | **Gemini 3** | 每批 AI 審核筆數 |
+| short-batch-review.ts | maxOutputTokens | 16384 | **Gemini 3** | AI 回應 token 上限 |
+| migrate-with-descriptions.ts | batchSize | 15 | **Gemini 3** | 每批描述生成筆數 |
+| migrate-with-descriptions.ts | maxOutputTokens | 16384 | **Gemini 3** | AI 回應 token 上限 |
+| batch-parallel-collect.ts | CONCURRENCY | 10 | Flash | 類別內並行請求數 |
+| descriptionGenerator.ts | maxOutputTokens | 16384 | **Gemini 3** | 函式庫描述生成 |
+
+### 廢棄腳本（2026-01-01）
+| 腳本 | 狀態 | 說明 |
+|------|------|------|
+| generate-descriptions.ts | ⚠️ 廢棄 | 與 migrate-with-descriptions.ts 功能重複，請使用後者 |
 
 ### 調用規範
 - 所有 Gemini 調用應使用 `placeGenerator.ts` 導出的函數

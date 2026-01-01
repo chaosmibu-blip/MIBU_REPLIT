@@ -1,3 +1,9 @@
+/**
+ * @deprecated 此腳本已廢棄 (2026-01-01)
+ * 請使用 migrate-with-descriptions.ts 替代
+ * 
+ * 廢棄原因：功能重複，migrate-with-descriptions.ts 已升級至 Gemini 3
+ */
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as schema from '../../shared/schema';

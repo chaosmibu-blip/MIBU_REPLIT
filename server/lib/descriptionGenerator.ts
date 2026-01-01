@@ -79,12 +79,12 @@ ${JSON.stringify(placesInfo, null, 2)}
 4. 禁止加入任何評分數字（如「4.5星」「4.2分」「評分」「星級」）
 5. 只回傳 JSON，不要其他文字`;
 
-  const response = await fetch(`${GEMINI_BASE_URL}/models/gemini-2.5-flash:generateContent`, {
+  const response = await fetch(`${GEMINI_BASE_URL}/models/gemini-3-pro-preview:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 8192 }
+      generationConfig: { temperature: 0.3, maxOutputTokens: 16384 }
     }),
   });
 
