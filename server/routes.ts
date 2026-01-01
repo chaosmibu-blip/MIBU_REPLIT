@@ -4098,13 +4098,13 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}
 排序規則：
 1. 早餐/早午餐店排早上、午餐排中午、晚餐/夜市排傍晚、宵夜/酒吧排最後
 2. 住宿永遠排最後
-3. 美食類不要連續出現超過2個，需用其他類別隔開
+3. 盡量穿插各個種類，讓行程多元化（但如果都是在夜市內的美食、或是鄰近且適合接續上一行程的地點，則沒關係）
 4. 考慮地理位置，減少迂迴
 5. 若某地點明顯不適合一日遊行程（如已永久歇業、非旅遊點），回傳 X:編號
+6. 若多個地點位於同一園區/景區內（如「傳藝中心」與「臨水劇場」都在傳統藝術中心園區），保留代表性最高的主景點，其餘回傳 X:編號
 
-請回傳：
-- 順序：用逗號分隔的數字（如 3,1,5,2,4）
-- 若有不適合的點：X:編號（如 X:3）`;
+請回傳完整順序（包含所有地點編號），用逗號分隔（如 3,1,5,2,4）
+若有不適合的點：X:編號（如 X:3）`;
           
           const reorderResponse = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
             method: 'POST',
@@ -4144,7 +4144,7 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}
                 .filter(n => !rejectedPlaceIds.includes(selectedPlaces[n - 1]?.id)); // 排除被拒絕的
               const uniqueOrder = Array.from(new Set(newOrder));
               
-              // 只要有有效順序就使用
+              // 只要有有效順序就使用（AI 已負責住宿排最後）
               if (uniqueOrder.length >= 2) {
                 const reorderedPlaces = uniqueOrder.map(idx => selectedPlaces[idx - 1]).filter(p => p);
                 
@@ -4158,10 +4158,8 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}
                   reorderedPlaces.push(...missingPlaces);
                 }
                 
-                // 確保住宿在最後
-                const reorderedStay = reorderedPlaces.filter(p => p.category === '住宿');
-                const reorderedNonStay = reorderedPlaces.filter(p => p.category !== '住宿');
-                finalPlaces = [...reorderedNonStay, ...reorderedStay];
+                // 直接使用 AI 回傳的順序（AI 已負責住宿排最後、種類穿插等規則）
+                finalPlaces = reorderedPlaces;
                 
                 aiReorderResult = rejectedPlaceIds.length > 0 ? 'reordered_with_rejects' : 'reordered';
                 console.log('[Gacha V3] AI reordered:', uniqueOrder, 'final count:', finalPlaces.length);
@@ -4182,8 +4180,8 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}
       
       console.log('[Gacha V3] AI reorder result:', aiReorderResult, 'rejected:', rejectedPlaceIds.length);
       
-      // ========== 補充被拒絕的地點 ==========
-      // 如果 AI 拒絕了某些地點，從備用池中補充（遵守類別配額）
+      // ========== 補充被拒絕的地點並重新送 AI 審核 ==========
+      // 如果 AI 拒絕了某些地點，從備用池中補充，然後重新送 AI 排序
       if (rejectedPlaceIds.length > 0 && finalPlaces.length < targetCount) {
         const shortfall = targetCount - finalPlaces.length;
         console.log('[Gacha V3] Need to replace', shortfall, 'rejected places');
@@ -4204,20 +4202,15 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}
         
         // 補充迴圈：持續嘗試直到達到目標數量或耗盡可用地點
         let addedCount = 0;
-        const maxAttempts = 10; // 最多嘗試 10 輪（因為有類別限制）
+        const maxAttempts = 10;
         
         for (let attempt = 0; attempt < maxAttempts && finalPlaces.length < targetCount; attempt++) {
-          // 從 anchorPlaces 中尋找替換地點（遵守類別配額）
           const replacementPool = anchorPlaces.filter(p => {
             if (currentUsedIds.has(p.id)) return false;
-            
             const cat = p.category || '其他';
             const currentCount = currentCategoryCounts[cat] || 0;
-            
-            // 遵守類別配額
             if (cat === '美食' && currentCount >= maxFoodCount) return false;
             if (cat === '住宿' && currentCount >= maxStayCount) return false;
-            
             return true;
           });
           
@@ -4226,13 +4219,12 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}
             break;
           }
           
-          // 打亂替換池
+          // 打亂並選取一個
           for (let i = replacementPool.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [replacementPool[i], replacementPool[j]] = [replacementPool[j], replacementPool[i]];
           }
           
-          // 每輪選取一個（確保類別計數正確更新）
           const replacement = replacementPool[0];
           finalPlaces.push(replacement);
           currentUsedIds.add(replacement.id);
@@ -4245,46 +4237,110 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}
         
         console.log('[Gacha V3] Added', addedCount, 'replacement places, final count:', finalPlaces.length);
         
-        // 確保美食不連續超過 2 個（本地排序調整）
-        const reorderToAvoidFoodClustering = (places: any[]): any[] => {
-          const result: any[] = [];
-          const foodPlaces = places.filter(p => p.category === '美食');
-          const nonFoodPlaces = places.filter(p => p.category !== '美食');
-          
-          let foodIdx = 0;
-          let nonFoodIdx = 0;
-          let consecutiveFood = 0;
-          
-          while (foodIdx < foodPlaces.length || nonFoodIdx < nonFoodPlaces.length) {
-            // 如果美食連續達到 2 個，優先插入非美食
-            if (consecutiveFood >= 2 && nonFoodIdx < nonFoodPlaces.length) {
-              result.push(nonFoodPlaces[nonFoodIdx++]);
-              consecutiveFood = 0;
-            } else if (foodIdx < foodPlaces.length && nonFoodIdx < nonFoodPlaces.length) {
-              // 交替插入
-              if (consecutiveFood < 2) {
-                result.push(foodPlaces[foodIdx++]);
-                consecutiveFood++;
-              } else {
-                result.push(nonFoodPlaces[nonFoodIdx++]);
-                consecutiveFood = 0;
+        // ========== 補入新地點後重新送 AI 審核與排序 ==========
+        if (addedCount > 0 && finalPlaces.length >= 2) {
+          try {
+            const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+            const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+            
+            const formatHours = (hours: any): string => {
+              if (!hours) return '未提供';
+              if (Array.isArray(hours)) return hours.slice(0, 2).join('; ');
+              if (hours.weekday_text) return hours.weekday_text.slice(0, 2).join('; ');
+              return '未提供';
+            };
+            
+            const updatedPlacesInfo = finalPlaces.map((p, idx) => ({
+              idx: idx + 1,
+              name: p.placeName,
+              category: p.category,
+              subcategory: p.subcategory || '一般',
+              lat: p.locationLat || 0,
+              lng: p.locationLng || 0,
+              description: (p.description || '').slice(0, 80),
+              hours: formatHours(p.openingHours)
+            }));
+            
+            const revalidatePrompt = `我要去以下 ${finalPlaces.length} 個點一日遊，請幫我安排最佳行程順序：
+
+${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}
+   - 類別：${p.category} / ${p.subcategory}
+   - 位置：${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}
+   - 簡介：${p.description || '無'}
+   - 營業：${p.hours}`).join('\n\n')}
+
+排序規則：
+1. 早餐/早午餐店排早上、午餐排中午、晚餐/夜市排傍晚、宵夜/酒吧排最後
+2. 住宿永遠排最後
+3. 盡量穿插各個種類，讓行程多元化（但如果都是在夜市內的美食、或是鄰近且適合接續上一行程的地點，則沒關係）
+4. 考慮地理位置，減少迂迴
+5. 若某地點明顯不適合一日遊行程（如已永久歇業、非旅遊點），回傳 X:編號
+6. 若多個地點位於同一園區/景區內，保留代表性最高的主景點，其餘回傳 X:編號
+
+請回傳完整順序（包含所有地點編號），用逗號分隔（如 3,1,5,2,4）
+若有不適合的點：X:編號（如 X:3）`;
+            
+            const revalidateResponse = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey || ''
+              },
+              body: JSON.stringify({
+                contents: [{ role: 'user', parts: [{ text: revalidatePrompt }] }],
+                generationConfig: { maxOutputTokens: 1000, temperature: 0.3 }
+              })
+            });
+            
+            const revalidateData = await revalidateResponse.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+            const revalidateText = revalidateData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+            console.log('[Gacha V3] AI Revalidate response:', revalidateText);
+            
+            if (revalidateText) {
+              // 解析新的被拒絕地點（這次不再補充，避免無限循環）
+              const newRejectMatches = revalidateText.match(/X:\s*(\d+)/gi);
+              const newRejectedIds: number[] = [];
+              if (newRejectMatches) {
+                for (const match of newRejectMatches) {
+                  const idx = parseInt(match.replace(/X:\s*/i, ''));
+                  if (idx >= 1 && idx <= finalPlaces.length) {
+                    newRejectedIds.push(finalPlaces[idx - 1].id);
+                  }
+                }
+                console.log('[Gacha V3] AI revalidate rejected:', newRejectedIds.length);
               }
-            } else if (foodIdx < foodPlaces.length) {
-              result.push(foodPlaces[foodIdx++]);
-              consecutiveFood++;
-            } else {
-              result.push(nonFoodPlaces[nonFoodIdx++]);
-              consecutiveFood = 0;
+              
+              // 解析新順序
+              const newNumbers = revalidateText.match(/\d+/g);
+              if (newNumbers && newNumbers.length > 0) {
+                const newOrder = newNumbers
+                  .map(n => parseInt(n))
+                  .filter(n => !isNaN(n) && n >= 1 && n <= finalPlaces.length)
+                  .filter(n => !newRejectedIds.includes(finalPlaces[n - 1]?.id));
+                const uniqueNewOrder = Array.from(new Set(newOrder));
+                
+                if (uniqueNewOrder.length >= 2) {
+                  const revalidatedPlaces = uniqueNewOrder.map(idx => finalPlaces[idx - 1]).filter(p => p);
+                  
+                  // 補全遺漏的地點
+                  const revalidatedIds = new Set(revalidatedPlaces.map(p => p.id));
+                  const stillMissing = finalPlaces.filter(p => 
+                    !revalidatedIds.has(p.id) && !newRejectedIds.includes(p.id)
+                  );
+                  if (stillMissing.length > 0) {
+                    revalidatedPlaces.push(...stillMissing);
+                  }
+                  
+                  finalPlaces = revalidatedPlaces;
+                  aiReorderResult = 'revalidated';
+                  console.log('[Gacha V3] AI revalidated order, final count:', finalPlaces.length);
+                }
+              }
             }
+          } catch (revalidateError) {
+            console.error('[Gacha V3] AI revalidate failed:', revalidateError);
           }
-          return result;
-        };
-        
-        // 確保住宿在最後
-        const stayPlaces = finalPlaces.filter(p => p.category === '住宿');
-        const nonStayPlaces = finalPlaces.filter(p => p.category !== '住宿');
-        const reorderedNonStay = reorderToAvoidFoodClustering(nonStayPlaces);
-        finalPlaces = [...reorderedNonStay, ...stayPlaces];
+        }
       }
 
       const itinerary: Array<{
