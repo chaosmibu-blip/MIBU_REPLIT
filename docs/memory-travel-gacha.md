@@ -243,20 +243,75 @@ const SUBCATEGORY_TIME_SLOTS = {
 - 前端使用 **`category`** 欄位透過 `getCategoryLabel()` 顯示
 - 資料庫統一使用中文七大類：美食、住宿、景點、購物、娛樂設施、生態文化教育、遊程體驗（2025-12-30 移除活動類別）
 
-### 核心腳本（4 個）
+### 核心腳本（5 個）
 ```bash
 # 1. 批次採集（支援關鍵字模式與區域指定）
 npx tsx server/scripts/batch-parallel-collect.ts 城市名 [類別] [--mode=generic|local|mixed] [--district=區域名]
 
-# 2. AI 審核
+# 2. AI 審核（place_cache 表）
 npx tsx server/scripts/short-batch-review.ts [數量]
 
 # 3. 升級到正式表（含描述生成）
 npx tsx server/scripts/migrate-with-descriptions.ts [數量]
 
-# 4. 補描述（選用）
-npx tsx server/scripts/generate-descriptions.ts [城市] [數量]
+# 4. 補描述（選用，已廢棄）
+npx tsx server/scripts/generate-descriptions.ts [城市] [數量]  # ⚠️ 請改用 migrate-with-descriptions.ts
+
+# 5. 深度審核（places 正式表）⭐ 2026-01-01 新增
+npx tsx server/scripts/deep-review-places.ts [批次大小] [起始ID]
 ```
+
+### 深度審核腳本（2026-01-01 新增）
+
+#### 用途
+對已入庫的 `places` 表資料進行重新審核，修正分類錯誤、清除漏網之魚。
+
+#### 與採集時審核的差異
+| 項目 | short-batch-review.ts | deep-review-places.ts |
+|------|----------------------|----------------------|
+| 對象 | `place_cache` 表（待審） | `places` 表（正式） |
+| 時機 | 採集後、升級前 | 資料入庫後 |
+| 目的 | 過濾垃圾資料 | 修正分類 + 清除漏網 |
+| AI 模型 | Gemini 3 | Gemini 3 |
+
+#### 審核動作
+| 動作 | 說明 |
+|------|------|
+| `keep` | 保持不變 |
+| `fix` | 修正 category/subcategory |
+| `delete` | 軟刪除（is_active = false） |
+
+#### 傳送給 AI 的資訊
+- place_name（地點名稱）
+- category + subcategory（現有分類）
+- description（描述）
+- address（地址）
+- google_types（Google 原始類型）
+- opening_hours（營業時間）⭐
+
+#### 使用方式
+```bash
+# 從頭開始，每批 500 筆
+npx tsx server/scripts/deep-review-places.ts 500
+
+# 從 ID=1000 開始，每批 500 筆
+npx tsx server/scripts/deep-review-places.ts 500 1000
+```
+
+#### 配置
+| 參數 | 數值 |
+|------|------|
+| AI 模型 | gemini-3-pro-preview |
+| maxOutputTokens | 65536（最大值） |
+| temperature | 0.1 |
+| 建議批次大小 | 500 筆（可調整） |
+
+#### 費用預估（35,661 筆）
+| 項目 | 費用 |
+|------|------|
+| 輸入 | ~$8 |
+| 輸出 | ~$13 |
+| **總計** | **~NT$670** |
 
 **區域補強採集範例**：
 ```bash
