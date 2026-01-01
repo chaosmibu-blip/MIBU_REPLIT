@@ -4125,8 +4125,10 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}
 5. 若某地點明顯不適合一日遊行程（如已永久歇業、非旅遊點），回傳 X:編號
 6. 若多個地點位於同一園區/景區內（如「傳藝中心」與「臨水劇場」都在傳統藝術中心園區），保留代表性最高的主景點，其餘回傳 X:編號
 
-請回傳完整順序（包含所有地點編號），用逗號分隔（如 3,1,5,2,4）
-若有不適合的點：X:編號（如 X:3）`;
+回傳格式：
+順序：編號用逗號分隔（如 3,1,5,2,4）
+說明：簡述排序理由（30字內）
+若有不適合的點：X:編號`;
           
           const reorderResponse = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
             method: 'POST',
@@ -4143,6 +4145,12 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}
           const reorderData = await reorderResponse.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>, error?: { code?: string; message?: string } };
           const reorderText = reorderData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
           console.log('[Gacha V3] AI Reorder response:', reorderText);
+          
+          // 解析 AI 排序說明（用於除錯）
+          const reasoningMatch = reorderText.match(/說明[：:]\s*(.+)/);
+          if (reasoningMatch) {
+            console.log('[Gacha V3] AI Reasoning:', reasoningMatch[1].trim());
+          }
           
           if (reorderText) {
             // 解析被拒絕的地點 (X:數字 格式)
@@ -4232,7 +4240,7 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}
             const cat = p.category || '其他';
             const currentCount = currentCategoryCounts[cat] || 0;
             if (cat === '美食' && currentCount >= maxFoodCount) return false;
-            if (cat === '住宿' && currentCount >= maxStayCount) return false;
+            if (cat === '住宿' && currentCount >= stayCount) return false;
             return true;
           });
           
@@ -4299,8 +4307,10 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}
 5. 若某地點明顯不適合一日遊行程（如已永久歇業、非旅遊點），回傳 X:編號
 6. 若多個地點位於同一園區/景區內，保留代表性最高的主景點，其餘回傳 X:編號
 
-請回傳完整順序（包含所有地點編號），用逗號分隔（如 3,1,5,2,4）
-若有不適合的點：X:編號（如 X:3）`;
+回傳格式：
+順序：編號用逗號分隔（如 3,1,5,2,4）
+說明：簡述排序理由（30字內）
+若有不適合的點：X:編號`;
             
             const revalidateResponse = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
               method: 'POST',
@@ -4317,6 +4327,12 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}
             const revalidateData = await revalidateResponse.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
             const revalidateText = revalidateData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
             console.log('[Gacha V3] AI Revalidate response:', revalidateText);
+            
+            // 解析 AI 排序說明（用於除錯）
+            const revalidateReasoningMatch = revalidateText.match(/說明[：:]\s*(.+)/);
+            if (revalidateReasoningMatch) {
+              console.log('[Gacha V3] AI Revalidate Reasoning:', revalidateReasoningMatch[1].trim());
+            }
             
             if (revalidateText) {
               // 解析新的被拒絕地點（這次不再補充，避免無限循環）
