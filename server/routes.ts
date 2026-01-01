@@ -4109,26 +4109,19 @@ ${uncachedSkeleton.map((item, idx) => `  {
             hours: formatOpeningHours(p.openingHours)
           }));
           
-          const reorderPrompt = `我要去以下 ${selectedPlaces.length} 個點一日遊，請幫我安排最佳行程順序：
+          const reorderPrompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
 
-${allPlacesInfo.map(p => `${p.idx}. ${p.name}
-   - 類別：${p.category} / ${p.subcategory}
-   - 位置：${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}
-   - 簡介：${p.description || '無'}
-   - 營業：${p.hours}`).join('\n\n')}
+地點列表：
+${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
 
-排序規則：
-1. 早餐/早午餐店排早上、午餐排中午、晚餐/夜市排傍晚、宵夜/酒吧排最後
-2. 住宿永遠排最後
-3. 盡量穿插各個種類，讓行程多元化（但如果都是在夜市內的美食、或是鄰近且適合接續上一行程的地點，則沒關係）
-4. 考慮地理位置，減少迂迴
-5. 若某地點明顯不適合一日遊行程（如已永久歇業、非旅遊點），回傳 X:編號
-6. 若多個地點位於同一園區/景區內（如「傳藝中心」與「臨水劇場」都在傳統藝術中心園區），保留代表性最高的主景點，其餘回傳 X:編號
+排序規則（依優先順序）：
+1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
+2. 地理動線：減少迂迴，鄰近地點連續安排
+3. 類別穿插：避免連續3個同類（夜市內美食除外）
+4. 排除不適合：永久歇業、非旅遊點、同園區重複景點（保留代表性最高者）
 
-回傳格式：
-順序：編號用逗號分隔（如 3,1,5,2,4）
-說明：簡述排序理由（30字內）
-若有不適合的點：X:編號`;
+【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
+{"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
           
           const reorderResponse = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
             method: 'POST',
@@ -4138,66 +4131,101 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}
             },
             body: JSON.stringify({
               contents: [{ role: 'user', parts: [{ text: reorderPrompt }] }],
-              generationConfig: { maxOutputTokens: 1000, temperature: 0.3 }
+              generationConfig: { 
+                maxOutputTokens: 1000, 
+                temperature: 0.1
+              }
             })
           });
           
           const reorderData = await reorderResponse.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>, error?: { code?: string; message?: string } };
           const reorderText = reorderData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-          console.log('[Gacha V3] AI Reorder response:', reorderText);
-          
-          // 解析 AI 排序說明（用於除錯）
-          const reasoningMatch = reorderText.match(/說明[：:]\s*(.+)/);
-          if (reasoningMatch) {
-            console.log('[Gacha V3] AI Reasoning:', reasoningMatch[1].trim());
-          }
+          console.log('[Gacha V3] AI Reorder response (Gemini 3):', reorderText);
           
           if (reorderText) {
-            // 解析被拒絕的地點 (X:數字 格式)
-            const rejectMatches = reorderText.match(/X:\s*(\d+)/gi);
-            if (rejectMatches) {
-              for (const match of rejectMatches) {
-                const idx = parseInt(match.replace(/X:\s*/i, ''));
-                if (idx >= 1 && idx <= selectedPlaces.length) {
-                  rejectedPlaceIds.push(selectedPlaces[idx - 1].id);
-                }
+            try {
+              // 去除 markdown code block 包裝
+              let jsonText = reorderText;
+              if (jsonText.startsWith('```')) {
+                jsonText = jsonText.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
               }
-              console.log('[Gacha V3] AI rejected places:', rejectedPlaceIds);
-            }
-            
-            // 解析順序
-            const allNumbers = reorderText.match(/\d+/g);
-            if (allNumbers && allNumbers.length > 0) {
-              const newOrder = allNumbers
-                .map(n => parseInt(n))
-                .filter(n => !isNaN(n) && n >= 1 && n <= selectedPlaces.length)
-                .filter(n => !rejectedPlaceIds.includes(selectedPlaces[n - 1]?.id)); // 排除被拒絕的
-              const uniqueOrder = Array.from(new Set(newOrder));
               
-              // 只要有有效順序就使用（AI 已負責住宿排最後）
-              if (uniqueOrder.length >= 2) {
-                const reorderedPlaces = uniqueOrder.map(idx => selectedPlaces[idx - 1]).filter(p => p);
-                
-                // 補全遺漏的地點（AI 可能只回傳部分編號）
-                const reorderedIds = new Set(reorderedPlaces.map(p => p.id));
-                const missingPlaces = selectedPlaces.filter(p => 
-                  !reorderedIds.has(p.id) && !rejectedPlaceIds.includes(p.id)
-                );
-                if (missingPlaces.length > 0) {
-                  console.log('[Gacha V3] Adding missing places:', missingPlaces.length);
-                  reorderedPlaces.push(...missingPlaces);
+              // 嘗試解析完整 JSON，如果失敗則用正則提取 order
+              let aiResult: { order?: number[]; reason?: string; reject?: number[] } = {};
+              try {
+                aiResult = JSON.parse(jsonText);
+              } catch {
+                // JSON 不完整，嘗試提取 order 陣列
+                const orderMatch = jsonText.match(/"order"\s*:\s*\[([^\]]+)\]/);
+                const rejectMatch = jsonText.match(/"reject"\s*:\s*\[([^\]]*)\]/);
+                if (orderMatch) {
+                  aiResult.order = orderMatch[1].split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
                 }
-                
-                // 直接使用 AI 回傳的順序（AI 已負責住宿排最後、種類穿插等規則）
-                finalPlaces = reorderedPlaces;
-                
-                aiReorderResult = rejectedPlaceIds.length > 0 ? 'reordered_with_rejects' : 'reordered';
-                console.log('[Gacha V3] AI reordered:', uniqueOrder, 'final count:', finalPlaces.length);
-              } else {
-                aiReorderResult = 'partial_response';
+                if (rejectMatch && rejectMatch[1].trim()) {
+                  aiResult.reject = rejectMatch[1].split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+                }
               }
-            } else {
-              aiReorderResult = 'no_numbers';
+              console.log('[Gacha V3] AI Parsed:', { order: aiResult.order, reason: aiResult.reason, reject: aiResult.reject });
+              
+              // 處理被拒絕的地點
+              if (aiResult.reject && Array.isArray(aiResult.reject)) {
+                for (const idx of aiResult.reject) {
+                  if (idx >= 1 && idx <= selectedPlaces.length) {
+                    rejectedPlaceIds.push(selectedPlaces[idx - 1].id);
+                  }
+                }
+                if (rejectedPlaceIds.length > 0) {
+                  console.log('[Gacha V3] AI rejected places:', rejectedPlaceIds);
+                }
+              }
+              
+              // 處理排序
+              if (aiResult.order && Array.isArray(aiResult.order) && aiResult.order.length > 0) {
+                const validOrder = aiResult.order
+                  .filter(n => typeof n === 'number' && n >= 1 && n <= selectedPlaces.length)
+                  .filter(n => !rejectedPlaceIds.includes(selectedPlaces[n - 1]?.id));
+                const uniqueOrder = Array.from(new Set(validOrder));
+                
+                if (uniqueOrder.length >= 2) {
+                  const reorderedPlaces = uniqueOrder.map(idx => selectedPlaces[idx - 1]).filter(p => p);
+                  
+                  // 補全遺漏的地點
+                  const reorderedIds = new Set(reorderedPlaces.map(p => p.id));
+                  const missingPlaces = selectedPlaces.filter(p => 
+                    !reorderedIds.has(p.id) && !rejectedPlaceIds.includes(p.id)
+                  );
+                  if (missingPlaces.length > 0) {
+                    console.log('[Gacha V3] Adding missing places:', missingPlaces.length);
+                    reorderedPlaces.push(...missingPlaces);
+                  }
+                  
+                  finalPlaces = reorderedPlaces;
+                  aiReorderResult = rejectedPlaceIds.length > 0 ? 'reordered_with_rejects' : 'reordered';
+                  console.log('[Gacha V3] AI reordered:', uniqueOrder, 'reason:', aiResult.reason || 'N/A');
+                } else {
+                  aiReorderResult = 'partial_order';
+                }
+              } else {
+                aiReorderResult = 'no_order';
+              }
+            } catch (parseError) {
+              console.error('[Gacha V3] JSON parse failed, trying fallback:', parseError);
+              // Fallback: 嘗試從文字中提取數字
+              const allNumbers = reorderText.match(/\d+/g);
+              if (allNumbers && allNumbers.length >= 2) {
+                const newOrder = allNumbers
+                  .map(n => parseInt(n))
+                  .filter(n => !isNaN(n) && n >= 1 && n <= selectedPlaces.length);
+                const uniqueOrder = Array.from(new Set(newOrder));
+                if (uniqueOrder.length >= 2) {
+                  finalPlaces = uniqueOrder.map(idx => selectedPlaces[idx - 1]).filter(p => p);
+                  aiReorderResult = 'fallback_reordered';
+                } else {
+                  aiReorderResult = 'parse_failed';
+                }
+              } else {
+                aiReorderResult = 'parse_failed';
+              }
             }
           } else {
             aiReorderResult = 'empty_response';
@@ -4291,26 +4319,19 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}
               hours: formatHours(p.openingHours)
             }));
             
-            const revalidatePrompt = `我要去以下 ${finalPlaces.length} 個點一日遊，請幫我安排最佳行程順序：
+            const revalidatePrompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
 
-${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}
-   - 類別：${p.category} / ${p.subcategory}
-   - 位置：${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}
-   - 簡介：${p.description || '無'}
-   - 營業：${p.hours}`).join('\n\n')}
+地點列表：
+${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
 
-排序規則：
-1. 早餐/早午餐店排早上、午餐排中午、晚餐/夜市排傍晚、宵夜/酒吧排最後
-2. 住宿永遠排最後
-3. 盡量穿插各個種類，讓行程多元化（但如果都是在夜市內的美食、或是鄰近且適合接續上一行程的地點，則沒關係）
-4. 考慮地理位置，減少迂迴
-5. 若某地點明顯不適合一日遊行程（如已永久歇業、非旅遊點），回傳 X:編號
-6. 若多個地點位於同一園區/景區內，保留代表性最高的主景點，其餘回傳 X:編號
+排序規則（依優先順序）：
+1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
+2. 地理動線：減少迂迴，鄰近地點連續安排
+3. 類別穿插：避免連續3個同類（夜市內美食除外）
+4. 排除不適合：永久歇業、非旅遊點、同園區重複景點（保留代表性最高者）
 
-回傳格式：
-順序：編號用逗號分隔（如 3,1,5,2,4）
-說明：簡述排序理由（30字內）
-若有不適合的點：X:編號`;
+【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
+{"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
             
             const revalidateResponse = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
               method: 'POST',
@@ -4320,59 +4341,67 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}
               },
               body: JSON.stringify({
                 contents: [{ role: 'user', parts: [{ text: revalidatePrompt }] }],
-                generationConfig: { maxOutputTokens: 1000, temperature: 0.3 }
+                generationConfig: { 
+                  maxOutputTokens: 500, 
+                  temperature: 0.1
+                }
               })
             });
             
             const revalidateData = await revalidateResponse.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
             const revalidateText = revalidateData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-            console.log('[Gacha V3] AI Revalidate response:', revalidateText);
-            
-            // 解析 AI 排序說明（用於除錯）
-            const revalidateReasoningMatch = revalidateText.match(/說明[：:]\s*(.+)/);
-            if (revalidateReasoningMatch) {
-              console.log('[Gacha V3] AI Revalidate Reasoning:', revalidateReasoningMatch[1].trim());
-            }
+            console.log('[Gacha V3] AI Revalidate response (Gemini 3):', revalidateText);
             
             if (revalidateText) {
-              // 解析新的被拒絕地點（這次不再補充，避免無限循環）
-              const newRejectMatches = revalidateText.match(/X:\s*(\d+)/gi);
-              const newRejectedIds: number[] = [];
-              if (newRejectMatches) {
-                for (const match of newRejectMatches) {
-                  const idx = parseInt(match.replace(/X:\s*/i, ''));
-                  if (idx >= 1 && idx <= finalPlaces.length) {
-                    newRejectedIds.push(finalPlaces[idx - 1].id);
-                  }
+              try {
+                // 去除 markdown code block 包裝
+                let jsonText = revalidateText;
+                if (jsonText.startsWith('```')) {
+                  jsonText = jsonText.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
                 }
-                console.log('[Gacha V3] AI revalidate rejected:', newRejectedIds.length);
-              }
-              
-              // 解析新順序
-              const newNumbers = revalidateText.match(/\d+/g);
-              if (newNumbers && newNumbers.length > 0) {
-                const newOrder = newNumbers
-                  .map(n => parseInt(n))
-                  .filter(n => !isNaN(n) && n >= 1 && n <= finalPlaces.length)
-                  .filter(n => !newRejectedIds.includes(finalPlaces[n - 1]?.id));
-                const uniqueNewOrder = Array.from(new Set(newOrder));
                 
-                if (uniqueNewOrder.length >= 2) {
-                  const revalidatedPlaces = uniqueNewOrder.map(idx => finalPlaces[idx - 1]).filter(p => p);
-                  
-                  // 補全遺漏的地點
-                  const revalidatedIds = new Set(revalidatedPlaces.map(p => p.id));
-                  const stillMissing = finalPlaces.filter(p => 
-                    !revalidatedIds.has(p.id) && !newRejectedIds.includes(p.id)
-                  );
-                  if (stillMissing.length > 0) {
-                    revalidatedPlaces.push(...stillMissing);
+                const revalidateResult = JSON.parse(jsonText) as { order?: number[]; reason?: string; reject?: number[] };
+                console.log('[Gacha V3] Revalidate Parsed:', { order: revalidateResult.order, reason: revalidateResult.reason, reject: revalidateResult.reject });
+                
+                // 處理被拒絕的地點（這次不再補充，避免無限循環）
+                const newRejectedIds: number[] = [];
+                if (revalidateResult.reject && Array.isArray(revalidateResult.reject)) {
+                  for (const idx of revalidateResult.reject) {
+                    if (idx >= 1 && idx <= finalPlaces.length) {
+                      newRejectedIds.push(finalPlaces[idx - 1].id);
+                    }
                   }
-                  
-                  finalPlaces = revalidatedPlaces;
-                  aiReorderResult = 'revalidated';
-                  console.log('[Gacha V3] AI revalidated order, final count:', finalPlaces.length);
+                  if (newRejectedIds.length > 0) {
+                    console.log('[Gacha V3] Revalidate rejected:', newRejectedIds.length);
+                  }
                 }
+                
+                // 處理排序
+                if (revalidateResult.order && Array.isArray(revalidateResult.order) && revalidateResult.order.length > 0) {
+                  const validOrder = revalidateResult.order
+                    .filter(n => typeof n === 'number' && n >= 1 && n <= finalPlaces.length)
+                    .filter(n => !newRejectedIds.includes(finalPlaces[n - 1]?.id));
+                  const uniqueNewOrder = Array.from(new Set(validOrder));
+                  
+                  if (uniqueNewOrder.length >= 2) {
+                    const revalidatedPlaces = uniqueNewOrder.map(idx => finalPlaces[idx - 1]).filter(p => p);
+                    
+                    // 補全遺漏的地點
+                    const revalidatedIds = new Set(revalidatedPlaces.map(p => p.id));
+                    const stillMissing = finalPlaces.filter(p => 
+                      !revalidatedIds.has(p.id) && !newRejectedIds.includes(p.id)
+                    );
+                    if (stillMissing.length > 0) {
+                      revalidatedPlaces.push(...stillMissing);
+                    }
+                    
+                    finalPlaces = revalidatedPlaces;
+                    aiReorderResult = 'revalidated';
+                    console.log('[Gacha V3] Revalidated, reason:', revalidateResult.reason || 'N/A');
+                  }
+                }
+              } catch (parseError) {
+                console.error('[Gacha V3] Revalidate JSON parse failed:', parseError);
               }
             }
           } catch (revalidateError) {
