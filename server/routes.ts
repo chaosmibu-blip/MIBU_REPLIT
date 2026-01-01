@@ -3737,6 +3737,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
         countryId: z.number().optional(),
         language: z.string().optional(),
         itemCount: z.number().min(5).max(12).optional(),
+        count: z.number().min(5).max(12).optional(), // Alias for itemCount
         // Legacy format
         city: z.string().optional(),
         district: z.string().optional(),
@@ -3745,7 +3746,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
 
       const validated = itinerarySchema.parse(req.body);
       let { city, district, pace } = validated;
-      const { regionId, itemCount, language = 'zh-TW' } = validated;
+      const { regionId, language = 'zh-TW' } = validated;
+      const itemCount = validated.itemCount || validated.count; // Support both
       
       const getLocalizedDescription = (place: any, lang: string): string => {
         const i18n = place.descriptionI18n || place.description_i18n;
