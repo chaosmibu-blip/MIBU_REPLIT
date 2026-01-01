@@ -16,7 +16,7 @@
  * 
  * 設計：
  * - 每批 500 筆，串行處理
- * - maxOutputTokens: 16384（Gemini 3 思考型模型需要足夠空間）
+ * - maxOutputTokens: 32768（Gemini 3 思考型模型需要足夠空間）
  */
 
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -173,7 +173,7 @@ ${SEVEN_CATEGORIES.join('、')}
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.1,
-          maxOutputTokens: 16384,
+          maxOutputTokens: 32768,
           responseMimeType: "application/json",
         }
       }),
@@ -284,7 +284,7 @@ async function deepReviewPlaces() {
   console.log(`📋 設定: 每批=${BATCH_SIZE}筆, 串行處理`);
   console.log(`📋 起始ID=${currentStartId}`);
   console.log(`🤖 模型: gemini-3-pro-preview`);
-  console.log(`📦 maxOutputTokens: 16384`);
+  console.log(`📦 maxOutputTokens: 32768`);
   console.log(`🔄 自動模式: ${autoMode ? '啟用（處理全部資料）' : '停用（僅處理一批）'}`);
   console.log(`${'═'.repeat(60)}\n`);
 
