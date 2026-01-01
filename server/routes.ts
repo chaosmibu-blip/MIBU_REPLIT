@@ -4348,7 +4348,7 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategor
               body: JSON.stringify({
                 contents: [{ role: 'user', parts: [{ text: revalidatePrompt }] }],
                 generationConfig: { 
-                  maxOutputTokens: 500, 
+                  maxOutputTokens: 8192, 
                   temperature: 0.1
                 }
               })
