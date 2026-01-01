@@ -8,35 +8,62 @@
 ## 1. Google Places API
 
 ### 用途
-- 景點資料驗證
-- 地址 geocoding
-- 營業時間、評分取得
+- **僅限採集腳本使用**：批次採集景點資料
+- 取得經緯度、評分、營業時間、Google Types
 
 ### 環境變數
 ```
 GOOGLE_MAPS_API_KEY
 ```
 
-### 主要使用
-```typescript
-// Place Details
-GET https://maps.googleapis.com/maps/api/place/details/json
-?place_id=${placeId}&fields=name,formatted_address,geometry,rating,opening_hours
-&key=${GOOGLE_MAPS_API_KEY}
+### ⚠️ 費用來源分析（2026-01-01 更新）
 
-// Place Search
-GET https://maps.googleapis.com/maps/api/place/textsearch/json
-?query=${placeName}+${city}&key=${GOOGLE_MAPS_API_KEY}
+| 功能 | 是否產生費用 | 說明 |
+|------|-------------|------|
+| **採集腳本** | ✅ 是 | 唯一會產生 Google API 費用的地方 |
+| **Gacha V3 扭蛋** | ❌ 否 | Database-driven，從 places 表直接抽取 |
+| **商家認領** | ❌ 否 | 直接連結 places 表，不呼叫 API |
+| **V1/V2 Legacy** | ⚠️ 殘留 | 舊版端點，已不在主流程使用 |
+
+> 📌 **結論**：運營階段 0 Google API 費用，只有手動執行採集腳本時才會產生費用。
+
+### 主要使用（僅採集腳本）
+```typescript
+// Text Search (New) - 採集腳本使用
+POST https://places.googleapis.com/v1/places:searchText
+Headers:
+  X-Goog-Api-Key: ${GOOGLE_MAPS_API_KEY}
+  X-Goog-FieldMask: places.id,places.displayName,places.formattedAddress,places.location,...
+
+// 目前請求的欄位（batch-parallel-collect.ts）
+places.id, places.displayName, places.formattedAddress, places.location,
+places.rating, places.types, places.primaryType, places.businessStatus,
+places.currentOpeningHours, places.regularOpeningHours, nextPageToken
 ```
 
 ### 使用位置
-- `server/routes.ts`: 批次採集地點
-- `server/lib/placeGenerator.ts`: 批次地點搜尋
-- 地址 → 經緯度轉換
+- `server/scripts/batch-parallel-collect.ts`: **唯一主要費用來源**
+- `server/lib/placeGenerator.ts`: 採集函式庫（被腳本呼叫）
+- `server/routes.ts`: Legacy 端點（V1/V2，已停用）
 
-### 配額
-- 免費: $200/月 (約 40,000 次請求)
-- 超額: $0.017/次
+### 費用結構
+
+| API | 美金/千次 | 台幣/千次 |
+|-----|----------|----------|
+| Text Search (New) - Pro | $32 | NT$1,004 |
+| + Contact Data（營業時間）| +$3 | +NT$94 |
+| Geocoding | $5 | NT$157 |
+| Place Details - Basic | $5-10 | NT$157-314 |
+
+### 每次採集費用估算
+- 每個城市約 70-210 次 API 呼叫
+- 費用約 **NT$70-210/城市**
+
+### 優化建議（未實施）
+1. **分段式採集**：先用 Field Mask 只取 ID，本地去重後再取詳情
+2. **減少欄位**：移除 `openingHours` 可省 NT$94/千次
+3. **減少關鍵字**：10 → 5 個/類別
+4. **減少分頁**：3 頁 → 1 頁
 
 ---
 
