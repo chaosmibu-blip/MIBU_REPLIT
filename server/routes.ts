@@ -4123,7 +4123,7 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
 {"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
           
-          const reorderResponse = await fetch(`${baseUrl}/models/gemini-2.5-pro:generateContent`, {
+          const reorderResponse = await fetch(`${baseUrl}/models/gemini-3-pro-preview:generateContent`, {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
@@ -4132,13 +4132,19 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
             body: JSON.stringify({
               contents: [{ role: 'user', parts: [{ text: reorderPrompt }] }],
               generationConfig: { 
-                maxOutputTokens: 1000, 
+                maxOutputTokens: 8192, 
                 temperature: 0.1
               }
             })
           });
           
           const reorderData = await reorderResponse.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>, error?: { code?: string; message?: string } };
+          
+          // 檢查 API 錯誤
+          if (reorderData.error) {
+            console.log('[Gacha V3] AI API Error:', reorderData.error);
+          }
+          
           const reorderText = reorderData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
           console.log('[Gacha V3] AI Reorder response (Gemini 3):', reorderText);
           
@@ -4333,7 +4339,7 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategor
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
 {"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
             
-            const revalidateResponse = await fetch(`${baseUrl}/models/gemini-2.5-pro:generateContent`, {
+            const revalidateResponse = await fetch(`${baseUrl}/models/gemini-3-pro-preview:generateContent`, {
               method: 'POST',
               headers: { 
                 'Content-Type': 'application/json',

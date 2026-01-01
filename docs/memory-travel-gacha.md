@@ -337,6 +337,25 @@ npx tsx server/scripts/batch-parallel-collect.ts 桃園市 --district=觀音區 
 
 ## Changelog
 
+### 2026-01-01 - AI 排序升級至 Gemini 3 Pro Preview
+
+#### 模型升級
+- **模型變更**：`gemini-2.5-flash` → `gemini-3-pro-preview`
+- **關鍵參數**：
+  - `maxOutputTokens: 8192`（Gemini 3 是推理型模型，思考會消耗大量 token）
+  - `temperature: 0.1`（低溫度確保穩定輸出）
+
+#### JSON 格式穩定化
+- **Prompt 改版**：要求 AI 只輸出一行 JSON，不要換行或 markdown
+- **彈性解析**：先嘗試 `JSON.parse`，失敗則用正則提取 `order` 陣列
+- **回應格式**：`{"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`
+
+#### 測試結果
+- **成功率**：100%（3/3 測試全部成功）
+- **排序品質**：AI 正確推斷時段邏輯、地理動線、類別穿插
+
+---
+
 ### 2026-01-01 - V3 扭蛋選點與排序重大重構
 
 #### 結構化選點重構（2026-01-01 修正）
