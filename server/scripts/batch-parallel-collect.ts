@@ -242,14 +242,12 @@ async function searchGooglePlaces(query: string, location: string, maxPages: num
         requestBody.pageToken = pageToken;
       }
       
-      // 2026-01-01 費用優化：移除 openingHours 欄位，節省 Contact Data SKU 費用（+$3/千次）
-      // 營業時間可在後續審核或升級流程中由 AI 補充
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
-          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.primaryType,places.businessStatus,nextPageToken'
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.primaryType,places.businessStatus,places.currentOpeningHours,places.regularOpeningHours,nextPageToken'
         },
         body: JSON.stringify(requestBody)
       });
@@ -265,7 +263,8 @@ async function searchGooglePlaces(query: string, location: string, maxPages: num
         rating: p.rating,
         types: p.types || [],
         primaryType: p.primaryType,
-        businessStatus: p.businessStatus
+        businessStatus: p.businessStatus,
+        openingHours: p.regularOpeningHours || p.currentOpeningHours || null
       }));
       
       allPlaces.push(...places);
