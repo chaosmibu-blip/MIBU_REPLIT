@@ -230,13 +230,25 @@ ${SEVEN_CATEGORIES.join('、')}
   }
 }
 
-async function processChunk(places: PlaceData[], chunkIndex: number): Promise<{
+interface ChunkResult {
   results: ReviewResult[];
   chunkIndex: number;
   error?: string;
-}> {
+}
+
+async function processChunkWithDelay(
+  places: PlaceData[], 
+  chunkIndex: number, 
+  delayMs: number
+): Promise<ChunkResult> {
+  if (delayMs > 0) {
+    await sleep(delayMs);
+  }
+  console.log(`   📤 Chunk ${chunkIndex + 1} 開始發送...`);
+  
   try {
     const results = await batchReviewWithAI(places);
+    console.log(`   ✅ Chunk ${chunkIndex + 1} 完成`);
     return { results, chunkIndex };
   } catch (e: any) {
     console.error(`   ⚠️ Chunk ${chunkIndex + 1} 失敗: ${e.message}`);
@@ -256,6 +268,7 @@ async function deepReviewPlaces() {
   let currentStartId = parseInt(numericArgs[1]) || 0;
 
   const CHUNK_SIZE = 100;
+  const STAGGER_DELAY = 3000;
   const DELAY_BETWEEN_BATCHES = 5000;
 
   let grandTotalKeep = 0;
@@ -267,10 +280,10 @@ async function deepReviewPlaces() {
   const grandStartTime = Date.now();
 
   console.log(`\n${'═'.repeat(60)}`);
-  console.log(`🔍 深度審核 places 表（並行處理版）`);
+  console.log(`🔍 深度審核 places 表（錯開發送版）`);
   console.log(`${'═'.repeat(60)}`);
-  console.log(`📋 設定: 總批次=${totalBatchSize}筆, 每 chunk=${CHUNK_SIZE}筆並行`);
-  console.log(`📋 起始ID=${currentStartId}`);
+  console.log(`📋 設定: 總批次=${totalBatchSize}筆, 每 chunk=${CHUNK_SIZE}筆`);
+  console.log(`📋 錯開間隔=${STAGGER_DELAY/1000}秒, 起始ID=${currentStartId}`);
   console.log(`🤖 模型: gemini-3-pro-preview`);
   console.log(`📦 maxOutputTokens: 65536 (最大值)`);
   console.log(`🔄 自動模式: ${autoMode ? '啟用（處理全部資料）' : '停用（僅處理一批）'}`);
@@ -312,15 +325,17 @@ async function deepReviewPlaces() {
       chunks.push(places.slice(i, i + CHUNK_SIZE));
     }
     
-    console.log(`🚀 分成 ${chunks.length} 個 chunks，並行處理中...`);
+    console.log(`🚀 分成 ${chunks.length} 個 chunks，錯開 ${STAGGER_DELAY/1000} 秒發送...`);
 
     const startTime = Date.now();
     
-    const chunkPromises = chunks.map((chunk, idx) => processChunk(chunk, idx));
+    const chunkPromises = chunks.map((chunk, idx) => 
+      processChunkWithDelay(chunk, idx, idx * STAGGER_DELAY)
+    );
     const chunkResults = await Promise.all(chunkPromises);
     
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`⏱️ 並行 AI 處理耗時: ${elapsed} 秒`);
+    console.log(`⏱️ 錯開發送 AI 處理耗時: ${elapsed} 秒`);
 
     let keepCount = 0;
     let fixCount = 0;
