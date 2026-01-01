@@ -3841,12 +3841,23 @@ ${uncachedSkeleton.map((item, idx) => `  {
       }
       
       // ========== Step 2: 結構化選點 (Structured Selection) ==========
-      // 六大類別等權重隨機分配，美食不超過總數一半，住宿最多 1 個
+      // 美食保底 + 住宿規則 + 剩餘等權重隨機分配
       const SIX_CATEGORIES = ['美食', '景點', '購物', '娛樂設施', '生態文化教育', '遊程體驗'];
-      const maxFoodCount = Math.floor(targetCount / 2); // 美食不超過一半
-      const maxStayCount = 1; // 住宿最多 1 個
       
-      console.log('[Gacha V3] Selection config:', { targetCount, maxFoodCount, maxStayCount });
+      // 美食上限：不超過總數一半
+      const maxFoodCount = Math.floor(targetCount / 2);
+      
+      // 美食保底規則：5-6張=2個, 7-8張=3個, 9+張=3個
+      // 但不能超過 maxFoodCount（處理 targetCount < 5 的邊界情況）
+      let minFoodCount = 2;
+      if (targetCount >= 7 && targetCount <= 8) minFoodCount = 3;
+      if (targetCount >= 9) minFoodCount = 3;
+      minFoodCount = Math.min(minFoodCount, maxFoodCount); // 確保保底不超過上限
+      
+      // 住宿規則：≥9張才有住宿
+      const stayCount = targetCount >= 9 ? 1 : 0;
+      
+      console.log('[Gacha V3] Selection config:', { targetCount, minFoodCount, maxFoodCount, stayCount });
       
       // 查詢錨點區域的地點
       let anchorPlaces = anchorDistrict 
@@ -3940,23 +3951,37 @@ ${uncachedSkeleton.map((item, idx) => `  {
         usedIds.clear(); // 清空去重限制
       }
       
-      // ========== 六大類別等權重隨機分配 ==========
+      // ========== 結構化選點：保底 + 等權重隨機分配 ==========
+      const categoryPickCounts: Record<string, number> = {};
+      
+      // Step 2a: 先選取保底美食
+      const foodPicks = pickFromCategory('美食', minFoodCount);
+      selectedPlaces.push(...foodPicks);
+      categoryPickCounts['美食'] = foodPicks.length;
+      console.log('[Gacha V3] Food picks (guaranteed):', foodPicks.length, '/', minFoodCount);
+      
+      // Step 2b: 若需要住宿，選取 1 個
+      if (stayCount > 0) {
+        const stayPicks = pickFromCategory('住宿', 1);
+        selectedPlaces.push(...stayPicks);
+        categoryPickCounts['住宿'] = stayPicks.length;
+        console.log('[Gacha V3] Stay picks:', stayPicks.length);
+      }
+      
+      // Step 2c: 剩餘額度用等權重隨機分配（排除住宿，因為已固定）
+      let remaining = targetCount - selectedPlaces.length;
+      console.log('[Gacha V3] Remaining slots for random:', remaining);
+      
+      // 初始化權重（六大類別，住宿已固定所以不參與）
       const categoryWeights: Record<string, number> = {};
       let totalWeight = 0;
-      
-      // 初始化權重（所有六大類別 + 住宿各權重 1）
-      for (const cat of [...SIX_CATEGORIES, '住宿']) {
+      for (const cat of SIX_CATEGORIES) {
         if (anchorByCategory[cat] && anchorByCategory[cat].length > 0) {
           categoryWeights[cat] = 1;
           totalWeight += 1;
         }
       }
       
-      // 追蹤各類別選取數量
-      const categoryPickCounts: Record<string, number> = {};
-      
-      // 按權重隨機選取地點
-      let remaining = targetCount;
       while (remaining > 0 && totalWeight > 0) {
         // 加權隨機選擇類別
         let rand = Math.random() * totalWeight;
@@ -3970,14 +3995,9 @@ ${uncachedSkeleton.map((item, idx) => `  {
         }
         if (!selectedCategory) selectedCategory = Object.keys(categoryWeights)[0];
         
-        // 檢查美食和住宿限制
+        // 檢查美食上限
         const currentCategoryCount = categoryPickCounts[selectedCategory] || 0;
         if (selectedCategory === '美食' && currentCategoryCount >= maxFoodCount) {
-          categoryWeights[selectedCategory] = 0;
-          totalWeight = Object.values(categoryWeights).reduce((a, b) => a + b, 0);
-          continue;
-        }
-        if (selectedCategory === '住宿' && currentCategoryCount >= maxStayCount) {
           categoryWeights[selectedCategory] = 0;
           totalWeight = Object.values(categoryWeights).reduce((a, b) => a + b, 0);
           continue;
