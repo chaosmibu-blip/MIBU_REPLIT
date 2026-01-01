@@ -23,6 +23,8 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as schema from '../../shared/schema';
 import { eq, and, gte, sql } from 'drizzle-orm';
+import { shouldPreFilter, getBlacklistPromptText, EXCLUDE_KEYWORDS, EXACT_EXCLUDE_NAMES } from '../lib/placeBlacklist';
+import { SEVEN_CATEGORIES } from '../lib/categoryMapping';
 
 const { Pool } = pg;
 
@@ -35,37 +37,6 @@ const db = drizzle(pool, { schema });
 
 const GEMINI_BASE_URL = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
 const GEMINI_API_KEY = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-
-const BLACKLIST_KEYWORDS = [
-  '區公所', '市公所', '鄉公所', '鎮公所', '戶政事務所', '戶政所',
-  '警察局', '派出所', '分局', '消防局', '消防隊',
-  '衛生所', '衛生局', '醫院', '診所', '藥局',
-  '殯儀館', '火葬場', '納骨塔', '墓園', '靈骨塔', '禮儀公司',
-  '停車場', '停車塔', '加油站', '充電站',
-  '焚化爐', '垃圾處理', '污水處理', '資源回收',
-  '銀行', '郵局', '證券', '保險公司',
-  '資材行', '水電行', '五金行', '建材行',
-  '汽車修理', '機車行', '輪胎行', '保養廠',
-  '洗衣店', '乾洗店', '自助洗衣',
-  '當舖', '當鋪',
-  '快餐店', '便當店',
-  '包車', '租車', '計程車行', '客運站', '公車站',
-  '影城', 'KTV', '健身房', '健身中心', '瑜伽',
-  '美容院', '美髮', '髮廊', '理髮', '美甲', '美睫',
-  '補習班', '安親班', '托兒所', '幼兒園',
-  '工廠', '倉庫', '物流中心',
-  '法院', '地檢署', '監獄', '看守所',
-  '殯葬', '喪葬', '葬儀',
-  '運動用品店', '運動中心'
-];
-
-const EXACT_EXCLUDE_NAMES = [
-  '台灣小吃', '台灣美食', '台灣料理', '台灣餐廳',
-  '小吃店', '美食店', '餐廳', '飯店', '旅館', '民宿',
-  '便利商店', '超商', '7-11', '全家', '萊爾富', 'OK超商'
-];
-
-const SEVEN_CATEGORIES = ['美食', '住宿', '生態文化教育', '遊程體驗', '娛樂設施', '景點', '購物'] as const;
 
 interface PlaceData {
   id: number;
@@ -80,7 +51,7 @@ interface PlaceData {
 
 interface ReviewResult {
   id: number;
-  action: 'keep' | 'fix' | 'delete';
+  action: 'keep' | 'fix' | 'x' | 'delete';  // x = 非旅遊性質，delete = 向下相容舊格式
   category?: string;
   subcategory?: string;
   reason?: string;
@@ -130,22 +101,23 @@ async function batchReviewWithAI(places: PlaceData[], retryCount = 0): Promise<R
     hours: formatOpeningHours(p.openingHours)
   }));
 
+  const blacklistPrompt = getBlacklistPromptText();
+  
   const prompt = `你是旅遊景點審核專家。請審核以下地點是否適合作為旅遊推薦。
 
 【待審核地點】
 ${placesJson.map(p => `${p.id}. ${p.name}｜${p.cat}/${p.sub}｜${p.desc}｜${p.addr}｜營業:${p.hours}｜types:${p.types}`).join('\n')}
 
-【不適合旅遊的類型 - 回傳 delete】
-${BLACKLIST_KEYWORDS.slice(0, 30).join('、')}
-以及：${BLACKLIST_KEYWORDS.slice(30).join('、')}
+${blacklistPrompt}
 
-【通用名稱黑名單 - 回傳 delete】
-${EXACT_EXCLUDE_NAMES.join('、')}
+【非旅遊性質判斷 - 回傳 x】
+若該地點的主要用途不是給遊客體驗、觀光、品嚐美食、住宿或購物，而是純粹服務當地居民日常需求（如：便利商店、家庭理髮、社區診所），請判定為非旅遊性質。
 
 【分類錯誤判斷 - 回傳 fix】
 1. 住宿分類下出現非住宿（如：美容院、運動用品店）
 2. 景點分類下出現非景點（如：美甲店、墓園）
 3. 名稱與分類明顯不符
+4. 子分類不夠精確（如：餐廳→應細分為火鍋、燒烤、日式料理等）
 
 【七大合法種類】
 ${SEVEN_CATEGORIES.join('、')}
@@ -153,14 +125,15 @@ ${SEVEN_CATEGORIES.join('、')}
 【回傳格式】純 JSON Array，每筆一行：
 [
 {"id":123,"action":"keep"},
-{"id":456,"action":"delete","reason":"殯葬相關"},
-{"id":789,"action":"fix","category":"美食","subcategory":"韓式料理","reason":"分類錯誤"}
+{"id":456,"action":"x","reason":"非旅遊性質：便利商店"},
+{"id":789,"action":"fix","category":"美食","subcategory":"韓式料理","reason":"子分類修正"}
 ]
 
 重要：
-1. 如需新增子分類（如：韓式料理），直接回傳，只要歸到七大種類之一
-2. 只回傳 JSON Array，不要其他文字
-3. 每個 id 都必須有對應的審核結果`;
+1. action 只有三種值：keep、x、fix
+2. 如需新增子分類（如：韓式料理），直接回傳，只要歸到七大種類之一
+3. 只回傳 JSON Array，不要其他文字
+4. 每個 id 都必須有對應的審核結果`;
 
   try {
     const response = await fetch(`${GEMINI_BASE_URL}/models/gemini-3-pro-preview:generateContent`, {
@@ -334,12 +307,14 @@ async function deepReviewPlaces() {
       try {
         if (result.action === 'keep') {
           keepCount++;
-        } else if (result.action === 'delete') {
+        } else if (result.action === 'x' || result.action === 'delete') {
+          // x = 非旅遊性質，delete = 向下相容舊格式
           await db.update(schema.places)
             .set({ isActive: false })
             .where(eq(schema.places.id, result.id));
           deleteCount++;
-          console.log(`   ❌ 刪除 #${result.id}: ${result.reason || '不適合旅遊'}`);
+          const actionLabel = result.action === 'x' ? '非旅遊' : '刪除';
+          console.log(`   ❌ ${actionLabel} #${result.id}: ${result.reason || '不適合旅遊'}`);
         } else if (result.action === 'fix' && result.category && result.subcategory) {
           if (!SEVEN_CATEGORIES.includes(result.category as any)) {
             console.log(`   ⚠️ #${result.id}: 無效種類 "${result.category}"，跳過`);

@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as schema from '../../shared/schema';
 import { eq, isNull, or } from 'drizzle-orm';
+import { shouldPreFilter } from '../lib/placeBlacklist';
 
 const { Pool } = pg;
 
@@ -30,52 +31,6 @@ interface BatchReviewResult {
 }
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// 方案三：Pre-filtering 前置過濾關鍵字（不需要 AI 判斷的垃圾資料）
-const EXCLUDE_KEYWORDS = [
-  // 政府機關
-  '區公所', '市公所', '鄉公所', '鎮公所', '戶政事務所', '地政事務所',
-  '國稅局', '稅捐處', '監理站', '監理所', '警察局', '派出所', '消防局', '消防隊',
-  '法院', '地檢署', '調解委員會', '兵役課', '役政署',
-  // 醫療機構
-  '衛生所', '衛生局', '疾病管制', '健保署', '長照中心',
-  // 殯葬
-  '殯儀館', '火葬場', '納骨塔', '靈骨塔', '墓園', '公墓', '殯葬',
-  // 基礎設施
-  '停車場', '停車塔', '加油站', '變電所', '汙水處理', '自來水', '焚化爐',
-  '垃圾場', '回收站', '資源回收',
-  // 金融（非旅遊相關）
-  '銀行分行', '郵局', '農會信用部',
-  // 教育機構（非觀光）
-  '教育局', '學區', '督學', '國小', '國中', '高中', '大學', '學校', '幼兒園', '幼稒園',
-  // 交通服務（非景點）
-  '包車', '租車', '計程車行', '客運站',
-  // 娛樂設施（連鎖/非特色）
-  '影城', '電影院', '電影', 'KTV', '健身房', '健身', 'gym', '保齡球', '撞球', '網咖', '瑜珈', 'yoga',
-  // 活動類（時效性強，平時無內容）
-  '展覽', '市集', '音樂會', '節慶', '運動賽事', '工作坊', '講座',
-  '演唱會', '表演', '慶典', '祭典', '嘉年華',
-];
-
-const EXACT_EXCLUDE_NAMES = [
-  '台灣小吃', '台灣美食', '台灣料理', '台灣餐廳',
-  '小吃店', '美食店', '餐廳', '飯店', '旅館', '民宿',
-];
-
-function shouldPreFilter(placeName: string): { filtered: boolean; reason: string } {
-  const lowerName = placeName.toLowerCase();
-  for (const exactName of EXACT_EXCLUDE_NAMES) {
-    if (lowerName === exactName.toLowerCase()) {
-      return { filtered: true, reason: `通用名稱不適合作為景點: ${exactName}` };
-    }
-  }
-  for (const keyword of EXCLUDE_KEYWORDS) {
-    if (lowerName.includes(keyword.toLowerCase())) {
-      return { filtered: true, reason: `包含排除關鍵字: ${keyword}` };
-    }
-  }
-  return { filtered: false, reason: '' };
-}
 
 async function batchReviewPlacesWithAI(
   places: PlaceForReview[],

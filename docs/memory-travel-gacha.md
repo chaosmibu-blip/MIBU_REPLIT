@@ -392,6 +392,36 @@ npx tsx server/scripts/batch-parallel-collect.ts 桃園市 --district=觀音區 
 
 ## Changelog
 
+### 2026-01-01 - 深度審核腳本優化與黑名單共用模組
+
+#### 共用黑名單模組
+- **新增檔案**：`server/lib/placeBlacklist.ts`
+- **功能**：統一管理所有審核腳本的過濾規則
+- **合併來源**：`short-batch-review.ts` + `deep-review-places.ts` 各自的黑名單
+- **導出函數**：
+  - `shouldPreFilter(placeName)` - 判斷是否應前置過濾
+  - `getBlacklistPromptText()` - 取得 AI prompt 用的黑名單描述
+  - `EXCLUDE_KEYWORDS` - 黑名單關鍵字陣列
+  - `EXACT_EXCLUDE_NAMES` - 完全比對黑名單
+  - `PRESERVE_LIST` - 保留名單（蘭城百匯、森本屋）
+
+#### 深度審核 prompt 改版（`deep-review-places.ts`）
+- **AI 回傳格式統一**：非旅遊性質回傳 `x`（與 V3 扭蛋的 `X:編號` 格式一致）
+- **action 三種值**：`keep`、`x`、`fix`
+- **向下相容**：仍支援 `delete` 作為別名
+- **新增判斷標準**：
+  - 「非旅遊性質」：純粹服務當地居民日常需求的地點
+  - 「子分類不夠精確」：如「餐廳」應細分為「火鍋」「燒烤」等
+- **輸出新增子分類建議**：審核結束後列出所有新子分類，供加入 `categoryMapping.ts`
+
+#### 腳本更新
+| 腳本 | 變更 |
+|------|------|
+| `short-batch-review.ts` | 改用共用黑名單模組 |
+| `deep-review-places.ts` | 改用共用黑名單模組 + prompt 改版 |
+
+---
+
 ### 2026-01-01 - AI 排序升級至 Gemini 3 Pro Preview
 
 #### 模型升級
