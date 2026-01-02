@@ -76,45 +76,27 @@ places.currentOpeningHours, places.regularOpeningHours, nextPageToken
 
 ### 環境變數
 ```
-AI_INTEGRATIONS_GEMINI_API_KEY    # Replit AI Integrations（備用）
-AI_INTEGRATIONS_GEMINI_BASE_URL   # Replit AI Integrations（備用）
-GOOGLE_GEMINI_API_KEY             # ⭐ 自己的 Google API Key（優先使用）
+AI_INTEGRATIONS_GEMINI_API_KEY
+AI_INTEGRATIONS_GEMINI_BASE_URL
 ```
 
-### 主要模型（2026-01-02 更新）
+### 主要模型（2026-01-01 升級）
 
-| 模型 | 用途 | 特性 | API 來源 |
-|------|------|------|----------|
-| `gemini-3-flash-preview` | **V3 扭蛋排序** | ⚡ 最新推理模型 | Google 官方 |
-| `gemini-3-pro-preview` | 審核、描述生成 | 高品質推理 | Google 官方 |
-| `gemini-2.5-flash` | 採集、備用 | 快速、低成本 | Replit/Google |
-
-> ✅ 使用自己的 `GOOGLE_GEMINI_API_KEY` 可使用 `gemini-3-flash-preview`
-> ⚠️ Replit AI Integrations 尚未支援 `gemini-3-flash-preview`（2026-01-02 確認）
+| 模型 | 用途 | 特性 |
+|------|------|------|
+| `gemini-2.5-flash` | 採集（關鍵字擴散） | 快速、低成本 |
+| `gemini-3-pro-preview` | 審核、描述生成、扭蛋排序 | 高品質推理 |
 
 ### 模型配置規範
 
-| 用途 | 模型 | temperature | maxOutputTokens | 備註 |
-|------|------|-------------|-----------------|------|
-| **V3 扭蛋排序** | gemini-3-flash-preview | 0.1 | 8192 | ⭐ 即時 API（Google 直連）|
-| 採集 | gemini-2.5-flash | 0.7 | 8192 | 離線腳本 |
-| **審核** | gemini-3-pro-preview | 0.1 | 16384 | 離線腳本 |
-| **描述生成** | gemini-3-pro-preview | 0.3 | 16384 | 離線腳本 |
+| 用途 | 模型 | temperature | maxOutputTokens |
+|------|------|-------------|-----------------|
+| 採集 | gemini-2.5-flash | 0.7 | 8192 |
+| **審核** | gemini-3-pro-preview | 0.1 | 16384 |
+| **描述生成** | gemini-3-pro-preview | 0.3 | 16384 |
+| **扭蛋排序** | gemini-3-pro-preview | 0.1 | 8192 |
 
 > ⚠️ **Gemini 3 重要提醒**：Gemini 3 是推理模型，會消耗 1000-4000 tokens 進行「思考」，必須設定足夠的 maxOutputTokens
-
-### V3 扭蛋效能優化（2026-01-02 更新）
-
-| 優化項目 | 優化前 | 優化後 | 改善幅度 |
-|---------|--------|--------|----------|
-| AI 排序模型 | gemini-3-pro-preview | **gemini-2.5-flash** | - |
-| 單一請求回應 | 109 秒 | 1-3 秒 | ⚡ 50x |
-| 10 併發請求 | 超時 | 穩定 | ⚡ 穩定 |
-| 支撐能力 | <10 DAU | **10,000+ DAU** | ✅ 達標 |
-
-> ⚠️ **注意**：`gemini-3-flash` 在 Replit AI Integrations 尚未支援，改用 `gemini-2.5-flash`
-> 
-> 📌 **決策**：即時 API 用 `gemini-2.5-flash`、離線腳本維持 `gemini-3-pro-preview`（品質優先）
 
 ### 使用方式
 ```typescript

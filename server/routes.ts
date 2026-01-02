@@ -4086,15 +4086,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
       
       if (selectedPlaces.length >= 2) {
         try {
-          // 優先使用自己的 Google API Key（支援 gemini-3-flash-preview）
-          const useGoogleDirect = !!process.env.GOOGLE_GEMINI_API_KEY;
-          const baseUrl = useGoogleDirect 
-            ? 'https://generativelanguage.googleapis.com/v1beta'
-            : process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-          const apiKey = useGoogleDirect
-            ? process.env.GOOGLE_GEMINI_API_KEY
-            : process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-          const modelName = useGoogleDirect ? 'gemini-3-flash-preview' : 'gemini-2.5-flash';
+          const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+          const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
           
           // 格式化營業時間
           const formatOpeningHours = (hours: any): string => {
@@ -4119,7 +4112,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
           const reorderPrompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
 
 地點列表：
-${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜(${p.lat.toFixed(4)},${p.lng.toFixed(4)})｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
+${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
 
 排序規則（依優先順序）：
 1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
@@ -4130,16 +4123,12 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
 {"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
           
-          // Google 直連用 ?key= 參數，Replit 用 x-goog-api-key header
-          const apiUrl = useGoogleDirect 
-            ? `${baseUrl}/models/${modelName}:generateContent?key=${apiKey}`
-            : `${baseUrl}/models/${modelName}:generateContent`;
-          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-          if (!useGoogleDirect) headers['x-goog-api-key'] = apiKey || '';
-          
-          const reorderResponse = await fetch(apiUrl, {
+          const reorderResponse = await fetch(`${baseUrl}/models/gemini-3-flash:generateContent`, {
             method: 'POST',
-            headers,
+            headers: { 
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey || ''
+            },
             body: JSON.stringify({
               contents: [{ role: 'user', parts: [{ text: reorderPrompt }] }],
               generationConfig: { 
@@ -4157,7 +4146,7 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
           }
           
           const reorderText = reorderData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-          console.log(`[Gacha V3] AI Reorder response (${modelName}):`, reorderText);
+          console.log('[Gacha V3] AI Reorder response (Gemini 3):', reorderText);
           
           if (reorderText) {
             try {
@@ -4315,15 +4304,8 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
         // ========== 補入新地點後重新送 AI 審核與排序 ==========
         if (addedCount > 0 && finalPlaces.length >= 2) {
           try {
-            // 優先使用自己的 Google API Key（支援 gemini-3-flash-preview）
-            const useGoogleDirect2 = !!process.env.GOOGLE_GEMINI_API_KEY;
-            const baseUrl2 = useGoogleDirect2 
-              ? 'https://generativelanguage.googleapis.com/v1beta'
-              : process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-            const apiKey2 = useGoogleDirect2
-              ? process.env.GOOGLE_GEMINI_API_KEY
-              : process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-            const modelName2 = useGoogleDirect2 ? 'gemini-3-flash-preview' : 'gemini-2.5-flash';
+            const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+            const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
             
             const formatHours = (hours: any): string => {
               if (!hours) return '未提供';
@@ -4346,7 +4328,7 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
             const revalidatePrompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
 
 地點列表：
-${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜(${p.lat.toFixed(4)},${p.lng.toFixed(4)})｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
+${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
 
 排序規則（依優先順序）：
 1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
@@ -4357,16 +4339,12 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategor
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
 {"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
             
-            // Google 直連用 ?key= 參數，Replit 用 x-goog-api-key header
-            const apiUrl2 = useGoogleDirect2 
-              ? `${baseUrl2}/models/${modelName2}:generateContent?key=${apiKey2}`
-              : `${baseUrl2}/models/${modelName2}:generateContent`;
-            const headers2: Record<string, string> = { 'Content-Type': 'application/json' };
-            if (!useGoogleDirect2) headers2['x-goog-api-key'] = apiKey2 || '';
-            
-            const revalidateResponse = await fetch(apiUrl2, {
+            const revalidateResponse = await fetch(`${baseUrl}/models/gemini-3-pro-preview:generateContent`, {
               method: 'POST',
-              headers: headers2,
+              headers: { 
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey || ''
+              },
               body: JSON.stringify({
                 contents: [{ role: 'user', parts: [{ text: revalidatePrompt }] }],
                 generationConfig: { 
