@@ -330,8 +330,90 @@ const { sub, email } = await appleSignIn.verifyIdToken(
 | Stripe | ✅ 已整合 | 支付 |
 | Apple Sign In | ✅ 已整合 | 認證 |
 | Google Sign In | 🔄 計畫中 | 認證 |
+| Google AdMob | 🔄 計畫中 | 廣告變現 |
 | Klook | 🔄 計畫中 | 商品 |
 | APNs | 🔄 計畫中 | 推播 |
+
+---
+
+## Google AdMob（計畫中）
+
+### 用途
+- App 內廣告變現
+- 獎勵廣告換取額外扭蛋次數
+
+### 套件
+```bash
+# 舊版 expo-ads-admob 已棄用（SDK 46+）
+npx expo install react-native-google-mobile-ads expo-build-properties expo-tracking-transparency
+```
+
+### 環境設定（app.json）
+```json
+{
+  "expo": {
+    "plugins": [
+      ["expo-build-properties", { "ios": { "useFrameworks": "static" } }],
+      ["react-native-google-mobile-ads", {
+        "androidAppId": "ca-app-pub-xxxxxxxx~xxxxxxxx",
+        "iosAppId": "ca-app-pub-xxxxxxxx~xxxxxxxx"
+      }]
+    ],
+    "ios": {
+      "infoPlist": {
+        "NSUserTrackingUsageDescription": "此識別碼將用於向您投放個人化廣告。"
+      }
+    }
+  }
+}
+```
+
+### 廣告類型與 Mibu 使用場景
+| 類型 | 說明 | Mibu 建議場景 |
+|------|------|--------------|
+| **Banner** | 固定橫幅 | 圖鑑頁面底部 |
+| **Interstitial** | 全屏插頁 | 完成扭蛋後 |
+| **Rewarded** | 看廣告得獎勵 | 觀看廣告增加扭蛋次數 |
+
+### 初始化
+```typescript
+import mobileAds from 'react-native-google-mobile-ads';
+import { requestTrackingPermissionsAsync } from 'expo-tracking-transparency';
+
+async function initializeAds() {
+  await requestTrackingPermissionsAsync(); // iOS ATT
+  await mobileAds().initialize();
+}
+```
+
+### 獎勵廣告範例
+```typescript
+import { RewardedAd, TestIds } from 'react-native-google-mobile-ads';
+
+const rewarded = RewardedAd.createForAdRequest(
+  __DEV__ ? TestIds.REWARDED : '正式廣告單元ID'
+);
+
+rewarded.addAdEventListener('earned_reward', (reward) => {
+  // 增加用戶扭蛋次數
+  addExtraGachaPulls(reward.amount);
+});
+```
+
+### 重要注意事項
+| 項目 | 說明 |
+|------|------|
+| **Expo Go 不能用** | 必須用 Development Build |
+| **測試時用 TestIds** | 用正式 ID 開發會被 Google 停權 |
+| **iOS ATT 權限** | 必須請求追蹤權限 |
+| **GDPR 合規** | 歐盟用戶需顯示同意對話框 |
+
+### 上線檢查清單
+- [ ] 替換 TestIds 為正式廣告單元 ID
+- [ ] 在 Google Play 標註「包含廣告」
+- [ ] 在 AdMob 設定 GDPR/CCPA 同意訊息
+- [ ] iOS 加入 SKAdNetwork IDs
+- [ ] 在實體裝置上測試
 
 ## 錯誤處理原則
 1. 第三方 API 失敗不應阻擋主流程
