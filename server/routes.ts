@@ -4123,7 +4123,7 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
 {"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
           
-          const reorderResponse = await fetch(`${baseUrl}/models/gemini-3-flash:generateContent`, {
+          const reorderResponse = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
@@ -4339,7 +4339,7 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategor
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
 {"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
             
-            const revalidateResponse = await fetch(`${baseUrl}/models/gemini-3-flash:generateContent`, {
+            const revalidateResponse = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
               method: 'POST',
               headers: { 
                 'Content-Type': 'application/json',

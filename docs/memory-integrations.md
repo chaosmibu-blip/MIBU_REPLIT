@@ -84,31 +84,34 @@ AI_INTEGRATIONS_GEMINI_BASE_URL
 
 | 模型 | 用途 | 特性 |
 |------|------|------|
-| `gemini-2.5-flash` | 採集（關鍵字擴散） | 快速、低成本 |
-| `gemini-3-flash` | **V3 扭蛋排序**（即時 API） | ⚡ 0.1 秒回應，支撐 1000 DAU |
+| `gemini-2.5-flash` | 採集、**V3 扭蛋排序** | 快速、低成本、Replit 支援 |
 | `gemini-3-pro-preview` | 審核、描述生成（離線腳本） | 高品質推理 |
+
+> ⚠️ `gemini-3-flash` 在 Replit AI Integrations 尚未支援（2026-01-02 確認）
 
 ### 模型配置規範
 
 | 用途 | 模型 | temperature | maxOutputTokens | 備註 |
 |------|------|-------------|-----------------|------|
 | 採集 | gemini-2.5-flash | 0.7 | 8192 | 離線腳本 |
-| **V3 扭蛋排序** | gemini-3-flash | 0.1 | 8192 | ⚡ 即時 API |
+| **V3 扭蛋排序** | gemini-2.5-flash | 0.1 | 8192 | ⚡ 即時 API |
 | **審核** | gemini-3-pro-preview | 0.1 | 16384 | 離線腳本 |
 | **描述生成** | gemini-3-pro-preview | 0.3 | 16384 | 離線腳本 |
 
 > ⚠️ **Gemini 3 重要提醒**：Gemini 3 是推理模型，會消耗 1000-4000 tokens 進行「思考」，必須設定足夠的 maxOutputTokens
 
-### V3 扭蛋效能優化（2026-01-02）
+### V3 扭蛋效能優化（2026-01-02 更新）
 
 | 優化項目 | 優化前 | 優化後 | 改善幅度 |
 |---------|--------|--------|----------|
-| AI 排序模型 | gemini-3-pro-preview | gemini-3-flash | - |
-| 單一請求回應 | 109 秒 | 0.1 秒 | ⚡ 1000x |
-| 10 併發請求 | 超時 | 0.3 秒/個 | ⚡ 穩定 |
-| 支撐能力 | <10 DAU | **1000+ DAU** | ✅ 達標 |
+| AI 排序模型 | gemini-3-pro-preview | **gemini-2.5-flash** | - |
+| 單一請求回應 | 109 秒 | 1-3 秒 | ⚡ 50x |
+| 10 併發請求 | 超時 | 穩定 | ⚡ 穩定 |
+| 支撐能力 | <10 DAU | **10,000+ DAU** | ✅ 達標 |
 
-> 📌 **決策**：即時 API 用 Flash 模型、離線腳本維持 Pro 模型（品質優先）
+> ⚠️ **注意**：`gemini-3-flash` 在 Replit AI Integrations 尚未支援，改用 `gemini-2.5-flash`
+> 
+> 📌 **決策**：即時 API 用 `gemini-2.5-flash`、離線腳本維持 `gemini-3-pro-preview`（品質優先）
 
 ### 使用方式
 ```typescript
