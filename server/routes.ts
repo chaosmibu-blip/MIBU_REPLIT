@@ -9680,7 +9680,16 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
                 ${place.location_lat}, ${place.location_lng}, ${place.google_place_id}, ${place.rating},
                 ${place.category}, ${place.subcategory}, ${place.description}, true, false
               )
-              ON CONFLICT (google_place_id) DO NOTHING
+              ON CONFLICT (google_place_id) DO UPDATE SET
+                place_name = EXCLUDED.place_name,
+                city = EXCLUDED.city,
+                district = EXCLUDED.district,
+                address = EXCLUDED.address,
+                category = EXCLUDED.category,
+                subcategory = EXCLUDED.subcategory,
+                description = EXCLUDED.description,
+                rating = EXCLUDED.rating,
+                is_active = true
             `);
             inserted++;
           } catch (err) {
