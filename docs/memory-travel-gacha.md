@@ -662,6 +662,55 @@ npx tsx server/scripts/batch-parallel-collect.ts 桃園市 --district=觀音區 
 - 記住最近 3 次抽卡結果，30 分鐘內排除重複
 - 景點池不足時自動清除快取
 
+---
+
+## 待開發功能
+
+### 裝置去重機制（防止同裝置多帳號重刷）
+**需求背景**：用戶可能在同一裝置上使用不同帳號登入，繞過圖鑑去重機制重刷優惠券。
+
+**預計上線時機**：優惠券功能上線前
+
+**設計方案**：
+```typescript
+// 新增資料表
+device_gacha_history = {
+  id: serial,
+  deviceId: varchar,      // 裝置識別碼（App 端生成）
+  placeId: integer,       // 抽到的景點
+  createdAt: timestamp,   // 抽卡時間
+}
+
+// 去重邏輯
+const userDedupIds = await storage.getRecentCollectionPlaceIds(userId, 36);
+const deviceDedupIds = await storage.getRecentDeviceGachaIds(deviceId, 36);
+const allDedupIds = new Set([...userDedupIds, ...deviceDedupIds]);
+```
+
+**需要修改**：
+1. 新增 `device_gacha_history` 資料表
+2. App 端傳送 `deviceId` 參數
+3. 後端同時檢查 userId 和 deviceId 去重
+
+---
+
+## 去重機制儲存層級說明
+
+| 儲存層級 | 位置 | 持久性 | 使用情境 |
+|---------|------|--------|---------|
+| **資料庫** | PostgreSQL | ✅ 永久保存 | 正式用戶圖鑑 |
+| **伺服器記憶體** | Node.js Map | ⚠️ 重啟清空 | 訪客去重（30分鐘 TTL） |
+| **App 本地** | AsyncStorage | ⚠️ 刪除 App 清空 | 未使用 |
+
+### 訪客去重現況
+```typescript
+// 伺服器記憶體層級，30 分鐘 TTL
+const guestSessionDedup = new Map<string, GuestSessionDedup>();
+```
+- ⚠️ 伺服器重啟後失效
+- ⚠️ 超過 30 分鐘失效
+- ⚠️ 換城市不共享
+
 ### 2025-12-23 - 資料完整性修復
 - 扭蛋查詢強制過濾 `isActive = true`
 - 影響函數: `getPlacesByDistrict()`, `getJackpotPlaces()`, `getOfficialPlacesByDistrict()`, `getOfficialPlacesByCity()`, `getPlaceByGoogleId()`
