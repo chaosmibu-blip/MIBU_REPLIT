@@ -133,6 +133,45 @@ NO_PLACES_AVAILABLE   // 200 (success=false) 無景點
 | DELETE | /api/admin/place-drafts/:id | 刪除草稿 |
 | GET | /api/admin/users | 用戶列表 |
 | PATCH | /api/admin/users/:id | 更新用戶 |
+| GET | /api/admin/export-places | 匯出景點資料 |
+| GET | /api/admin/seed-places | 從開發環境匯入景點 |
+| DELETE | /api/admin/clear-places | 清空 places 資料 ⭐ |
+
+#### DELETE /api/admin/clear-places（2026-01-02 新增）
+清空 places 表的所有資料（保留表結構）
+
+**Query Parameters:**
+```
+key: string      // 遷移密鑰（必須）
+confirm: 'yes'   // 確認執行（不帶此參數只顯示預覽）
+```
+
+**使用方式:**
+```bash
+# 步驟 1：預覽（顯示目前有多少資料）
+curl "https://YOUR_URL/api/admin/clear-places?key=mibu2024migrate"
+
+# 步驟 2：確認執行
+curl -X DELETE "https://YOUR_URL/api/admin/clear-places?key=mibu2024migrate&confirm=yes"
+```
+
+**Response (預覽):**
+```json
+{
+  "warning": "⚠️ 此操作將清空所有 places 資料！",
+  "currentData": { "totalPlaces": 1633, "totalCities": 22 },
+  "instruction": "如要確認執行，請加上 &confirm=yes 參數"
+}
+```
+
+**Response (執行):**
+```json
+{
+  "success": true,
+  "message": "✅ 已清空所有 places 資料",
+  "deleted": { "places": 1633, "collections": 50 }
+}
+```
 
 #### POST /api/admin/places/reclassify（2025-12-26 新增）
 重新分類現有的 cache/drafts/places 資料

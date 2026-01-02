@@ -9718,6 +9718,70 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     }
   });
 
+  // ============ 清空 places 資料（保留表結構）============
+  app.delete("/api/admin/clear-places", async (req: any, res) => {
+    try {
+      const { key, confirm } = req.query;
+      const MIGRATION_KEY = process.env.ADMIN_MIGRATION_KEY || "mibu2024migrate";
+      
+      if (key !== MIGRATION_KEY) {
+        return res.status(403).json({ error: "需要密鑰" });
+      }
+      
+      // 需要確認參數，防止誤操作
+      if (confirm !== 'yes') {
+        // 先顯示目前有多少資料
+        const countResult = await db.execute(sql`
+          SELECT COUNT(*) as total, 
+                 COUNT(DISTINCT city) as cities
+          FROM places WHERE is_active = true
+        `);
+        const stats = countResult.rows[0] as any;
+        
+        return res.json({
+          warning: "⚠️ 此操作將清空所有 places 資料！",
+          currentData: {
+            totalPlaces: parseInt(stats.total),
+            totalCities: parseInt(stats.cities)
+          },
+          instruction: "如要確認執行，請加上 &confirm=yes 參數"
+        });
+      }
+      
+      console.log('[Clear Places] Starting to clear all places data...');
+      
+      // 先刪除相關的 collections（外鍵關聯）
+      const collectionsDeleted = await db.execute(sql`
+        DELETE FROM collections WHERE official_place_id IS NOT NULL
+      `);
+      console.log('[Clear Places] Collections deleted:', collectionsDeleted.rowCount);
+      
+      // 清空 places 表
+      const result = await db.execute(sql`
+        DELETE FROM places
+      `);
+      
+      // 重置 ID 序列
+      await db.execute(sql`
+        ALTER SEQUENCE places_id_seq RESTART WITH 1
+      `);
+      
+      console.log('[Clear Places] Complete! Deleted:', result.rowCount, 'places');
+      
+      res.json({
+        success: true,
+        message: "✅ 已清空所有 places 資料",
+        deleted: {
+          places: result.rowCount,
+          collections: collectionsDeleted.rowCount
+        }
+      });
+    } catch (error) {
+      console.error("[Clear Places] Error:", error);
+      res.status(500).json({ error: "清空失敗", details: String(error) });
+    }
+  });
+
   // ============ 一鍵遷移：place_cache → places ============
   // 簡易版本：使用密鑰驗證（方便在 App 上操作）
   app.get("/api/admin/migrate-places", async (req: any, res) => {
