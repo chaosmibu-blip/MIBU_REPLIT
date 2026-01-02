@@ -135,7 +135,9 @@ NO_PLACES_AVAILABLE   // 200 (success=false) 無景點
 | PATCH | /api/admin/users/:id | 更新用戶 |
 | GET | /api/admin/export-places | 匯出景點資料 |
 | GET | /api/admin/seed-places | 從開發環境匯入景點 |
-| DELETE | /api/admin/clear-places | 清空 places 資料 ⭐ |
+| DELETE | /api/admin/clear-places | 清空 places 資料（永久刪除） |
+| PATCH | /api/admin/soft-delete-places | 軟刪除 places（is_active=false）⭐ |
+| PATCH | /api/admin/restore-places | 恢復軟刪除的 places ⭐ |
 
 #### DELETE /api/admin/clear-places（2026-01-02 新增）
 清空 places 表的所有資料（保留表結構）
@@ -171,6 +173,36 @@ curl -X DELETE "https://YOUR_URL/api/admin/clear-places?key=mibu2024migrate&conf
   "message": "✅ 已清空所有 places 資料",
   "deleted": { "places": 1633, "collections": 50 }
 }
+```
+
+#### PATCH /api/admin/soft-delete-places（2026-01-02 新增）
+軟刪除 places：將所有 `is_active` 設為 `false`（資料保留，不會出現在扭蛋中）
+
+**使用方式:**
+```bash
+# 步驟 1：預覽
+curl -X PATCH "https://YOUR_URL/api/admin/soft-delete-places?key=mibu2024migrate"
+
+# 步驟 2：確認執行
+curl -X PATCH "https://YOUR_URL/api/admin/soft-delete-places?key=mibu2024migrate&confirm=yes"
+```
+
+**Response (執行):**
+```json
+{
+  "success": true,
+  "message": "✅ 已將所有 places 軟刪除（is_active = false）",
+  "affected": 1633,
+  "note": "資料仍在資料庫中，可使用 restore-places API 恢復"
+}
+```
+
+#### PATCH /api/admin/restore-places（2026-01-02 新增）
+恢復軟刪除的 places：將所有 `is_active` 設為 `true`
+
+**使用方式:**
+```bash
+curl -X PATCH "https://YOUR_URL/api/admin/restore-places?key=mibu2024migrate&confirm=yes"
 ```
 
 #### POST /api/admin/places/reclassify（2025-12-26 新增）

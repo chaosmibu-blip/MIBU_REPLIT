@@ -9782,6 +9782,117 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     }
   });
 
+  // ============ 軟刪除 places 資料（設為 is_active = false）============
+  app.patch("/api/admin/soft-delete-places", async (req: any, res) => {
+    try {
+      const { key, confirm } = req.query;
+      const MIGRATION_KEY = process.env.ADMIN_MIGRATION_KEY || "mibu2024migrate";
+      
+      if (key !== MIGRATION_KEY) {
+        return res.status(403).json({ error: "需要密鑰" });
+      }
+      
+      // 需要確認參數，防止誤操作
+      if (confirm !== 'yes') {
+        // 先顯示目前有多少資料
+        const countResult = await db.execute(sql`
+          SELECT 
+            COUNT(*) FILTER (WHERE is_active = true) as active,
+            COUNT(*) FILTER (WHERE is_active = false) as inactive,
+            COUNT(DISTINCT city) FILTER (WHERE is_active = true) as cities
+          FROM places
+        `);
+        const stats = countResult.rows[0] as any;
+        
+        return res.json({
+          info: "📋 軟刪除預覽（資料不會被刪除，只是標記為不啟用）",
+          currentData: {
+            activePlaces: parseInt(stats.active),
+            inactivePlaces: parseInt(stats.inactive),
+            activeCities: parseInt(stats.cities)
+          },
+          willAffect: `將把 ${stats.active} 筆 places 設為 is_active = false`,
+          instruction: "如要確認執行，請加上 &confirm=yes 參數"
+        });
+      }
+      
+      console.log('[Soft Delete] Starting to soft delete all places...');
+      
+      // 記錄操作前的狀態
+      const beforeCount = await db.execute(sql`
+        SELECT COUNT(*) as count FROM places WHERE is_active = true
+      `);
+      const affectedCount = parseInt((beforeCount.rows[0] as any).count);
+      
+      // 軟刪除：將所有 is_active 設為 false
+      await db.execute(sql`
+        UPDATE places SET is_active = false WHERE is_active = true
+      `);
+      
+      console.log('[Soft Delete] Complete! Affected:', affectedCount, 'places');
+      
+      res.json({
+        success: true,
+        message: "✅ 已將所有 places 軟刪除（is_active = false）",
+        affected: affectedCount,
+        note: "資料仍在資料庫中，可使用 restore-places API 恢復"
+      });
+    } catch (error) {
+      console.error("[Soft Delete] Error:", error);
+      res.status(500).json({ error: "軟刪除失敗", details: String(error) });
+    }
+  });
+
+  // ============ 恢復軟刪除的 places ============
+  app.patch("/api/admin/restore-places", async (req: any, res) => {
+    try {
+      const { key, confirm } = req.query;
+      const MIGRATION_KEY = process.env.ADMIN_MIGRATION_KEY || "mibu2024migrate";
+      
+      if (key !== MIGRATION_KEY) {
+        return res.status(403).json({ error: "需要密鑰" });
+      }
+      
+      if (confirm !== 'yes') {
+        const countResult = await db.execute(sql`
+          SELECT 
+            COUNT(*) FILTER (WHERE is_active = true) as active,
+            COUNT(*) FILTER (WHERE is_active = false) as inactive
+          FROM places
+        `);
+        const stats = countResult.rows[0] as any;
+        
+        return res.json({
+          info: "📋 恢復預覽",
+          currentData: {
+            activePlaces: parseInt(stats.active),
+            inactivePlaces: parseInt(stats.inactive)
+          },
+          willRestore: `將恢復 ${stats.inactive} 筆 places`,
+          instruction: "如要確認執行，請加上 &confirm=yes 參數"
+        });
+      }
+      
+      const beforeCount = await db.execute(sql`
+        SELECT COUNT(*) as count FROM places WHERE is_active = false
+      `);
+      const affectedCount = parseInt((beforeCount.rows[0] as any).count);
+      
+      await db.execute(sql`
+        UPDATE places SET is_active = true WHERE is_active = false
+      `);
+      
+      res.json({
+        success: true,
+        message: "✅ 已恢復所有 places（is_active = true）",
+        restored: affectedCount
+      });
+    } catch (error) {
+      console.error("[Restore] Error:", error);
+      res.status(500).json({ error: "恢復失敗", details: String(error) });
+    }
+  });
+
   // ============ 一鍵遷移：place_cache → places ============
   // 簡易版本：使用密鑰驗證（方便在 App 上操作）
   app.get("/api/admin/migrate-places", async (req: any, res) => {
