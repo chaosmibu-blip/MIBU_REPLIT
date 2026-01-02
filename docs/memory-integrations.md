@@ -76,25 +76,28 @@ places.currentOpeningHours, places.regularOpeningHours, nextPageToken
 
 ### 環境變數
 ```
-AI_INTEGRATIONS_GEMINI_API_KEY
-AI_INTEGRATIONS_GEMINI_BASE_URL
+AI_INTEGRATIONS_GEMINI_API_KEY    # Replit AI Integrations（備用）
+AI_INTEGRATIONS_GEMINI_BASE_URL   # Replit AI Integrations（備用）
+GOOGLE_GEMINI_API_KEY             # ⭐ 自己的 Google API Key（優先使用）
 ```
 
 ### 主要模型（2026-01-02 更新）
 
-| 模型 | 用途 | 特性 |
-|------|------|------|
-| `gemini-2.5-flash` | 採集、**V3 扭蛋排序** | 快速、低成本、Replit 支援 |
-| `gemini-3-pro-preview` | 審核、描述生成（離線腳本） | 高品質推理 |
+| 模型 | 用途 | 特性 | API 來源 |
+|------|------|------|----------|
+| `gemini-3-flash-preview` | **V3 扭蛋排序** | ⚡ 最新推理模型 | Google 官方 |
+| `gemini-3-pro-preview` | 審核、描述生成 | 高品質推理 | Google 官方 |
+| `gemini-2.5-flash` | 採集、備用 | 快速、低成本 | Replit/Google |
 
-> ⚠️ `gemini-3-flash` 在 Replit AI Integrations 尚未支援（2026-01-02 確認）
+> ✅ 使用自己的 `GOOGLE_GEMINI_API_KEY` 可使用 `gemini-3-flash-preview`
+> ⚠️ Replit AI Integrations 尚未支援 `gemini-3-flash-preview`（2026-01-02 確認）
 
 ### 模型配置規範
 
 | 用途 | 模型 | temperature | maxOutputTokens | 備註 |
 |------|------|-------------|-----------------|------|
+| **V3 扭蛋排序** | gemini-3-flash-preview | 0.1 | 8192 | ⭐ 即時 API（Google 直連）|
 | 採集 | gemini-2.5-flash | 0.7 | 8192 | 離線腳本 |
-| **V3 扭蛋排序** | gemini-2.5-flash | 0.1 | 8192 | ⚡ 即時 API |
 | **審核** | gemini-3-pro-preview | 0.1 | 16384 | 離線腳本 |
 | **描述生成** | gemini-3-pro-preview | 0.3 | 16384 | 離線腳本 |
 

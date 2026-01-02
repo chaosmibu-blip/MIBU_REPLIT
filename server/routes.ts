@@ -4086,8 +4086,15 @@ ${uncachedSkeleton.map((item, idx) => `  {
       
       if (selectedPlaces.length >= 2) {
         try {
-          const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-          const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+          // 優先使用自己的 Google API Key（支援 gemini-3-flash-preview）
+          const useGoogleDirect = !!process.env.GOOGLE_GEMINI_API_KEY;
+          const baseUrl = useGoogleDirect 
+            ? 'https://generativelanguage.googleapis.com/v1beta'
+            : process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+          const apiKey = useGoogleDirect
+            ? process.env.GOOGLE_GEMINI_API_KEY
+            : process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+          const modelName = useGoogleDirect ? 'gemini-3-flash-preview' : 'gemini-2.5-flash';
           
           // 格式化營業時間
           const formatOpeningHours = (hours: any): string => {
@@ -4123,12 +4130,16 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
 {"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
           
-          const reorderResponse = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
+          // Google 直連用 ?key= 參數，Replit 用 x-goog-api-key header
+          const apiUrl = useGoogleDirect 
+            ? `${baseUrl}/models/${modelName}:generateContent?key=${apiKey}`
+            : `${baseUrl}/models/${modelName}:generateContent`;
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (!useGoogleDirect) headers['x-goog-api-key'] = apiKey || '';
+          
+          const reorderResponse = await fetch(apiUrl, {
             method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey || ''
-            },
+            headers,
             body: JSON.stringify({
               contents: [{ role: 'user', parts: [{ text: reorderPrompt }] }],
               generationConfig: { 
@@ -4146,7 +4157,7 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
           }
           
           const reorderText = reorderData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-          console.log('[Gacha V3] AI Reorder response (Gemini 3):', reorderText);
+          console.log(`[Gacha V3] AI Reorder response (${modelName}):`, reorderText);
           
           if (reorderText) {
             try {
