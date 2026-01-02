@@ -4083,6 +4083,7 @@ ${uncachedSkeleton.map((item, idx) => `  {
       let finalPlaces = sortedPlaces;
       let aiReorderResult = 'skipped';
       let rejectedPlaceIds: number[] = [];
+      let aiReason = ''; // 追蹤最終的 AI 排序理由
       
       if (selectedPlaces.length >= 2) {
         try {
@@ -4207,6 +4208,7 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
                   
                   finalPlaces = reorderedPlaces;
                   aiReorderResult = rejectedPlaceIds.length > 0 ? 'reordered_with_rejects' : 'reordered';
+                  aiReason = aiResult.reason || ''; // 保存第一輪排序理由
                   console.log('[Gacha V3] AI reordered:', uniqueOrder, 'reason:', aiResult.reason || 'N/A');
                 } else {
                   aiReorderResult = 'partial_order';
@@ -4369,16 +4371,16 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategor
                 const revalidateResult = JSON.parse(jsonText) as { order?: number[]; reason?: string; reject?: number[] };
                 console.log('[Gacha V3] Revalidate Parsed:', { order: revalidateResult.order, reason: revalidateResult.reason, reject: revalidateResult.reject });
                 
-                // 處理被拒絕的地點（這次不再補充，避免無限循環）
-                const newRejectedIds: number[] = [];
+                // 處理被拒絕的地點（第二輪）
+                let round2RejectedIds: number[] = [];
                 if (revalidateResult.reject && Array.isArray(revalidateResult.reject)) {
                   for (const idx of revalidateResult.reject) {
                     if (idx >= 1 && idx <= finalPlaces.length) {
-                      newRejectedIds.push(finalPlaces[idx - 1].id);
+                      round2RejectedIds.push(finalPlaces[idx - 1].id);
                     }
                   }
-                  if (newRejectedIds.length > 0) {
-                    console.log('[Gacha V3] Revalidate rejected:', newRejectedIds.length);
+                  if (round2RejectedIds.length > 0) {
+                    console.log('[Gacha V3] Round 2 rejected:', round2RejectedIds.length);
                   }
                 }
                 
@@ -4386,7 +4388,7 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategor
                 if (revalidateResult.order && Array.isArray(revalidateResult.order) && revalidateResult.order.length > 0) {
                   const validOrder = revalidateResult.order
                     .filter(n => typeof n === 'number' && n >= 1 && n <= finalPlaces.length)
-                    .filter(n => !newRejectedIds.includes(finalPlaces[n - 1]?.id));
+                    .filter(n => !round2RejectedIds.includes(finalPlaces[n - 1]?.id));
                   const uniqueNewOrder = Array.from(new Set(validOrder));
                   
                   if (uniqueNewOrder.length >= 2) {
@@ -4395,15 +4397,176 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategor
                     // 補全遺漏的地點
                     const revalidatedIds = new Set(revalidatedPlaces.map(p => p.id));
                     const stillMissing = finalPlaces.filter(p => 
-                      !revalidatedIds.has(p.id) && !newRejectedIds.includes(p.id)
+                      !revalidatedIds.has(p.id) && !round2RejectedIds.includes(p.id)
                     );
                     if (stillMissing.length > 0) {
                       revalidatedPlaces.push(...stillMissing);
                     }
                     
                     finalPlaces = revalidatedPlaces;
-                    aiReorderResult = 'revalidated';
-                    console.log('[Gacha V3] Revalidated, reason:', revalidateResult.reason || 'N/A');
+                    aiReorderResult = 'revalidated_round2';
+                    aiReason = revalidateResult.reason || aiReason; // 更新為第二輪理由
+                    console.log('[Gacha V3] Round 2 completed, reason:', revalidateResult.reason || 'N/A');
+                  }
+                }
+                
+                // ========== 第三輪驗證：如果第二輪仍有拒絕，補充並重新驗證 ==========
+                // 無論 finalPlaces 數量是否達標，只要第二輪有拒絕就進行第三輪
+                if (round2RejectedIds.length > 0) {
+                  console.log('[Gacha V3] Round 3 starting: replacing', round2RejectedIds.length, 'rejected places');
+                  
+                  // 先從 finalPlaces 中移除第二輪被拒絕的地點
+                  const round2RejectedSet = new Set(round2RejectedIds);
+                  const slotsToFill = finalPlaces.filter(p => round2RejectedSet.has(p.id)).length;
+                  finalPlaces = finalPlaces.filter(p => !round2RejectedSet.has(p.id));
+                  console.log('[Gacha V3] Round 3 removed', slotsToFill, 'rejected places, remaining:', finalPlaces.length);
+                  
+                  // 計算當前各類別數量
+                  const round3CategoryCounts: Record<string, number> = {};
+                  for (const p of finalPlaces) {
+                    const cat = p.category || '其他';
+                    round3CategoryCounts[cat] = (round3CategoryCounts[cat] || 0) + 1;
+                  }
+                  
+                  // 建立已使用 ID 集合
+                  const round3UsedIds = new Set([
+                    ...Array.from(usedIds),
+                    ...finalPlaces.map(p => p.id),
+                    ...rejectedPlaceIds,
+                    ...round2RejectedIds
+                  ]);
+                  
+                  // 補充地點（補充被移除的數量）
+                  let round3Added = 0;
+                  const targetToFill = slotsToFill > 0 ? slotsToFill : (targetCount - finalPlaces.length);
+                  for (let attempt = 0; attempt < 10 && round3Added < targetToFill; attempt++) {
+                    const round3Pool = anchorPlaces.filter(p => {
+                      if (round3UsedIds.has(p.id)) return false;
+                      const cat = p.category || '其他';
+                      const currentCount = round3CategoryCounts[cat] || 0;
+                      if (cat === '美食' && currentCount >= maxFoodCount) return false;
+                      if (cat === '住宿' && currentCount >= stayCount) return false;
+                      return true;
+                    });
+                    
+                    if (round3Pool.length === 0) break;
+                    
+                    // 隨機選取
+                    const randomIdx = Math.floor(Math.random() * round3Pool.length);
+                    const replacement = round3Pool[randomIdx];
+                    finalPlaces.push(replacement);
+                    round3UsedIds.add(replacement.id);
+                    usedIds.add(replacement.id);
+                    
+                    const cat = replacement.category || '其他';
+                    round3CategoryCounts[cat] = (round3CategoryCounts[cat] || 0) + 1;
+                    round3Added++;
+                  }
+                  
+                  console.log('[Gacha V3] Round 3 added', round3Added, 'places, final count:', finalPlaces.length);
+                  
+                  // 第三輪 AI 驗證（無論是否有補充新地點，都要進行最終驗證）
+                  if (finalPlaces.length >= 2) {
+                    try {
+                      const round3PlacesInfo = finalPlaces.map((p, idx) => ({
+                        idx: idx + 1,
+                        name: p.placeName,
+                        category: p.category,
+                        subcategory: p.subcategory || '一般',
+                        description: (p.description || '').slice(0, 80),
+                        hours: (() => {
+                          const hours = p.openingHours;
+                          if (!hours) return '未提供';
+                          if (Array.isArray(hours)) return hours.slice(0, 2).join('; ');
+                          if (hours.weekday_text) return hours.weekday_text.slice(0, 2).join('; ');
+                          return '未提供';
+                        })()
+                      }));
+                      
+                      const round3Prompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
+
+地點列表：
+${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
+
+排序規則（依優先順序）：
+1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
+2. 地理動線：減少迂迴，鄰近地點連續安排
+3. 類別穿插：避免連續3個同類（夜市內美食除外）
+4. 排除不適合：永久歇業、非旅遊點、同園區重複景點（保留代表性最高者）
+
+【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
+{"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
+                      
+                      const round3Response = await fetch(`${baseUrl}/models/gemini-3-pro-preview:generateContent`, {
+                        method: 'POST',
+                        headers: { 
+                          'Content-Type': 'application/json',
+                          'x-goog-api-key': apiKey || ''
+                        },
+                        body: JSON.stringify({
+                          contents: [{ role: 'user', parts: [{ text: round3Prompt }] }],
+                          generationConfig: { 
+                            maxOutputTokens: 8192, 
+                            temperature: 0.1
+                          }
+                        })
+                      });
+                      
+                      const round3Data = await round3Response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+                      const round3Text = round3Data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+                      console.log('[Gacha V3] Round 3 AI response:', round3Text);
+                      
+                      if (round3Text) {
+                        let jsonText = round3Text;
+                        if (jsonText.startsWith('```')) {
+                          jsonText = jsonText.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+                        }
+                        
+                        const round3Result = JSON.parse(jsonText) as { order?: number[]; reason?: string; reject?: number[] };
+                        console.log('[Gacha V3] Round 3 Parsed:', { order: round3Result.order, reason: round3Result.reason, reject: round3Result.reject });
+                        
+                        // 第三輪不再補充拒絕的地點，只移除
+                        const round3RejectedIds: number[] = [];
+                        if (round3Result.reject && Array.isArray(round3Result.reject)) {
+                          for (const idx of round3Result.reject) {
+                            if (idx >= 1 && idx <= finalPlaces.length) {
+                              round3RejectedIds.push(finalPlaces[idx - 1].id);
+                            }
+                          }
+                          if (round3RejectedIds.length > 0) {
+                            console.log('[Gacha V3] Round 3 rejected (final):', round3RejectedIds.length);
+                          }
+                        }
+                        
+                        // 處理排序
+                        if (round3Result.order && Array.isArray(round3Result.order) && round3Result.order.length > 0) {
+                          const validOrder = round3Result.order
+                            .filter(n => typeof n === 'number' && n >= 1 && n <= finalPlaces.length)
+                            .filter(n => !round3RejectedIds.includes(finalPlaces[n - 1]?.id));
+                          const uniqueOrder = Array.from(new Set(validOrder));
+                          
+                          if (uniqueOrder.length >= 2) {
+                            const round3Places = uniqueOrder.map(idx => finalPlaces[idx - 1]).filter(p => p);
+                            
+                            // 補全遺漏的地點
+                            const round3Ids = new Set(round3Places.map(p => p.id));
+                            const stillMissing = finalPlaces.filter(p => 
+                              !round3Ids.has(p.id) && !round3RejectedIds.includes(p.id)
+                            );
+                            if (stillMissing.length > 0) {
+                              round3Places.push(...stillMissing);
+                            }
+                            
+                            finalPlaces = round3Places;
+                            aiReorderResult = 'revalidated_round3';
+                            aiReason = round3Result.reason || aiReason; // 更新為第三輪理由
+                            console.log('[Gacha V3] Round 3 completed, reason:', round3Result.reason || 'N/A');
+                          }
+                        }
+                      }
+                    } catch (round3Error) {
+                      console.error('[Gacha V3] Round 3 AI failed:', round3Error);
+                    }
                   }
                 }
               } catch (parseError) {
@@ -4478,16 +4641,16 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategor
             couponWon = { id: wonCoupon.id, title: wonCoupon.title, code: wonCoupon.code, terms: wonCoupon.terms };
             couponsWon.push({ couponId: wonCoupon.id, placeId: place.id, placeName: place.placeName, title: wonCoupon.title, code: wonCoupon.code, terms: wonCoupon.terms });
             if (userId !== 'guest') {
-              await storage.saveToCollectionWithCoupon(userId, place, wonCoupon);
+              await storage.saveToCollectionWithCoupon(userId, place, wonCoupon, aiReason);
             }
           } else {
             if (userId !== 'guest') {
-              await storage.saveToCollectionWithCoupon(userId, place);
+              await storage.saveToCollectionWithCoupon(userId, place, undefined, aiReason);
             }
           }
         } else {
           if (userId !== 'guest') {
-            await storage.saveToCollectionWithCoupon(userId, place);
+            await storage.saveToCollectionWithCoupon(userId, place, undefined, aiReason);
           }
         }
 

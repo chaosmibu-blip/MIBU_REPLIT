@@ -195,7 +195,7 @@ export interface IStorage {
   getOfficialPlacesByCity(city: string, limit?: number): Promise<Place[]>;
   getPlaceByGoogleId(googlePlaceId: string): Promise<Place | undefined>;
   getClaimByOfficialPlaceId(officialPlaceId: number): Promise<{ claim: MerchantPlaceLink; coupons: Coupon[] } | undefined>;
-  saveToCollectionWithCoupon(userId: string, place: Place, wonCoupon?: Coupon): Promise<Collection>;
+  saveToCollectionWithCoupon(userId: string, place: Place, wonCoupon?: Coupon, aiReason?: string): Promise<Collection>;
 
   // Specialists (旅遊專員)
   getSpecialistByUserId(userId: string): Promise<Specialist | undefined>;
@@ -1685,7 +1685,7 @@ export class DatabaseStorage implements IStorage {
     return { claim, coupons: placeCoupons };
   }
 
-  async saveToCollectionWithCoupon(userId: string, place: Place, wonCoupon?: Coupon): Promise<Collection> {
+  async saveToCollectionWithCoupon(userId: string, place: Place, wonCoupon?: Coupon, aiReason?: string): Promise<Collection> {
     const collectionData: InsertCollection = {
       userId,
       officialPlaceId: place.id,
@@ -1708,6 +1708,7 @@ export class DatabaseStorage implements IStorage {
         terms: wonCoupon.terms 
       } : undefined,
       wonCouponId: wonCoupon?.id,
+      aiReason: aiReason || undefined,
     };
 
     const [newCollection] = await db

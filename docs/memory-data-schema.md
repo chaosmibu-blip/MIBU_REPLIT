@@ -65,8 +65,39 @@ place_feedback (問題回報)
 
 ### 7. 收藏系統 (Collection System)
 ```
-collections (收藏夾)
+collections (收藏夾/圖鑑)
   └── collection_read_status
+```
+
+#### collections 表欄位說明
+```typescript
+{
+  id: serial PRIMARY KEY;
+  userId: varchar REFERENCES users(id);
+  officialPlaceId: integer REFERENCES places(id);
+  placeName: text NOT NULL;
+  country: text NOT NULL;
+  city: text NOT NULL;
+  district: text;
+  category: text;
+  subcategory: text;
+  description: text;
+  address: text;
+  placeId: text;           // Google Place ID
+  rating: text;
+  locationLat: text;
+  locationLng: text;
+  googleTypes: text;
+  isCoupon: boolean DEFAULT false;
+  couponData: jsonb;       // { title, code, terms }
+  wonCouponId: integer REFERENCES coupons(id);
+  aiReason: text;          // 🆕 2026-01-02 AI 排序理由
+  collectedAt: timestamp;
+}
+
+// 索引
+IDX_collections_user_place (userId, placeName, district)
+IDX_collections_official_place (officialPlaceId)
 ```
 
 ### 8. 行程規劃 (Trip Planning)

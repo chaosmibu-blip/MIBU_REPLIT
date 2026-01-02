@@ -384,6 +384,7 @@ export const collections = pgTable("collections", {
   isCoupon: boolean("is_coupon").default(false),
   couponData: jsonb("coupon_data"),
   wonCouponId: integer("won_coupon_id").references(() => coupons.id),
+  aiReason: text("ai_reason"),
   collectedAt: timestamp("collected_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_collections_user_place").on(table.userId, table.placeName, table.district),
