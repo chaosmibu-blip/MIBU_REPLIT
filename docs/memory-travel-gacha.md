@@ -58,7 +58,7 @@ interface GachaV3Response {
 }
 ```
 
-### 抽取流程（2026-01-01 重構，同日修正）
+### 抽取流程（2026-01-03 更新）
 1. **每日限額檢查**: 每人每天最多 36 張卡
 2. **錨點區選擇**: 無指定 district 時隨機選一區
 3. **結構化選點**（保底 + 等權重隨機）:
@@ -73,7 +73,51 @@ interface GachaV3Response {
    - 傳送完整資訊（名稱、類別、子類別、經緯度、描述、營業時間）
    - AI 可回傳 X:編號 標記不適合的地點
    - 確保美食不連續超過 2 個
-8. **張數不足提示**: 當實際抽出 < 請求張數時，回傳 `isShortfall: true`
+8. **AI 日誌記錄** 🆕 2026-01-03: 儲存完整的排序過程到 `gacha_ai_logs` 表
+9. **張數不足提示**: 當實際抽出 < 請求張數時，回傳 `isShortfall: true`
+
+## AI 排序日誌系統（2026-01-03 新增）
+
+### 設計目的
+- **可追溯性**: 回溯任何一次扭蛋的 AI 決策過程
+- **AI 調優**: 分析排序品質，改進 prompt
+- **效能監控**: 追蹤 AI 回應時間
+- **除錯利器**: 用戶投訴時可直接查詢該筆記錄
+
+### 資料表結構
+每輪扭蛋產生一筆 `gacha_ai_logs` 記錄：
+- `sessionId`: UUID 唯一識別碼
+- `orderedPlaceIds`: 排序後的地點 ID 陣列
+- `rejectedPlaceIds`: 被 AI 拒絕的地點 ID
+- `aiReason`: AI 排序理由
+- `reorderRounds`: 排序花了幾輪 (1-3)
+- `durationMs`: 總花費時間
+
+### 關聯設計
+```
+gacha_ai_logs (sessionId)
+  └── collections (gachaSessionId)
+```
+
+### 資料量估算
+- 每日 3,000 筆（假設 1,000 活躍用戶 × 3 次/天）
+- 每年約 100 萬筆，約 600 MB 儲存空間
+
+### 查詢範例
+```sql
+-- 查詢特定用戶最近 5 次扭蛋的 AI 排序記錄
+SELECT session_id, city, district, ai_reason, duration_ms, created_at
+FROM gacha_ai_logs
+WHERE user_id = '51153311'
+ORDER BY created_at DESC
+LIMIT 5;
+
+-- 查詢某次扭蛋的所有收藏
+SELECT c.place_name, c.category, g.ai_reason
+FROM collections c
+JOIN gacha_ai_logs g ON c.gacha_session_id = g.session_id
+WHERE g.session_id = 'xxx-xxx-xxx';
+```
 
 ### 張數不足處理
 當 `totalPlaces < requestedCount` 時：

@@ -386,7 +386,7 @@ export const gachaAiLogs = pgTable("gacha_ai_logs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_gacha_ai_logs_user").on(table.userId),
-  index("IDX_gacha_ai_logs_session").on(table.sessionId),
+  uniqueIndex("IDX_gacha_ai_logs_session_unique").on(table.sessionId),
   index("IDX_gacha_ai_logs_created").on(table.createdAt),
 ]);
 

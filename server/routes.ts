@@ -3729,7 +3729,9 @@ ${uncachedSkeleton.map((item, idx) => `  {
   
   app.post("/api/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
     const userId = req.user?.claims?.sub || req.jwtUser?.userId || 'guest';
-    console.log('[Gacha V3] Request received:', { body: req.body, userId });
+    const sessionId = crypto.randomUUID();
+    const startTime = Date.now();
+    console.log('[Gacha V3] Request received:', { body: req.body, userId, sessionId });
     
     try {
 
@@ -4617,6 +4619,19 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
       
       const couponsWon: Array<{ couponId: number; placeId: number; placeName: string; title: string; code: string; terms?: string | null }> = [];
       
+      // 計算 AI 日誌所需資料（稍後在 collections 儲存後寫入）
+      let reorderRounds = 1;
+      if (aiReorderResult.includes('round3') || aiReorderResult.includes('revalidated')) {
+        reorderRounds = aiReorderResult.includes('round3') ? 3 : 2;
+      }
+      
+      // 計算類別分佈（用於 AI 日誌和回應）
+      const categoryDistribution: Record<string, number> = {};
+      for (const p of finalPlaces) {
+        const cat = p.category || '其他';
+        categoryDistribution[cat] = (categoryDistribution[cat] || 0) + 1;
+      }
+      
       // 時段分配：使用智慧推斷取代 modulo 循環
       // 映射到舊的標籤名稱以保持向下相容
       const timeSlotLabelMap: Record<TimeSlot, string> = {
@@ -4644,16 +4659,16 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
             couponWon = { id: wonCoupon.id, title: wonCoupon.title, code: wonCoupon.code, terms: wonCoupon.terms };
             couponsWon.push({ couponId: wonCoupon.id, placeId: place.id, placeName: place.placeName, title: wonCoupon.title, code: wonCoupon.code, terms: wonCoupon.terms });
             if (userId !== 'guest') {
-              await storage.saveToCollectionWithCoupon(userId, place, wonCoupon, aiReason);
+              await storage.saveToCollectionWithCoupon(userId, place, wonCoupon, aiReason, sessionId);
             }
           } else {
             if (userId !== 'guest') {
-              await storage.saveToCollectionWithCoupon(userId, place, undefined, aiReason);
+              await storage.saveToCollectionWithCoupon(userId, place, undefined, aiReason, sessionId);
             }
           }
         } else {
           if (userId !== 'guest') {
-            await storage.saveToCollectionWithCoupon(userId, place, undefined, aiReason);
+            await storage.saveToCollectionWithCoupon(userId, place, undefined, aiReason, sessionId);
           }
         }
 
@@ -4713,6 +4728,33 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
       for (const p of finalPlaces) {
         const cat = p.category || '其他';
         categoryStats[cat] = (categoryStats[cat] || 0) + 1;
+      }
+      
+      // ========== 儲存 AI 排序日誌（在 collections 儲存完成後）==========
+      if (userId !== 'guest' && finalPlaces.length > 0) {
+        try {
+          const orderedPlaceIds = finalPlaces.map(p => p.id);
+          const durationMs = Date.now() - startTime;
+          
+          await storage.saveGachaAiLog({
+            sessionId,
+            userId,
+            city: city!,
+            district: anchorDistrict || undefined,
+            requestedCount: targetCount,
+            orderedPlaceIds,
+            rejectedPlaceIds: rejectedPlaceIds.length > 0 ? rejectedPlaceIds : undefined,
+            aiReason: aiReason || undefined,
+            aiModel: 'gemini-2.5-flash',
+            reorderRounds,
+            durationMs,
+            categoryDistribution,
+            isShortfall: finalPlaces.length < targetCount,
+          });
+          console.log('[Gacha V3] AI log saved:', { sessionId, durationMs, reorderRounds });
+        } catch (logError) {
+          console.error('[Gacha V3] Failed to save AI log:', logError);
+        }
       }
       
       // ========== Step 4: 主題介紹（已關閉 AI 生成以節省費用）==========

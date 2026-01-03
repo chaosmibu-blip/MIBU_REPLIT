@@ -65,8 +65,39 @@ place_feedback (問題回報)
 
 ### 7. 收藏系統 (Collection System)
 ```
-collections (收藏夾/圖鑑)
-  └── collection_read_status
+gacha_ai_logs (AI 排序日誌，每輪扭蛋一筆) 🆕 2026-01-03
+  └── collections (收藏夾/圖鑑，每景點一筆)
+       └── collection_read_status
+```
+
+#### gacha_ai_logs 表欄位說明（2026-01-03 新增）
+```typescript
+{
+  id: serial PRIMARY KEY;
+  sessionId: varchar(36) NOT NULL;        // 本輪扭蛋唯一識別碼
+  userId: varchar REFERENCES users(id);
+  city: text NOT NULL;
+  district: text;                          // 錨定區域
+  requestedCount: integer NOT NULL;
+  
+  orderedPlaceIds: integer[];              // 排序後的 place IDs
+  rejectedPlaceIds: integer[];             // 被 AI 拒絕的 place IDs
+  aiReason: text;                          // AI 排序理由
+  
+  aiModel: text;                           // 使用的模型 (gemini-2.5-flash)
+  reorderRounds: integer;                  // 排序花了幾輪 (1-3)
+  durationMs: integer;                     // 總花費時間（毫秒）
+  
+  categoryDistribution: jsonb;             // { 美食: 4, 景點: 2, ... }
+  isShortfall: boolean DEFAULT false;
+  
+  createdAt: timestamp;
+}
+
+// 索引
+IDX_gacha_ai_logs_user (userId)
+IDX_gacha_ai_logs_session (sessionId)
+IDX_gacha_ai_logs_created (createdAt)
 ```
 
 #### collections 表欄位說明
@@ -75,6 +106,7 @@ collections (收藏夾/圖鑑)
   id: serial PRIMARY KEY;
   userId: varchar REFERENCES users(id);
   officialPlaceId: integer REFERENCES places(id);
+  gachaSessionId: varchar(36);   // 🆕 2026-01-03 關聯 gacha_ai_logs
   placeName: text NOT NULL;
   country: text NOT NULL;
   city: text NOT NULL;
@@ -91,13 +123,14 @@ collections (收藏夾/圖鑑)
   isCoupon: boolean DEFAULT false;
   couponData: jsonb;       // { title, code, terms }
   wonCouponId: integer REFERENCES coupons(id);
-  aiReason: text;          // 🆕 2026-01-02 AI 排序理由
+  aiReason: text;          // AI 排序理由（冗餘，可透過 gachaSessionId 查詢）
   collectedAt: timestamp;
 }
 
 // 索引
 IDX_collections_user_place (userId, placeName, district)
 IDX_collections_official_place (officialPlaceId)
+IDX_collections_gacha_session (gachaSessionId)   // 🆕 2026-01-03
 ```
 
 ### 8. 行程規劃 (Trip Planning)

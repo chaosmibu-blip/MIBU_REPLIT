@@ -8,8 +8,10 @@ import {
   couponRarityConfigs, sosAlerts, merchantAnalytics, userDailyGachaStats, 
   tripPlans, tripDays, tripActivities, travelCompanions, sosEvents, 
   userProfiles, collectionReadStatus, tripServicePurchases, INVENTORY_MAX_SLOTS,
+  gachaAiLogs,
   type User, type UpsertUser,
   type Collection, type InsertCollection,
+  type GachaAiLog, type InsertGachaAiLog,
   type Merchant, type InsertMerchant,
   type Coupon, type InsertCoupon,
   type PlaceCache, type InsertPlaceCache,
@@ -195,7 +197,10 @@ export interface IStorage {
   getOfficialPlacesByCity(city: string, limit?: number): Promise<Place[]>;
   getPlaceByGoogleId(googlePlaceId: string): Promise<Place | undefined>;
   getClaimByOfficialPlaceId(officialPlaceId: number): Promise<{ claim: MerchantPlaceLink; coupons: Coupon[] } | undefined>;
-  saveToCollectionWithCoupon(userId: string, place: Place, wonCoupon?: Coupon, aiReason?: string): Promise<Collection>;
+  saveToCollectionWithCoupon(userId: string, place: Place, wonCoupon?: Coupon, aiReason?: string, gachaSessionId?: string): Promise<Collection>;
+  
+  // Gacha AI Logs
+  saveGachaAiLog(log: InsertGachaAiLog): Promise<GachaAiLog>;
 
   // Specialists (旅遊專員)
   getSpecialistByUserId(userId: string): Promise<Specialist | undefined>;
@@ -1685,10 +1690,11 @@ export class DatabaseStorage implements IStorage {
     return { claim, coupons: placeCoupons };
   }
 
-  async saveToCollectionWithCoupon(userId: string, place: Place, wonCoupon?: Coupon, aiReason?: string): Promise<Collection> {
+  async saveToCollectionWithCoupon(userId: string, place: Place, wonCoupon?: Coupon, aiReason?: string, gachaSessionId?: string): Promise<Collection> {
     const collectionData: InsertCollection = {
       userId,
       officialPlaceId: place.id,
+      gachaSessionId: gachaSessionId || undefined,
       placeName: place.placeName,
       country: place.country,
       city: place.city,
@@ -1727,6 +1733,14 @@ export class DatabaseStorage implements IStorage {
     }
 
     return newCollection;
+  }
+
+  async saveGachaAiLog(log: InsertGachaAiLog): Promise<GachaAiLog> {
+    const [newLog] = await db
+      .insert(gachaAiLogs)
+      .values(log)
+      .returning();
+    return newLog;
   }
 
   // AI 生成地點存入草稿（根據文字名稱查詢 ID）
