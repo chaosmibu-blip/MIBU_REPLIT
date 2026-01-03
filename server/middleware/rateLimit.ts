@@ -67,3 +67,10 @@ export const strictRateLimiter = createRateLimiter({
   maxRequests: 5,
   message: '操作過於頻繁，請稍後再試',
 });
+
+// Admin API 速率限制（每分鐘 10 次，防止暴力破解密鑰）
+export const adminRateLimiter = createRateLimiter({
+  windowMs: 60000,
+  maxRequests: 10,
+  message: '管理操作過於頻繁，請稍後再試',
+});

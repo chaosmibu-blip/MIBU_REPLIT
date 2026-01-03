@@ -21,7 +21,7 @@ import { determineCategory, determineSubcategory, generateFallbackDescription, c
 import { inferTimeSlot, sortPlacesByTimeSlot, type TimeSlot } from "./lib/timeSlotInferrer";
 import twilio from "twilio";
 import appleSignin from "apple-signin-auth";
-import { gachaRateLimiter, apiRateLimiter, strictRateLimiter } from "./middleware/rateLimit";
+import { gachaRateLimiter, apiRateLimiter, strictRateLimiter, adminRateLimiter } from "./middleware/rateLimit";
 import { queryLogger } from "./middleware/queryLogger";
 const { AccessToken } = twilio.jwt;
 const ChatGrant = AccessToken.ChatGrant;
@@ -222,6 +222,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ Global Middleware ============
   app.use('/api', queryLogger);
+  
+  // Admin API 速率限制（防止暴力破解密鑰）
+  app.use('/api/admin', adminRateLimiter);
 
   // ============ Health Check ============
   app.get('/api/health', (req, res) => {
@@ -9469,33 +9472,32 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
         return res.status(403).json({ error: "需要密鑰" });
       }
       
-      // 排除已有的城市
-      const excludeCities = exclude ? (exclude as string).split(',') : [];
+      // 排除已有的城市（使用參數化查詢避免 SQL 注入）
+      const excludeCities = exclude ? (exclude as string).split(',').map(c => c.trim()).filter(Boolean) : [];
       
-      let query;
+      let result;
       if (excludeCities.length > 0) {
-        query = sql`
+        // 使用 Drizzle 的 notInArray 避免 SQL 注入
+        result = await db.execute(sql`
           SELECT place_name, country, city, district, address, 
                  location_lat, location_lng, google_place_id, rating,
                  category, subcategory, description
           FROM places 
           WHERE is_active = true 
             AND google_place_id IS NOT NULL
-            AND city NOT IN ${sql.raw(`('${excludeCities.join("','")}')`)}
+            AND city != ALL(${excludeCities})
           ORDER BY city, district
-        `;
+        `);
       } else {
-        query = sql`
+        result = await db.execute(sql`
           SELECT place_name, country, city, district, address, 
                  location_lat, location_lng, google_place_id, rating,
                  category, subcategory, description
           FROM places 
           WHERE is_active = true AND google_place_id IS NOT NULL
           ORDER BY city, district
-        `;
+        `);
       }
-      
-      const result = await db.execute(query);
       
       res.json({
         success: true,

@@ -73,7 +73,7 @@ export async function initializeSuperAdmin(): Promise<void> {
     console.error('[Admin] Failed to initialize super admin:', error);
   }
 }
-console.log('[JWT] Using fixed JWT_SECRET (first 10 chars):', JWT_SECRET.substring(0, 10));
+// JWT_SECRET 已設定（不記錄到日誌以避免洩露）
 const JWT_EXPIRES_IN = '7d';
 
 const ALLOWED_REDIRECT_ORIGINS = [
@@ -114,16 +114,11 @@ export function generateJwtToken(user: any, activeRole?: string): string {
 }
 
 export function verifyJwtToken(token: string): any {
-  console.log('[JWT DEBUG] verifyJwtToken called');
-  console.log('[JWT DEBUG] Token (first 10 chars):', token ? token.substring(0, 10) : 'null/undefined');
-  console.log('[JWT DEBUG] JWT_SECRET (first 10 chars):', JWT_SECRET.substring(0, 10));
-  
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    console.log('[JWT DEBUG] Token verification SUCCESS, decoded sub:', (decoded as any)?.sub);
     return decoded;
   } catch (error: any) {
-    console.log('[JWT DEBUG] Token verification FAILED, reason:', error?.message || 'unknown error');
+    // Token 驗證失敗時不記錄詳細資訊到日誌
     return null;
   }
 }

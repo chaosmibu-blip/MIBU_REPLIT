@@ -187,6 +187,7 @@ Mobile App                    Backend                      Apple
 1. **JWT Secret 保密**
    - 不要 commit 到版本控制
    - 開發/生產使用相同 secret
+   - ✅ 2026-01-03 已設定 `JWT_SECRET` 環境變數
 
 2. **Token 過期處理**
    - 前端檢測 401 → 重新登入
@@ -198,7 +199,40 @@ Mobile App                    Backend                      Apple
 
 4. **Rate Limiting**
    - 登入 API: 5 req/min
+   - Admin API: 10 req/min（✅ 2026-01-03 已添加）
    - 防止暴力破解
+
+---
+
+## 資安檢查記錄（2026-01-03）
+
+### 已修復問題
+| 問題 | 修復方式 |
+|------|---------|
+| 硬編碼 JWT Secret | ✅ 移至環境變數 `JWT_SECRET` |
+| 硬編碼 Migration Key | ✅ 移至環境變數 `ADMIN_MIGRATION_KEY` |
+| Debug 日誌洩露 Token | ✅ 移除 replitAuth.ts 中的 debug console.log |
+| Admin API 無 Rate Limit | ✅ 添加 adminRateLimiter（10 req/min） |
+| SQL 注入風險 | ✅ export-places API 改用參數化查詢 |
+
+### 尚可接受的風險
+| 問題 | 說明 |
+|------|------|
+| unify-categories 的 sql.raw | 值為硬編碼（非用戶輸入），風險低 |
+| delete-blacklist-places 的 sql.raw | 值為硬編碼（非用戶輸入），風險低 |
+| Mapbox Token 公開 | 設計如此，需在 Mapbox Dashboard 限制 URL |
+| Stripe clientSecret 回傳前端 | Stripe 標準設計，用於 PaymentIntent |
+
+### 前端自我檢查清單
+```
+□ 使用 expo-secure-store 儲存 JWT Token
+□ 不使用 AsyncStorage 儲存敏感資訊
+□ 所有 API 請求使用 HTTPS
+□ 移除 console.log 中的 Token/密碼輸出
+□ 正式版關閉 React Native Debug Mode
+□ .env 檔案不會被打包進 App
+□ 深層連結驗證來源
+```
 
 ---
 
