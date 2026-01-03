@@ -200,6 +200,12 @@ Mobile App                    Backend                      Apple
    - 登入 API: 5 req/min
    - 防止暴力破解
 
+5. **前端 Token 儲存規範**（2026-01-03 新增）
+   - **必須使用 SecureStore**，禁止使用 AsyncStorage
+   - Token Key 統一使用 `@mibu_token`
+   - SecureStore 會加密儲存，AsyncStorage 是明文
+   - 參考：`expo-secure-store`
+
 ---
 
 ## 待開發功能
