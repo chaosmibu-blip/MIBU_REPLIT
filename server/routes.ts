@@ -3770,7 +3770,12 @@ ${uncachedSkeleton.map((item, idx) => `  {
       const DAILY_PULL_LIMIT = 36; // 每人每天最多抽 36 張卡
       const requestedCount = itemCount || 7; // 預設 7 張
       
-      if (userId !== 'guest') {
+      // 管理員/測試帳號豁免每日限額
+      const GACHA_EXEMPT_EMAILS = ['s8869420@gmail.com'];
+      const userEmail = req.user?.claims?.email || req.jwtUser?.email;
+      const isExempt = userEmail && GACHA_EXEMPT_EMAILS.includes(userEmail);
+      
+      if (userId !== 'guest' && !isExempt) {
         const currentDailyCount = await storage.getUserDailyGachaCount(userId);
         const remainingQuota = DAILY_PULL_LIMIT - currentDailyCount;
         
@@ -3795,6 +3800,10 @@ ${uncachedSkeleton.map((item, idx) => `  {
             remainingQuota
           });
         }
+      }
+      
+      if (isExempt) {
+        console.log('[Gacha V3] Admin/Test account - daily limit exempted:', userEmail);
       }
       
       // If regionId is provided, look up the city name from database

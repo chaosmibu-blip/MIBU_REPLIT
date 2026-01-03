@@ -59,7 +59,7 @@ interface GachaV3Response {
 ```
 
 ### 抽取流程（2026-01-03 更新）
-1. **每日限額檢查**: 每人每天最多 36 張卡
+1. **每日限額檢查**: 每人每天最多 36 張卡（管理員/測試帳號豁免，見下方）
 2. **錨點區選擇**: 無指定 district 時隨機選一區
 3. **結構化選點**（保底 + 等權重隨機）:
    - **美食保底**：5-6張=2個, 7-8張=3個, 9+張=3個
@@ -124,6 +124,32 @@ WHERE g.session_id = 'xxx-xxx-xxx';
 - `isShortfall: true`
 - `shortfallMessage`: 例如「礁溪鄉目前只有 5 個景點，我們正在努力擴充中！」
 - 前端應顯示 Toast 或提示告知用戶
+
+## 測試帳號豁免機制（2026-01-03 新增）
+
+### 背景
+管理員/測試帳號需要頻繁測試扭蛋功能，不應受到每日 36 張的限制。
+
+### 豁免清單
+```typescript
+// server/routes.ts (Gacha V3 路由)
+const GACHA_EXEMPT_EMAILS = ['s8869420@gmail.com'];
+```
+
+### 判斷邏輯
+```typescript
+const userEmail = req.user?.claims?.email || req.jwtUser?.email;
+const isExempt = userEmail && GACHA_EXEMPT_EMAILS.includes(userEmail);
+
+if (userId !== 'guest' && !isExempt) {
+  // 執行每日限額檢查
+}
+```
+
+### 注意事項
+- 需登入才能取得 email（Session 或 JWT 皆可）
+- 豁免帳號的 collections 仍會正常記錄
+- 日誌會顯示 `Admin/Test account - daily limit exempted`
 
 ## 去重保護機制（2026-01-01 改版）
 
