@@ -363,11 +363,39 @@ export const coupons = pgTable("coupons", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Gacha AI Logs (每輪 AI 排序記錄)
+export const gachaAiLogs = pgTable("gacha_ai_logs", {
+  id: serial("id").primaryKey(),
+  sessionId: varchar("session_id", { length: 36 }).notNull(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  city: text("city").notNull(),
+  district: text("district"),
+  requestedCount: integer("requested_count").notNull(),
+  
+  orderedPlaceIds: integer("ordered_place_ids").array(),
+  rejectedPlaceIds: integer("rejected_place_ids").array(),
+  aiReason: text("ai_reason"),
+  
+  aiModel: text("ai_model"),
+  reorderRounds: integer("reorder_rounds"),
+  durationMs: integer("duration_ms"),
+  
+  categoryDistribution: jsonb("category_distribution"),
+  isShortfall: boolean("is_shortfall").default(false),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_gacha_ai_logs_user").on(table.userId),
+  index("IDX_gacha_ai_logs_session").on(table.sessionId),
+  index("IDX_gacha_ai_logs_created").on(table.createdAt),
+]);
+
 // User's collected places (圖鑑/背包)
 export const collections = pgTable("collections", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").references(() => users.id).notNull(),
   officialPlaceId: integer("official_place_id").references(() => places.id),
+  gachaSessionId: varchar("gacha_session_id", { length: 36 }),
   placeName: text("place_name").notNull(),
   country: text("country").notNull(),
   city: text("city").notNull(),
@@ -389,6 +417,7 @@ export const collections = pgTable("collections", {
 }, (table) => [
   index("IDX_collections_user_place").on(table.userId, table.placeName, table.district),
   index("IDX_collections_official_place").on(table.officialPlaceId),
+  index("IDX_collections_gacha_session").on(table.gachaSessionId),
 ]);
 
 // ============ Relations ============
@@ -495,6 +524,11 @@ export const updateProfileSchema = z.object({
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
+export const insertGachaAiLogSchema = createInsertSchema(gachaAiLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertCollectionSchema = createInsertSchema(collections).omit({
   id: true,
   collectedAt: true,
@@ -597,6 +631,9 @@ export const insertSubcategorySchema = createInsertSchema(subcategories).omit({
 // Types
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+
+export type InsertGachaAiLog = z.infer<typeof insertGachaAiLogSchema>;
+export type GachaAiLog = typeof gachaAiLogs.$inferSelect;
 
 export type InsertCollection = z.infer<typeof insertCollectionSchema>;
 export type Collection = typeof collections.$inferSelect;
