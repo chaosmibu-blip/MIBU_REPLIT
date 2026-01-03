@@ -223,15 +223,32 @@ Mobile App                    Backend                      Apple
 | Mapbox Token 公開 | 設計如此，需在 Mapbox Dashboard 限制 URL |
 | Stripe clientSecret 回傳前端 | Stripe 標準設計，用於 PaymentIntent |
 
-### 前端自我檢查清單
+### 前端自我檢查清單（2026-01-03 更新）
 ```
-□ 使用 expo-secure-store 儲存 JWT Token
-□ 不使用 AsyncStorage 儲存敏感資訊
-□ 所有 API 請求使用 HTTPS
-□ 移除 console.log 中的 Token/密碼輸出
-□ 正式版關閉 React Native Debug Mode
-□ .env 檔案不會被打包進 App
-□ 深層連結驗證來源
+☑ 使用 expo-secure-store 儲存 JWT Token（AppContext 已完成）
+⚠ 約 15 處仍直接使用 AsyncStorage 存 Token（待改進）
+☑ 所有 API 請求使用 HTTPS
+☑ 移除 console.log 中的 Token/密碼輸出
+☑ 正式版關閉 React Native Debug Mode
+☑ .env 檔案不會被打包進 App（使用 Expo 環境變數）
+□ 深層連結驗證來源（待確認）
+```
+
+### 前端待改進項目
+1. **AsyncStorage → SecureStore 遷移**
+   - 找出所有 `AsyncStorage.setItem('token'...)` 的地方
+   - 改用 `SecureStore.setItemAsync`
+   - 影響範圍：約 15 處
+
+2. **改法範例**
+```typescript
+// 改前
+import AsyncStorage from '@react-native-async-storage/async-storage';
+await AsyncStorage.setItem('userToken', token);
+
+// 改後
+import * as SecureStore from 'expo-secure-store';
+await SecureStore.setItemAsync('userToken', token);
 ```
 
 ---
