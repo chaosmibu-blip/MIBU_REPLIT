@@ -85,7 +85,17 @@ AI_INTEGRATIONS_GEMINI_BASE_URL
 | 模型 | 用途 | 特性 |
 |------|------|------|
 | `gemini-2.5-flash` | 採集、審核、描述生成 | 快速、低成本、足夠智慧 |
-| `gemini-3-flash-preview` | **Gacha V3 扭蛋排序** | 最新版本、更強推理能力 |
+| `gemini-3-pro-preview` | **Gacha V3 扭蛋排序** | 最強推理能力、複雜任務最佳選擇 |
+
+### Replit AI Integration 支援模型（2026-01-03 確認）
+
+| 模型 | 狀態 | 說明 |
+|------|------|------|
+| `gemini-3-pro-preview` | ✅ 可用 | 最強大的推理模型 |
+| `gemini-2.5-pro` | ✅ 可用 | 進階編碼與複雜推理 |
+| `gemini-2.5-flash` | ✅ 可用 | 平衡速度與品質 |
+| `gemini-2.5-flash-image` | ✅ 可用 | 圖片生成 |
+| `gemini-3-flash` | ❌ 不可用 | Replit 尚未支援 |
 
 ### 模型配置規範
 
@@ -94,9 +104,9 @@ AI_INTEGRATIONS_GEMINI_BASE_URL
 | 採集（關鍵字擴散） | gemini-2.5-flash | 0.7 | 8192 |
 | 審核 | gemini-2.5-flash | 0.1 | 16384 |
 | 描述生成 | gemini-2.5-flash | 0.3 | 16384 |
-| **扭蛋排序（V3）** | gemini-3-flash-preview | 0.1 | 8192 |
+| **扭蛋排序（V3）** | gemini-3-pro-preview | 0.1 | 8192 |
 
-> 📌 **2026-01-03 變更**：將 Gacha V3 的模型升級為 `gemini-3-flash-preview`，使用最新 Gemini 3 系列提升排序品質
+> 📌 **2026-01-03 變更**：將 Gacha V3 的模型升級為 `gemini-3-pro-preview`，使用 Gemini 3 Pro 系列提升排序品質。經測試 6 輪扭蛋，平均耗時 28-56 秒，排序成功率 100%。
 
 ### 使用方式
 ```typescript
