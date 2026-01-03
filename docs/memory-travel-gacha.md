@@ -151,6 +151,38 @@ if (userId !== 'guest' && !isExempt) {
 - 豁免帳號的 collections 仍會正常記錄
 - 日誌會顯示 `Admin/Test account - daily limit exempted`
 
+## 區域最低門檻機制（2026-01-03 新增）
+
+### 背景
+部分子行政區景點數量過少（< 100 筆），若被選為錨點區會導致用戶體驗差。
+
+### 機制
+將景點數 < 100 的 district 設為 `is_active = false`，Gacha V3 選擇錨點區時會自動排除。
+
+### 執行記錄（2026-01-03）
+- 軟刪除區域數：**280 個**
+- 完全無資料城市：台中市（29 區）、台南市（37 區）尚未採集
+- 保留區域數：約 89 個（各城市 1-11 個活躍區）
+
+### 恢復方式
+```sql
+-- 恢復所有區域
+UPDATE districts SET is_active = true WHERE is_active = false;
+
+-- 恢復特定城市
+UPDATE districts d
+SET is_active = true
+FROM regions r
+WHERE d.region_id = r.id AND r.name_zh = '台中市';
+```
+
+### 注意事項
+- 軟刪除不影響 places 表資料
+- App 審核不受影響（純資料策展，非功能變更）
+- 日後採集補充後可隨時恢復
+
+---
+
 ## 去重保護機制（2026-01-01 改版）
 
 ### 新機制：圖鑑去重
