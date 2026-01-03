@@ -4127,7 +4127,7 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
 {"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
           
-          const reorderResponse = await fetch(`${baseUrl}/models/gemini-3-pro-preview:generateContent`, {
+          const reorderResponse = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
@@ -4150,7 +4150,7 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
           }
           
           const reorderText = reorderData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-          console.log('[Gacha V3] AI Reorder response (Gemini 3):', reorderText);
+          console.log('[Gacha V3] AI Reorder response (Gemini 2.5):', reorderText);
           
           if (reorderText) {
             try {
@@ -4344,7 +4344,7 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategor
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
 {"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
             
-            const revalidateResponse = await fetch(`${baseUrl}/models/gemini-3-pro-preview:generateContent`, {
+            const revalidateResponse = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
               method: 'POST',
               headers: { 
                 'Content-Type': 'application/json',
@@ -4361,7 +4361,7 @@ ${updatedPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategor
             
             const revalidateData = await revalidateResponse.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
             const revalidateText = revalidateData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-            console.log('[Gacha V3] AI Revalidate response (Gemini 3):', revalidateText);
+            console.log('[Gacha V3] AI Revalidate response (Gemini 2.5):', revalidateText);
             
             if (revalidateText) {
               try {
@@ -4500,7 +4500,7 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
 {"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
                       
-                      const round3Response = await fetch(`${baseUrl}/models/gemini-3-pro-preview:generateContent`, {
+                      const round3Response = await fetch(`${baseUrl}/models/gemini-2.5-flash:generateContent`, {
                         method: 'POST',
                         headers: { 
                           'Content-Type': 'application/json',

@@ -80,29 +80,28 @@ AI_INTEGRATIONS_GEMINI_API_KEY
 AI_INTEGRATIONS_GEMINI_BASE_URL
 ```
 
-### 主要模型（2026-01-01 升級）
+### 主要模型（2026-01-03 更新）
 
 | 模型 | 用途 | 特性 |
 |------|------|------|
-| `gemini-2.5-flash` | 採集（關鍵字擴散） | 快速、低成本 |
-| `gemini-3-pro-preview` | 審核、描述生成、扭蛋排序 | 高品質推理 |
+| `gemini-2.5-flash` | 全部功能統一使用 | 快速、低成本、足夠智慧 |
 
 ### 模型配置規範
 
 | 用途 | 模型 | temperature | maxOutputTokens |
 |------|------|-------------|-----------------|
-| 採集 | gemini-2.5-flash | 0.7 | 8192 |
-| **審核** | gemini-3-pro-preview | 0.1 | 16384 |
-| **描述生成** | gemini-3-pro-preview | 0.3 | 16384 |
-| **扭蛋排序** | gemini-3-pro-preview | 0.1 | 8192 |
+| 採集（關鍵字擴散） | gemini-2.5-flash | 0.7 | 8192 |
+| 審核 | gemini-2.5-flash | 0.1 | 16384 |
+| 描述生成 | gemini-2.5-flash | 0.3 | 16384 |
+| **扭蛋排序（V3）** | gemini-2.5-flash | 0.1 | 8192 |
 
-> ⚠️ **Gemini 3 重要提醒**：Gemini 3 是推理模型，會消耗 1000-4000 tokens 進行「思考」，必須設定足夠的 maxOutputTokens
+> 📌 **2026-01-03 變更**：將 Gacha V3 的模型從 `gemini-3-pro-preview` 改為 `gemini-2.5-flash`，統一使用單一模型降低複雜度
 
 ### 使用方式
 ```typescript
-// Gemini 3 Pro Preview（審核/描述/排序）
+// Gemini 2.5 Flash（所有功能統一使用）
 const response = await fetch(
-  `${baseUrl}/models/gemini-3-pro-preview:generateContent`,
+  `${baseUrl}/models/gemini-2.5-flash:generateContent`,
   {
     method: 'POST',
     headers: {
