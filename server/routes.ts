@@ -3727,8 +3727,8 @@ ${uncachedSkeleton.map((item, idx) => `  {
 
   // ============ Gacha V3 - One-Day Itinerary from Official Pool ============
   
-  app.post("/api/gacha/itinerary/v3", async (req: any, res) => {
-    const userId = req.user?.claims?.sub || 'guest';
+  app.post("/api/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
+    const userId = req.user?.claims?.sub || req.jwtUser?.userId || 'guest';
     console.log('[Gacha V3] Request received:', { body: req.body, userId });
     
     try {
