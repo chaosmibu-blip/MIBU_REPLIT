@@ -78,6 +78,32 @@ JWT_SECRET=mibu_secret_key_2024_xxx
 
 ---
 
+## Bug 修復記錄
+
+### 2026-01-03：Gacha V3 認證問題修復
+
+**問題**：`/api/gacha/itinerary/v3` 路由缺少 `isAuthenticated` 中介軟體，導致 JWT Token 不被解析，userId 永遠是 'guest'，collections 不儲存。
+
+**根因**：
+```typescript
+// 修復前 - 缺少認證中介軟體
+app.post("/api/gacha/itinerary/v3", async (req: any, res) => {
+  const userId = req.user?.claims?.sub || 'guest';  // req.user 永遠是 undefined
+```
+
+**修復**：
+```typescript
+// 修復後 - 加上 isAuthenticated + 支援 JWT
+app.post("/api/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
+  const userId = req.user?.claims?.sub || req.jwtUser?.userId || 'guest';
+```
+
+**驗證**：扭蛋後 collections 表已正確儲存 user_id = '51153311'，ai_reason 欄位也有資料。
+
+**教訓**：所有需要識別用戶的 API 都必須使用 `isAuthenticated` 中介軟體，並同時處理 Session（Web）和 JWT（Mobile）兩種認證方式。
+
+---
+
 ## 角色權限 (RBAC)
 
 ### 角色定義
