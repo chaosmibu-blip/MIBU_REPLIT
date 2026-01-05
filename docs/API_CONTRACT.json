@@ -1,0 +1,872 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2026-01-05T14:04:15.252Z",
+  "endpoints": {
+    "GET /api/configs": {
+      "method": "GET",
+      "path": "/api/configs",
+      "auth": "admin"
+    },
+    "GET /api/configs/:category": {
+      "method": "GET",
+      "path": "/api/configs/:category",
+      "auth": "admin"
+    },
+    "PATCH /api/configs/:category/:key": {
+      "method": "PATCH",
+      "path": "/api/configs/:category/:key",
+      "auth": "admin"
+    },
+    "POST /api/configs/:category/:key/reset": {
+      "method": "POST",
+      "path": "/api/configs/:category/:key/reset",
+      "auth": "admin"
+    },
+    "GET /api/announcements": {
+      "method": "GET",
+      "path": "/api/announcements",
+      "auth": "jwt"
+    },
+    "POST /api/announcements": {
+      "method": "POST",
+      "path": "/api/announcements",
+      "auth": "jwt"
+    },
+    "PATCH /api/announcements/:id": {
+      "method": "PATCH",
+      "path": "/api/announcements/:id",
+      "auth": "jwt"
+    },
+    "DELETE /api/announcements/:id": {
+      "method": "DELETE",
+      "path": "/api/announcements/:id",
+      "auth": "jwt"
+    },
+    "POST /api/announcements/cleanup": {
+      "method": "POST",
+      "path": "/api/announcements/cleanup",
+      "auth": "jwt"
+    },
+    "GET /api/ads": {
+      "method": "GET",
+      "path": "/api/ads",
+      "auth": "admin"
+    },
+    "POST /api/ads": {
+      "method": "POST",
+      "path": "/api/ads",
+      "auth": "admin"
+    },
+    "PATCH /api/ads/:id": {
+      "method": "PATCH",
+      "path": "/api/ads/:id",
+      "auth": "admin"
+    },
+    "DELETE /api/ads/:id": {
+      "method": "DELETE",
+      "path": "/api/ads/:id",
+      "auth": "admin"
+    },
+    "POST /api/place-drafts": {
+      "method": "POST",
+      "path": "/api/place-drafts",
+      "auth": "jwt"
+    },
+    "GET /api/place-drafts": {
+      "method": "GET",
+      "path": "/api/place-drafts",
+      "auth": "jwt"
+    },
+    "POST /api/place-drafts/:id/publish": {
+      "method": "POST",
+      "path": "/api/place-drafts/:id/publish",
+      "auth": "jwt"
+    },
+    "DELETE /api/place-drafts/:id": {
+      "method": "DELETE",
+      "path": "/api/place-drafts/:id",
+      "auth": "jwt"
+    },
+    "PATCH /api/place-drafts/:id": {
+      "method": "PATCH",
+      "path": "/api/place-drafts/:id",
+      "auth": "jwt"
+    },
+    "POST /api/place-drafts/:id/regenerate-description": {
+      "method": "POST",
+      "path": "/api/place-drafts/:id/regenerate-description",
+      "auth": "jwt"
+    },
+    "GET /api/place-drafts/filter": {
+      "method": "GET",
+      "path": "/api/place-drafts/filter",
+      "auth": "jwt"
+    },
+    "POST /api/place-drafts/batch-publish": {
+      "method": "POST",
+      "path": "/api/place-drafts/batch-publish",
+      "auth": "jwt"
+    },
+    "POST /api/place-drafts/batch-regenerate": {
+      "method": "POST",
+      "path": "/api/place-drafts/batch-regenerate",
+      "auth": "jwt"
+    },
+    "POST /api/place-drafts/backfill-review-count": {
+      "method": "POST",
+      "path": "/api/place-drafts/backfill-review-count",
+      "auth": "jwt"
+    },
+    "POST /api/places/batch-generate": {
+      "method": "POST",
+      "path": "/api/places/batch-generate",
+      "auth": "jwt"
+    },
+    "POST /api/places/batch-preview": {
+      "method": "POST",
+      "path": "/api/places/batch-preview",
+      "auth": "jwt"
+    },
+    "POST /api/places/reclassify": {
+      "method": "POST",
+      "path": "/api/places/reclassify",
+      "auth": "jwt"
+    },
+    "GET /api/applications/pending": {
+      "method": "GET",
+      "path": "/api/applications/pending",
+      "auth": "jwt"
+    },
+    "PATCH /api/applications/:id/review": {
+      "method": "PATCH",
+      "path": "/api/applications/:id/review",
+      "auth": "jwt"
+    },
+    "GET /api/place-cache/review-stats": {
+      "method": "GET",
+      "path": "/api/place-cache/review-stats",
+      "auth": "jwt"
+    },
+    "GET /api/users/pending": {
+      "method": "GET",
+      "path": "/api/users/pending",
+      "auth": "jwt"
+    },
+    "PATCH /api/users/:id/approve": {
+      "method": "PATCH",
+      "path": "/api/users/:id/approve",
+      "auth": "jwt"
+    },
+    "GET /api/users": {
+      "method": "GET",
+      "path": "/api/users",
+      "auth": "jwt"
+    },
+    "GET /api/global-exclusions": {
+      "method": "GET",
+      "path": "/api/global-exclusions",
+      "auth": "jwt"
+    },
+    "POST /api/global-exclusions": {
+      "method": "POST",
+      "path": "/api/global-exclusions",
+      "auth": "jwt"
+    },
+    "DELETE /api/global-exclusions/:id": {
+      "method": "DELETE",
+      "path": "/api/global-exclusions/:id",
+      "auth": "jwt"
+    },
+    "POST /api/register": {
+      "method": "POST",
+      "path": "/api/register",
+      "auth": "none"
+    },
+    "POST /api/register/merchant": {
+      "method": "POST",
+      "path": "/api/register/merchant",
+      "auth": "none"
+    },
+    "POST /api/register/specialist": {
+      "method": "POST",
+      "path": "/api/register/specialist",
+      "auth": "none"
+    },
+    "POST /api/login": {
+      "method": "POST",
+      "path": "/api/login",
+      "auth": "none"
+    },
+    "POST /api/apple": {
+      "method": "POST",
+      "path": "/api/apple",
+      "auth": "none"
+    },
+    "GET /api/user": {
+      "method": "GET",
+      "path": "/api/user",
+      "auth": "jwt"
+    },
+    "POST /api/switch-role": {
+      "method": "POST",
+      "path": "/api/switch-role",
+      "auth": "jwt"
+    },
+    "GET /api/privileges": {
+      "method": "GET",
+      "path": "/api/privileges",
+      "auth": "jwt"
+    },
+    "POST /api/logout": {
+      "method": "POST",
+      "path": "/api/logout",
+      "auth": "none"
+    },
+    "GET /api/profile": {
+      "method": "GET",
+      "path": "/api/profile",
+      "auth": "jwt"
+    },
+    "PATCH /api/profile": {
+      "method": "PATCH",
+      "path": "/api/profile",
+      "auth": "jwt"
+    },
+    "GET /api/chat/token": {
+      "method": "GET",
+      "path": "/api/chat/token",
+      "auth": "jwt"
+    },
+    "POST /api/chat/conversations": {
+      "method": "POST",
+      "path": "/api/chat/conversations",
+      "auth": "jwt"
+    },
+    "GET /api/chat/conversations": {
+      "method": "GET",
+      "path": "/api/chat/conversations",
+      "auth": "jwt"
+    },
+    "POST /api/chat/conversations/:conversationSid/join": {
+      "method": "POST",
+      "path": "/api/chat/conversations/:conversationSid/join",
+      "auth": "jwt"
+    },
+    "DELETE /api/chat/conversations/:conversationSid": {
+      "method": "DELETE",
+      "path": "/api/chat/conversations/:conversationSid",
+      "auth": "jwt"
+    },
+    "POST /api/chat/conversations/:conversationSid/call": {
+      "method": "POST",
+      "path": "/api/chat/conversations/:conversationSid/call",
+      "auth": "jwt"
+    },
+    "GET /api/token": {
+      "method": "GET",
+      "path": "/api/token",
+      "auth": "jwt"
+    },
+    "POST /api/voice/connect": {
+      "method": "POST",
+      "path": "/api/voice/connect",
+      "auth": "none"
+    },
+    "POST /api/chat/conversations/:conversationSid/invite-link": {
+      "method": "POST",
+      "path": "/api/chat/conversations/:conversationSid/invite-link",
+      "auth": "jwt"
+    },
+    "POST /api/chat/invites/:inviteCode/accept": {
+      "method": "POST",
+      "path": "/api/chat/invites/:inviteCode/accept",
+      "auth": "jwt"
+    },
+    "POST /api/klook/detect": {
+      "method": "POST",
+      "path": "/api/klook/detect",
+      "auth": "jwt"
+    },
+    "GET /api/klook/highlights/:conversationSid/:messageSid": {
+      "method": "GET",
+      "path": "/api/klook/highlights/:conversationSid/:messageSid",
+      "auth": "jwt"
+    },
+    "GET /api/klook/highlights/:conversationSid": {
+      "method": "GET",
+      "path": "/api/klook/highlights/:conversationSid",
+      "auth": "jwt"
+    },
+    "POST /api/feedback/exclude": {
+      "method": "POST",
+      "path": "/api/feedback/exclude",
+      "auth": "jwt"
+    },
+    "GET /api/": {
+      "method": "GET",
+      "path": "/api/",
+      "auth": "jwt"
+    },
+    "POST /api/": {
+      "method": "POST",
+      "path": "/api/",
+      "auth": "jwt"
+    },
+    "GET /api/place/promo": {
+      "method": "GET",
+      "path": "/api/place/promo",
+      "auth": "none"
+    },
+    "GET /api/places/names": {
+      "method": "GET",
+      "path": "/api/places/names",
+      "auth": "none"
+    },
+    "GET /api/places/search": {
+      "method": "GET",
+      "path": "/api/places/search",
+      "auth": "none"
+    },
+    "GET /api/products/place/:placeId": {
+      "method": "GET",
+      "path": "/api/products/place/:placeId",
+      "auth": "none"
+    },
+    "GET /api/products/by-name": {
+      "method": "GET",
+      "path": "/api/products/by-name",
+      "auth": "none"
+    },
+    "POST /api/gacha/pull": {
+      "method": "POST",
+      "path": "/api/gacha/pull",
+      "auth": "none"
+    },
+    "GET /api/gacha/pool/:city/:district": {
+      "method": "GET",
+      "path": "/api/gacha/pool/:city/:district",
+      "auth": "none"
+    },
+    "GET /api/gacha/pool/:city": {
+      "method": "GET",
+      "path": "/api/gacha/pool/:city",
+      "auth": "none"
+    },
+    "GET /api/gacha/pool": {
+      "method": "GET",
+      "path": "/api/gacha/pool",
+      "auth": "none"
+    },
+    "GET /api/gacha/prize-pool": {
+      "method": "GET",
+      "path": "/api/gacha/prize-pool",
+      "auth": "none"
+    },
+    "POST /api/gacha/itinerary": {
+      "method": "POST",
+      "path": "/api/gacha/itinerary",
+      "auth": "none"
+    },
+    "POST /api/generate-itinerary": {
+      "method": "POST",
+      "path": "/api/generate-itinerary",
+      "auth": "none"
+    },
+    "POST /api/checkout/create-session": {
+      "method": "POST",
+      "path": "/api/checkout/create-session",
+      "auth": "jwt"
+    },
+    "GET /api/checkout/session/:sessionId": {
+      "method": "GET",
+      "path": "/api/checkout/session/:sessionId",
+      "auth": "jwt"
+    },
+    "POST /api/webhooks/recur": {
+      "method": "POST",
+      "path": "/api/webhooks/recur",
+      "auth": "none"
+    },
+    "GET /api/webhooks/recur/info": {
+      "method": "GET",
+      "path": "/api/webhooks/recur/info",
+      "auth": "none"
+    },
+    "POST /api/gacha/pull/v2": {
+      "method": "POST",
+      "path": "/api/gacha/pull/v2",
+      "auth": "jwt"
+    },
+    "POST /api/gacha/pull/v3": {
+      "method": "POST",
+      "path": "/api/gacha/pull/v3",
+      "auth": "jwt"
+    },
+    "POST /api/gacha/itinerary/v3": {
+      "method": "POST",
+      "path": "/api/gacha/itinerary/v3",
+      "auth": "jwt"
+    },
+    "GET /api/countries": {
+      "method": "GET",
+      "path": "/api/countries",
+      "auth": "none"
+    },
+    "GET /api/regions/:countryId": {
+      "method": "GET",
+      "path": "/api/regions/:countryId",
+      "auth": "none"
+    },
+    "GET /api/districts/:regionId": {
+      "method": "GET",
+      "path": "/api/districts/:regionId",
+      "auth": "none"
+    },
+    "GET /api/districts/country/:countryId": {
+      "method": "GET",
+      "path": "/api/districts/country/:countryId",
+      "auth": "none"
+    },
+    "GET /api/categories": {
+      "method": "GET",
+      "path": "/api/categories",
+      "auth": "none"
+    },
+    "GET /api/categories/:categoryId/subcategories": {
+      "method": "GET",
+      "path": "/api/categories/:categoryId/subcategories",
+      "auth": "none"
+    },
+    "GET /api/api/merchant": {
+      "method": "GET",
+      "path": "/api/api/merchant",
+      "auth": "jwt"
+    },
+    "POST /api/api/merchant": {
+      "method": "POST",
+      "path": "/api/api/merchant",
+      "auth": "jwt"
+    },
+    "PATCH /api/api/merchant/:id/plan": {
+      "method": "PATCH",
+      "path": "/api/api/merchant/:id/plan",
+      "auth": "jwt"
+    },
+    "GET /api/api/coupons/merchant/:merchantId": {
+      "method": "GET",
+      "path": "/api/api/coupons/merchant/:merchantId",
+      "auth": "jwt"
+    },
+    "POST /api/api/coupons": {
+      "method": "POST",
+      "path": "/api/api/coupons",
+      "auth": "jwt"
+    },
+    "PATCH /api/api/coupons/:id": {
+      "method": "PATCH",
+      "path": "/api/api/coupons/:id",
+      "auth": "jwt"
+    },
+    "GET /api/api/coupons/region/:regionId/pool": {
+      "method": "GET",
+      "path": "/api/api/coupons/region/:regionId/pool",
+      "auth": "none"
+    },
+    "POST /api/api/merchant/register": {
+      "method": "POST",
+      "path": "/api/api/merchant/register",
+      "auth": "jwt"
+    },
+    "GET /api/api/merchant/me": {
+      "method": "GET",
+      "path": "/api/api/merchant/me",
+      "auth": "jwt"
+    },
+    "GET /api/api/merchant/daily-code": {
+      "method": "GET",
+      "path": "/api/api/merchant/daily-code",
+      "auth": "jwt"
+    },
+    "POST /api/api/merchant/verify-code": {
+      "method": "POST",
+      "path": "/api/api/merchant/verify-code",
+      "auth": "jwt"
+    },
+    "POST /api/api/merchant/verify": {
+      "method": "POST",
+      "path": "/api/api/merchant/verify",
+      "auth": "none"
+    },
+    "GET /api/api/merchant/credits": {
+      "method": "GET",
+      "path": "/api/api/merchant/credits",
+      "auth": "jwt"
+    },
+    "POST /api/api/merchant/credits/purchase": {
+      "method": "POST",
+      "path": "/api/api/merchant/credits/purchase",
+      "auth": "jwt"
+    },
+    "POST /api/api/merchant/credits/confirm": {
+      "method": "POST",
+      "path": "/api/api/merchant/credits/confirm",
+      "auth": "jwt"
+    },
+    "GET /api/api/merchant/transactions": {
+      "method": "GET",
+      "path": "/api/api/merchant/transactions",
+      "auth": "jwt"
+    },
+    "GET /api/api/merchant/places/search": {
+      "method": "GET",
+      "path": "/api/api/merchant/places/search",
+      "auth": "jwt"
+    },
+    "POST /api/api/merchant/places/claim": {
+      "method": "POST",
+      "path": "/api/api/merchant/places/claim",
+      "auth": "jwt"
+    },
+    "GET /api/api/merchant/places": {
+      "method": "GET",
+      "path": "/api/api/merchant/places",
+      "auth": "jwt"
+    },
+    "PUT /api/api/merchant/places/:linkId": {
+      "method": "PUT",
+      "path": "/api/api/merchant/places/:linkId",
+      "auth": "jwt"
+    },
+    "GET /api/api/merchant/products": {
+      "method": "GET",
+      "path": "/api/api/merchant/products",
+      "auth": "jwt"
+    },
+    "POST /api/api/merchant/products": {
+      "method": "POST",
+      "path": "/api/api/merchant/products",
+      "auth": "jwt"
+    },
+    "PUT /api/api/merchant/products/:productId": {
+      "method": "PUT",
+      "path": "/api/api/merchant/products/:productId",
+      "auth": "jwt"
+    },
+    "DELETE /api/api/merchant/products/:productId": {
+      "method": "DELETE",
+      "path": "/api/api/merchant/products/:productId",
+      "auth": "jwt"
+    },
+    "GET /api/sos/eligibility": {
+      "method": "GET",
+      "path": "/api/sos/eligibility",
+      "auth": "jwt"
+    },
+    "POST /api/sos/alert": {
+      "method": "POST",
+      "path": "/api/sos/alert",
+      "auth": "jwt"
+    },
+    "GET /api/sos/alerts": {
+      "method": "GET",
+      "path": "/api/sos/alerts",
+      "auth": "jwt"
+    },
+    "PATCH /api/sos/alerts/:id/cancel": {
+      "method": "PATCH",
+      "path": "/api/sos/alerts/:id/cancel",
+      "auth": "jwt"
+    },
+    "POST /api/location/update": {
+      "method": "POST",
+      "path": "/api/location/update",
+      "auth": "jwt"
+    },
+    "GET /api/location/me": {
+      "method": "GET",
+      "path": "/api/location/me",
+      "auth": "jwt"
+    },
+    "POST /api/sos/trigger": {
+      "method": "POST",
+      "path": "/api/sos/trigger",
+      "auth": "none"
+    },
+    "POST /api/sos/deactivate": {
+      "method": "POST",
+      "path": "/api/sos/deactivate",
+      "auth": "jwt"
+    },
+    "GET /api/user/sos-link": {
+      "method": "GET",
+      "path": "/api/user/sos-link",
+      "auth": "jwt"
+    },
+    "POST /api/user/sos-key/regenerate": {
+      "method": "POST",
+      "path": "/api/user/sos-key/regenerate",
+      "auth": "jwt"
+    },
+    "DELETE /api/user/account": {
+      "method": "DELETE",
+      "path": "/api/user/account",
+      "auth": "jwt"
+    },
+    "GET /api/me": {
+      "method": "GET",
+      "path": "/api/me",
+      "auth": "jwt"
+    },
+    "POST /api/toggle-online": {
+      "method": "POST",
+      "path": "/api/toggle-online",
+      "auth": "jwt"
+    },
+    "GET /api/services": {
+      "method": "GET",
+      "path": "/api/services",
+      "auth": "jwt"
+    },
+    "POST /api/match": {
+      "method": "POST",
+      "path": "/api/match",
+      "auth": "jwt"
+    },
+    "POST /api/service/:serviceId/end": {
+      "method": "POST",
+      "path": "/api/service/:serviceId/end",
+      "auth": "jwt"
+    },
+    "POST /api/service/request": {
+      "method": "POST",
+      "path": "/api/service/request",
+      "auth": "jwt"
+    },
+    "GET /api/service/current": {
+      "method": "GET",
+      "path": "/api/service/current",
+      "auth": "jwt"
+    },
+    "POST /api/service/:id/end": {
+      "method": "POST",
+      "path": "/api/service/:id/end",
+      "auth": "jwt"
+    }
+  },
+  "categories": {
+    "configs": [
+      "GET /api/configs",
+      "GET /api/configs/:category",
+      "PATCH /api/configs/:category/:key",
+      "POST /api/configs/:category/:key/reset"
+    ],
+    "announcements": [
+      "GET /api/announcements",
+      "POST /api/announcements",
+      "PATCH /api/announcements/:id",
+      "DELETE /api/announcements/:id",
+      "POST /api/announcements/cleanup"
+    ],
+    "ads": [
+      "GET /api/ads",
+      "POST /api/ads",
+      "PATCH /api/ads/:id",
+      "DELETE /api/ads/:id"
+    ],
+    "place-drafts": [
+      "POST /api/place-drafts",
+      "GET /api/place-drafts",
+      "POST /api/place-drafts/:id/publish",
+      "DELETE /api/place-drafts/:id",
+      "PATCH /api/place-drafts/:id",
+      "POST /api/place-drafts/:id/regenerate-description",
+      "GET /api/place-drafts/filter",
+      "POST /api/place-drafts/batch-publish",
+      "POST /api/place-drafts/batch-regenerate",
+      "POST /api/place-drafts/backfill-review-count"
+    ],
+    "places": [
+      "POST /api/places/batch-generate",
+      "POST /api/places/batch-preview",
+      "POST /api/places/reclassify",
+      "GET /api/places/names",
+      "GET /api/places/search"
+    ],
+    "applications": [
+      "GET /api/applications/pending",
+      "PATCH /api/applications/:id/review"
+    ],
+    "place-cache": [
+      "GET /api/place-cache/review-stats"
+    ],
+    "users": [
+      "GET /api/users/pending",
+      "PATCH /api/users/:id/approve",
+      "GET /api/users"
+    ],
+    "global-exclusions": [
+      "GET /api/global-exclusions",
+      "POST /api/global-exclusions",
+      "DELETE /api/global-exclusions/:id"
+    ],
+    "register": [
+      "POST /api/register",
+      "POST /api/register/merchant",
+      "POST /api/register/specialist"
+    ],
+    "login": [
+      "POST /api/login"
+    ],
+    "apple": [
+      "POST /api/apple"
+    ],
+    "user": [
+      "GET /api/user",
+      "GET /api/user/sos-link",
+      "POST /api/user/sos-key/regenerate",
+      "DELETE /api/user/account"
+    ],
+    "switch-role": [
+      "POST /api/switch-role"
+    ],
+    "privileges": [
+      "GET /api/privileges"
+    ],
+    "logout": [
+      "POST /api/logout"
+    ],
+    "profile": [
+      "GET /api/profile",
+      "PATCH /api/profile"
+    ],
+    "chat": [
+      "GET /api/chat/token",
+      "POST /api/chat/conversations",
+      "GET /api/chat/conversations",
+      "POST /api/chat/conversations/:conversationSid/join",
+      "DELETE /api/chat/conversations/:conversationSid",
+      "POST /api/chat/conversations/:conversationSid/call",
+      "POST /api/chat/conversations/:conversationSid/invite-link",
+      "POST /api/chat/invites/:inviteCode/accept"
+    ],
+    "token": [
+      "GET /api/token"
+    ],
+    "voice": [
+      "POST /api/voice/connect"
+    ],
+    "klook": [
+      "POST /api/klook/detect",
+      "GET /api/klook/highlights/:conversationSid/:messageSid",
+      "GET /api/klook/highlights/:conversationSid"
+    ],
+    "feedback": [
+      "POST /api/feedback/exclude"
+    ],
+    "other": [
+      "GET /api/",
+      "POST /api/"
+    ],
+    "place": [
+      "GET /api/place/promo"
+    ],
+    "products": [
+      "GET /api/products/place/:placeId",
+      "GET /api/products/by-name"
+    ],
+    "gacha": [
+      "POST /api/gacha/pull",
+      "GET /api/gacha/pool/:city/:district",
+      "GET /api/gacha/pool/:city",
+      "GET /api/gacha/pool",
+      "GET /api/gacha/prize-pool",
+      "POST /api/gacha/itinerary",
+      "POST /api/gacha/pull/v2",
+      "POST /api/gacha/pull/v3",
+      "POST /api/gacha/itinerary/v3"
+    ],
+    "generate-itinerary": [
+      "POST /api/generate-itinerary"
+    ],
+    "checkout": [
+      "POST /api/checkout/create-session",
+      "GET /api/checkout/session/:sessionId"
+    ],
+    "webhooks": [
+      "POST /api/webhooks/recur",
+      "GET /api/webhooks/recur/info"
+    ],
+    "countries": [
+      "GET /api/countries"
+    ],
+    "regions": [
+      "GET /api/regions/:countryId"
+    ],
+    "districts": [
+      "GET /api/districts/:regionId",
+      "GET /api/districts/country/:countryId"
+    ],
+    "categories": [
+      "GET /api/categories",
+      "GET /api/categories/:categoryId/subcategories"
+    ],
+    "merchant": [
+      "GET /api/api/merchant",
+      "POST /api/api/merchant",
+      "PATCH /api/api/merchant/:id/plan",
+      "POST /api/api/merchant/register",
+      "GET /api/api/merchant/me",
+      "GET /api/api/merchant/daily-code",
+      "POST /api/api/merchant/verify-code",
+      "POST /api/api/merchant/verify",
+      "GET /api/api/merchant/credits",
+      "POST /api/api/merchant/credits/purchase",
+      "POST /api/api/merchant/credits/confirm",
+      "GET /api/api/merchant/transactions",
+      "GET /api/api/merchant/places/search",
+      "POST /api/api/merchant/places/claim",
+      "GET /api/api/merchant/places",
+      "PUT /api/api/merchant/places/:linkId",
+      "GET /api/api/merchant/products",
+      "POST /api/api/merchant/products",
+      "PUT /api/api/merchant/products/:productId",
+      "DELETE /api/api/merchant/products/:productId"
+    ],
+    "coupons": [
+      "GET /api/api/coupons/merchant/:merchantId",
+      "POST /api/api/coupons",
+      "PATCH /api/api/coupons/:id",
+      "GET /api/api/coupons/region/:regionId/pool"
+    ],
+    "sos": [
+      "GET /api/sos/eligibility",
+      "POST /api/sos/alert",
+      "GET /api/sos/alerts",
+      "PATCH /api/sos/alerts/:id/cancel",
+      "POST /api/sos/trigger",
+      "POST /api/sos/deactivate"
+    ],
+    "location": [
+      "POST /api/location/update",
+      "GET /api/location/me"
+    ],
+    "me": [
+      "GET /api/me"
+    ],
+    "toggle-online": [
+      "POST /api/toggle-online"
+    ],
+    "services": [
+      "GET /api/services"
+    ],
+    "match": [
+      "POST /api/match"
+    ],
+    "service": [
+      "POST /api/service/:serviceId/end",
+      "POST /api/service/request",
+      "GET /api/service/current",
+      "POST /api/service/:id/end"
+    ]
+  }
+}

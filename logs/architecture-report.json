@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-01-05T13:58:20.483Z",
+  "timestamp": "2026-01-05T14:02:49.152Z",
   "summary": {
     "fails": 2,
     "warns": 10,
@@ -110,10 +110,10 @@
     {
       "category": "檔案大小",
       "status": "fail",
-      "message": "shared/schema.ts 有 1900 行，超過 1000 行上限",
+      "message": "shared/schema.ts 有 1930 行，超過 1000 行上限",
       "details": {
         "file": "shared/schema.ts",
-        "lines": 1900,
+        "lines": 1930,
         "limit": 1000
       }
     },
