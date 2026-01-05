@@ -1,0 +1,336 @@
+import { Router } from "express";
+import { z } from "zod";
+import { isAuthenticated } from "../replitAuth";
+import { storage } from "../storage";
+import { ErrorCode, createErrorResponse } from "@shared/errors";
+
+const router = Router();
+
+// ============ Specialist Routes ============
+
+// POST /api/specialist/register - Register as specialist
+router.post("/register", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const user = await storage.getUser(userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const existing = await storage.getSpecialistByUserId(userId);
+    if (existing) {
+      return res.status(400).json({ error: "Already registered as specialist" });
+    }
+
+    const { name, serviceRegion } = req.body;
+    if (!name || !serviceRegion) {
+      return res.status(400).json({ error: "name and serviceRegion are required" });
+    }
+
+    const specialist = await storage.createSpecialist({
+      userId,
+      name,
+      serviceRegion,
+      isAvailable: false,
+      maxTravelers: 5,
+      currentTravelers: 0,
+    });
+
+    res.status(201).json({ specialist });
+  } catch (error) {
+    console.error("Specialist registration error:", error);
+    res.status(500).json({ error: "Failed to register as specialist" });
+  }
+});
+
+// GET /api/specialist/me - Get current specialist profile
+router.get("/me", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const specialist = await storage.getSpecialistByUserId(userId);
+    res.json({ specialist: specialist || null });
+  } catch (error) {
+    console.error("Get specialist error:", error);
+    res.status(500).json({ error: "Failed to get specialist profile" });
+  }
+});
+
+// POST /api/specialist/toggle-online - Toggle online status
+router.post("/toggle-online", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const specialist = await storage.getSpecialistByUserId(userId);
+    if (!specialist) {
+      return res.status(403).json({ error: "Specialist registration required" });
+    }
+
+    if (!specialist.isAvailable) {
+      const updated = await storage.updateSpecialist(specialist.id, {
+        isAvailable: true,
+      });
+      return res.json({ isAvailable: updated?.isAvailable });
+    } else {
+      const updated = await storage.updateSpecialist(specialist.id, {
+        isAvailable: false,
+      });
+      return res.json({ isAvailable: updated?.isAvailable });
+    }
+  } catch (error) {
+    console.error("Toggle online error:", error);
+    res.status(500).json({ error: "Failed to toggle online status" });
+  }
+});
+
+// GET /api/specialist/services - Get active service relations for specialist
+router.get("/services", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const specialist = await storage.getSpecialistByUserId(userId);
+    if (!specialist) {
+      return res.status(403).json({ error: "Specialist registration required" });
+    }
+
+    const relations = await storage.getActiveServiceRelationsBySpecialist(specialist.id);
+    res.json({ services: relations });
+  } catch (error) {
+    console.error("Get services error:", error);
+    res.status(500).json({ error: "Failed to get services" });
+  }
+});
+
+// POST /api/specialist/match - Auto-match traveler with available specialist
+router.post("/match", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+    }
+
+    const matchSchema = z.object({
+      region: z.string().min(1),
+    });
+
+    const validated = matchSchema.parse(req.body);
+    
+    const existingService = await storage.getActiveServiceRelationByTraveler(userId);
+    if (existingService) {
+      const specialist = await storage.getSpecialistById(existingService.specialistId);
+      return res.json({
+        matched: true,
+        existing: true,
+        serviceId: existingService.id,
+        specialist: specialist ? {
+          id: specialist.id,
+          name: specialist.name,
+          region: specialist.serviceRegion,
+        } : null,
+        twilioChannelSid: existingService.twilioChannelSid,
+      });
+    }
+
+    const specialist = await storage.findAvailableSpecialist(validated.region);
+    
+    if (!specialist) {
+      return res.status(404).json({ 
+        error: `目前 ${validated.region} 地區沒有可用的專員，請稍後再試`, 
+        code: "NO_SPECIALIST_AVAILABLE",
+        matched: false,
+      });
+    }
+
+    const serviceRelation = await storage.createServiceRelation({
+      specialistId: specialist.id,
+      travelerId: userId,
+      region: validated.region,
+      status: 'active',
+    });
+
+    await storage.updateSpecialist(specialist.id, {
+      currentTravelers: specialist.currentTravelers + 1,
+    });
+
+    res.json({
+      matched: true,
+      existing: false,
+      serviceId: serviceRelation.id,
+      specialist: {
+        id: specialist.id,
+        name: specialist.name,
+        region: specialist.serviceRegion,
+      },
+      message: `已成功媒合專員 ${specialist.name}`,
+    });
+  } catch (error: any) {
+    console.error("Specialist match error:", error);
+    if (error.name === 'ZodError') {
+      return res.status(400).json({ error: "輸入資料格式錯誤", code: "VALIDATION_ERROR" });
+    }
+    res.status(500).json({ error: "媒合失敗", code: "SERVER_ERROR" });
+  }
+});
+
+// POST /api/specialist/service/:serviceId/end - End a service relation (specialist side)
+router.post("/service/:serviceId/end", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const serviceId = parseInt(req.params.serviceId);
+    const { rating } = req.body;
+
+    const service = await storage.getServiceRelationById(serviceId);
+    if (!service) {
+      return res.status(404).json({ error: "服務不存在" });
+    }
+
+    const specialist = await storage.getSpecialistByUserId(userId);
+    const isSpecialist = specialist && specialist.id === service.specialistId;
+    const isTraveler = service.travelerId === userId;
+
+    if (!isSpecialist && !isTraveler) {
+      return res.status(403).json({ error: "無權限結束此服務" });
+    }
+
+    const endedService = await storage.endServiceRelation(serviceId, rating);
+
+    if (specialist || service.specialistId) {
+      const sp = specialist || await storage.getSpecialistById(service.specialistId);
+      if (sp && sp.currentTravelers > 0) {
+        await storage.updateSpecialist(sp.id, {
+          currentTravelers: sp.currentTravelers - 1,
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      service: endedService,
+      message: "服務已結束",
+    });
+  } catch (error) {
+    console.error("End service error:", error);
+    res.status(500).json({ error: "結束服務失敗" });
+  }
+});
+
+// ============ Traveler Service Routes ============
+
+// POST /api/service/request - Request a specialist (auto-match by region)
+router.post("/service/request", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const { region } = req.body;
+    if (!region) {
+      return res.status(400).json({ error: "region is required" });
+    }
+
+    const existing = await storage.getActiveServiceRelationByTraveler(userId);
+    if (existing) {
+      return res.status(400).json({ error: "Already have an active service session" });
+    }
+
+    const specialist = await storage.findAvailableSpecialist(region);
+    if (!specialist) {
+      return res.status(404).json({ error: "No available specialists in your region" });
+    }
+
+    const relation = await storage.createServiceRelation({
+      travelerId: userId,
+      specialistId: specialist.id,
+      region,
+    });
+
+    res.status(201).json({ 
+      service: relation,
+      specialist: {
+        id: specialist.id,
+        name: specialist.name,
+        serviceRegion: specialist.serviceRegion,
+      }
+    });
+  } catch (error) {
+    console.error("Request service error:", error);
+    res.status(500).json({ error: "Failed to request specialist" });
+  }
+});
+
+// GET /api/service/current - Get current service for traveler
+router.get("/service/current", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const relation = await storage.getActiveServiceRelationByTraveler(userId);
+    if (!relation) {
+      return res.json({ service: null });
+    }
+
+    const specialist = await storage.getSpecialistById(relation.specialistId);
+    res.json({ 
+      service: relation,
+      specialist: specialist ? {
+        id: specialist.id,
+        name: specialist.name,
+        serviceRegion: specialist.serviceRegion,
+      } : null
+    });
+  } catch (error) {
+    console.error("Get current service error:", error);
+    res.status(500).json({ error: "Failed to get current service" });
+  }
+});
+
+// POST /api/service/:id/end - End service and rate specialist (traveler side)
+router.post("/service/:id/end", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const serviceId = parseInt(req.params.id);
+    const { rating } = req.body;
+
+    const relation = await storage.getServiceRelationById(serviceId);
+    if (!relation) {
+      return res.status(404).json({ error: "Service not found" });
+    }
+
+    if (relation.travelerId !== userId) {
+      return res.status(403).json({ error: "Not authorized to end this service" });
+    }
+
+    const updated = await storage.endServiceRelation(serviceId, rating);
+
+    res.json({ success: true, service: updated });
+  } catch (error) {
+    console.error("End service error:", error);
+    res.status(500).json({ error: "Failed to end service" });
+  }
+});
+
+export default router;

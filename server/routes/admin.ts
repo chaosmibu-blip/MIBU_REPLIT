@@ -1,0 +1,1495 @@
+import { Router } from "express";
+import { storage } from "../storage";
+import { db } from "../db";
+import { sql } from "drizzle-orm";
+import { isAuthenticated } from "../replitAuth";
+import { insertPlaceDraftSchema, insertAdPlacementSchema, type PlaceDraft, type Subcategory } from "@shared/schema";
+import { z } from "zod";
+import { 
+  callGemini, 
+  batchGeneratePlaces, 
+  classifyAndDescribePlaces,
+  reclassifyPlace 
+} from "../lib/placeGenerator";
+import { 
+  determineCategory, 
+  determineSubcategory, 
+  generateFallbackDescription 
+} from "../lib/categoryMapping";
+
+const router = Router();
+
+const hasAdminAccess = async (req: any): Promise<boolean> => {
+  const userId = req.user?.claims?.sub;
+  if (!userId) return false;
+  
+  const user = await storage.getUser(userId);
+  if (!user) return false;
+  
+  const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
+  const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
+  
+  const activeRole = req.jwtUser?.activeRole || (req.session as any)?.activeRole || user.role;
+  
+  return isSuperAdmin || activeRole === 'admin';
+};
+
+router.get("/applications/pending", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const applications = await storage.getPendingApplicationsWithDetails();
+    res.json({ applications });
+  } catch (error) {
+    console.error("Get pending applications error:", error);
+    res.status(500).json({ error: "Failed to get pending applications" });
+  }
+});
+
+router.patch("/applications/:id/review", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const applicationId = parseInt(req.params.id);
+    const { status, reviewNotes } = req.body;
+
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: "Status must be 'approved' or 'rejected'" });
+    }
+
+    const application = await storage.getPlaceApplicationById(applicationId);
+    if (!application) return res.status(404).json({ error: "Application not found" });
+
+    const updated = await storage.updatePlaceApplication(applicationId, {
+      status,
+      reviewedBy: userId,
+      reviewedAt: new Date(),
+      reviewNotes,
+    });
+
+    await storage.updatePlaceDraft(application.placeDraftId, { status });
+
+    if (status === 'approved') {
+      const draft = await storage.getPlaceDraftById(application.placeDraftId);
+      if (draft) {
+        const districtInfo = await storage.getDistrictWithParents(draft.districtId);
+        if (districtInfo) {
+          const categories = await storage.getCategories();
+          const category = categories.find(c => c.id === draft.categoryId);
+          const subcategories = await storage.getSubcategoriesByCategory(draft.categoryId);
+          const subcategory = subcategories.find(s => s.id === draft.subcategoryId);
+
+          const newPlace = await storage.savePlaceToCache({
+            placeName: draft.placeName,
+            description: draft.description || '',
+            category: category?.code || '',
+            subCategory: subcategory?.nameZh || '',
+            district: districtInfo.district.nameZh,
+            city: districtInfo.region.nameZh,
+            country: districtInfo.country.nameZh,
+            placeId: draft.googlePlaceId || undefined,
+            locationLat: draft.locationLat || undefined,
+            locationLng: draft.locationLng || undefined,
+            verifiedAddress: draft.address || undefined,
+          });
+
+          await storage.updatePlaceApplication(applicationId, { placeCacheId: newPlace.id });
+
+          await storage.createMerchantPlaceLink({
+            merchantId: application.merchantId,
+            placeCacheId: newPlace.id,
+            googlePlaceId: draft.googlePlaceId || undefined,
+            placeName: draft.placeName,
+            district: districtInfo.district.nameZh,
+            city: districtInfo.region.nameZh,
+            country: districtInfo.country.nameZh,
+            status: 'approved',
+          });
+        }
+      }
+    }
+
+    res.json({ application: updated });
+  } catch (error) {
+    console.error("Review application error:", error);
+    res.status(500).json({ error: "Failed to review application" });
+  }
+});
+
+router.post("/place-drafts", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const validated = insertPlaceDraftSchema.parse({ ...req.body, source: 'ai' });
+    const draft = await storage.createPlaceDraft(validated);
+
+    res.json({ draft });
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    console.error("Admin create place draft error:", error);
+    res.status(500).json({ error: "Failed to create place draft" });
+  }
+});
+
+router.get("/place-drafts", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const drafts = await storage.getAllPlaceDrafts();
+    res.json({ drafts });
+  } catch (error) {
+    console.error("Admin get place drafts error:", error);
+    res.status(500).json({ error: "Failed to get place drafts" });
+  }
+});
+
+router.post("/place-drafts/:id/publish", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const draftId = parseInt(req.params.id);
+    const draft = await storage.getPlaceDraftById(draftId);
+    if (!draft) return res.status(404).json({ error: "Draft not found" });
+
+    const districtInfo = await storage.getDistrictWithParents(draft.districtId);
+    if (!districtInfo) return res.status(400).json({ error: "Invalid district" });
+
+    const categories = await storage.getCategories();
+    const category = categories.find(c => c.id === draft.categoryId);
+    const subcategories = await storage.getSubcategoriesByCategory(draft.categoryId);
+    const subcategory = subcategories.find(s => s.id === draft.subcategoryId);
+
+    const newPlace = await storage.savePlaceToCache({
+      placeName: draft.placeName,
+      description: draft.description || '',
+      category: category?.code || '',
+      subCategory: subcategory?.nameZh || '',
+      district: districtInfo.district.nameZh,
+      city: districtInfo.region.nameZh,
+      country: districtInfo.country.nameZh,
+      placeId: draft.googlePlaceId || undefined,
+      locationLat: draft.locationLat || undefined,
+      locationLng: draft.locationLng || undefined,
+      verifiedAddress: draft.address || undefined,
+    });
+
+    await storage.deletePlaceDraft(draftId);
+
+    res.json({ placeCache: newPlace, published: true });
+  } catch (error) {
+    console.error("Admin publish place draft error:", error);
+    res.status(500).json({ error: "Failed to publish place draft" });
+  }
+});
+
+router.delete("/place-drafts/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const draftId = parseInt(req.params.id);
+    const draft = await storage.getPlaceDraftById(draftId);
+    if (!draft) return res.status(404).json({ error: "Draft not found" });
+
+    const districtInfo = await storage.getDistrictWithParents(draft.districtId);
+    if (districtInfo) {
+      await storage.createPlaceFeedback({
+        userId: userId,
+        placeName: draft.placeName,
+        district: districtInfo.district.nameZh,
+        city: districtInfo.region.nameZh,
+        penaltyScore: 100,
+      });
+    }
+
+    await storage.deletePlaceDraft(draftId);
+    res.json({ success: true, message: "Draft deleted and added to exclusion list" });
+  } catch (error: any) {
+    console.error("Error deleting draft:", error);
+    res.status(500).json({ error: "Failed to delete draft" });
+  }
+});
+
+router.patch("/place-drafts/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const draftId = parseInt(req.params.id);
+    const draft = await storage.getPlaceDraftById(draftId);
+    if (!draft) return res.status(404).json({ error: "Draft not found" });
+
+    const updateSchema = z.object({
+      placeName: z.string().min(1).optional(),
+      description: z.string().optional(),
+    });
+
+    const validated = updateSchema.parse(req.body);
+    const updated = await storage.updatePlaceDraft(draftId, validated);
+    res.json({ draft: updated });
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    console.error("Admin update place draft error:", error);
+    res.status(500).json({ error: "Failed to update place draft" });
+  }
+});
+
+router.post("/place-drafts/:id/regenerate-description", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const draftId = parseInt(req.params.id);
+    const draft = await storage.getPlaceDraftById(draftId);
+    if (!draft) return res.status(404).json({ error: "Draft not found" });
+
+    const districtInfo = await storage.getDistrictWithParents(draft.districtId);
+    const categories = await storage.getCategories();
+    const category = categories.find(c => c.id === draft.categoryId);
+    const subcategories = await storage.getSubcategoriesByCategory(draft.categoryId);
+    const subcategory = subcategories.find(s => s.id === draft.subcategoryId);
+
+    const prompt = `你是一位專業的旅遊作家。請為以下景點撰寫一段吸引觀光客的介紹文字（繁體中文，50-100字）：
+
+景點名稱：${draft.placeName}
+類別：${category?.nameZh || ''} / ${subcategory?.nameZh || ''}
+地區：${districtInfo?.country?.nameZh || ''} ${districtInfo?.region?.nameZh || ''} ${districtInfo?.district?.nameZh || ''}
+${draft.address ? `地址：${draft.address}` : ''}
+
+請直接輸出介紹文字，不需要標題或其他格式。文字應該生動有趣，突出景點特色，吸引遊客前往。`;
+
+    const newDescription = await callGemini(prompt);
+    const cleanDescription = newDescription.trim();
+
+    const updated = await storage.updatePlaceDraft(draftId, { description: cleanDescription });
+    res.json({ draft: updated, description: cleanDescription });
+  } catch (error) {
+    console.error("Admin regenerate description error:", error);
+    res.status(500).json({ error: "Failed to regenerate description" });
+  }
+});
+
+router.get("/place-drafts/filter", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const minRating = req.query.minRating ? parseFloat(req.query.minRating) : undefined;
+    const minReviewCount = req.query.minReviewCount ? parseInt(req.query.minReviewCount) : undefined;
+    const status = req.query.status || 'pending';
+
+    const drafts = await storage.getFilteredPlaceDrafts({ minRating, minReviewCount, status });
+    
+    res.json({ 
+      drafts,
+      filters: { minRating, minReviewCount, status },
+      count: drafts.length
+    });
+  } catch (error) {
+    console.error("Admin filter place drafts error:", error);
+    res.status(500).json({ error: "Failed to filter place drafts" });
+  }
+});
+
+router.post("/place-drafts/batch-publish", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const batchPublishSchema = z.object({
+      minRating: z.number().min(0).max(5).optional(),
+      minReviewCount: z.number().min(0).optional(),
+      ids: z.array(z.number()).optional(),
+    });
+
+    const validated = batchPublishSchema.parse(req.body);
+    
+    let draftsToPublish;
+    if (validated.ids && validated.ids.length > 0) {
+      const allDrafts = await storage.getFilteredPlaceDrafts({ status: 'pending' });
+      draftsToPublish = allDrafts.filter(d => validated.ids!.includes(d.id));
+    } else {
+      draftsToPublish = await storage.getFilteredPlaceDrafts({
+        minRating: validated.minRating,
+        minReviewCount: validated.minReviewCount,
+        status: 'pending'
+      });
+    }
+
+    if (draftsToPublish.length === 0) {
+      return res.json({ success: true, published: 0, message: "No drafts match the criteria" });
+    }
+
+    const categories = await storage.getCategories();
+    const publishedIds: number[] = [];
+    const errors: Array<{ id: number; placeName: string; error: string }> = [];
+
+    for (const draft of draftsToPublish) {
+      try {
+        const districtInfo = await storage.getDistrictWithParents(draft.districtId);
+        if (!districtInfo) {
+          errors.push({ id: draft.id, placeName: draft.placeName, error: "Invalid district" });
+          continue;
+        }
+
+        const category = categories.find(c => c.id === draft.categoryId);
+        const subcategories = await storage.getSubcategoriesByCategory(draft.categoryId);
+        const subcategory = subcategories.find(s => s.id === draft.subcategoryId);
+
+        await storage.savePlaceToCache({
+          placeName: draft.placeName,
+          description: draft.description || '',
+          category: category?.code || '',
+          subCategory: subcategory?.nameZh || '',
+          district: districtInfo.district.nameZh,
+          city: districtInfo.region.nameZh,
+          country: districtInfo.country.nameZh,
+          placeId: draft.googlePlaceId || undefined,
+          locationLat: draft.locationLat || undefined,
+          locationLng: draft.locationLng || undefined,
+          verifiedAddress: draft.address || undefined,
+        });
+
+        publishedIds.push(draft.id);
+      } catch (e: any) {
+        errors.push({ id: draft.id, placeName: draft.placeName, error: e.message });
+      }
+    }
+
+    if (publishedIds.length > 0) {
+      await storage.batchDeletePlaceDrafts(publishedIds);
+    }
+
+    res.json({
+      success: true,
+      published: publishedIds.length,
+      failed: errors.length,
+      errors: errors.length > 0 ? errors : undefined,
+      message: `Successfully published ${publishedIds.length} places`
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    console.error("Admin batch publish error:", error);
+    res.status(500).json({ error: "Failed to batch publish" });
+  }
+});
+
+router.post("/place-drafts/batch-regenerate", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const { ids, filter } = req.body as {
+      ids?: number[];
+      filter?: { minRating?: number; minReviewCount?: number };
+    };
+
+    let draftsToRegenerate: PlaceDraft[] = [];
+
+    if (ids && ids.length > 0) {
+      const allDrafts = await storage.getAllPlaceDrafts();
+      draftsToRegenerate = allDrafts.filter(d => ids.includes(d.id) && d.status === 'pending');
+    } else if (filter) {
+      draftsToRegenerate = await storage.getFilteredPlaceDrafts({
+        ...filter,
+        status: 'pending'
+      });
+    } else {
+      return res.status(400).json({ error: "必須提供 ids 或 filter 參數" });
+    }
+
+    if (draftsToRegenerate.length === 0) {
+      return res.json({ success: true, regenerated: 0, failed: 0, message: "沒有符合條件的草稿" });
+    }
+
+    const categories = await storage.getCategories();
+    const allSubcategories: Map<number, Subcategory[]> = new Map();
+
+    const regeneratedIds: number[] = [];
+    const errors: { id: number; placeName: string; error: string }[] = [];
+
+    for (const draft of draftsToRegenerate) {
+      try {
+        const districtInfo = await storage.getDistrictWithParents(draft.districtId);
+        const category = categories.find(c => c.id === draft.categoryId);
+        
+        if (!allSubcategories.has(draft.categoryId)) {
+          const subs = await storage.getSubcategoriesByCategory(draft.categoryId);
+          allSubcategories.set(draft.categoryId, subs);
+        }
+        const subcategory = allSubcategories.get(draft.categoryId)?.find(s => s.id === draft.subcategoryId);
+
+        const prompt = `你是一位資深的旅遊作家和行銷專家。請為以下景點撰寫一段精彩、生動、吸引人的介紹文字。
+
+景點名稱：${draft.placeName}
+類別：${category?.nameZh || ''} / ${subcategory?.nameZh || ''}
+地區：${districtInfo?.country?.nameZh || ''} ${districtInfo?.region?.nameZh || ''} ${districtInfo?.district?.nameZh || ''}
+${draft.address ? `地址：${draft.address}` : ''}
+${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
+
+撰寫要求：
+1. 字數：80-120字（繁體中文）
+2. 風格：生動活潑，富有感染力
+3. 內容：突出景點特色、獨特體驗、推薦理由
+4. 語氣：像是當地人熱情推薦給好友的口吻
+5. 避免：空洞的形容詞堆砌，要有具體的描述
+
+請直接輸出介紹文字，不需要標題或其他格式。`;
+
+        const newDescription = await callGemini(prompt);
+        const cleanDescription = newDescription.trim();
+
+        await storage.updatePlaceDraft(draft.id, { description: cleanDescription });
+        regeneratedIds.push(draft.id);
+        
+        console.log(`[BatchRegenerate] Regenerated description for: ${draft.placeName}`);
+      } catch (e: any) {
+        console.error(`[BatchRegenerate] Failed for ${draft.placeName}:`, e.message);
+        errors.push({ id: draft.id, placeName: draft.placeName, error: e.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      regenerated: regeneratedIds.length,
+      failed: errors.length,
+      regeneratedIds,
+      errors: errors.length > 0 ? errors : undefined,
+      message: `成功重新生成 ${regeneratedIds.length} 筆描述`
+    });
+  } catch (error) {
+    console.error("Admin batch regenerate error:", error);
+    res.status(500).json({ error: "批次重新生成失敗" });
+  }
+});
+
+router.post("/place-drafts/backfill-review-count", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const { limit = 50 } = req.body as { limit?: number };
+
+    const allDrafts = await storage.getAllPlaceDrafts();
+    const draftsToUpdate = allDrafts.filter(d => 
+      d.status === 'pending' && 
+      d.googleReviewCount === null && 
+      d.googlePlaceId
+    ).slice(0, limit);
+
+    if (draftsToUpdate.length === 0) {
+      return res.json({ success: true, updated: 0, failed: 0, message: "沒有需要回填的草稿" });
+    }
+
+    const updatedIds: number[] = [];
+    const errors: { id: number; placeName: string; error: string }[] = [];
+
+    for (const draft of draftsToUpdate) {
+      try {
+        const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+        if (!GOOGLE_MAPS_API_KEY) {
+          throw new Error("GOOGLE_MAPS_API_KEY not configured");
+        }
+
+        const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${draft.googlePlaceId}&fields=user_ratings_total,rating&key=${GOOGLE_MAPS_API_KEY}&language=zh-TW`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.status === 'OK' && data.result) {
+          const updateData: any = {};
+          if (data.result.user_ratings_total !== undefined) {
+            updateData.googleReviewCount = data.result.user_ratings_total;
+          }
+          if (data.result.rating !== undefined && draft.googleRating === null) {
+            updateData.googleRating = data.result.rating;
+          }
+
+          if (Object.keys(updateData).length > 0) {
+            await storage.updatePlaceDraft(draft.id, updateData);
+            updatedIds.push(draft.id);
+            console.log(`[BackfillReviewCount] Updated ${draft.placeName}: reviewCount=${updateData.googleReviewCount}`);
+          }
+        } else {
+          console.log(`[BackfillReviewCount] No data for ${draft.placeName}: ${data.status}`);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (e: any) {
+        console.error(`[BackfillReviewCount] Failed for ${draft.placeName}:`, e.message);
+        errors.push({ id: draft.id, placeName: draft.placeName, error: e.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      updated: updatedIds.length,
+      failed: errors.length,
+      remaining: allDrafts.filter(d => d.status === 'pending' && d.googleReviewCount === null && d.googlePlaceId).length - updatedIds.length,
+      errors: errors.length > 0 ? errors : undefined,
+      message: `成功回填 ${updatedIds.length} 筆評論數`
+    });
+  } catch (error) {
+    console.error("Admin backfill review count error:", error);
+    res.status(500).json({ error: "回填評論數失敗" });
+  }
+});
+
+router.post("/places/batch-generate", isAuthenticated, async (req: any, res) => {
+  const userId = req.user?.claims?.sub;
+  if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+  const user = await storage.getUser(userId);
+  if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+  const { 
+    keyword = '', 
+    regionId,
+    districtId = null, 
+    categoryId = null,
+    maxKeywords: rawMaxKeywords = 8,
+    maxPagesPerKeyword: rawMaxPages = 3,
+    enableAIExpansion = true,
+    saveToDrafts = true,
+    useSSE = false
+  } = req.body;
+
+  const maxKeywords = Math.min(Math.max(1, rawMaxKeywords), 10);
+  const maxPagesPerKeyword = Math.min(Math.max(1, rawMaxPages), 3);
+
+  if (!regionId) {
+    return res.status(400).json({ error: "regionId 為必填" });
+  }
+
+  const regionData = await storage.getRegionById(regionId);
+  if (!regionData) {
+    return res.status(400).json({ error: "無效的 regionId" });
+  }
+
+  const countryData = await storage.getCountryById(regionData.countryId);
+  if (!countryData) {
+    return res.status(400).json({ error: "無效的國家" });
+  }
+
+  let districtName = '';
+  if (districtId) {
+    const districtInfo = await storage.getDistrictWithParents(districtId);
+    if (districtInfo) {
+      districtName = districtInfo.district.nameZh;
+    }
+  }
+
+  const allCategories = await storage.getCategories();
+  
+  let selectedCategory = categoryId 
+    ? allCategories.find(c => c.id === categoryId) 
+    : allCategories[Math.floor(Math.random() * allCategories.length)];
+  
+  let searchKeyword = keyword.trim();
+  if (!searchKeyword && selectedCategory) {
+    searchKeyword = selectedCategory.nameZh;
+  } else if (searchKeyword && selectedCategory) {
+    searchKeyword = `${selectedCategory.nameZh}-${searchKeyword}`;
+  }
+
+  const cityName = regionData.nameZh;
+  const countryName = countryData.nameZh;
+
+  if (useSSE) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const sendProgress = (stage: string, current: number, total: number, message: string) => {
+      res.write(`data: ${JSON.stringify({ stage, current, total, message })}\n\n`);
+    };
+
+    try {
+      sendProgress('expanding_keywords', 0, 1, `正在擴散關鍵字... (種類: ${selectedCategory?.nameZh || '隨機'})`);
+      
+      const result = await batchGeneratePlaces(
+        searchKeyword,
+        districtName || cityName,
+        cityName,
+        { maxKeywords, maxPagesPerKeyword, enableAIExpansion }
+      );
+
+      sendProgress('searching_google', result.stats.keywords.length, result.stats.keywords.length, 
+        `搜尋完成，找到 ${result.places.length} 個地點`);
+
+      sendProgress('filtering_results', 0, 1, '正在過濾與去重...');
+
+      let savedCount = 0;
+      let skippedCount = 0;
+      const savedPlaces: any[] = [];
+
+      if (saveToDrafts && result.places.length > 0) {
+        const existingCache = await storage.getCachedPlaces(districtName || cityName, cityName, countryName);
+        const existingCachePlaceIds = new Set(existingCache.map(c => c.placeId).filter(Boolean));
+        const existingPlaces = await storage.getOfficialPlacesByCity(cityName, 1000);
+        const existingPlacePlaceIds = new Set(existingPlaces.map(p => p.googlePlaceId).filter(Boolean));
+
+        const placesToProcess = result.places.filter(place => 
+          !existingCachePlaceIds.has(place.placeId) && !existingPlacePlaceIds.has(place.placeId)
+        );
+        skippedCount = result.places.length - placesToProcess.length;
+
+        sendProgress('filtering_results', 1, 1, `需處理 ${placesToProcess.length} 筆，跳過 ${skippedCount} 筆重複`);
+
+        const CHUNK_SIZE = 15;
+        const DELAY_BETWEEN_CHUNKS = 2000;
+        const totalChunks = Math.ceil(placesToProcess.length / CHUNK_SIZE);
+        
+        for (let i = 0; i < placesToProcess.length; i += CHUNK_SIZE) {
+          const chunk = placesToProcess.slice(i, i + CHUNK_SIZE);
+          const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
+          
+          sendProgress('generating_descriptions', chunkNum, totalChunks, 
+            `規則映射分類 + AI 生成描述 (批次 ${chunkNum}/${totalChunks})...`);
+          
+          const classificationMap = await classifyAndDescribePlaces(chunk, cityName);
+          
+          sendProgress('saving_places', savedCount, placesToProcess.length, 
+            `正在儲存地點 (${savedCount}/${placesToProcess.length})...`);
+
+          for (const place of chunk) {
+            try {
+              const classification = classificationMap.get(place.name);
+              const classResult = classification || {
+                name: place.name,
+                category: determineCategory(place.primaryType, place.types),
+                subcategory: determineSubcategory(place.primaryType, place.types),
+                description: generateFallbackDescription(place.name, determineCategory(place.primaryType, place.types), determineSubcategory(place.primaryType, place.types), cityName),
+                descriptionSource: 'fallback' as const
+              };
+
+              const matchedCategory = allCategories.find(c => c.nameZh === classResult.category) || selectedCategory;
+              
+              let subcategoryName = classResult.subcategory;
+              if (matchedCategory) {
+                const existingSubcategories = await storage.getSubcategoriesByCategory(matchedCategory.id);
+                const existingSubcategory = existingSubcategories.find(s => s.nameZh === classResult.subcategory);
+                
+                if (!existingSubcategory && classResult.subcategory) {
+                  console.log(`[BatchGenerate] 子分類不存在: ${classResult.subcategory} (${matchedCategory.nameZh})`);
+                }
+              }
+
+              const cached = await storage.savePlaceToCache({
+                subCategory: subcategoryName,
+                district: districtName || cityName,
+                city: cityName,
+                country: countryName,
+                placeName: place.name,
+                description: classResult.description,
+                category: classResult.category,
+                suggestedTime: null,
+                duration: null,
+                searchQuery: searchKeyword,
+                rarity: null,
+                colorHex: null,
+                placeId: place.placeId,
+                verifiedName: place.name,
+                verifiedAddress: place.address,
+                googleRating: place.rating?.toString() || null,
+                googleTypes: place.types?.join(',') || null,
+                primaryType: place.primaryType || null,
+                locationLat: place.location?.lat?.toString() || null,
+                locationLng: place.location?.lng?.toString() || null,
+                isLocationVerified: true,
+                businessStatus: place.businessStatus || null,
+                lastVerifiedAt: new Date(),
+                aiReviewed: false,
+                aiReviewedAt: null
+              });
+
+              existingCachePlaceIds.add(place.placeId);
+              savedPlaces.push({ id: cached.id, placeName: cached.placeName, placeId: cached.placeId });
+              savedCount++;
+            } catch (e: any) {
+              console.error(`[BatchGenerate] Failed to save ${place.name}:`, e.message);
+            }
+          }
+          
+          if (i + CHUNK_SIZE < placesToProcess.length) {
+            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_CHUNKS));
+          }
+        }
+      }
+
+      sendProgress('complete', savedCount, savedCount, `完成！儲存 ${savedCount} 筆`);
+      res.write(`data: ${JSON.stringify({ 
+        stage: 'done', 
+        success: true,
+        saved: savedCount, 
+        skipped: skippedCount, 
+        total: result.places.length 
+      })}\n\n`);
+      res.end();
+    } catch (error: any) {
+      res.write(`data: ${JSON.stringify({ stage: 'error', error: error.message })}\n\n`);
+      res.end();
+    }
+    return;
+  }
+
+  try {
+    console.log(`[BatchGenerate] Admin ${userId} generating for: ${cityName}${districtName}, keyword: ${searchKeyword}`);
+
+    const result = await batchGeneratePlaces(
+      searchKeyword,
+      districtName || cityName,
+      cityName,
+      { maxKeywords, maxPagesPerKeyword, enableAIExpansion }
+    );
+
+    let savedCount = 0;
+    let skippedCount = 0;
+    const savedPlaces: any[] = [];
+
+    if (saveToDrafts && result.places.length > 0) {
+      const existingCache = await storage.getCachedPlaces(districtName || cityName, cityName, countryName);
+      const existingCachePlaceIds = new Set(existingCache.map(c => c.placeId).filter(Boolean));
+      const existingPlaces = await storage.getOfficialPlacesByCity(cityName, 1000);
+      const existingPlacePlaceIds = new Set(existingPlaces.map(p => p.googlePlaceId).filter(Boolean));
+
+      const placesToProcess = result.places.filter(place => 
+        !existingCachePlaceIds.has(place.placeId) && !existingPlacePlaceIds.has(place.placeId)
+      );
+      skippedCount = result.places.length - placesToProcess.length;
+
+      const CHUNK_SIZE = 15;
+      const DELAY_BETWEEN_CHUNKS = 2000;
+      
+      for (let i = 0; i < placesToProcess.length; i += CHUNK_SIZE) {
+        const chunk = placesToProcess.slice(i, i + CHUNK_SIZE);
+        
+        const classificationMap = await classifyAndDescribePlaces(chunk, cityName);
+        
+        for (const place of chunk) {
+          try {
+            const classification = classificationMap.get(place.name);
+            const classResult = classification || {
+              name: place.name,
+              category: determineCategory(place.primaryType, place.types),
+              subcategory: determineSubcategory(place.primaryType, place.types),
+              description: generateFallbackDescription(place.name, determineCategory(place.primaryType, place.types), determineSubcategory(place.primaryType, place.types), cityName),
+              descriptionSource: 'fallback' as const
+            };
+
+            const matchedCategory = allCategories.find(c => c.nameZh === classResult.category) || selectedCategory;
+            
+            if (matchedCategory) {
+              const existingSubcategories = await storage.getSubcategoriesByCategory(matchedCategory.id);
+              const existingSubcategory = existingSubcategories.find(s => s.nameZh === classResult.subcategory);
+              
+              if (!existingSubcategory && classResult.subcategory) {
+                console.log(`[BatchCollect] 子分類不存在: ${classResult.subcategory}`);
+              }
+            }
+
+            const cached = await storage.savePlaceToCache({
+              subCategory: classResult.subcategory,
+              district: districtName || cityName,
+              city: cityName,
+              country: countryName,
+              placeName: place.name,
+              placeNameI18n: null,
+              description: classResult.description,
+              descriptionI18n: classResult.descriptionI18n || null,
+              category: classResult.category,
+              suggestedTime: null,
+              duration: null,
+              searchQuery: searchKeyword,
+              rarity: null,
+              colorHex: null,
+              placeId: place.placeId,
+              verifiedName: place.name,
+              verifiedAddress: place.address,
+              googleRating: place.rating?.toString() || null,
+              googleTypes: place.types?.join(',') || null,
+              primaryType: place.primaryType || null,
+              locationLat: place.location?.lat?.toString() || null,
+              locationLng: place.location?.lng?.toString() || null,
+              isLocationVerified: true,
+              businessStatus: place.businessStatus || null,
+              lastVerifiedAt: new Date(),
+              aiReviewed: false,
+              aiReviewedAt: null
+            });
+
+            existingCachePlaceIds.add(place.placeId);
+            savedPlaces.push({ id: cached.id, placeName: cached.placeName, placeId: cached.placeId });
+            savedCount++;
+          } catch (e: any) {
+            console.error(`[BatchGenerate] Failed to save ${place.name}:`, e.message);
+          }
+        }
+        
+        if (i + CHUNK_SIZE < placesToProcess.length) {
+          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_CHUNKS));
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      stats: result.stats,
+      saved: savedCount,
+      skipped: skippedCount,
+      total: result.places.length,
+      savedPlaces: savedPlaces.slice(0, 20),
+      message: `成功採集 ${result.places.length} 個地點，儲存 ${savedCount} 筆，跳過 ${skippedCount} 筆重複`
+    });
+  } catch (error: any) {
+    console.error("Admin batch generate error:", error);
+    res.status(500).json({ error: "批次生成失敗", details: error.message });
+  }
+});
+
+router.post("/places/batch-preview", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const { 
+      keyword, 
+      regionId,
+      districtId,
+      maxKeywords: rawMaxKeywords = 5,
+      maxPagesPerKeyword: rawMaxPages = 1,
+      enableAIExpansion = true
+    } = req.body;
+
+    const maxKeywords = Math.min(Math.max(1, rawMaxKeywords), 5);
+    const maxPagesPerKeyword = Math.min(Math.max(1, rawMaxPages), 2);
+
+    if (!regionId) {
+      return res.status(400).json({ error: "regionId 為必填" });
+    }
+
+    const regionData = await storage.getRegionById(regionId);
+    if (!regionData) {
+      return res.status(400).json({ error: "無效的 regionId" });
+    }
+
+    let districtName = '';
+    if (districtId) {
+      const districtInfo = await storage.getDistrictWithParents(districtId);
+      if (districtInfo) {
+        districtName = districtInfo.district.nameZh;
+      }
+    }
+
+    const cityName = regionData.nameZh;
+    const searchLocation = districtName || cityName;
+
+    const result = await batchGeneratePlaces(
+      keyword || '',
+      searchLocation,
+      cityName,
+      { maxKeywords, maxPagesPerKeyword, enableAIExpansion }
+    );
+
+    res.json({
+      success: true,
+      stats: result.stats,
+      places: result.places.slice(0, 50),
+      total: result.places.length,
+      message: `預覽找到 ${result.places.length} 個地點`
+    });
+  } catch (error: any) {
+    console.error("Admin batch preview error:", error);
+    res.status(500).json({ error: "預覽失敗", details: error.message });
+  }
+});
+
+router.post("/places/reclassify", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    const userEmail = req.user?.claims?.email;
+    
+    let user = userId ? await storage.getUser(userId) : null;
+    if (!user && userEmail) {
+      user = await storage.getUserByEmail(userEmail);
+    }
+    
+    if (!user) {
+      console.log('[Reclassify] User not found - userId:', userId, 'email:', userEmail);
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    
+    if (user.role !== 'admin') {
+      console.log('[Reclassify] Not admin - user:', user.email, 'role:', user.role);
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const { target = 'cache', limit = 100 } = req.body;
+    const results = { updated: 0, skipped: 0, errors: 0, details: [] as any[] };
+
+    if (target === 'cache' || target === 'all') {
+      const cacheItems = await db.execute(sql`
+        SELECT id, place_name, city, primary_type, google_types, description, category, sub_category
+        FROM place_cache
+        WHERE (category = '景點' AND sub_category IN ('attraction', '景點'))
+           OR description LIKE '%探索%的特色景點%'
+        LIMIT ${limit}
+      `);
+      
+      for (const item of cacheItems.rows as any[]) {
+        try {
+          const googleTypes = item.google_types ? item.google_types.split(',') : [];
+          const reclassified = reclassifyPlace(
+            item.place_name,
+            item.city,
+            item.primary_type,
+            googleTypes,
+            item.description || ''
+          );
+          
+          await db.execute(sql`
+            UPDATE place_cache
+            SET category = ${reclassified.category},
+                sub_category = ${reclassified.subcategory},
+                description = ${reclassified.description}
+            WHERE id = ${item.id}
+          `);
+          
+          results.updated++;
+          results.details.push({
+            id: item.id,
+            name: item.place_name,
+            oldCategory: item.category,
+            newCategory: reclassified.category,
+            oldSubcategory: item.sub_category,
+            newSubcategory: reclassified.subcategory
+          });
+        } catch (e: any) {
+          results.errors++;
+        }
+      }
+    }
+
+    if (target === 'drafts' || target === 'all') {
+      const draftItems = await db.execute(sql`
+        SELECT id, place_name, city, primary_type, google_types, description, category, sub_category
+        FROM place_drafts
+        WHERE (category = '景點' AND sub_category IN ('attraction', '景點'))
+           OR description LIKE '%探索%的特色景點%'
+        LIMIT ${limit}
+      `);
+      
+      for (const item of draftItems.rows as any[]) {
+        try {
+          const googleTypes = item.google_types ? item.google_types.split(',') : [];
+          const reclassified = reclassifyPlace(
+            item.place_name,
+            item.city,
+            item.primary_type,
+            googleTypes,
+            item.description || ''
+          );
+          
+          await db.execute(sql`
+            UPDATE place_drafts
+            SET category = ${reclassified.category},
+                sub_category = ${reclassified.subcategory},
+                description = ${reclassified.description}
+            WHERE id = ${item.id}
+          `);
+          
+          results.updated++;
+        } catch (e: any) {
+          results.errors++;
+        }
+      }
+    }
+
+    if (target === 'places' || target === 'all') {
+      const placeItems = await db.execute(sql`
+        SELECT id, name, city, google_place_id, description, category, sub_category
+        FROM places
+        WHERE (category = '景點' AND sub_category IN ('attraction', '景點'))
+           OR description LIKE '%探索%的特色景點%'
+        LIMIT ${limit}
+      `);
+      
+      for (const item of placeItems.rows as any[]) {
+        try {
+          const reclassified = reclassifyPlace(
+            item.name,
+            item.city,
+            null,
+            [],
+            item.description || ''
+          );
+          
+          await db.execute(sql`
+            UPDATE places
+            SET category = ${reclassified.category},
+                sub_category = ${reclassified.subcategory},
+                description = ${reclassified.description}
+            WHERE id = ${item.id}
+          `);
+          
+          results.updated++;
+        } catch (e: any) {
+          results.errors++;
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `重新分類完成：更新 ${results.updated} 筆，錯誤 ${results.errors} 筆`,
+      ...results
+    });
+  } catch (error: any) {
+    console.error("Reclassify error:", error);
+    res.status(500).json({ error: "重新分類失敗", details: error.message });
+  }
+});
+
+router.get("/place-cache/review-stats", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const stats = await storage.getPlaceCacheReviewStats();
+    res.json(stats);
+  } catch (error) {
+    console.error("Get cache review stats error:", error);
+    res.status(500).json({ error: "Failed to get review stats" });
+  }
+});
+
+router.get("/users/pending", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const pendingUsers = await storage.getPendingApprovalUsers();
+    res.json({ 
+      users: pendingUsers.map(u => ({
+        id: u.id,
+        email: u.email,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        role: u.role,
+        provider: u.provider,
+        isApproved: u.isApproved,
+        createdAt: u.createdAt,
+      }))
+    });
+  } catch (error) {
+    console.error("Get pending users error:", error);
+    res.status(500).json({ error: "Failed to get pending users" });
+  }
+});
+
+router.patch("/users/:id/approve", isAuthenticated, async (req: any, res) => {
+  try {
+    const adminId = req.user?.claims?.sub;
+    if (!adminId) return res.status(401).json({ error: "Authentication required" });
+
+    const admin = await storage.getUser(adminId);
+    if (admin?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const targetUserId = req.params.id;
+    const { approved } = req.body;
+
+    if (typeof approved !== 'boolean') {
+      return res.status(400).json({ error: "approved must be a boolean" });
+    }
+
+    const targetUser = await storage.getUser(targetUserId);
+    if (!targetUser) return res.status(404).json({ error: "User not found" });
+
+    const updated = await storage.updateUser(targetUserId, { isApproved: approved });
+    res.json({ 
+      success: true, 
+      user: {
+        id: updated?.id,
+        email: updated?.email,
+        role: updated?.role,
+        isApproved: updated?.isApproved,
+      }
+    });
+  } catch (error) {
+    console.error("Approve user error:", error);
+    res.status(500).json({ error: "Failed to approve user" });
+  }
+});
+
+router.get("/users", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const allUsers = await storage.getAllUsers();
+    res.json({ 
+      users: allUsers.map(u => ({
+        id: u.id,
+        email: u.email,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        role: u.role,
+        provider: u.provider,
+        isApproved: u.isApproved,
+        isActive: u.isActive,
+        createdAt: u.createdAt,
+      }))
+    });
+  } catch (error) {
+    console.error("Get all users error:", error);
+    res.status(500).json({ error: "Failed to get users" });
+  }
+});
+
+router.get("/global-exclusions", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const { district, city } = req.query;
+    const exclusions = await storage.getGlobalExclusions(
+      district as string | undefined,
+      city as string | undefined
+    );
+    res.json({ exclusions });
+  } catch (error) {
+    console.error("Get global exclusions error:", error);
+    res.status(500).json({ error: "Failed to get global exclusions" });
+  }
+});
+
+router.post("/global-exclusions", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const schema = z.object({
+      placeName: z.string().min(1),
+      district: z.string().min(1),
+      city: z.string().min(1),
+    });
+
+    const validated = schema.parse(req.body);
+    const exclusion = await storage.addGlobalExclusion(validated);
+    res.json({ success: true, exclusion });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors });
+    }
+    console.error("Add global exclusion error:", error);
+    res.status(500).json({ error: "Failed to add global exclusion" });
+  }
+});
+
+router.delete("/global-exclusions/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+
+    const exclusionId = parseInt(req.params.id);
+    const removed = await storage.removeGlobalExclusion(exclusionId);
+    
+    if (!removed) {
+      return res.status(404).json({ error: "Exclusion not found" });
+    }
+    
+    res.json({ success: true, message: "Global exclusion removed" });
+  } catch (error) {
+    console.error("Remove global exclusion error:", error);
+    res.status(500).json({ error: "Failed to remove global exclusion" });
+  }
+});
+
+router.get("/announcements", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    if (!(await hasAdminAccess(req))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const announcements = await storage.getAllAnnouncements();
+    res.json({ announcements });
+  } catch (error) {
+    console.error("Get announcements error:", error);
+    res.status(500).json({ error: "Failed to get announcements" });
+  }
+});
+
+router.post("/announcements", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    if (!(await hasAdminAccess(req))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const schema = z.object({
+      type: z.enum(['announcement', 'flash_event', 'holiday_event']).default('announcement'),
+      title: z.string().min(1),
+      content: z.string().min(1),
+      imageUrl: z.string().url().optional().nullable(),
+      linkUrl: z.string().url().optional().nullable(),
+      startDate: z.string().datetime().optional(),
+      endDate: z.string().datetime().optional().nullable(),
+      isActive: z.boolean().default(true),
+      priority: z.number().int().default(0),
+    });
+
+    const validated = schema.parse(req.body);
+    
+    const announcement = await storage.createAnnouncement({
+      ...validated,
+      startDate: validated.startDate ? new Date(validated.startDate) : new Date(),
+      endDate: validated.endDate ? new Date(validated.endDate) : null,
+      createdBy: userId,
+    });
+    
+    res.json({ success: true, announcement });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors });
+    }
+    console.error("Create announcement error:", error);
+    res.status(500).json({ error: "Failed to create announcement" });
+  }
+});
+
+router.patch("/announcements/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    if (!(await hasAdminAccess(req))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const announcementId = parseInt(req.params.id);
+    const schema = z.object({
+      type: z.enum(['announcement', 'flash_event', 'holiday_event']).optional(),
+      title: z.string().min(1).optional(),
+      content: z.string().min(1).optional(),
+      imageUrl: z.string().url().optional().nullable(),
+      linkUrl: z.string().url().optional().nullable(),
+      startDate: z.string().datetime().optional(),
+      endDate: z.string().datetime().optional().nullable(),
+      isActive: z.boolean().optional(),
+      priority: z.number().int().optional(),
+    });
+
+    const validated = schema.parse(req.body);
+    
+    const updateData: any = { ...validated };
+    if (validated.startDate) updateData.startDate = new Date(validated.startDate);
+    if (validated.endDate) updateData.endDate = new Date(validated.endDate);
+    
+    const announcement = await storage.updateAnnouncement(announcementId, updateData);
+    
+    if (!announcement) {
+      return res.status(404).json({ error: "Announcement not found" });
+    }
+    
+    res.json({ success: true, announcement });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors });
+    }
+    console.error("Update announcement error:", error);
+    res.status(500).json({ error: "Failed to update announcement" });
+  }
+});
+
+router.delete("/announcements/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    if (!(await hasAdminAccess(req))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const announcementId = parseInt(req.params.id);
+    await storage.deleteAnnouncement(announcementId);
+    
+    res.json({ success: true, message: "Announcement deleted" });
+  } catch (error) {
+    console.error("Delete announcement error:", error);
+    res.status(500).json({ error: "Failed to delete announcement" });
+  }
+});
+
+router.post("/announcements/cleanup", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+    if (!(await hasAdminAccess(req))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const deletedCount = await storage.deleteExpiredEvents();
+    
+    res.json({ success: true, deletedCount, message: `Deleted ${deletedCount} expired events` });
+  } catch (error) {
+    console.error("Cleanup expired events error:", error);
+    res.status(500).json({ error: "Failed to cleanup expired events" });
+  }
+});
+
+router.get("/ads", isAuthenticated, async (req: any, res) => {
+  try {
+    if (!(await hasAdminAccess(req))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    const ads = await storage.getAllAdPlacements();
+    res.json({ ads });
+  } catch (error) {
+    console.error("Get all ads error:", error);
+    res.status(500).json({ error: "Failed to get ads" });
+  }
+});
+
+router.post("/ads", isAuthenticated, async (req: any, res) => {
+  try {
+    if (!(await hasAdminAccess(req))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    
+    const validatedData = insertAdPlacementSchema.parse(req.body);
+    const ad = await storage.createAdPlacement(validatedData);
+    res.json({ success: true, ad });
+  } catch (error: any) {
+    if (error.name === 'ZodError') {
+      return res.status(400).json({ error: "Invalid ad placement data", details: error.errors });
+    }
+    console.error("Create ad error:", error);
+    res.status(500).json({ error: "Failed to create ad" });
+  }
+});
+
+router.patch("/ads/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    if (!(await hasAdminAccess(req))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    
+    if (!req.body || Object.keys(req.body).length === 0) {
+      return res.status(400).json({ error: "At least one field must be provided for update" });
+    }
+    
+    const allowedFields = ['placementKey', 'platform', 'adUnitIdIos', 'adUnitIdAndroid', 'adType', 'fallbackImageUrl', 'fallbackLinkUrl', 'isActive', 'showFrequency', 'metadata'];
+    const nullableFields = ['adUnitIdIos', 'adUnitIdAndroid', 'fallbackImageUrl', 'fallbackLinkUrl', 'metadata'];
+    const filteredBody: Record<string, any> = {};
+    for (const key of allowedFields) {
+      if (key in req.body && req.body[key] !== undefined) {
+        if (req.body[key] === null && !nullableFields.includes(key)) {
+          return res.status(400).json({ error: `Field '${key}' cannot be null` });
+        }
+        filteredBody[key] = req.body[key];
+      }
+    }
+    
+    if (Object.keys(filteredBody).length === 0) {
+      return res.status(400).json({ error: "No valid fields provided for update" });
+    }
+    
+    const partialSchema = insertAdPlacementSchema.partial();
+    const validatedData = partialSchema.parse(filteredBody);
+    
+    const ad = await storage.updateAdPlacement(parseInt(req.params.id), validatedData);
+    if (!ad) {
+      return res.status(404).json({ error: "Ad placement not found" });
+    }
+    res.json({ success: true, ad });
+  } catch (error: any) {
+    if (error.name === 'ZodError') {
+      return res.status(400).json({ error: "Invalid ad placement data", details: error.errors });
+    }
+    console.error("Update ad error:", error);
+    res.status(500).json({ error: "Failed to update ad" });
+  }
+});
+
+router.delete("/ads/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    if (!(await hasAdminAccess(req))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    await storage.deleteAdPlacement(parseInt(req.params.id));
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Delete ad error:", error);
+    res.status(500).json({ error: "Failed to delete ad" });
+  }
+});
+
+export default router;

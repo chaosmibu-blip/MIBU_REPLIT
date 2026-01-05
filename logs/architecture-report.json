@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-01-05T12:16:38.177Z",
+  "timestamp": "2026-01-05T13:05:57.244Z",
   "summary": {
-    "fails": 4,
-    "warns": 4,
+    "fails": 5,
+    "warns": 6,
     "passes": 2,
-    "total": 10
+    "total": 13
   },
   "results": [
     {
@@ -30,11 +30,41 @@
     {
       "category": "檔案大小",
       "status": "fail",
-      "message": "server/routes.ts 有 10174 行，超過 1000 行上限",
+      "message": "server/routes/admin.ts 有 1496 行，超過 1000 行上限",
       "details": {
-        "file": "server/routes.ts",
-        "lines": 10174,
+        "file": "server/routes/admin.ts",
+        "lines": 1496,
         "limit": 1000
+      }
+    },
+    {
+      "category": "檔案大小",
+      "status": "warn",
+      "message": "server/routes/auth.ts 有 695 行，建議控制在 500 行以內",
+      "details": {
+        "file": "server/routes/auth.ts",
+        "lines": 695,
+        "suggested": 500
+      }
+    },
+    {
+      "category": "檔案大小",
+      "status": "fail",
+      "message": "server/routes/gacha.ts 有 2745 行，超過 1000 行上限",
+      "details": {
+        "file": "server/routes/gacha.ts",
+        "lines": 2745,
+        "limit": 1000
+      }
+    },
+    {
+      "category": "檔案大小",
+      "status": "warn",
+      "message": "server/routes/merchant.ts 有 721 行，建議控制在 500 行以內",
+      "details": {
+        "file": "server/routes/merchant.ts",
+        "lines": 721,
+        "suggested": 500
       }
     },
     {
