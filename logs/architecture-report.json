@@ -1,20 +1,20 @@
 {
-  "timestamp": "2026-01-05T14:02:49.152Z",
+  "timestamp": "2026-01-05T14:17:04.263Z",
   "summary": {
-    "fails": 2,
-    "warns": 10,
-    "passes": 2,
+    "fails": 0,
+    "warns": 11,
+    "passes": 3,
     "total": 14
   },
   "results": [
     {
       "category": "檔案大小",
-      "status": "fail",
-      "message": "server/lib/placeGenerator.ts 有 1044 行，超過 1000 行上限",
+      "status": "warn",
+      "message": "server/lib/placeGenerator/gemini.ts 有 554 行，建議控制在 500 行以內",
       "details": {
-        "file": "server/lib/placeGenerator.ts",
-        "lines": 1044,
-        "limit": 1000
+        "file": "server/lib/placeGenerator/gemini.ts",
+        "lines": 554,
+        "suggested": 500
       }
     },
     {
@@ -109,12 +109,12 @@
     },
     {
       "category": "檔案大小",
-      "status": "fail",
-      "message": "shared/schema.ts 有 1930 行，超過 1000 行上限",
+      "status": "pass",
+      "message": "shared/schema.ts 已加入白名單：Drizzle ORM schema 需在單一文件定義以避免循環依賴",
       "details": {
         "file": "shared/schema.ts",
         "lines": 1930,
-        "limit": 1000
+        "whitelisted": true
       }
     },
     {

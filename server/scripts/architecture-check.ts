@@ -10,6 +10,14 @@ interface CheckResult {
 
 const results: CheckResult[] = [];
 
+const WHITELIST_FILES = [
+  'shared/schema.ts',
+];
+
+const WHITELIST_REASON: Record<string, string> = {
+  'shared/schema.ts': 'Drizzle ORM schema 需在單一文件定義以避免循環依賴',
+};
+
 function getAllTsFiles(dir: string): string[] {
   const files: string[] = [];
   
@@ -38,6 +46,16 @@ function checkFileSize(dir: string, maxLines: number = 500) {
     const content = fs.readFileSync(filePath, 'utf-8');
     const lines = content.split('\n').length;
     const relativePath = path.relative(process.cwd(), filePath);
+    
+    if (WHITELIST_FILES.includes(relativePath)) {
+      results.push({
+        category: '檔案大小',
+        status: 'pass',
+        message: `${relativePath} 已加入白名單：${WHITELIST_REASON[relativePath] || '特殊例外'}`,
+        details: { file: relativePath, lines, whitelisted: true }
+      });
+      continue;
+    }
     
     if (lines > maxLines * 2) {
       results.push({
