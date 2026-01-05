@@ -139,6 +139,22 @@ app.use(cors({
 | POST | `/api/merchant/subscription/cancel` | 取消訂閱 |
 | GET | `/api/merchant/subscription/history` | 訂閱歷史 |
 
+### 訂閱方案（動態配置）
+
+| 方法 | 端點 | 說明 |
+|------|------|------|
+| GET | `/api/subscription-plans` | 取得所有啟用的訂閱方案（公開） |
+| GET | `/api/subscription-plans/:tier` | 取得單一方案詳情 |
+
+### 管理後台 API（需 Admin 權限）
+
+| 方法 | 端點 | 說明 |
+|------|------|------|
+| GET | `/api/admin/subscription-plans?key=xxx` | 取得所有方案（含完整欄位） |
+| POST | `/api/admin/subscription-plans?key=xxx` | 建立新方案 |
+| PUT | `/api/admin/subscription-plans/:tier?key=xxx` | 更新方案 |
+| DELETE | `/api/admin/subscription-plans/:tier?key=xxx` | 刪除方案（軟刪除） |
+
 ### SEO 頁面資料
 
 | 方法 | 端點 | 說明 |
@@ -358,6 +374,25 @@ export interface CheckoutRequest {
   cancelUrl?: string;
 }
 
+// 訂閱方案（從 /api/subscription-plans 取得）
+export interface SubscriptionPlan {
+  tier: SubscriptionTier;
+  name: string;
+  nameEn: string;
+  priceMonthly: number;
+  priceYearly: number | null;
+  pricePeriodLabel: string;
+  features: string[];
+  buttonText: string;
+  highlighted: boolean;
+  highlightLabel: string | null;
+  maxPlaces: number;
+  maxCoupons: number;
+  hasAdvancedAnalytics: boolean;
+  hasPriorityExposure: boolean;
+  hasDedicatedSupport: boolean;
+}
+
 // types/merchant.ts
 export interface Merchant {
   id: number;
@@ -365,6 +400,42 @@ export interface Merchant {
   email: string;
   level: SubscriptionTier;
   avatarUrl?: string;
+}
+```
+
+### 動態訂閱方案使用範例
+
+```typescript
+// hooks/useSubscriptionPlans.ts
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api/client';
+import type { SubscriptionPlan } from '@/types/subscription';
+
+export function useSubscriptionPlans() {
+  return useQuery({
+    queryKey: ['subscription-plans'],
+    queryFn: () => apiClient<{ plans: SubscriptionPlan[] }>('/api/subscription-plans'),
+    staleTime: 5 * 60 * 1000, // 5 分鐘快取
+  });
+}
+
+// 使用範例
+function PricingPage() {
+  const { data, isLoading } = useSubscriptionPlans();
+  
+  if (isLoading) return <LoadingSpinner />;
+  
+  return (
+    <div className="grid grid-cols-3 gap-6">
+      {data?.plans.map((plan) => (
+        <PricingCard
+          key={plan.tier}
+          plan={plan}
+          highlighted={plan.highlighted}
+        />
+      ))}
+    </div>
+  );
 }
 ```
 
@@ -478,10 +549,16 @@ WebSocket connection failed
 
 | 項目 | 版本 | 更新日期 |
 |------|------|---------|
-| 後端 API | v1.0 | 2026-01-05 |
-| 本同步藍圖 | v1.0 | 2026-01-05 |
+| 後端 API | v1.1 | 2026-01-05 |
+| 本同步藍圖 | v1.1 | 2026-01-05 |
 | Recur SDK | 0.11.0 | - |
 | Socket.io | 4.x | - |
+
+### v1.1 更新內容
+- 新增 `/api/subscription-plans` 公開 API（動態訂閱方案）
+- 新增管理後台 API（CRUD 訂閱方案）
+- 新增 `SubscriptionPlan` TypeScript 類型定義
+- 新增 `useSubscriptionPlans` hook 使用範例
 
 ---
 

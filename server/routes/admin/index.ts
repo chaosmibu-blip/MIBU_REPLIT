@@ -11,6 +11,6 @@ router.use("/", adminPlacesRouter);
 router.use("/", adminUsersRouter);
 router.use("/", adminContentRouter);
 router.use("/", adminConfigsRouter);
-router.use("/", adminSubscriptionPlansRouter);
+router.use("/", adminSubscriptionPlansRouter); // /admin/subscription-plans
 
 export default router;

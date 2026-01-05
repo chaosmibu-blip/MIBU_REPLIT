@@ -4,11 +4,13 @@ import { subscriptionPlans, insertSubscriptionPlanSchema } from "@shared/schema"
 import { eq, asc } from "drizzle-orm";
 import { hasAdminAccess } from "./shared";
 
-const router = Router();
+// 管理 Router（掛載在 /admin 下）
+const adminRouter = Router();
+// 公開 Router（掛載在根目錄）
+const publicRouter = Router();
 
 // 中間件：驗證管理員權限（支援 query key 或 session）
 const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {
-  // 支援 query 參數 key 驗證
   const queryKey = req.query.key as string;
   const adminKey = process.env.ADMIN_MIGRATION_KEY;
   
@@ -16,7 +18,6 @@ const requireAdmin = async (req: Request, res: Response, next: NextFunction) => 
     return next();
   }
   
-  // 支援 session/JWT 驗證
   const hasAccess = await hasAdminAccess(req);
   if (hasAccess) {
     return next();
@@ -27,8 +28,7 @@ const requireAdmin = async (req: Request, res: Response, next: NextFunction) => 
 
 // ============ 公開 API (官網讀取方案) ============
 
-// GET /api/subscription-plans - 取得所有啟用的訂閱方案（公開）
-router.get("/subscription-plans", async (req: Request, res: Response) => {
+publicRouter.get("/subscription-plans", async (req: Request, res: Response) => {
   try {
     const plans = await db
       .select()
@@ -36,7 +36,6 @@ router.get("/subscription-plans", async (req: Request, res: Response) => {
       .where(eq(subscriptionPlans.isActive, true))
       .orderBy(asc(subscriptionPlans.sortOrder));
 
-    // 只回傳前端需要的欄位，隱藏 Stripe/Recur ID
     const publicPlans = plans.map(plan => ({
       tier: plan.tier,
       name: plan.name,
@@ -62,10 +61,9 @@ router.get("/subscription-plans", async (req: Request, res: Response) => {
   }
 });
 
-// ============ 管理 API (需要 Admin Key) ============
+// ============ 管理 API (需要 Admin 權限) ============
 
-// GET /api/admin/subscription-plans - 取得所有方案（含隱藏欄位）
-router.get("/admin/subscription-plans", requireAdmin, async (req: Request, res: Response) => {
+adminRouter.get("/subscription-plans", requireAdmin, async (req: Request, res: Response) => {
   try {
     const plans = await db
       .select()
@@ -79,8 +77,7 @@ router.get("/admin/subscription-plans", requireAdmin, async (req: Request, res: 
   }
 });
 
-// GET /api/admin/subscription-plans/:tier - 取得單一方案
-router.get("/admin/subscription-plans/:tier", requireAdmin, async (req: Request, res: Response) => {
+adminRouter.get("/subscription-plans/:tier", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { tier } = req.params;
     const [plan] = await db
@@ -99,8 +96,7 @@ router.get("/admin/subscription-plans/:tier", requireAdmin, async (req: Request,
   }
 });
 
-// POST /api/admin/subscription-plans - 建立新方案
-router.post("/admin/subscription-plans", requireAdmin, async (req: Request, res: Response) => {
+adminRouter.post("/subscription-plans", requireAdmin, async (req: Request, res: Response) => {
   try {
     const parsed = insertSubscriptionPlanSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -122,12 +118,10 @@ router.post("/admin/subscription-plans", requireAdmin, async (req: Request, res:
   }
 });
 
-// PUT /api/admin/subscription-plans/:tier - 更新方案
-router.put("/admin/subscription-plans/:tier", requireAdmin, async (req: Request, res: Response) => {
+adminRouter.put("/subscription-plans/:tier", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { tier } = req.params;
     
-    // 驗證部分更新資料
     const updateSchema = insertSubscriptionPlanSchema.partial();
     const parsed = updateSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -154,12 +148,10 @@ router.put("/admin/subscription-plans/:tier", requireAdmin, async (req: Request,
   }
 });
 
-// DELETE /api/admin/subscription-plans/:tier - 刪除方案（軟刪除）
-router.delete("/admin/subscription-plans/:tier", requireAdmin, async (req: Request, res: Response) => {
+adminRouter.delete("/subscription-plans/:tier", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { tier } = req.params;
     
-    // 不允許刪除 free 方案
     if (tier === 'free') {
       return res.status(400).json({ error: "Cannot delete the free plan" });
     }
@@ -184,8 +176,7 @@ router.delete("/admin/subscription-plans/:tier", requireAdmin, async (req: Reque
   }
 });
 
-// POST /api/admin/subscription-plans/seed - 初始化預設方案
-router.post("/admin/subscription-plans/seed", requireAdmin, async (req: Request, res: Response) => {
+adminRouter.post("/subscription-plans/seed", requireAdmin, async (req: Request, res: Response) => {
   try {
     const defaultPlans = [
       {
@@ -249,7 +240,6 @@ router.post("/admin/subscription-plans/seed", requireAdmin, async (req: Request,
       },
     ];
 
-    // Upsert: 存在則更新，不存在則新增
     for (const plan of defaultPlans) {
       await db
         .insert(subscriptionPlans)
@@ -293,4 +283,5 @@ router.post("/admin/subscription-plans/seed", requireAdmin, async (req: Request,
   }
 });
 
-export default router;
+export default adminRouter;
+export { publicRouter as subscriptionPlansPublicRouter };
