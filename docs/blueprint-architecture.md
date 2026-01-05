@@ -746,6 +746,37 @@ interface SpinResponse {
 3. 執行 `npm run validate` 確認無錯誤
 ```
 
+#### 前端專案同步指令
+
+**Expo App**
+```bash
+# 拉取最新契約
+npm run contract:pull
+
+# 腳本內容 (scripts/pull-contract.ts)
+curl -s https://mibu-backend.replit.app/api/contract > types/API_CONTRACT.json
+npx tsx scripts/generate-types.ts
+
+# 驗證型別
+npm run validate
+```
+
+**Web 前端 (另一 Replit)**
+```bash
+# 同上流程
+npm run contract:pull
+npm run validate
+```
+
+#### CI/排程觸發規則
+
+| 觸發點 | 後端動作 | 前端動作 |
+|--------|---------|---------|
+| 後端推送 | 自動產生契約 + 版本號 +1 | — |
+| 每日 00:00 | — | 自動拉取契約 + 編譯檢查 |
+| 前端編譯失敗 | — | 發送 Slack/Discord 通知 |
+| 手動觸發 | `npm run contract:gen` | `npm run contract:pull` |
+
 #### 實作步驟
 
 | 步驟 | 內容 | 預估時間 |
@@ -757,6 +788,8 @@ interface SpinResponse {
 | 3.5 | 建立「給前端同步指令」模板 | 20 分鐘 |
 | 3.6 | 更新 memory-api-dictionary.md 加入契約流程 | 30 分鐘 |
 | 3.7 | 首次產生完整契約 | 30 分鐘 |
+| 3.8 | 在 Expo/Web 專案建立 contract:pull 腳本 | 45 分鐘 |
+| 3.9 | 設定每日排程檢查（GitHub Actions / Replit Cron） | 30 分鐘 |
 
 ---
 
@@ -926,6 +959,16 @@ npx tsx server/scripts/architecture-check.ts
 1. **流程優先**：如果是一個完整流程（如採集→審核→升級），歸屬於流程主記憶庫
 2. **業務優先**：業務邏輯歸功能模組，技術細節歸基礎設施
 3. **指向原則**：其他記憶庫可用 `> 參見 xxx.md` 指向唯一來源
+
+#### 衝突解決操作步驟
+
+| 步驟 | 負責人 | 時間窗 | 動作 |
+|------|--------|--------|------|
+| 1. 發現衝突 | Agent | 即時 | 在對話中標註「⚠️ 記憶庫歸屬待確認」 |
+| 2. 判斷歸屬 | Agent | 5 分鐘內 | 依據上述三原則判斷 |
+| 3. 確認歸屬 | 用戶（可選） | 若有疑慮則詢問 | 用戶確認或 Agent 自行決定 |
+| 4. 執行修正 | Agent | 即時 | 移動內容至唯一來源，原位置加「參見」指向 |
+| 5. 更新索引 | Agent | 即時 | 若有結構變更，更新 replit.md |
 
 範例：
 ```markdown
