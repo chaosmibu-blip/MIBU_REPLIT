@@ -1,6 +1,7 @@
 import { Router, raw } from "express";
 import { getUncachableStripeClient } from "../stripeClient";
 import { subscriptionStorage } from "../storage/subscriptionStorage";
+import { merchantStorage } from "../storage/merchantStorage";
 import { db } from "../db";
 import { merchants, places } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -18,11 +19,13 @@ type SubscriptionEventType =
   | 'payment.succeeded'
   | 'payment.failed';
 
+type SubscriptionTier = 'free' | 'pro' | 'premium' | 'partner';
+
 interface NormalizedSubscriptionEvent {
   type: SubscriptionEventType;
   subscriptionId: string;
   merchantId: number;
-  tier: 'free' | 'pro' | 'premium';
+  tier: SubscriptionTier;
   subscriptionType: 'merchant' | 'place';
   placeId?: number;
   currentPeriodEnd?: Date;
@@ -40,12 +43,15 @@ function mapStripeStatus(status: string): 'active' | 'cancelled' | 'past_due' | 
   }
 }
 
-function mapStripePriceToTier(priceId: string): 'free' | 'pro' | 'premium' {
+function mapStripePriceToTier(priceId: string): SubscriptionTier {
   if (priceId === process.env.STRIPE_MERCHANT_PRO_PRICE_ID || priceId === process.env.STRIPE_PLACE_PRO_PRICE_ID) {
     return 'pro';
   }
   if (priceId === process.env.STRIPE_MERCHANT_PREMIUM_PRICE_ID || priceId === process.env.STRIPE_PLACE_PREMIUM_PRICE_ID) {
     return 'premium';
+  }
+  if (priceId === process.env.STRIPE_MERCHANT_PARTNER_PRICE_ID || priceId === process.env.STRIPE_PLACE_PARTNER_PRICE_ID) {
+    return 'partner';
   }
   return 'free';
 }
@@ -310,19 +316,30 @@ function mapRecurStatus(status: string): 'active' | 'cancelled' | 'past_due' | '
   }
 }
 
-function mapRecurProductToTier(productId: string): 'free' | 'pro' | 'premium' {
-  const RECUR_PRODUCT_MAP: Record<string, 'pro' | 'premium'> = {
+function mapRecurProductToTier(productId: string): SubscriptionTier {
+  const RECUR_PRODUCT_MAP: Record<string, SubscriptionTier> = {
     'fpbnn9ah9090j7hxx5wcv7f4': 'pro',
     'adkwbl9dya0wc6b53parl9yk': 'premium',
+    [process.env.RECUR_MERCHANT_PRO_PRODUCT_ID || '']: 'pro',
+    [process.env.RECUR_MERCHANT_PREMIUM_PRODUCT_ID || '']: 'premium',
+    [process.env.RECUR_MERCHANT_PARTNER_PRODUCT_ID || '']: 'partner',
     [process.env.RECUR_PLACE_PRO_PRODUCT_ID || '']: 'pro',
     [process.env.RECUR_PLACE_PREMIUM_PRODUCT_ID || '']: 'premium',
+    [process.env.RECUR_PLACE_PARTNER_PRODUCT_ID || '']: 'partner',
   };
   
-  return RECUR_PRODUCT_MAP[productId] || 'free';
+  delete RECUR_PRODUCT_MAP[''];
+  
+  const tier = RECUR_PRODUCT_MAP[productId];
+  if (!tier) {
+    console.warn(`[Recur Webhook] Unknown product ID: ${productId}, defaulting to 'free'`);
+    return 'free';
+  }
+  return tier;
 }
 
 function parseExternalCustomerId(externalId: string): { merchantId: number; type: 'merchant' | 'place'; tier: string; placeId?: number } | null {
-  const match = externalId.match(/^mibu_m(\d+)_(merchant|place)_(free|pro|premium)(?:_p(\d+))?$/);
+  const match = externalId.match(/^mibu_m(\d+)_(merchant|place)_(\w+)(?:_p(\d+))?$/);
   if (!match) return null;
   
   return {
@@ -358,7 +375,7 @@ async function normalizeRecurEvent(body: any): Promise<NormalizedSubscriptionEve
   }
 
   if (!merchantId && customer?.email) {
-    const merchant = await storage.getMerchantByEmail(customer.email);
+    const merchant = await merchantStorage.getMerchantByEmail(customer.email);
     if (merchant) {
       merchantId = merchant.id;
     }
@@ -370,7 +387,16 @@ async function normalizeRecurEvent(body: any): Promise<NormalizedSubscriptionEve
   }
 
   const productId = subscription.productId || subscription.product?.id;
-  const tier = tierFromExternalId as 'free' | 'pro' | 'premium' || mapRecurProductToTier(productId);
+  
+  function validateTier(t: string | undefined): SubscriptionTier {
+    if (t === 'pro' || t === 'premium' || t === 'partner') return t;
+    if (t && t !== 'free') {
+      console.warn(`[Recur Webhook] Unknown tier in externalCustomerId: ${t}, defaulting to 'free'`);
+    }
+    return 'free';
+  }
+  
+  const tier = tierFromExternalId ? validateTier(tierFromExternalId) : mapRecurProductToTier(productId);
 
   let eventType: SubscriptionEventType;
   switch (type) {
