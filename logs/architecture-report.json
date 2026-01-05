@@ -1,0 +1,101 @@
+{
+  "timestamp": "2026-01-05T12:16:38.177Z",
+  "summary": {
+    "fails": 4,
+    "warns": 4,
+    "passes": 2,
+    "total": 10
+  },
+  "results": [
+    {
+      "category": "檔案大小",
+      "status": "fail",
+      "message": "server/lib/placeGenerator.ts 有 1044 行，超過 1000 行上限",
+      "details": {
+        "file": "server/lib/placeGenerator.ts",
+        "lines": 1044,
+        "limit": 1000
+      }
+    },
+    {
+      "category": "檔案大小",
+      "status": "warn",
+      "message": "server/replitAuth.ts 有 923 行，建議控制在 500 行以內",
+      "details": {
+        "file": "server/replitAuth.ts",
+        "lines": 923,
+        "suggested": 500
+      }
+    },
+    {
+      "category": "檔案大小",
+      "status": "fail",
+      "message": "server/routes.ts 有 10174 行，超過 1000 行上限",
+      "details": {
+        "file": "server/routes.ts",
+        "lines": 10174,
+        "limit": 1000
+      }
+    },
+    {
+      "category": "檔案大小",
+      "status": "warn",
+      "message": "server/scripts/batch-parallel-collect.ts 有 538 行，建議控制在 500 行以內",
+      "details": {
+        "file": "server/scripts/batch-parallel-collect.ts",
+        "lines": 538,
+        "suggested": 500
+      }
+    },
+    {
+      "category": "檔案大小",
+      "status": "warn",
+      "message": "server/seed.ts 有 644 行，建議控制在 500 行以內",
+      "details": {
+        "file": "server/seed.ts",
+        "lines": 644,
+        "suggested": 500
+      }
+    },
+    {
+      "category": "檔案大小",
+      "status": "fail",
+      "message": "server/storage.ts 有 2789 行，超過 1000 行上限",
+      "details": {
+        "file": "server/storage.ts",
+        "lines": 2789,
+        "limit": 1000
+      }
+    },
+    {
+      "category": "檔案大小",
+      "status": "fail",
+      "message": "shared/schema.ts 有 1900 行，超過 1000 行上限",
+      "details": {
+        "file": "shared/schema.ts",
+        "lines": 1900,
+        "limit": 1000
+      }
+    },
+    {
+      "category": "檔案大小",
+      "status": "warn",
+      "message": "client/src/constants.ts 有 621 行，建議控制在 500 行以內",
+      "details": {
+        "file": "client/src/constants.ts",
+        "lines": 621,
+        "suggested": 500
+      }
+    },
+    {
+      "category": "設定檔",
+      "status": "pass",
+      "message": "tsconfig.json 格式正確"
+    },
+    {
+      "category": "設定檔",
+      "status": "pass",
+      "message": "package.json 格式正確"
+    }
+  ]
+}
