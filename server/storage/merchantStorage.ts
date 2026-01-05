@@ -25,6 +25,11 @@ export const merchantStorage = {
     return merchant || undefined;
   },
 
+  async getMerchantByEmail(email: string): Promise<Merchant | undefined> {
+    const [merchant] = await db.select().from(merchants).where(eq(merchants.email, email));
+    return merchant || undefined;
+  },
+
   async createMerchant(merchant: InsertMerchant): Promise<Merchant> {
     const [newMerchant] = await db
       .insert(merchants)

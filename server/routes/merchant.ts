@@ -723,14 +723,38 @@ router.delete("/api/merchant/products/:productId", isAuthenticated, async (req: 
 
 const SUBSCRIPTION_PRICES = {
   merchant: {
-    pro: { stripe: process.env.STRIPE_MERCHANT_PRO_PRICE_ID, amount: 29900, currency: 'TWD' },
-    premium: { stripe: process.env.STRIPE_MERCHANT_PREMIUM_PRICE_ID, amount: 79900, currency: 'TWD' },
+    pro: { 
+      stripe: process.env.STRIPE_MERCHANT_PRO_PRICE_ID, 
+      recur: 'fpbnn9ah9090j7hxx5wcv7f4',
+      amount: 29900, 
+      currency: 'TWD' 
+    },
+    premium: { 
+      stripe: process.env.STRIPE_MERCHANT_PREMIUM_PRICE_ID, 
+      recur: 'adkwbl9dya0wc6b53parl9yk',
+      amount: 79900, 
+      currency: 'TWD' 
+    },
   },
   place: {
-    pro: { stripe: process.env.STRIPE_PLACE_PRO_PRICE_ID, amount: 19900, currency: 'TWD' },
-    premium: { stripe: process.env.STRIPE_PLACE_PREMIUM_PRICE_ID, amount: 39900, currency: 'TWD' },
+    pro: { 
+      stripe: process.env.STRIPE_PLACE_PRO_PRICE_ID, 
+      recur: process.env.RECUR_PLACE_PRO_PRODUCT_ID,
+      amount: 19900, 
+      currency: 'TWD' 
+    },
+    premium: { 
+      stripe: process.env.STRIPE_PLACE_PREMIUM_PRICE_ID, 
+      recur: process.env.RECUR_PLACE_PREMIUM_PRODUCT_ID,
+      amount: 39900, 
+      currency: 'TWD' 
+    },
   },
 } as const;
+
+const RECUR_CONFIG = {
+  publishableKey: process.env.RECUR_PUBLISHABLE_KEY || 'pk_test_95b6695679feee448947ab70433b9628b2006e056c71d49fc251e1323a81468f',
+};
 
 router.get("/api/merchant/subscription", isAuthenticated, async (req: any, res) => {
   try {
@@ -856,7 +880,27 @@ router.post("/api/merchant/subscription/checkout", isAuthenticated, async (req: 
 
       res.json({ url: session.url, sessionId: session.id });
     } else if (provider === 'recur') {
-      res.status(501).json({ error: "Recur integration not yet implemented" });
+      const productId = priceConfig.recur;
+      if (!productId) {
+        return res.status(400).json({ error: "Recur product not configured for this tier" });
+      }
+
+      const user = await storage.getUser(userId);
+      const customerEmail = user?.email || merchant.email;
+
+      const externalCustomerId = `mibu_m${merchant.id}_${type}_${tier}${placeId ? `_p${placeId}` : ''}`;
+      
+      await subscriptionStorage.updateMerchantRecurCustomerId(merchant.id, externalCustomerId);
+
+      res.json({
+        provider: 'recur',
+        productId,
+        publishableKey: RECUR_CONFIG.publishableKey,
+        customerEmail,
+        externalCustomerId,
+        successUrl: successUrl || `/merchant/subscription/success?provider=recur&mid=${merchant.id}&type=${type}&tier=${tier}${placeId ? `&pid=${placeId}` : ''}`,
+        cancelUrl: cancelUrl || `/merchant/subscription/cancel`,
+      });
     } else {
       res.status(400).json({ error: "Invalid payment provider" });
     }

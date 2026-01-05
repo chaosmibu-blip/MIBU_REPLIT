@@ -297,9 +297,144 @@ router.post("/api/webhooks/stripe", raw({ type: 'application/json' }), async (re
   res.json({ received: true });
 });
 
+function mapRecurStatus(status: string): 'active' | 'cancelled' | 'past_due' | 'trialing' {
+  switch (status.toUpperCase()) {
+    case 'ACTIVE': return 'active';
+    case 'TRIAL': 
+    case 'TRIALING': return 'trialing';
+    case 'PAST_DUE': return 'past_due';
+    case 'CANCELED':
+    case 'CANCELLED':
+    case 'EXPIRED': return 'cancelled';
+    default: return 'cancelled';
+  }
+}
+
+function mapRecurProductToTier(productId: string): 'free' | 'pro' | 'premium' {
+  const RECUR_PRODUCT_MAP: Record<string, 'pro' | 'premium'> = {
+    'fpbnn9ah9090j7hxx5wcv7f4': 'pro',
+    'adkwbl9dya0wc6b53parl9yk': 'premium',
+    [process.env.RECUR_PLACE_PRO_PRODUCT_ID || '']: 'pro',
+    [process.env.RECUR_PLACE_PREMIUM_PRODUCT_ID || '']: 'premium',
+  };
+  
+  return RECUR_PRODUCT_MAP[productId] || 'free';
+}
+
+function parseExternalCustomerId(externalId: string): { merchantId: number; type: 'merchant' | 'place'; tier: string; placeId?: number } | null {
+  const match = externalId.match(/^mibu_m(\d+)_(merchant|place)_(free|pro|premium)(?:_p(\d+))?$/);
+  if (!match) return null;
+  
+  return {
+    merchantId: parseInt(match[1]),
+    type: match[2] as 'merchant' | 'place',
+    tier: match[3],
+    placeId: match[4] ? parseInt(match[4]) : undefined,
+  };
+}
+
+async function normalizeRecurEvent(body: any): Promise<NormalizedSubscriptionEvent | null> {
+  const { type, data } = body;
+  
+  if (!data) return null;
+  
+  const subscription = data.subscription || data;
+  const customer = subscription.customer || data.customer;
+  
+  let merchantId: number | null = null;
+  let subscriptionType: 'merchant' | 'place' = 'merchant';
+  let placeId: number | undefined;
+  let tierFromExternalId: string | undefined;
+
+  const externalCustomerId = customer?.externalId || subscription.externalCustomerId;
+  if (externalCustomerId) {
+    const parsed = parseExternalCustomerId(externalCustomerId);
+    if (parsed) {
+      merchantId = parsed.merchantId;
+      subscriptionType = parsed.type;
+      placeId = parsed.placeId;
+      tierFromExternalId = parsed.tier;
+    }
+  }
+
+  if (!merchantId && customer?.email) {
+    const merchant = await storage.getMerchantByEmail(customer.email);
+    if (merchant) {
+      merchantId = merchant.id;
+    }
+  }
+
+  if (!merchantId) {
+    console.warn('[Recur Webhook] Cannot resolve merchantId from event');
+    return null;
+  }
+
+  const productId = subscription.productId || subscription.product?.id;
+  const tier = tierFromExternalId as 'free' | 'pro' | 'premium' || mapRecurProductToTier(productId);
+
+  let eventType: SubscriptionEventType;
+  switch (type) {
+    case 'subscription.created':
+      eventType = 'subscription.created';
+      break;
+    case 'subscription.updated':
+      eventType = 'subscription.updated';
+      break;
+    case 'subscription.cancelled':
+    case 'subscription.canceled':
+      eventType = 'subscription.cancelled';
+      break;
+    case 'subscription.renewed':
+      eventType = 'subscription.renewed';
+      break;
+    case 'invoice.payment_succeeded':
+    case 'payment.succeeded':
+      eventType = 'payment.succeeded';
+      break;
+    case 'invoice.payment_failed':
+    case 'payment.failed':
+      eventType = 'payment.failed';
+      break;
+    default:
+      console.log(`[Recur Webhook] Unhandled event type: ${type}`);
+      return null;
+  }
+
+  const currentPeriodEnd = subscription.currentPeriodEnd 
+    ? new Date(subscription.currentPeriodEnd)
+    : subscription.billingPeriodEnd
+      ? new Date(subscription.billingPeriodEnd)
+      : undefined;
+
+  return {
+    type: eventType,
+    subscriptionId: subscription.id,
+    merchantId,
+    tier,
+    subscriptionType,
+    placeId,
+    currentPeriodEnd,
+    status: mapRecurStatus(subscription.status || 'active'),
+    provider: 'recur',
+  };
+}
+
 router.post("/api/webhooks/recur", async (req, res) => {
-  console.log("[Recur Webhook] Received event:", req.body.type);
-  res.status(501).json({ error: "Recur webhook not yet implemented" });
+  console.log("[Recur Webhook] Received event:", req.body?.type);
+
+  try {
+    const normalizedEvent = await normalizeRecurEvent(req.body);
+    
+    if (normalizedEvent) {
+      await handleSubscriptionEvent(normalizedEvent);
+      console.log(`[Recur Webhook] Processed ${normalizedEvent.type} for merchant ${normalizedEvent.merchantId}`);
+    }
+    
+    res.json({ received: true });
+  } catch (error) {
+    console.error("[Recur Webhook] Error:", error);
+    res.status(500).json({ error: "Failed to process webhook" });
+  }
 });
 
 export default router;
