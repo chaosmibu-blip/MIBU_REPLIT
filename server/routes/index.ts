@@ -9,6 +9,7 @@ import commerceRouter from './commerce';
 import locationsRouter from './locations';
 import gachaRouter from './gacha/index';
 import adminRouter from './admin/index';
+import subscriptionPlansRouter from './admin/admin-subscription-plans';
 
 const router = Router();
 
@@ -23,6 +24,7 @@ router.use('/commerce', commerceRouter);
 router.use('/locations', locationsRouter);
 router.use('/', gachaRouter);
 router.use('/admin', adminRouter);
+router.use('/', subscriptionPlansRouter); // 公開 API: /api/subscription-plans
 
 export default router;
 

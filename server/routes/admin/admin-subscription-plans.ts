@@ -1,0 +1,296 @@
+import { Router, Request, Response, NextFunction } from "express";
+import { db } from "../../db";
+import { subscriptionPlans, insertSubscriptionPlanSchema } from "@shared/schema";
+import { eq, asc } from "drizzle-orm";
+import { hasAdminAccess } from "./shared";
+
+const router = Router();
+
+// 中間件：驗證管理員權限（支援 query key 或 session）
+const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  // 支援 query 參數 key 驗證
+  const queryKey = req.query.key as string;
+  const adminKey = process.env.ADMIN_MIGRATION_KEY;
+  
+  if (queryKey && adminKey && queryKey === adminKey) {
+    return next();
+  }
+  
+  // 支援 session/JWT 驗證
+  const hasAccess = await hasAdminAccess(req);
+  if (hasAccess) {
+    return next();
+  }
+  
+  return res.status(401).json({ error: "Unauthorized" });
+};
+
+// ============ 公開 API (官網讀取方案) ============
+
+// GET /api/subscription-plans - 取得所有啟用的訂閱方案（公開）
+router.get("/subscription-plans", async (req: Request, res: Response) => {
+  try {
+    const plans = await db
+      .select()
+      .from(subscriptionPlans)
+      .where(eq(subscriptionPlans.isActive, true))
+      .orderBy(asc(subscriptionPlans.sortOrder));
+
+    // 只回傳前端需要的欄位，隱藏 Stripe/Recur ID
+    const publicPlans = plans.map(plan => ({
+      tier: plan.tier,
+      name: plan.name,
+      nameEn: plan.nameEn,
+      priceMonthly: plan.priceMonthly,
+      priceYearly: plan.priceYearly,
+      pricePeriodLabel: plan.pricePeriodLabel,
+      features: plan.features,
+      buttonText: plan.buttonText,
+      highlighted: plan.highlighted,
+      highlightLabel: plan.highlightLabel,
+      maxPlaces: plan.maxPlaces,
+      maxCoupons: plan.maxCoupons,
+      hasAdvancedAnalytics: plan.hasAdvancedAnalytics,
+      hasPriorityExposure: plan.hasPriorityExposure,
+      hasDedicatedSupport: plan.hasDedicatedSupport,
+    }));
+
+    res.json({ plans: publicPlans });
+  } catch (error) {
+    console.error("Error fetching subscription plans:", error);
+    res.status(500).json({ error: "Failed to fetch subscription plans" });
+  }
+});
+
+// ============ 管理 API (需要 Admin Key) ============
+
+// GET /api/admin/subscription-plans - 取得所有方案（含隱藏欄位）
+router.get("/admin/subscription-plans", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const plans = await db
+      .select()
+      .from(subscriptionPlans)
+      .orderBy(asc(subscriptionPlans.sortOrder));
+
+    res.json({ plans });
+  } catch (error) {
+    console.error("Error fetching subscription plans:", error);
+    res.status(500).json({ error: "Failed to fetch subscription plans" });
+  }
+});
+
+// GET /api/admin/subscription-plans/:tier - 取得單一方案
+router.get("/admin/subscription-plans/:tier", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { tier } = req.params;
+    const [plan] = await db
+      .select()
+      .from(subscriptionPlans)
+      .where(eq(subscriptionPlans.tier, tier));
+
+    if (!plan) {
+      return res.status(404).json({ error: "Subscription plan not found" });
+    }
+
+    res.json({ plan });
+  } catch (error) {
+    console.error("Error fetching subscription plan:", error);
+    res.status(500).json({ error: "Failed to fetch subscription plan" });
+  }
+});
+
+// POST /api/admin/subscription-plans - 建立新方案
+router.post("/admin/subscription-plans", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const parsed = insertSubscriptionPlanSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+    }
+
+    const [newPlan] = await db
+      .insert(subscriptionPlans)
+      .values(parsed.data)
+      .returning();
+
+    res.status(201).json({ plan: newPlan });
+  } catch (error: any) {
+    console.error("Error creating subscription plan:", error);
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "Tier already exists" });
+    }
+    res.status(500).json({ error: "Failed to create subscription plan" });
+  }
+});
+
+// PUT /api/admin/subscription-plans/:tier - 更新方案
+router.put("/admin/subscription-plans/:tier", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { tier } = req.params;
+    
+    // 驗證部分更新資料
+    const updateSchema = insertSubscriptionPlanSchema.partial();
+    const parsed = updateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+    }
+
+    const [updatedPlan] = await db
+      .update(subscriptionPlans)
+      .set({
+        ...parsed.data,
+        updatedAt: new Date(),
+      })
+      .where(eq(subscriptionPlans.tier, tier))
+      .returning();
+
+    if (!updatedPlan) {
+      return res.status(404).json({ error: "Subscription plan not found" });
+    }
+
+    res.json({ plan: updatedPlan });
+  } catch (error) {
+    console.error("Error updating subscription plan:", error);
+    res.status(500).json({ error: "Failed to update subscription plan" });
+  }
+});
+
+// DELETE /api/admin/subscription-plans/:tier - 刪除方案（軟刪除）
+router.delete("/admin/subscription-plans/:tier", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { tier } = req.params;
+    
+    // 不允許刪除 free 方案
+    if (tier === 'free') {
+      return res.status(400).json({ error: "Cannot delete the free plan" });
+    }
+
+    const [deactivatedPlan] = await db
+      .update(subscriptionPlans)
+      .set({
+        isActive: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(subscriptionPlans.tier, tier))
+      .returning();
+
+    if (!deactivatedPlan) {
+      return res.status(404).json({ error: "Subscription plan not found" });
+    }
+
+    res.json({ success: true, message: `Plan ${tier} has been deactivated` });
+  } catch (error) {
+    console.error("Error deleting subscription plan:", error);
+    res.status(500).json({ error: "Failed to delete subscription plan" });
+  }
+});
+
+// POST /api/admin/subscription-plans/seed - 初始化預設方案
+router.post("/admin/subscription-plans/seed", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const defaultPlans = [
+      {
+        tier: 'free',
+        name: 'Free',
+        nameEn: 'Free',
+        priceMonthly: 0,
+        pricePeriodLabel: '永久免費',
+        features: ['1 間店家', '5 張優惠券', '基礎數據報表'],
+        buttonText: '目前方案',
+        highlighted: false,
+        maxPlaces: 1,
+        maxCoupons: 5,
+        hasAdvancedAnalytics: false,
+        hasPriorityExposure: false,
+        hasDedicatedSupport: false,
+        sortOrder: 0,
+      },
+      {
+        tier: 'pro',
+        name: 'Pro',
+        nameEn: 'Pro',
+        priceMonthly: 299,
+        priceYearly: 2990,
+        pricePeriodLabel: '/月',
+        features: ['3 間店家', '20 張優惠券', '進階數據報表', '優先曝光'],
+        buttonText: '升級 Pro',
+        highlighted: true,
+        highlightLabel: '推薦',
+        stripeMonthlyPriceId: null,
+        stripeYearlyPriceId: null,
+        recurMonthlyProductId: 'fpbnn9ah9090j7hxx5wcv7f4',
+        recurYearlyProductId: null,
+        maxPlaces: 3,
+        maxCoupons: 20,
+        hasAdvancedAnalytics: true,
+        hasPriorityExposure: true,
+        hasDedicatedSupport: false,
+        sortOrder: 1,
+      },
+      {
+        tier: 'premium',
+        name: 'Premium',
+        nameEn: 'Premium',
+        priceMonthly: 799,
+        priceYearly: 6000,
+        pricePeriodLabel: '/月',
+        features: ['無限店家', '無限優惠券', '完整數據報表', '最高優先曝光', '專屬客服'],
+        buttonText: '升級 Premium',
+        highlighted: false,
+        stripeMonthlyPriceId: null,
+        stripeYearlyPriceId: null,
+        recurMonthlyProductId: null,
+        recurYearlyProductId: 'adkwbl9dya0wc6b53parl9yk',
+        maxPlaces: 999,
+        maxCoupons: 999,
+        hasAdvancedAnalytics: true,
+        hasPriorityExposure: true,
+        hasDedicatedSupport: true,
+        sortOrder: 2,
+      },
+    ];
+
+    // Upsert: 存在則更新，不存在則新增
+    for (const plan of defaultPlans) {
+      await db
+        .insert(subscriptionPlans)
+        .values(plan)
+        .onConflictDoUpdate({
+          target: subscriptionPlans.tier,
+          set: {
+            name: plan.name,
+            nameEn: plan.nameEn,
+            priceMonthly: plan.priceMonthly,
+            priceYearly: plan.priceYearly,
+            pricePeriodLabel: plan.pricePeriodLabel,
+            features: plan.features,
+            buttonText: plan.buttonText,
+            highlighted: plan.highlighted,
+            highlightLabel: plan.highlightLabel,
+            maxPlaces: plan.maxPlaces,
+            maxCoupons: plan.maxCoupons,
+            hasAdvancedAnalytics: plan.hasAdvancedAnalytics,
+            hasPriorityExposure: plan.hasPriorityExposure,
+            hasDedicatedSupport: plan.hasDedicatedSupport,
+            sortOrder: plan.sortOrder,
+            updatedAt: new Date(),
+          },
+        });
+    }
+
+    const allPlans = await db
+      .select()
+      .from(subscriptionPlans)
+      .orderBy(asc(subscriptionPlans.sortOrder));
+
+    res.json({ 
+      success: true, 
+      message: "Default subscription plans have been seeded",
+      plans: allPlans 
+    });
+  } catch (error) {
+    console.error("Error seeding subscription plans:", error);
+    res.status(500).json({ error: "Failed to seed subscription plans" });
+  }
+});
+
+export default router;

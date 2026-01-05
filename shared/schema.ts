@@ -1978,3 +1978,53 @@ export const insertSystemConfigSchema = createInsertSchema(systemConfigs).omit({
 
 export type SystemConfig = typeof systemConfigs.$inferSelect;
 export type InsertSystemConfig = z.infer<typeof insertSystemConfigSchema>;
+
+// ============ Subscription Plans (官網訂閱方案設定) ============
+
+export type SubscriptionPlanTier = 'free' | 'pro' | 'premium' | 'partner';
+
+export const subscriptionPlans = pgTable("subscription_plans", {
+  id: serial("id").primaryKey(),
+  tier: varchar("tier", { length: 20 }).notNull().unique(), // 'free' | 'pro' | 'premium' | 'partner'
+  name: text("name").notNull(), // 顯示名稱 (e.g., "Pro", "招財貓計畫")
+  nameEn: text("name_en"), // 英文名稱
+  
+  // 價格設定
+  priceMonthly: integer("price_monthly").default(0).notNull(), // 月費 (TWD)
+  priceYearly: integer("price_yearly"), // 年費 (TWD)，null 表示不提供年繳
+  pricePeriodLabel: text("price_period_label").default('/月'), // 價格週期標籤
+  
+  // UI 顯示
+  features: text("features").array().notNull(), // 功能列表 ["3 間店家", "20 張優惠券", ...]
+  buttonText: text("button_text").notNull(), // 按鈕文字 "升級 Pro"
+  highlighted: boolean("highlighted").default(false), // 是否突顯（推薦）
+  highlightLabel: text("highlight_label"), // 突顯標籤 (e.g., "推薦", "最划算")
+  
+  // 金流對應
+  stripeMonthlyPriceId: varchar("stripe_monthly_price_id", { length: 255 }), // Stripe Price ID (月)
+  stripeYearlyPriceId: varchar("stripe_yearly_price_id", { length: 255 }), // Stripe Price ID (年)
+  recurMonthlyProductId: varchar("recur_monthly_product_id", { length: 255 }), // Recur Product ID (月)
+  recurYearlyProductId: varchar("recur_yearly_product_id", { length: 255 }), // Recur Product ID (年)
+  
+  // 權限配額
+  maxPlaces: integer("max_places").default(1).notNull(), // 最大店家數
+  maxCoupons: integer("max_coupons").default(5).notNull(), // 最大優惠券數
+  hasAdvancedAnalytics: boolean("has_advanced_analytics").default(false), // 進階報表
+  hasPriorityExposure: boolean("has_priority_exposure").default(false), // 優先曝光
+  hasDedicatedSupport: boolean("has_dedicated_support").default(false), // 專屬客服
+  
+  // 狀態
+  isActive: boolean("is_active").default(true).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertSubscriptionPlanSchema = createInsertSchema(subscriptionPlans).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
+export type InsertSubscriptionPlan = z.infer<typeof insertSubscriptionPlanSchema>;
