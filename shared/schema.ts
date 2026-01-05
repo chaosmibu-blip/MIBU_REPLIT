@@ -1897,3 +1897,33 @@ export const userDailyGachaStatsRelations = relations(userDailyGachaStats, ({ on
 }));
 
 export type UserDailyGachaStat = typeof userDailyGachaStats.$inferSelect;
+
+// ============ System Configs (系統設定表) ============
+
+export const systemConfigs = pgTable("system_configs", {
+  id: serial("id").primaryKey(),
+  category: varchar("category", { length: 50 }).notNull(),
+  key: varchar("key", { length: 100 }).notNull(),
+  value: jsonb("value").notNull(),
+  valueType: varchar("value_type", { length: 20 }).notNull(),
+  defaultValue: jsonb("default_value"),
+  label: text("label").notNull(),
+  description: text("description"),
+  uiType: varchar("ui_type", { length: 20 }),
+  uiOptions: jsonb("ui_options"),
+  validation: jsonb("validation"),
+  editableBy: varchar("editable_by", { length: 20 }).default('admin'),
+  isReadOnly: boolean("is_read_only").default(false),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: integer("updated_by"),
+}, (table) => [
+  uniqueIndex("UQ_system_configs_category_key").on(table.category, table.key),
+]);
+
+export const insertSystemConfigSchema = createInsertSchema(systemConfigs).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type SystemConfig = typeof systemConfigs.$inferSelect;
+export type InsertSystemConfig = z.infer<typeof insertSystemConfigSchema>;
