@@ -21,6 +21,7 @@ router.use('/specialist', specialistRouter);
 router.use('/', chatRouter);
 router.use('/commerce', commerceRouter);
 router.use('/locations', locationsRouter);
+router.use('/', locationsRouter);
 router.use('/', gachaRouter);
 router.use('/admin', adminRouter);
 

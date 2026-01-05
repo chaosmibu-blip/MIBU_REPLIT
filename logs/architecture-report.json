@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-01-05T13:18:13.190Z",
+  "timestamp": "2026-01-05T13:31:21.575Z",
   "summary": {
-    "fails": 5,
+    "fails": 4,
     "warns": 6,
     "passes": 2,
-    "total": 13
+    "total": 12
   },
   "results": [
     {
@@ -85,16 +85,6 @@
         "file": "server/seed.ts",
         "lines": 644,
         "suggested": 500
-      }
-    },
-    {
-      "category": "檔案大小",
-      "status": "fail",
-      "message": "server/storage.ts 有 2789 行，超過 1000 行上限",
-      "details": {
-        "file": "server/storage.ts",
-        "lines": 2789,
-        "limit": 1000
       }
     },
     {

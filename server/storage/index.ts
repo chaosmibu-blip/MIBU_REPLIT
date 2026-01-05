@@ -3,6 +3,10 @@ import { placeStorage } from './placeStorage';
 import { merchantStorage } from './merchantStorage';
 import { gachaStorage } from './gachaStorage';
 import { locationStorage } from './locationStorage';
+import { specialistStorage } from './specialistStorage';
+import { sosStorage } from './sosStorage';
+import { commerceStorage } from './commerceStorage';
+import { adminStorage } from './adminStorage';
 
 export const storage = {
   ...userStorage,
@@ -10,6 +14,10 @@ export const storage = {
   ...merchantStorage,
   ...gachaStorage,
   ...locationStorage,
+  ...specialistStorage,
+  ...sosStorage,
+  ...commerceStorage,
+  ...adminStorage,
 };
 
 export {
@@ -18,4 +26,8 @@ export {
   merchantStorage,
   gachaStorage,
   locationStorage,
+  specialistStorage,
+  sosStorage,
+  commerceStorage,
+  adminStorage,
 };
