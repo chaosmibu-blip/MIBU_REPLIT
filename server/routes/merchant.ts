@@ -1,11 +1,13 @@
 import { Router } from "express";
 import { isAuthenticated } from "../replitAuth";
 import { storage } from "../storage";
+import { subscriptionStorage } from "../storage/subscriptionStorage";
 import { insertMerchantSchema, insertCouponSchema } from "@shared/schema";
 import { ErrorCode, createErrorResponse } from "@shared/errors";
 import { z } from "zod";
 import crypto from "crypto";
 import { getUncachableStripeClient } from "../stripeClient";
+import { getMerchantTier, getPlaceCardTier, MERCHANT_TIER_LIMITS, PLACE_CARD_TIER_LIMITS, hasAnalyticsAccess } from "../lib/merchantPermissions";
 
 const router = Router();
 
@@ -714,6 +716,260 @@ router.delete("/api/merchant/products/:productId", isAuthenticated, async (req: 
   } catch (error) {
     console.error("Delete product error:", error);
     res.status(500).json({ error: "Failed to delete product" });
+  }
+});
+
+// ============ Subscription API ============
+
+const SUBSCRIPTION_PRICES = {
+  merchant: {
+    pro: { stripe: process.env.STRIPE_MERCHANT_PRO_PRICE_ID, amount: 29900, currency: 'TWD' },
+    premium: { stripe: process.env.STRIPE_MERCHANT_PREMIUM_PRICE_ID, amount: 79900, currency: 'TWD' },
+  },
+  place: {
+    pro: { stripe: process.env.STRIPE_PLACE_PRO_PRICE_ID, amount: 19900, currency: 'TWD' },
+    premium: { stripe: process.env.STRIPE_PLACE_PREMIUM_PRICE_ID, amount: 39900, currency: 'TWD' },
+  },
+} as const;
+
+router.get("/api/merchant/subscription", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const merchant = await storage.getMerchantByUserId(userId);
+    if (!merchant) {
+      return res.status(404).json({ error: "Merchant not found" });
+    }
+
+    const tier = await getMerchantTier(merchant.id);
+    const limits = MERCHANT_TIER_LIMITS[tier];
+    const activeSubscription = await subscriptionStorage.getMerchantActiveSubscription(merchant.id, 'merchant');
+
+    res.json({
+      merchantId: merchant.id,
+      merchantLevel: tier,
+      merchantLevelExpiresAt: merchant.merchantLevelExpiresAt,
+      limits,
+      subscription: activeSubscription ? {
+        id: activeSubscription.id,
+        tier: activeSubscription.tier,
+        status: activeSubscription.status,
+        currentPeriodEnd: activeSubscription.currentPeriodEnd,
+        cancelAtPeriodEnd: activeSubscription.cancelAtPeriodEnd,
+      } : null,
+    });
+  } catch (error) {
+    console.error("Get subscription error:", error);
+    res.status(500).json({ error: "Failed to fetch subscription" });
+  }
+});
+
+router.get("/api/merchant/subscription/history", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const merchant = await storage.getMerchantByUserId(userId);
+    if (!merchant) {
+      return res.status(404).json({ error: "Merchant not found" });
+    }
+
+    const subscriptions = await subscriptionStorage.getMerchantSubscriptions(merchant.id);
+
+    res.json({ subscriptions });
+  } catch (error) {
+    console.error("Get subscription history error:", error);
+    res.status(500).json({ error: "Failed to fetch subscription history" });
+  }
+});
+
+router.post("/api/merchant/subscription/checkout", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const merchant = await storage.getMerchantByUserId(userId);
+    if (!merchant) {
+      return res.status(404).json({ error: "Merchant not found" });
+    }
+
+    const { type, tier, placeId, provider = 'stripe', successUrl, cancelUrl } = req.body;
+
+    if (!type || !tier) {
+      return res.status(400).json({ error: "type and tier are required" });
+    }
+
+    if (!['merchant', 'place'].includes(type)) {
+      return res.status(400).json({ error: "Invalid subscription type" });
+    }
+
+    if (!['pro', 'premium'].includes(tier)) {
+      return res.status(400).json({ error: "Invalid tier" });
+    }
+
+    if (type === 'place' && !placeId) {
+      return res.status(400).json({ error: "placeId is required for place subscription" });
+    }
+
+    const priceConfig = SUBSCRIPTION_PRICES[type as 'merchant' | 'place'][tier as 'pro' | 'premium'];
+
+    if (provider === 'stripe') {
+      const stripe = await getUncachableStripeClient();
+
+      let customerId = merchant.stripeCustomerId;
+      if (!customerId) {
+        const user = await storage.getUser(userId);
+        const customer = await stripe.customers.create({
+          email: user?.email || merchant.email,
+          metadata: { merchantId: merchant.id.toString(), userId },
+        });
+        customerId = customer.id;
+        await subscriptionStorage.updateMerchantStripeCustomerId(merchant.id, customerId);
+      }
+
+      const priceId = priceConfig.stripe;
+      if (!priceId) {
+        return res.status(400).json({ error: "Stripe price not configured for this tier" });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        line_items: [{ price: priceId, quantity: 1 }],
+        mode: 'subscription',
+        success_url: successUrl || `${req.protocol}://${req.get('host')}/merchant/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: cancelUrl || `${req.protocol}://${req.get('host')}/merchant/subscription/cancel`,
+        metadata: {
+          type,
+          tier,
+          merchantId: merchant.id.toString(),
+          placeId: placeId?.toString() || '',
+        },
+      });
+
+      res.json({ url: session.url, sessionId: session.id });
+    } else if (provider === 'recur') {
+      res.status(501).json({ error: "Recur integration not yet implemented" });
+    } else {
+      res.status(400).json({ error: "Invalid payment provider" });
+    }
+  } catch (error) {
+    console.error("Create checkout error:", error);
+    res.status(500).json({ error: "Failed to create checkout session" });
+  }
+});
+
+router.post("/api/merchant/subscription/cancel", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const merchant = await storage.getMerchantByUserId(userId);
+    if (!merchant) {
+      return res.status(404).json({ error: "Merchant not found" });
+    }
+
+    const { subscriptionId } = req.body;
+    if (!subscriptionId) {
+      return res.status(400).json({ error: "subscriptionId is required" });
+    }
+
+    const subscription = await subscriptionStorage.getSubscriptionById(subscriptionId);
+    if (!subscription || subscription.merchantId !== merchant.id) {
+      return res.status(404).json({ error: "Subscription not found" });
+    }
+
+    if (subscription.provider === 'stripe') {
+      const stripe = await getUncachableStripeClient();
+      await stripe.subscriptions.update(subscription.providerSubscriptionId, {
+        cancel_at_period_end: true,
+      });
+    }
+
+    const updated = await subscriptionStorage.cancelSubscription(subscriptionId);
+
+    res.json({ success: true, subscription: updated });
+  } catch (error) {
+    console.error("Cancel subscription error:", error);
+    res.status(500).json({ error: "Failed to cancel subscription" });
+  }
+});
+
+router.post("/api/merchant/subscription/upgrade", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const merchant = await storage.getMerchantByUserId(userId);
+    if (!merchant) {
+      return res.status(404).json({ error: "Merchant not found" });
+    }
+
+    const { subscriptionId, newTier, successUrl, cancelUrl } = req.body;
+
+    if (!subscriptionId || !newTier) {
+      return res.status(400).json({ error: "subscriptionId and newTier are required" });
+    }
+
+    const subscription = await subscriptionStorage.getSubscriptionById(subscriptionId);
+    if (!subscription || subscription.merchantId !== merchant.id) {
+      return res.status(404).json({ error: "Subscription not found" });
+    }
+
+    if (subscription.provider === 'stripe' && merchant.stripeCustomerId) {
+      const stripe = await getUncachableStripeClient();
+
+      const portal = await stripe.billingPortal.sessions.create({
+        customer: merchant.stripeCustomerId,
+        return_url: successUrl || `${req.protocol}://${req.get('host')}/merchant/subscription`,
+      });
+
+      res.json({ url: portal.url });
+    } else {
+      res.status(400).json({ error: "Cannot upgrade subscription with current provider" });
+    }
+  } catch (error) {
+    console.error("Upgrade subscription error:", error);
+    res.status(500).json({ error: "Failed to upgrade subscription" });
+  }
+});
+
+router.get("/api/merchant/permissions", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const merchant = await storage.getMerchantByUserId(userId);
+    if (!merchant) {
+      return res.status(404).json({ error: "Merchant not found" });
+    }
+
+    const tier = await getMerchantTier(merchant.id);
+    const limits = MERCHANT_TIER_LIMITS[tier];
+
+    res.json({
+      merchantTier: tier,
+      maxPlaces: limits.maxPlaces,
+      hasAnalytics: limits.analytics,
+      tierLimits: MERCHANT_TIER_LIMITS,
+      placeCardTierLimits: PLACE_CARD_TIER_LIMITS,
+    });
+  } catch (error) {
+    console.error("Get permissions error:", error);
+    res.status(500).json({ error: "Failed to fetch permissions" });
   }
 });
 
