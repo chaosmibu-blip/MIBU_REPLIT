@@ -136,6 +136,22 @@ Mibu 是專為自由行旅客打造的旅遊 App，包含兩大核心模組：
 - **client/**: React 18, Tailwind｜允許 HTML
 - **Expo App**: React Native, NativeWind｜禁止 HTML (`<div>` → `<View>`)
 
+### 架構（2026-01-05 優化後）
+
+| 結構 | 檔案數 | 說明 |
+|------|--------|------|
+| `server/routes/` | 10+ 模組 | 路由分層（gacha/, admin/ 等子目錄） |
+| `server/storage/` | 9 模組 | userStorage, placeStorage, gachaStorage 等 |
+| `server/services/` | ConfigService | 系統設定讀取快取 |
+| `docs/API_CONTRACT.json` | 130 端點 | 自動產生的 API 契約 |
+
+### 維護工具
+
+| 指令 | 用途 |
+|------|------|
+| `npx tsx server/scripts/architecture-check.ts` | 架構健康檢查 |
+| `npx tsx server/scripts/generate-contract.ts` | 產生 API 契約 |
+
 ## 輸出協議
 修改 API 後，輸出「📱 給前端的同步指令」區塊，包含：
 - Endpoint
