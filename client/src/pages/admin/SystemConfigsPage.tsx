@@ -36,14 +36,18 @@ export const SystemConfigsPage: React.FC<SystemConfigsPageProps> = ({ language }
   const fetchConfigs = useCallback(async () => {
     try {
       setLoading(true);
+      console.log('[SystemConfigs] Fetching configs...');
       const res = await fetch('/api/admin/configs', {
         credentials: 'include',
       });
+      console.log('[SystemConfigs] Response status:', res.status);
       if (!res.ok) throw new Error('無法載入設定');
       const data = await res.json();
+      console.log('[SystemConfigs] Data received:', data);
       setConfigs(data.configs || {});
       setExpandedCategories(new Set(Object.keys(data.configs || {})));
     } catch (err: any) {
+      console.error('[SystemConfigs] Error:', err);
       setError(err.message);
     } finally {
       setLoading(false);
