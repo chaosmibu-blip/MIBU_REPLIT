@@ -5,6 +5,10 @@
 
 ## 支付服務
 
+### 雙軌金流系統
+
+支援 **Stripe**（國際支付）和 **Recur**（台灣本地支付）雙提供商。
+
 ### Stripe 整合
 ```typescript
 // 環境變數
@@ -21,14 +25,41 @@ stripe_charges         // 收費
 stripe_payment_intents // 支付意圖
 ```
 
-### Stripe Webhook
+### Recur 整合（2026-01-05 新增）
 ```typescript
-POST /api/stripe/webhook/:uuid
+// 環境變數
+RECUR_PUBLISHABLE_KEY  // Recur 前端 Key
+RECUR_MERCHANT_PRO_PRODUCT_ID     // 商家 Pro 產品
+RECUR_MERCHANT_PREMIUM_PRODUCT_ID // 商家 Premium 產品
+RECUR_PLACE_PRO_PRODUCT_ID        // 行程卡 Pro 產品
+RECUR_PLACE_PREMIUM_PRODUCT_ID    // 行程卡 Premium 產品
 
-// 處理事件
-checkout.session.completed  // 結帳完成
-customer.subscription.created/updated/deleted
-invoice.paid/payment_failed
+// 已配置的產品 ID（硬編碼備援）
+fpbnn9ah9090j7hxx5wcv7f4  // 招財貓計畫/月 (Pro, NT$123)
+adkwbl9dya0wc6b53parl9yk  // 招財貓計畫/年 (Premium, NT$6,000)
+
+// externalCustomerId 格式（用於 webhook 商家識別）
+mibu_m{merchantId}_{type}_{tier}         // 商家訂閱
+mibu_m{merchantId}_{type}_{tier}_p{placeId}  // 行程卡訂閱
+```
+
+### 統一 Webhook 處理
+```typescript
+POST /api/webhooks/stripe   // Stripe 簽名驗證
+POST /api/webhooks/recur    // Recur webhook
+
+// 事件正規化後統一處理
+NormalizedSubscriptionEvent {
+  type: 'subscription.created' | 'subscription.updated' | ...
+  subscriptionId: string;
+  merchantId: number;
+  tier: 'free' | 'pro' | 'premium' | 'partner';
+  subscriptionType: 'merchant' | 'place';
+  placeId?: number;
+  currentPeriodEnd?: Date;
+  status: 'active' | 'cancelled' | 'past_due' | 'trialing';
+  provider: 'stripe' | 'recur';
+}
 ```
 
 ## 相關資料表
