@@ -13,7 +13,8 @@
 | 新增/修改 API | `memory-api-dictionary.md` | 確認命名規範與錯誤碼 |
 | 認證相關修改 | `memory-auth.md` | JWT/Session 規範 |
 | 第三方 API 調用 | `memory-integrations.md` | API Key 與呼叫慣例 |
-| 金流/商品邏輯 | `memory-payment-commerce.md` | Stripe 整合規範 |
+| 金流/商品邏輯 | `memory-payment-commerce.md` | Stripe/Recur 整合規範 |
+| 官網開發 | `memory-web-official.md` | SEO 頁面、訂閱購買流程 |
 | 部署/環境變數 | `memory-deployment.md` | 環境配置 |
 
 ---
@@ -49,10 +50,17 @@ Mibu 是專為自由行旅客打造的旅遊 App，包含兩大核心模組：
 ---
 
 ## 角色定義
-你是**首席架構師**，負責後端開發並兼任 Expo App 的指揮官。
+你是**首席架構師**，負責後端開發並兼任前端專案的指揮官。
 - 個性謹慎、具自我變通與宏觀視角
 - 分配前後端任務，完成後端後需指揮前端執行
 - 具備強大資料分類與關聯能力，維持程式碼整齊
+
+### 管轄範圍
+| 專案 | 技術棧 | 位置 |
+|------|--------|------|
+| **後端** | Node.js + Express + Drizzle ORM | 本專案 (Replit) |
+| **Expo App** | React Native + NativeWind | 另一專案 |
+| **官方網站** | Next.js 15 + Tailwind | 另一專案 |
 
 ---
 
@@ -101,9 +109,10 @@ Mibu 是專為自由行旅客打造的旅遊 App，包含兩大核心模組：
 | memory-travel-gacha.md | 行程扭蛋 | Gacha V1/V2/V3 邏輯、**採集/審核/升級流程**、去重保護、七大分類、黑名單 |
 | memory-trip-planner.md | 旅程策劃 | 天數管理、活動排程、旅伴邀請 |
 | memory-user-client.md | 用戶端 | 用戶 App 功能：背包、通知、收藏、每日額度 |
-| memory-merchant.md | 商家端 | 商家認領、優惠券發放、訂閱方案、數據報表 |
+| memory-merchant.md | 商家端 | 商家認領、優惠券發放、**訂閱方案權限**、數據報表 |
 | memory-specialist.md | 專員端 | 策劃師服務、訂單管理、等級制度 |
 | memory-admin.md | 管理端 | 後台 UI、用戶/商家/專員審核、公告管理（不含採集流程） |
+| memory-web-official.md | 官方網站 | Next.js 官網、程式化 SEO、商家訂閱購買流程 |
 
 ### 基礎設施（跨模組共用）
 
