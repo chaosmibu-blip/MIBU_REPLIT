@@ -151,6 +151,9 @@ export const merchants = pgTable("merchants", {
   // 審核與等級
   status: varchar("status", { length: 20 }).default('pending').notNull(), // 'pending' | 'approved' | 'rejected'
   merchantLevel: varchar("merchant_level", { length: 20 }).default('free').notNull(), // 'free' | 'pro' | 'premium'
+  merchantLevelExpiresAt: timestamp("merchant_level_expires_at"), // 訂閱到期時間
+  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }), // Stripe 客戶 ID
+  recurCustomerId: varchar("recur_customer_id", { length: 255 }), // Recur 客戶 ID
   rejectionReason: text("rejection_reason"), // 審核拒絕原因
   approvedAt: timestamp("approved_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -192,6 +195,43 @@ export const transactions = pgTable("transactions", {
   paidAt: timestamp("paid_at"), // 付款完成時間
 }, (table) => [
   index("IDX_transactions_merchant").on(table.merchantId),
+]);
+
+// Merchant Subscriptions (商家訂閱記錄)
+export type SubscriptionType = 'merchant' | 'place';
+export type SubscriptionTier = 'pro' | 'premium';
+export type SubscriptionStatus = 'active' | 'past_due' | 'canceling' | 'expired' | 'cancelled';
+export type SubscriptionProvider = 'stripe' | 'recur';
+
+export const merchantSubscriptions = pgTable("merchant_subscriptions", {
+  id: serial("id").primaryKey(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  
+  type: varchar("type", { length: 20 }).notNull(), // 'merchant' | 'place'
+  tier: varchar("tier", { length: 20 }).notNull(), // 'pro' | 'premium'
+  placeId: integer("place_id").references(() => places.id), // 若 type='place'，關聯的 place
+  
+  provider: varchar("provider", { length: 20 }).notNull(), // 'stripe' | 'recur'
+  providerSubscriptionId: varchar("provider_subscription_id", { length: 255 }).notNull(),
+  providerCustomerId: varchar("provider_customer_id", { length: 255 }),
+  
+  status: varchar("status", { length: 20 }).default("active").notNull(), // 'active' | 'past_due' | 'canceling' | 'expired' | 'cancelled'
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  scheduledDowngradeTo: varchar("scheduled_downgrade_to", { length: 20 }), // 預定降級的目標等級
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
+  
+  amount: integer("amount"), // 訂閱金額
+  currency: varchar("currency", { length: 10 }).default("TWD"),
+  lastPaymentIntentId: varchar("last_payment_intent_id", { length: 255 }),
+  
+  cancelledAt: timestamp("cancelled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_merchant_subscriptions_merchant").on(table.merchantId),
+  index("IDX_merchant_subscriptions_status").on(table.status),
+  index("IDX_merchant_subscriptions_provider").on(table.provider, table.providerSubscriptionId),
 ]);
 
 // Service Relations (專員-旅客服務關係)
@@ -289,6 +329,8 @@ export const places = pgTable("places", {
   promoTitle: text("promo_title"),
   promoDescription: text("promo_description"),
   claimStatus: varchar("claim_status", { length: 20 }).default('unclaimed'),
+  placeCardTier: varchar("place_card_tier", { length: 20 }).default('free'), // 'free' | 'pro' | 'premium'
+  placeCardTierExpiresAt: timestamp("place_card_tier_expires_at"), // 行程卡訂閱到期時間
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
@@ -569,6 +611,15 @@ export const insertTransactionSchema = createInsertSchema(transactions).omit({
   id: true,
   createdAt: true,
 });
+
+export const insertMerchantSubscriptionSchema = createInsertSchema(merchantSubscriptions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertMerchantSubscription = z.infer<typeof insertMerchantSubscriptionSchema>;
+export type MerchantSubscription = typeof merchantSubscriptions.$inferSelect;
 
 export const insertServiceRelationSchema = createInsertSchema(serviceRelations).omit({
   id: true,
