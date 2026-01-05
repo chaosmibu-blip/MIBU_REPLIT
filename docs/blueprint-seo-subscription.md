@@ -103,10 +103,17 @@ export const seoItineraries = pgTable("seo_itineraries", {
   gachaSessionId: text("gacha_session_id"), // 關聯扭蛋 session
   version: integer("version").default(1),
   
+  // 內容追蹤（用於 10% 變更閾值計算）
+  contentHash: varchar("content_hash", { length: 64 }), // SHA-256 of source place IDs
+  sourcePlaceIds: text("source_place_ids"), // JSON array of place IDs at generation time
+  
   // 時間戳
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // 使用 COALESCE 處理 NULL district（避免 NULL 繞過唯一索引）
+  // 實際 SQL: CREATE UNIQUE INDEX ... ON (region_id, COALESCE(district_id, 0), category)
+]);
 ```
 
 ### 1.4 Gemini Prompt 修改
