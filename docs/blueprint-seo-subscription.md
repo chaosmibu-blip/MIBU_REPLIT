@@ -263,8 +263,18 @@ async function getNextVersionSafe(parentSlug: string): Promise<number> {
 #### 1.12.3 完整同步流程（含自動 ISR 觸發）
 
 ```typescript
+// 類型定義（對應 gacha_ai_logs 表的欄位）
+interface GachaLogInput {
+  sessionId: string;
+  city: string;
+  district?: string;
+  aiReason: string;
+  orderedPlaceIds: number[];
+  categoryDistribution: Record<string, number>;
+}
+
 // 扭蛋完成後自動同步
-async function syncToSeoItineraries(gachaLog: GachaAiLog) {
+async function syncToSeoItineraries(gachaLog: GachaLogInput) {
   // 1. 只同步有 aiReason 的記錄
   if (!gachaLog.aiReason) return;
   
@@ -306,20 +316,10 @@ async function syncToSeoItineraries(gachaLog: GachaAiLog) {
   await triggerISRRevalidation(slug, parentSlug);
 }
 
-// Slug 生成（城市+區域 → 英文）
-function generateParentSlug(city: string, district?: string): string {
-  const cityMap: Record<string, string> = {
-    '台南市': 'tainan', '台中市': 'taichung', '台北市': 'taipei', ...
-  };
-  const districtMap: Record<string, string> = {
-    '東區': 'east', '北區': 'north', '大安區': 'daan', ...
-  };
-  
-  const citySlug = cityMap[city] || city;
-  const districtSlug = district ? districtMap[district] || district : '';
-  
-  return districtSlug ? `${citySlug}-${districtSlug}` : citySlug;
-}
+// Slug 生成邏輯：將城市/區域轉換為 URL-safe 英文 slug
+// 【重要】完整可執行程式碼請見「三專案實作指令清單 → Step 3.1 sync.ts」
+// 範例：'台南市' + '東區' → 'tainan-east'
+const parentSlug = generateParentSlug(gachaLog.city, gachaLog.district);
 ```
 
 #### 1.12.4 ISR 重新驗證函式
@@ -1389,9 +1389,761 @@ Google 搜尋「台北美食」
 
 ---
 
+## 🚀 實作指令清單（三專案分配）
+
+> **使用方式**：將對應區塊複製給各專案負責人，按順序執行
+
+---
+
+### 📦 專案一：後端（本 Replit 專案）
+
+**優先級：最高（必須先完成，其他專案依賴此 API）**
+
+#### Step 1：資料表遷移
+
+**1.1 新增 `seo_itineraries` 表（SEO 行程）**
+
+```typescript
+// shared/schema.ts - 新增 seo_itineraries 表
+export const seoItineraries = pgTable("seo_itineraries", {
+  id: serial("id").primaryKey(),
+  gachaSessionId: varchar("gacha_session_id", { length: 36 }).notNull(),
+  city: text("city").notNull(),
+  district: text("district"),
+  slug: text("slug").notNull(),
+  parentSlug: text("parent_slug").notNull(),
+  title: text("title").notNull(),
+  metaDescription: text("meta_description"),
+  itineraryIntro: text("itinerary_intro").notNull(),
+  placeIds: integer("place_ids").array(),
+  categoryDistribution: jsonb("category_distribution"),
+  status: text("status").default("published"),
+  publishedAt: timestamp("published_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertSeoItinerarySchema = createInsertSchema(seoItineraries).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertSeoItinerary = z.infer<typeof insertSeoItinerarySchema>;
+export type SeoItinerary = typeof seoItineraries.$inferSelect;
+```
+
+**1.2 新增 `merchant_subscriptions` 表（訂閱記錄）**
+
+```typescript
+// shared/schema.ts - 新增 merchant_subscriptions 表
+export const merchantSubscriptions = pgTable("merchant_subscriptions", {
+  id: serial("id").primaryKey(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  
+  // 訂閱類型
+  type: varchar("type", { length: 20 }).notNull(), // 'merchant' | 'place'
+  tier: varchar("tier", { length: 20 }).notNull(), // 'pro' | 'premium'
+  placeId: integer("place_id").references(() => places.id),
+  
+  // 金流資訊
+  provider: varchar("provider", { length: 20 }).notNull(), // 'stripe' | 'recur'
+  providerSubscriptionId: varchar("provider_subscription_id", { length: 255 }).notNull(),
+  providerCustomerId: varchar("provider_customer_id", { length: 255 }),
+  
+  // 狀態
+  status: varchar("status", { length: 20 }).default("active").notNull(),
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  scheduledDowngradeTo: varchar("scheduled_downgrade_to", { length: 20 }),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
+  
+  // 價格
+  amount: integer("amount"),
+  currency: varchar("currency", { length: 10 }).default("TWD"),
+  
+  // 時間戳
+  cancelledAt: timestamp("cancelled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertMerchantSubscriptionSchema = createInsertSchema(merchantSubscriptions).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertMerchantSubscription = z.infer<typeof insertMerchantSubscriptionSchema>;
+export type MerchantSubscription = typeof merchantSubscriptions.$inferSelect;
+```
+
+**1.3 修改 `merchants` 表（新增 3 欄位）**
+
+```typescript
+// shared/schema.ts - 在 merchants 表新增欄位
+// 找到現有 merchants 表定義，新增以下欄位：
+merchantLevelExpiresAt: timestamp("merchant_level_expires_at"),
+stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+recurCustomerId: varchar("recur_customer_id", { length: 255 }),
+```
+
+**1.4 修改 `places` 表（新增 2 欄位）**
+
+```typescript
+// shared/schema.ts - 在 places 表新增欄位
+placeCardTier: varchar("place_card_tier", { length: 20 }).default('free'),
+placeCardTierExpiresAt: timestamp("place_card_tier_expires_at"),
+```
+
+**1.5 執行遷移**
+
+```bash
+# 1. 確保 schema.ts 已更新後，推送至資料庫
+npm run db:push
+
+# 2. 若有衝突，使用 --force（⚠️ 開發環境限定）
+npm run db:push --force
+
+# 3. 確認資料表已建立
+psql $DATABASE_URL -c "\dt"
+# 應該看到 seo_itineraries 和 merchant_subscriptions
+```
+
+```sql
+-- 4. 手動加入唯一索引（db:push 後在 psql 中執行）
+CREATE UNIQUE INDEX IF NOT EXISTS idx_seo_itineraries_slug ON seo_itineraries(slug);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_seo_itineraries_session ON seo_itineraries(gacha_session_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_merchant_subscriptions_provider ON merchant_subscriptions(provider, provider_subscription_id);
+```
+
+> **注意**：本專案使用 `db:push` 直接同步 schema，無需額外執行 `drizzle-kit generate`。若需要版本控制遷移紀錄，可另行設定 migration 流程。
+
+#### Step 2：環境變數
+
+```bash
+# .env 新增
+OFFICIAL_SITE_URL=https://your-official-site.replit.app
+REVALIDATE_SECRET=your-random-secret-32-chars
+SEO_SERVICE_TOKEN=your-seo-service-token
+```
+
+#### Step 3：新增檔案與程式碼模板
+
+> **使用說明**：以下程式碼為可直接使用的模板。請根據專案實際路徑調整 import。Node.js 18+ 原生支援 `fetch`，無需額外安裝。
+
+**3.1 `server/seo/sync.ts`**（SEO 同步邏輯）
+
+```typescript
+// server/seo/sync.ts
+import { db } from '../db';
+import { seoItineraries } from '../../shared/schema';
+import { eq, desc } from 'drizzle-orm';
+
+// 輸入類型定義（對應 gacha_ai_logs 表的欄位）
+interface GachaLogInput {
+  sessionId: string;
+  city: string;
+  district?: string;
+  aiReason: string;
+  orderedPlaceIds: number[];
+  categoryDistribution: Record<string, number>;
+}
+
+// 計算景點重複率
+function calculatePlaceOverlap(a: number[], b: number[]): number {
+  if (!a?.length || !b?.length) return 0;
+  const setA = new Set(a);
+  const setB = new Set(b);
+  const intersection = [...setA].filter(x => setB.has(x));
+  const smaller = Math.min(a.length, b.length);
+  return smaller === 0 ? 0 : intersection.length / smaller;
+}
+
+// 檢查是否重複內容
+async function isDuplicateContent(parentSlug: string, placeIds: number[]): Promise<boolean> {
+  const existing = await db.query.seoItineraries.findMany({
+    where: eq(seoItineraries.parentSlug, parentSlug),
+  });
+  for (const item of existing) {
+    if (calculatePlaceOverlap(item.placeIds || [], placeIds) > 0.7) return true;
+  }
+  return false;
+}
+
+// Slug 生成（完整城市/區域對照表）
+const cityMap: Record<string, string> = {
+  '台北市': 'taipei', '新北市': 'newtaipei', '桃園市': 'taoyuan',
+  '台中市': 'taichung', '台南市': 'tainan', '高雄市': 'kaohsiung',
+  '基隆市': 'keelung', '新竹市': 'hsinchu', '嘉義市': 'chiayi',
+  '新竹縣': 'hsinchu-county', '苗栗縣': 'miaoli', '彰化縣': 'changhua',
+  '南投縣': 'nantou', '雲林縣': 'yunlin', '嘉義縣': 'chiayi-county',
+  '屏東縣': 'pingtung', '宜蘭縣': 'yilan', '花蓮縣': 'hualien',
+  '台東縣': 'taitung', '澎湖縣': 'penghu', '金門縣': 'kinmen', '連江縣': 'lienchiang',
+};
+const districtMap: Record<string, string> = {
+  '東區': 'east', '西區': 'west', '南區': 'south', '北區': 'north', '中區': 'central',
+  '中正區': 'zhongzheng', '大同區': 'datong', '中山區': 'zhongshan', '松山區': 'songshan',
+  '大安區': 'daan', '萬華區': 'wanhua', '信義區': 'xinyi', '士林區': 'shilin',
+  '北投區': 'beitou', '內湖區': 'neihu', '南港區': 'nangang', '文山區': 'wenshan',
+  '板橋區': 'banqiao', '三重區': 'sanchong', '永和區': 'yonghe', '新店區': 'xindian',
+  '左營區': 'zuoying', '鼓山區': 'gushan', '三民區': 'sanmin', '前鎮區': 'qianzhen',
+  '安平區': 'anping', '中西區': 'zhongxi', '永康區': 'yongkang', '仁德區': 'rende',
+};
+
+function generateParentSlug(city: string, district?: string): string {
+  const citySlug = cityMap[city] || city.replace(/市|縣/g, '');
+  const districtSlug = district ? (districtMap[district] || district.replace(/區/g, '')) : '';
+  return districtSlug ? `${citySlug}-${districtSlug}` : citySlug;
+}
+
+// 標題生成
+function generateTitle(city: string, district: string | undefined, categoryDist: Record<string, number>): string {
+  const topCategories = Object.entries(categoryDist || {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([cat]) => cat)
+    .join('、');
+  const location = district ? `${city.replace('市', '')}${district}` : city.replace('市', '');
+  return `${location}一日遊｜${topCategories || '精選景點'}路線`;
+}
+
+// ISR 觸發
+async function triggerISRRevalidation(slug: string, parentSlug: string) {
+  const url = process.env.OFFICIAL_SITE_URL;
+  const secret = process.env.REVALIDATE_SECRET;
+  if (!url || !secret) return;
+  
+  try {
+    await fetch(`${url}/api/revalidate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Revalidate-Secret': secret },
+      body: JSON.stringify({ paths: [`/itinerary/${slug}`, `/itinerary/${parentSlug}`, '/itinerary', '/sitemap.xml'] }),
+    });
+  } catch (e) { console.error('ISR revalidation failed:', e); }
+}
+
+// 主同步函式（在扭蛋完成後呼叫）
+export async function syncToSeoItineraries(gachaLog: GachaLogInput): Promise<void> {
+  if (!gachaLog.aiReason) return;
+  
+  const parentSlug = generateParentSlug(gachaLog.city, gachaLog.district);
+  
+  // 去重檢查
+  if (await isDuplicateContent(parentSlug, gachaLog.orderedPlaceIds)) {
+    console.log(`Skipped: ${parentSlug} - duplicate content`);
+    return;
+  }
+  
+  // 版本號（使用交易）
+  const version = await db.transaction(async (tx) => {
+    const latest = await tx.query.seoItineraries.findFirst({
+      where: eq(seoItineraries.parentSlug, parentSlug),
+      orderBy: desc(seoItineraries.createdAt),
+    });
+    if (!latest) return 1;
+    const match = latest.slug.match(/v(\d+)$/);
+    return match ? parseInt(match[1]) + 1 : 1;
+  });
+  
+  const slug = `${parentSlug}/v${version.toString().padStart(3, '0')}`;
+  const title = generateTitle(gachaLog.city, gachaLog.district, gachaLog.categoryDistribution);
+  
+  await db.insert(seoItineraries).values({
+    gachaSessionId: gachaLog.sessionId,
+    city: gachaLog.city,
+    district: gachaLog.district,
+    slug, parentSlug, title,
+    itineraryIntro: gachaLog.aiReason,
+    placeIds: gachaLog.orderedPlaceIds,
+    categoryDistribution: gachaLog.categoryDistribution,
+    status: 'published',
+  });
+  
+  await triggerISRRevalidation(slug, parentSlug);
+}
+```
+
+**3.2 `server/seo/routes.ts`**（SEO API 端點）
+
+```typescript
+// server/seo/routes.ts
+import { Router } from 'express';
+import { db } from '../db';
+import { seoItineraries } from '../../shared/schema';
+import { eq, desc, sql } from 'drizzle-orm';
+
+const router = Router();
+
+// 驗證 Service Token
+function validateServiceToken(req: any, res: any, next: any) {
+  const token = req.headers['x-service-token'];
+  if (token !== process.env.SEO_SERVICE_TOKEN) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+}
+
+router.use(validateServiceToken);
+
+// GET /api/seo/itineraries - 列出所有行程
+router.get('/itineraries', async (req, res) => {
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
+  const offset = (page - 1) * limit;
+  
+  const [items, countResult] = await Promise.all([
+    db.query.seoItineraries.findMany({
+      where: eq(seoItineraries.status, 'published'),
+      orderBy: desc(seoItineraries.publishedAt),
+      limit, offset,
+    }),
+    db.select({ count: sql<number>`count(*)` }).from(seoItineraries).where(eq(seoItineraries.status, 'published')),
+  ]);
+  
+  res.json({ itineraries: items, pagination: { page, limit, total: Number(countResult[0]?.count || 0) } });
+});
+
+// GET /api/seo/itineraries/:parentSlug - 取得聚合頁
+router.get('/itineraries/:parentSlug', async (req, res) => {
+  const { parentSlug } = req.params;
+  const items = await db.query.seoItineraries.findMany({
+    where: eq(seoItineraries.parentSlug, parentSlug),
+    orderBy: desc(seoItineraries.publishedAt),
+  });
+  if (!items.length) return res.status(404).json({ error: 'Not found' });
+  res.json({ parentSlug, title: items[0].title.split('｜')[0], itineraries: items });
+});
+
+// GET /api/seo/itineraries/:parentSlug/:version - 取得子頁
+router.get('/itineraries/:parentSlug/:version', async (req, res) => {
+  const slug = `${req.params.parentSlug}/${req.params.version}`;
+  const item = await db.query.seoItineraries.findFirst({ where: eq(seoItineraries.slug, slug) });
+  if (!item) return res.status(404).json({ error: 'Not found' });
+  res.json(item);
+});
+
+// GET /api/seo/sitemap - Sitemap 資料
+router.get('/sitemap', async (req, res) => {
+  const items = await db.query.seoItineraries.findMany({
+    where: eq(seoItineraries.status, 'published'),
+    columns: { slug: true, updatedAt: true },
+  });
+  const urls = items.map(i => ({ loc: `/itinerary/${i.slug}`, lastmod: i.updatedAt?.toISOString() }));
+  res.json({ urls });
+});
+
+export default router;
+```
+
+**3.3a Socket.io 整合**（整合至現有架構）
+
+> 本專案已有 `server/socketHandler.ts` 設置 Socket.io。需做以下兩處修改：
+
+**修改 1：在 server/socketHandler.ts 開頭添加 import**
+
+```typescript
+// server/socketHandler.ts（第 1-5 行）- 添加 import
+import { Server as HttpServer } from 'http';
+import { Server, Socket } from 'socket.io';
+import { storage } from './storage';
+import { verifyJwtToken } from './replitAuth';
+import { setSocketIO } from './webhooks/unified';  // 【新增】
+```
+
+**修改 2：在 setupSocketIO 函式中設置 io 實例**
+
+```typescript
+// server/socketHandler.ts（約第 31-44 行）
+export function setupSocketIO(httpServer: HttpServer): Server {
+  const io = new Server(httpServer, {
+    cors: {
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (origin.endsWith('.replit.dev') || origin.endsWith('.replit.app') || origin.includes('localhost') || origin.includes('exp.host')) {
+          return callback(null, true);
+        }
+        callback(null, true);
+      },
+      credentials: true,
+    },
+    transports: ['websocket', 'polling'],
+  });
+
+  // 【新增】設置給 webhook handler 使用
+  setSocketIO(io);
+
+  // 接下來是現有的認證 middleware（io.use）和連接處理（io.on）
+  // 不需修改這些現有邏輯
+```
+
+**修改 3：在 connection handler 中添加商家房間事件**
+
+在現有的 `io.on('connection')` handler 內，於 `if (!userId) { socket.disconnect(); return; }` 之後添加：
+
+```typescript
+// 【新增】商家加入專屬房間（添加在現有事件處理之前）
+socket.on('join:merchant', (merchantId: number) => {
+  socket.join(`merchant:${merchantId}`);
+  console.log(`[Socket] Merchant ${merchantId} joined room`);
+});
+```
+
+**3.3b `server/webhooks/unified.ts`**（統一 Webhook 處理）
+
+```typescript
+// server/webhooks/unified.ts
+import { db } from '../db';
+import { merchantSubscriptions, merchants } from '../../shared/schema';
+import { eq, and } from 'drizzle-orm';
+import type { Server as SocketServer } from 'socket.io';
+
+// Socket.io instance（從主檔案傳入或直接 import）
+let io: SocketServer | null = null;
+export function setSocketIO(socketIO: SocketServer) { io = socketIO; }
+
+type WebhookEvent = { provider: 'stripe' | 'recur'; eventType: string; subscriptionId: string; data: any };
+
+const actionMap: Record<string, Record<string, string>> = {
+  stripe: {
+    'checkout.session.completed': 'subscription_created',
+    'invoice.paid': 'renewal_success',
+    'invoice.payment_failed': 'payment_failed',
+    'customer.subscription.updated': 'subscription_updated',
+    'customer.subscription.deleted': 'subscription_cancelled',
+  },
+  recur: {
+    'checkout.completed': 'subscription_created',
+    'payment.success': 'renewal_success',
+    'payment.failed': 'payment_failed',
+    'subscription.updated': 'subscription_updated',
+    'subscription.cancelled': 'subscription_cancelled',
+    'subscription.expired': 'subscription_expired',
+  },
+};
+
+export async function handleWebhookEvent(event: WebhookEvent) {
+  const action = actionMap[event.provider]?.[event.eventType];
+  if (!action) return;
+  
+  const subscription = await db.query.merchantSubscriptions.findFirst({
+    where: and(
+      eq(merchantSubscriptions.providerSubscriptionId, event.subscriptionId),
+      eq(merchantSubscriptions.provider, event.provider),
+    ),
+  });
+  if (!subscription) return;
+  
+  switch (action) {
+    case 'renewal_success':
+      await db.update(merchantSubscriptions).set({
+        status: 'active',
+        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(),
+      }).where(eq(merchantSubscriptions.id, subscription.id));
+      break;
+    case 'payment_failed':
+      await db.update(merchantSubscriptions).set({ status: 'past_due', updatedAt: new Date() })
+        .where(eq(merchantSubscriptions.id, subscription.id));
+      break;
+    case 'subscription_cancelled':
+    case 'subscription_expired':
+      await db.transaction(async (tx) => {
+        await tx.update(merchantSubscriptions).set({ status: 'cancelled', cancelledAt: new Date() })
+          .where(eq(merchantSubscriptions.id, subscription.id));
+        await tx.update(merchants).set({ merchantLevel: 'free', merchantLevelExpiresAt: null })
+          .where(eq(merchants.id, subscription.merchantId));
+      });
+      break;
+  }
+  
+  // 通知 App（透過 Socket.io）
+  const merchant = await db.query.merchants.findFirst({ where: eq(merchants.id, subscription.merchantId) });
+  if (merchant && io) {
+    io.to(`merchant:${merchant.id}`).emit('subscription:updated', {
+      merchantId: merchant.id,
+      merchantLevel: merchant.merchantLevel,
+      merchantLevelExpiresAt: merchant.merchantLevelExpiresAt,
+    });
+  }
+}
+```
+
+#### Step 4：API 端點清單
+
+| Method | Endpoint | 說明 | 認證 |
+|--------|----------|------|------|
+| GET | `/api/seo/itineraries` | 列出所有行程（分頁） | Service Token |
+| GET | `/api/seo/itineraries/:parentSlug` | 取得聚合頁資料 | Service Token |
+| GET | `/api/seo/itineraries/:parentSlug/:version` | 取得子頁資料 | Service Token |
+| GET | `/api/seo/sitemap` | Sitemap 資料 | Service Token |
+| POST | `/api/webhooks/stripe` | Stripe Webhook | Signature |
+| POST | `/api/webhooks/recur` | Recur Webhook | Signature |
+
+#### Step 5：驗證方式
+
+```bash
+# 1. 確認資料表建立
+npm run db:push
+
+# 2. 確認索引建立
+psql -c "\d seo_itineraries"
+psql -c "\d merchant_subscriptions"
+
+# 3. 測試 SEO API（應回傳空陣列或現有資料）
+curl -H "X-Service-Token: $SEO_SERVICE_TOKEN" http://localhost:5000/api/seo/itineraries
+
+# 4. 手動測試同步：在 App 執行一次扭蛋，確認 seo_itineraries 新增記錄
+psql -c "SELECT id, slug, title FROM seo_itineraries ORDER BY id DESC LIMIT 5"
+
+# 5. 測試 Webhook（使用 Stripe CLI）
+stripe listen --forward-to localhost:5000/api/webhooks/stripe
+stripe trigger checkout.session.completed
+```
+
+---
+
+### 🌐 專案二：官方網站（Next.js 15）
+
+**優先級：中（依賴後端 API）**
+
+#### 前置條件
+- 後端 Step 1-4 完成
+- 取得 `SEO_SERVICE_TOKEN` 和 `REVALIDATE_SECRET`
+
+#### Step 1：環境變數
+
+```bash
+# .env.local
+BACKEND_API_URL=https://your-backend.replit.app
+SEO_SERVICE_TOKEN=same-as-backend
+REVALIDATE_SECRET=same-as-backend
+```
+
+#### Step 2：新增檔案清單
+
+| 檔案 | 內容 |
+|------|------|
+| `lib/api.ts` | 後端 API 呼叫封裝 |
+| `app/itinerary/page.tsx` | 城市列表頁 |
+| `app/itinerary/[parentSlug]/page.tsx` | 聚合頁 |
+| `app/itinerary/[parentSlug]/[version]/page.tsx` | 子頁 |
+| `app/api/revalidate/route.ts` | ISR 重新驗證 API |
+| `app/sitemap.ts` | 動態 Sitemap |
+| `app/for-business/page.tsx` | 商家合作頁 |
+| `components/ItineraryCard.tsx` | 行程卡片元件 |
+
+#### Step 3：API 呼叫範例
+
+```typescript
+// lib/api.ts
+const API_URL = process.env.BACKEND_API_URL;
+const TOKEN = process.env.SEO_SERVICE_TOKEN;
+
+export async function fetchItineraries(page = 1, limit = 20) {
+  const res = await fetch(`${API_URL}/api/seo/itineraries?page=${page}&limit=${limit}`, {
+    headers: { 'X-Service-Token': TOKEN },
+    next: { revalidate: 3600 },
+  });
+  return res.json();
+}
+
+export async function fetchItineraryBySlug(parentSlug: string, version?: string) {
+  const endpoint = version 
+    ? `${API_URL}/api/seo/itineraries/${parentSlug}/${version}`
+    : `${API_URL}/api/seo/itineraries/${parentSlug}`;
+  const res = await fetch(endpoint, {
+    headers: { 'X-Service-Token': TOKEN },
+    next: { revalidate: 3600 },
+  });
+  return res.json();
+}
+```
+
+#### Step 4：ISR Revalidation API
+
+```typescript
+// app/api/revalidate/route.ts
+import { revalidatePath } from 'next/cache';
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(request: NextRequest) {
+  const secret = request.headers.get('X-Revalidate-Secret');
+  if (secret !== process.env.REVALIDATE_SECRET) {
+    return NextResponse.json({ error: 'Invalid secret' }, { status: 401 });
+  }
+  
+  const { paths } = await request.json();
+  for (const path of paths) {
+    revalidatePath(path);
+  }
+  
+  return NextResponse.json({ revalidated: true, paths });
+}
+```
+
+#### Step 5：驗證方式
+
+```bash
+# 1. 啟動開發伺服器
+npm run dev
+
+# 2. 訪問行程頁面
+open http://localhost:3000/itinerary
+
+# 3. 測試 ISR API
+curl -X POST -H "X-Revalidate-Secret: $REVALIDATE_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"paths":["/itinerary"]}' \
+  http://localhost:3000/api/revalidate
+
+# 4. Lighthouse SEO 分數 ≥ 90
+```
+
+---
+
+### 📱 專案三：Expo App（React Native）
+
+**優先級：低（依賴後端 Webhook 完成）**
+
+#### 前置條件
+- 後端 Webhook 處理完成
+- Socket.io 連線已建立
+
+#### Step 1：新增檔案清單
+
+| 檔案 | 內容 |
+|------|------|
+| `src/services/api/subscription.ts` | 訂閱 API 呼叫 |
+| `src/store/merchantSlice.ts` | 商家狀態管理 |
+| `src/hooks/useMerchantSubscription.ts` | 訂閱狀態 Hook |
+| `src/components/SubscriptionStatusCard.tsx` | 訂閱狀態卡片 |
+
+#### Step 2：Socket.io 事件監聽
+
+```typescript
+// src/services/socket.ts - 新增事件監聽
+socket.on('subscription:updated', (data: {
+  merchantId: number;
+  merchantLevel: 'free' | 'pro' | 'premium';
+  merchantLevelExpiresAt: string | null;
+  placeCardTierUpdates?: { placeId: number; tier: string }[];
+}) => {
+  // 更新本地商家狀態
+  store.dispatch(updateMerchantLevel(data));
+  
+  // 顯示通知
+  Toast.show({
+    type: 'success',
+    text1: '訂閱已更新',
+    text2: `已升級至 ${data.merchantLevel} 方案`,
+  });
+});
+```
+
+#### Step 3：權限檢查邏輯
+
+```typescript
+// src/hooks/useMerchantPermissions.ts
+export function useMerchantPermissions() {
+  const merchantLevel = useSelector(state => state.merchant.level);
+  
+  const maxPlaceCards = {
+    free: 1,
+    pro: 5,
+    premium: 20,
+  }[merchantLevel];
+  
+  const hasDataAnalytics = merchantLevel !== 'free';
+  
+  return { maxPlaceCards, hasDataAnalytics };
+}
+```
+
+#### Step 4：驗證方式
+
+```bash
+# 1. 啟動 Expo
+npx expo start
+
+# 2. 登入商家帳號，確認訂閱狀態顯示
+
+# 3. 後端模擬 Socket.io 事件，確認 App 即時更新
+# （或透過 Stripe/Recur 測試付款觸發 Webhook）
+
+# 4. 確認行程卡數量限制正確執行
+```
+
+---
+
+### 🔗 三專案接口定義
+
+#### SeoItinerary DTO（統一格式）
+
+```typescript
+interface SeoItinerary {
+  id: number;
+  slug: string;
+  parentSlug: string;
+  title: string;
+  itineraryIntro: string;
+  placeIds: number[];
+  categoryDistribution: Record<string, number>;
+  status: 'published' | 'draft';
+  publishedAt: string;
+}
+```
+
+#### Socket.io 事件格式
+
+```typescript
+// 事件名：subscription:updated
+interface SubscriptionUpdatedEvent {
+  merchantId: number;
+  merchantLevel: 'free' | 'pro' | 'premium';
+  merchantLevelExpiresAt: string | null;
+  placeCardTierUpdates?: {
+    placeId: number;
+    tier: 'free' | 'pro' | 'premium';
+    expiresAt: string | null;
+  }[];
+}
+```
+
+#### Webhook 內部格式
+
+```typescript
+// 統一 Webhook 處理入口
+interface UnifiedWebhookEvent {
+  provider: 'stripe' | 'recur';
+  eventType: string;
+  subscriptionId: string;
+  data: any;
+}
+```
+
+---
+
+### ⏱️ 實作順序總覽
+
+```
+Phase 1: 後端基礎（1-2 天）
+├── 資料表遷移
+├── SEO API 端點
+└── 同步邏輯（去重 + ISR）
+
+Phase 2: 後端訂閱（2-3 天）
+├── 統一 Webhook 處理
+├── 訂閱狀態機
+└── Socket.io 推送
+
+Phase 3: 官網（2-3 天）
+├── 行程頁面（聚合頁 + 子頁）
+├── ISR 重新驗證
+└── Sitemap + SEO 優化
+
+Phase 4: App（1-2 天）
+├── Socket.io 監聽
+├── 訂閱狀態顯示
+└── 權限限制 UI
+```
+
+---
+
 ## 📝 Changelog
 
 | 日期 | 版本 | 變更內容 |
 |------|------|---------|
+| 2026-01-05 | 1.2 | 新增：三專案實作指令清單、接口定義、實作順序 |
 | 2026-01-05 | 1.1 | 修正：金流由用戶自選（非自動導向）、官網為現有 Replit 專案 |
 | 2026-01-05 | 1.0 | 初版設計藍圖 |
