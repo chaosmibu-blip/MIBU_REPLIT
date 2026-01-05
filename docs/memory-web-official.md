@@ -23,21 +23,37 @@ Mibu 官方網站前端，負責 SEO 內容展示、商家訂閱購買、品牌�
 
 ### 公開頁面（SEO）
 ```
-/                           # 首頁
-/about                      # 關於 Mibu
-/features                   # 功能介紹
-/pricing                    # 價格方案
+/                                    # 首頁
+/about                               # 關於 Mibu
+/features                            # 功能介紹
 
-# 程式化 SEO 頁面
-/itinerary                  # 行程列表（分頁）
-/itinerary/[slug]           # 行程詳情（SSG）
-/city/[city]                # 城市頁面
-/city/[city]/[district]     # 區域頁面
+# 程式化 SEO 頁面（聚合頁 + 子頁結構）
+/itinerary                           # 所有城市列表
+/itinerary/[parentSlug]              # 聚合頁：如 /itinerary/tainan-east
+/itinerary/[parentSlug]/[version]    # 子頁：如 /itinerary/tainan-east/v001
+
+# 商家 SEO（獨立頁面，不放在行程頁）
+/for-business                        # 商家合作頁（旅遊行銷、店家曝光）
 
 # SEO 資源
-/sitemap.xml                # 動態 Sitemap
-/robots.txt                 # 爬蟲規則
+/sitemap.xml                         # 動態 Sitemap
+/robots.txt                          # 爬蟲規則
 ```
+
+### 程式化 SEO 說明
+
+**資料來源**：直接沿用 `gacha_ai_logs.aiReason`（AI 排序理由）
+
+**頁面結構**：
+- **聚合頁**：`/itinerary/tainan-east` → 台南東區所有行程總覽
+- **子頁**：`/itinerary/tainan-east/v001` → 單一行程詳情
+
+**標題格式**：`{城市}{區域}一日遊｜{前3分類}精選路線`
+- 範例：「台南東區一日遊｜美食、景點、購物精選路線」
+
+**同步時機**：用戶扭蛋完成後自動同步，不需人工審核
+
+**商家策略**：行程頁保持純淨，只在 Footer 放「我是商家」連結
 
 ### 商家專區
 ```
@@ -64,16 +80,24 @@ Mibu 官方網站前端，負責 SEO 內容展示、商家訂閱購買、品牌�
 ### SEO API
 
 ```typescript
-// 取得行程列表
+// 取得所有行程（分頁）
 GET /api/seo/itineraries
-Query: { page, limit, city, category }
+Query: { page, limit, city }
 Response: {
   itineraries: SeoItinerary[];
   pagination: { page, limit, total };
 }
 
-// 取得單一行程
-GET /api/seo/itineraries/:slug
+// 取得聚合頁下所有子頁
+GET /api/seo/itineraries/:parentSlug
+Response: {
+  parentSlug: string;
+  title: string;  // 如「台南東區一日遊」
+  itineraries: SeoItinerary[];  // 該區域所有行程
+}
+
+// 取得單一子頁
+GET /api/seo/itineraries/:parentSlug/:version
 Response: SeoItinerary
 
 // 取得 Sitemap 資料
@@ -87,8 +111,8 @@ Response: { urls: SitemapUrl[] }
 // 取得當前訂閱
 GET /api/merchant/subscription
 Response: {
-  merchantTier: 'free' | 'pro' | 'premium';
-  merchantTierExpiresAt: string | null;
+  merchantLevel: 'free' | 'pro' | 'premium';
+  merchantLevelExpiresAt: string | null;
   placeSubscriptions: PlaceSubscription[];
 }
 

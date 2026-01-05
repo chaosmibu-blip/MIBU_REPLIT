@@ -22,180 +22,231 @@
 
 ### 1.1 核心概念
 
-將 Gacha V3 的 AI 排序理由，轉換為 **SEO 友善的行程介紹**，生成數千個靜態頁面供 Google 索引。
+**直接沿用現有 `gacha_ai_logs.aiReason`**（AI 排序理由），轉換為 SEO 友善的行程介紹頁面。
+
+- **不需重新生成長文章**，現有 AI 理由已經足夠
+- **聚合頁 + 子頁結構**，讓 Google 爬蟲能索引所有內容
+- **標題自動帶入七大類關鍵字**
 
 ```
 目標關鍵字範例：
-- 「台北大安區一日遊」
-- 「高雄美食推薦」
-- 「宜蘭親子景點」
-- 「台中文青行程」
+- 「台南東區一日遊｜美食、景點、購物精選路線」
+- 「台中北區一日遊｜美食、景點、購物精選路線」
 ```
 
-### 1.2 資料流程
+### 1.2 資料來源
+
+現有 `gacha_ai_logs` 表已儲存所需資料：
+
+| 欄位 | 用途 |
+|------|------|
+| `city` | 城市（如「台南市」） |
+| `district` | 區域（如「東區」） |
+| `aiReason` | **AI 排序理由** → 直接作為行程介紹 |
+| `orderedPlaceIds` | 排序後景點 ID → 顯示景點卡片 |
+| `categoryDistribution` | 分類分佈 → 自動生成標題關鍵字 |
+
+**範例 aiReason**：
+> 「行程集中於台南東區。早晨先至後甲圓環享用在地虱目魚早餐，接著到鄰近的小東公園散步。下午安排DIY手作體驗...」
+
+### 1.3 資料流程
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Gacha V3 (後端)                                                │
-│  ┌─────────────┐    ┌─────────────────────────┐                │
-│  │ AI 排序請求 │ →  │ Gemini 3 Pro Preview    │                │
-│  └─────────────┘    │ (修改 prompt)           │                │
-│                      │ 輸出: itineraryIntro    │                │
-│                      │ + seoKeywords           │                │
-│                      └───────────┬─────────────┘                │
-│                                  ↓                              │
-│                      ┌─────────────────────────┐                │
-│                      │ seo_itineraries 表      │                │
-│                      │ (新增資料表)            │                │
-│                      └───────────┬─────────────┘                │
-└──────────────────────────────────┼──────────────────────────────┘
+│  用戶在 App 扭蛋                                                 │
+│         ↓                                                       │
+│  gacha_ai_logs 儲存（現有流程）                                  │
+│  ├── city, district                                             │
+│  ├── aiReason（AI 排序理由）                                    │
+│  ├── orderedPlaceIds                                            │
+│  └── categoryDistribution                                       │
+│         ↓                                                       │
+│  【新增】同步到 seo_itineraries                                  │
+│  ├── 自動生成 title（帶七大類關鍵字）                            │
+│  ├── 自動生成 slug                                              │
+│  └── 歸類到對應聚合頁                                           │
+└─────────────────────────────────────────────────────────────────┘
                                    ↓
-┌──────────────────────────────────┼──────────────────────────────┐
-│  官方網站 (Next.js 15)           │                              │
-│                      ┌───────────┴─────────────┐                │
-│                      │ SSG/ISR 頁面生成        │                │
-│                      │ /itinerary/[slug]       │                │
-│                      └───────────┬─────────────┘                │
-│                                  ↓                              │
+┌─────────────────────────────────────────────────────────────────┐
+│  官方網站 (Next.js)                                              │
+│                                                                  │
+│  聚合頁：/itinerary/tainan-east                                  │
+│  ├── 標題：台南東區一日遊｜美食、景點、購物精選路線               │
+│  └── 多個行程卡片預覽 → 連結到子頁                               │
+│                                                                  │
+│  子頁：/itinerary/tainan-east/v001                               │
+│  ├── AI 介紹（aiReason）                                         │
+│  ├── 景點卡片（沿用 App 樣式）                                   │
+│  └── 不放商家 CTA（保持純淨）                                    │
+│                                                                  │
 │  ┌─────────────┐   ┌─────────────────────────┐                  │
 │  │ sitemap.xml │ + │ Schema.org JSON-LD      │                  │
 │  └─────────────┘   └─────────────────────────┘                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 1.3 新增資料表：`seo_itineraries`
+### 1.4 頁面結構
+
+| 類型 | URL 範例 | 內容 |
+|------|----------|------|
+| **聚合頁** | `/itinerary/tainan-east` | 台南東區所有行程總覽 |
+| **子頁** | `/itinerary/tainan-east/v001` | 單一行程詳情 |
+
+### 1.5 標題自動生成邏輯
+
+根據 `categoryDistribution` 取前 3 個分類：
+
+```javascript
+// 輸入：{ 美食: 3, 景點: 1, 購物: 1 }
+// 輸出：「台南東區一日遊｜美食、景點、購物精選路線」
+
+function generateTitle(city, district, categoryDistribution) {
+  const topCategories = Object.entries(categoryDistribution)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([cat]) => cat)
+    .join('、');
+  
+  return `${city}${district}一日遊｜${topCategories}精選路線`;
+}
+```
+
+### 1.6 Slug 生成規則
+
+| 城市 | 區域 | 聚合頁 slug | 子頁 slug |
+|------|------|-------------|-----------|
+| 台南市 | 東區 | `tainan-east` | `tainan-east/v001` |
+| 台中市 | 北區 | `taichung-north` | `taichung-north/v002` |
+
+### 1.7 商家 SEO 策略
+
+**行程頁保持純淨**，不放商家 CTA（避免用戶誤以為推薦付費商家）。
+
+商家 SEO 靠獨立頁面：
+
+| 頁面 | URL | 目標關鍵字 |
+|------|-----|-----------|
+| 商家合作頁 | `/for-business` | 旅遊行銷、店家曝光、Mibu 合作 |
+
+行程頁只在 **Footer** 放「我是商家」連結。
+
+### 1.8 同步觸發時機
+
+- **自動觸發**：每次扭蛋完成後
+- **自動發布**：不需人工審核
+- **條件過濾**：只同步有完整 aiReason 的記錄
+
+### 1.9 `seo_itineraries` 資料表
 
 ```typescript
 // shared/schema.ts 新增
-
 export const seoItineraries = pgTable("seo_itineraries", {
   id: serial("id").primaryKey(),
   
-  // 地區關聯
-  regionId: integer("region_id").references(() => regions.id),
-  districtId: integer("district_id").references(() => districts.id),
-  city: text("city").notNull(),           // 冗餘欄位，方便查詢
-  district: text("district"),             // 可為 null（城市級別）
+  // 關聯 gacha_ai_logs
+  gachaSessionId: varchar("gacha_session_id", { length: 36 }).notNull(),
   
-  // SEO 核心內容
-  slug: text("slug").notNull().unique(),  // URL slug: "taipei-daan-one-day-trip"
-  title: text("title").notNull(),         // 頁面標題
-  metaDescription: text("meta_description"), // Meta Description (160 字內)
+  // 地區資訊（從 gacha_ai_logs 同步）
+  city: text("city").notNull(),
+  district: text("district"),
   
-  // AI 生成內容
-  itineraryIntro: text("itinerary_intro").notNull(), // 行程介紹 (800-1500 字)
-  seoKeywords: text("seo_keywords").array(),         // ["台北美食", "大安區景點"]
+  // SEO 內容（自動生成）
+  slug: text("slug").notNull(),               // 子頁 slug: "tainan-east/v001"
+  parentSlug: text("parent_slug").notNull(),  // 聚合頁 slug: "tainan-east"
+  title: text("title").notNull(),             // 自動生成標題
+  metaDescription: text("meta_description"),
   
-  // 關聯景點
-  placeIds: integer("place_ids").array(), // 包含的景點 ID 陣列
-  placeSummary: jsonb("place_summary"),   // 精簡景點資訊 JSON
+  // 內容（從 gacha_ai_logs.aiReason 同步）
+  itineraryIntro: text("itinerary_intro").notNull(),
   
-  // 分類標籤
-  category: text("category"),             // 美食/景點/文化/親子
-  duration: text("duration"),             // 半日/一日/兩日
-  targetAudience: text("target_audience"), // 情侶/家庭/朋友/獨旅
+  // 景點資訊
+  placeIds: integer("place_ids").array(),
+  categoryDistribution: jsonb("category_distribution"),
   
-  // 狀態管理
-  status: text("status").default("draft"),  // draft/published/archived
-  publishedAt: timestamp("published_at"),
-  
-  // 版本與來源
-  gachaSessionId: text("gacha_session_id"), // 關聯扭蛋 session
-  version: integer("version").default(1),
-  
-  // 內容追蹤（用於 10% 變更閾值計算）
-  contentHash: varchar("content_hash", { length: 64 }), // SHA-256 of source place IDs
-  sourcePlaceIds: text("source_place_ids"), // JSON array of place IDs at generation time
+  // 狀態（自動發布）
+  status: text("status").default("published"),
+  publishedAt: timestamp("published_at").defaultNow(),  // 發布時間（自動設定）
   
   // 時間戳
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-}, (table) => [
-  // 使用 COALESCE 處理 NULL district（避免 NULL 繞過唯一索引）
-  // 實際 SQL: CREATE UNIQUE INDEX ... ON (region_id, COALESCE(district_id, 0), category)
-]);
+});
 ```
 
-### 1.4 Gemini Prompt 修改
-
-**現有 Prompt（排序用）**
-```
-請根據以下景點資料，按照推薦優先順序排序，並說明理由...
-```
-
-**新增 Prompt（SEO 介紹生成）**
-```
-你是一位專業的旅遊內容編輯，請根據以下 {city} {district} 的景點資料，撰寫一篇 SEO 友善的行程介紹文章。
-
-【輸出要求】
-1. title: 吸引人的標題（30 字內，包含地區名）
-2. metaDescription: Google 搜尋描述（160 字內）
-3. itineraryIntro: 行程介紹文章（800-1500 字）
-   - 第一段：地區特色與行程亮點
-   - 第二段：推薦路線與時間安排
-   - 第三段：美食推薦與用餐建議
-   - 第四段：交通資訊與實用提示
-4. seoKeywords: 5-8 個相關關鍵字陣列
-
-【景點資料】
-{placesJson}
-
-【輸出格式】JSON
-```
-
-### 1.5 官網頁面結構
+### 1.10 官網頁面結構
 
 ```
-/                           # 首頁
-/itinerary                  # 行程列表
-/itinerary/[slug]           # 行程詳情頁 (SSG)
-/city/[city]                # 城市頁面
-/city/[city]/[district]     # 區域頁面
+/                                    # 首頁
+/itinerary                           # 所有城市列表
+/itinerary/[parentSlug]              # 聚合頁：如 /itinerary/tainan-east
+/itinerary/[parentSlug]/[version]    # 子頁：如 /itinerary/tainan-east/v001
 
-/sitemap.xml                # 動態 Sitemap
-/robots.txt                 # 爬蟲規則
+/for-business                        # 商家合作頁（獨立 SEO）
+
+/sitemap.xml                         # 動態 Sitemap
+/robots.txt                          # 爬蟲規則
 ```
 
-### 1.6 API 端點
+### 1.11 API 端點
 
-| Method | Endpoint | 說明 | 認證 |
-|--------|----------|------|------|
-| GET | /api/seo/itineraries | 列出所有已發布行程 | 公開（Service Token） |
-| GET | /api/seo/itineraries/:slug | 取得單一行程 | 公開 |
-| GET | /api/seo/sitemap | 取得 Sitemap 資料 | 公開 |
-| POST | /api/seo/itineraries/generate | 觸發 AI 生成 | Admin Only |
-| PATCH | /api/seo/itineraries/:id/publish | 發布行程 | Admin Only |
-| POST | /api/seo/revalidate | 觸發 ISR 重新驗證 | Service Token |
+| Method | Endpoint | 說明 |
+|--------|----------|------|
+| GET | /api/seo/itineraries | 列出所有已發布行程 |
+| GET | /api/seo/itineraries/:parentSlug | 取得聚合頁下所有子頁 |
+| GET | /api/seo/itineraries/:parentSlug/:version | 取得單一子頁 |
+| GET | /api/seo/sitemap | 取得 Sitemap 資料 |
 
-### 1.7 資料來源與 ISR 重新驗證
+### 1.12 同步邏輯與 ISR 重新驗證
 
-#### 資料來源映射
+#### 從 gacha_ai_logs 同步到 seo_itineraries
+
 ```typescript
-// 從現有資料表取得 regionId 和 districtId
-const populateSeoItinerary = async (city: string, district?: string) => {
-  // 1. 從 regions 表取得 regionId
-  const region = await db.query.regions.findFirst({
-    where: eq(regions.nameZh, city)
+// 扭蛋完成後自動同步
+async function syncToSeoItineraries(gachaLog: GachaAiLog) {
+  // 1. 只同步有 aiReason 的記錄
+  if (!gachaLog.aiReason) return;
+  
+  // 2. 生成 slug
+  const parentSlug = generateParentSlug(gachaLog.city, gachaLog.district);
+  const version = await getNextVersion(parentSlug);
+  const slug = `${parentSlug}/v${version.toString().padStart(3, '0')}`;
+  
+  // 3. 自動生成標題
+  const title = generateTitle(
+    gachaLog.city, 
+    gachaLog.district, 
+    gachaLog.categoryDistribution
+  );
+  
+  // 4. 存入 seo_itineraries
+  await db.insert(seoItineraries).values({
+    gachaSessionId: gachaLog.sessionId,
+    city: gachaLog.city,
+    district: gachaLog.district,
+    slug,
+    parentSlug,
+    title,
+    itineraryIntro: gachaLog.aiReason,
+    placeIds: gachaLog.orderedPlaceIds,
+    categoryDistribution: gachaLog.categoryDistribution,
+    status: 'published',  // 自動發布
   });
-  
-  // 2. 如果有區域，從 districts 表取得 districtId
-  let districtRecord = null;
-  if (district && region) {
-    districtRecord = await db.query.districts.findFirst({
-      where: and(
-        eq(districts.regionId, region.id),
-        eq(districts.nameZh, district)
-      )
-    });
-  }
-  
-  return {
-    regionId: region?.id || null,
-    districtId: districtRecord?.id || null,
-    city,
-    district,
+}
+
+// Slug 生成（城市+區域 → 英文）
+function generateParentSlug(city: string, district?: string): string {
+  const cityMap: Record<string, string> = {
+    '台南市': 'tainan', '台中市': 'taichung', '台北市': 'taipei', ...
   };
-};
+  const districtMap: Record<string, string> = {
+    '東區': 'east', '北區': 'north', '大安區': 'daan', ...
+  };
+  
+  const citySlug = cityMap[city] || city;
+  const districtSlug = district ? districtMap[district] || district : '';
+  
+  return districtSlug ? `${citySlug}-${districtSlug}` : citySlug;
+}
 ```
 
 #### ISR 重新驗證觸發機制
@@ -212,14 +263,14 @@ app.patch("/api/seo/itineraries/:id/publish", async (req, res) => {
     .where(eq(seoItineraries.id, Number(id)))
     .returning();
   
-  // 2. 通知官網進行 ISR 重新驗證
-  await triggerISRRevalidation(itinerary[0].slug);
+  // 2. 通知官網進行 ISR 重新驗證（包含子頁和聚合頁）
+  await triggerISRRevalidation(itinerary[0].slug, itinerary[0].parentSlug);
   
   return res.json({ success: true, itinerary: itinerary[0] });
 });
 
 // ISR 重新驗證函式
-const triggerISRRevalidation = async (slug: string) => {
+const triggerISRRevalidation = async (slug: string, parentSlug: string) => {
   const OFFICIAL_SITE_URL = process.env.OFFICIAL_SITE_URL; // https://mibu.tw
   const REVALIDATE_SECRET = process.env.REVALIDATE_SECRET;
   
@@ -233,9 +284,10 @@ const triggerISRRevalidation = async (slug: string) => {
       },
       body: JSON.stringify({
         paths: [
-          `/itinerary/${slug}`,
-          '/itinerary',        // 列表頁也需要更新
-          '/sitemap.xml',      // Sitemap 也需要更新
+          `/itinerary/${slug}`,          // 子頁
+          `/itinerary/${parentSlug}`,    // 聚合頁（必須更新！）
+          '/itinerary',                  // 城市列表頁
+          '/sitemap.xml',                // Sitemap
         ],
       }),
     });
