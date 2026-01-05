@@ -9,11 +9,13 @@ Mibu 官方網站前端，負責 SEO 內容展示、商家訂閱購買、品牌�
 
 | 項目 | 選擇 | 說明 |
 |------|------|------|
-| 框架 | Next.js 15 (App Router) | SSG/ISR 支援 SEO |
+| 框架 | 待確認（現有 Replit 專案） | 需擴充 SEO 頁面與訂閱功能 |
 | 樣式 | Tailwind CSS | 與 App 風格一致 |
 | 狀態管理 | React Query | API 快取 |
-| 金流 | Stripe + Recur SDK | 海外+台灣 |
-| 部署 | Vercel 或 Replit | 待定 |
+| 金流 | Stripe + Recur SDK | 用戶自選付款方式 |
+| 部署 | Replit | 已建立專案 |
+
+> **現況**：官網專案已在另一個 Replit 建立，目前僅有隱私權政策、使用條款頁面
 
 ---
 
@@ -113,12 +115,24 @@ Response: { success: true }
 
 ## 金流整合
 
-### 國家偵測邏輯
-```typescript
-// 根據 IP 或用戶設定判斷
-const getPaymentProvider = (country: string) => {
-  if (country === 'TW') return 'recur';
-  return 'stripe';
+### 付款方式選擇（用戶自選）
+```tsx
+// 訂閱購買頁面 - 讓用戶自行選擇付款方式
+const PaymentMethodSelector = ({ onSelect }) => {
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      <button onClick={() => onSelect('stripe')} className="payment-option">
+        <CreditCard className="w-8 h-8" />
+        <span>信用卡</span>
+        <span className="text-sm text-gray-500">Visa / Mastercard / JCB</span>
+      </button>
+      <button onClick={() => onSelect('recur')} className="payment-option">
+        <Building className="w-8 h-8" />
+        <span>台灣在地支付</span>
+        <span className="text-sm text-gray-500">ATM / 超商 / 信用卡</span>
+      </button>
+    </div>
+  );
 };
 ```
 
@@ -279,4 +293,5 @@ NEXT_PUBLIC_SITE_URL=https://mibu.tw
 
 | 日期 | 變更內容 |
 |------|---------|
+| 2026-01-05 | 修正：金流為用戶自選（非自動導向）、官網為現有 Replit 專案 |
 | 2026-01-05 | 初版記憶庫建立 |
