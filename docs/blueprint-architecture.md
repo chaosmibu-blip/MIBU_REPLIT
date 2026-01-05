@@ -28,7 +28,7 @@
 | 項目 | 說明 |
 |------|------|
 | `server/lib/` | 已模組化（placeGenerator、categoryMapping 等） |
-| `docs/` | 13 個記憶庫，文件系統完善 |
+| `docs/` | 15 個記憶庫，文件系統完善 |
 | `shared/schema.ts` | 型別定義集中 |
 
 ---
@@ -84,7 +84,48 @@ server/
 #### 拆分規則
 - 每個路由檔案 **< 500 行**
 - 業務邏輯抽到 `services/`
-- 資料操作保留在 `storage.ts`（或未來拆分）
+- 資料操作保留在 `storage.ts`（Phase 1b 處理）
+
+#### 跨領域關注點（共用邏輯）
+
+拆分後需統一管理的共用邏輯：
+
+| 類型 | 檔案位置 | 內容 |
+|------|---------|------|
+| 認證中間件 | `server/middleware/auth.ts` | JWT 驗證、角色檢查 |
+| 錯誤處理 | `server/middleware/errorHandler.ts` | 統一錯誤格式 |
+| 請求驗證 | `server/middleware/validate.ts` | Zod schema 驗證 |
+| 共用型別 | `shared/types/` | DTOs、API 回應型別 |
+| Rate Limit | `server/middleware/rateLimit.ts` | API 限流 |
+
+---
+
+### 一-b、Storage 層拆分（Phase 1b）
+
+> **目標**：將 2,788 行的 `storage.ts` 按領域拆分
+
+#### 目標結構
+```
+server/storage/
+├── index.ts           # 統一匯出
+├── userStorage.ts     # 用戶相關
+├── placeStorage.ts    # 景點相關
+├── gachaStorage.ts    # 扭蛋相關
+├── merchantStorage.ts # 商家相關
+├── tripStorage.ts     # 行程相關
+└── adminStorage.ts    # 管理相關
+```
+
+#### 介面定義原則
+```typescript
+// 每個 storage 模組匯出明確介面
+export interface IPlaceStorage {
+  getById(id: number): Promise<Place | null>;
+  search(query: PlaceSearchQuery): Promise<Place[]>;
+  create(data: InsertPlace): Promise<Place>;
+  update(id: number, data: Partial<Place>): Promise<Place>;
+}
+```
 
 ---
 
@@ -103,6 +144,7 @@ export const systemConfigs = pgTable("system_configs", {
   // 設定值
   value: jsonb("value").notNull(),
   valueType: varchar("value_type", { length: 20 }).notNull(), // 'number' | 'string' | 'boolean' | 'array' | 'object'
+  defaultValue: jsonb("default_value"),      // 預設值（用於重置）
   
   // 後台顯示
   label: text("label").notNull(),           // 中文標籤
@@ -113,8 +155,9 @@ export const systemConfigs = pgTable("system_configs", {
   // 驗證規則
   validation: jsonb("validation"),           // { min: 1, max: 10 } 等
   
-  // 權限
+  // 權限與保護
   editableBy: varchar("editable_by", { length: 20 }).default('admin'), // 'admin' | 'super_admin'
+  isReadOnly: boolean("is_read_only").default(false),  // 唯讀保護，防止關鍵參數被誤改
   
   // 時間戳
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -123,6 +166,74 @@ export const systemConfigs = pgTable("system_configs", {
 
 // 唯一約束
 CREATE UNIQUE INDEX idx_system_configs_key ON system_configs(category, key);
+```
+
+#### Zod 驗證規範
+
+寫入前必須驗證 JSONB 欄位：
+
+```typescript
+// shared/validators/configValidators.ts
+import { z } from 'zod';
+
+const ConfigValueSchemas = {
+  'gacha:daily_free_quota': z.number().min(1).max(10),
+  'gacha:places_per_gacha': z.number().min(3).max(10),
+  'merchant:grace_period_days': z.number().min(1).max(14),
+  // ...
+};
+
+export function validateConfigValue(category: string, key: string, value: any): boolean {
+  const schema = ConfigValueSchemas[`${category}:${key}`];
+  if (!schema) return true; // 無定義 schema 則放行
+  return schema.safeParse(value).success;
+}
+```
+
+#### 快取失效策略
+
+| 部署模式 | 策略 |
+|---------|------|
+| 單機 | 進程內 Map 快取（現有方案） |
+| 水平擴展 | 改用 Redis 快取，設定 TTL 5 分鐘 |
+
+```typescript
+// 未來水平擴展版本
+class ConfigService {
+  private redis: Redis;
+  
+  async get(category: string, key: string): Promise<any> {
+    const cacheKey = `config:${category}:${key}`;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+    
+    const config = await db.query.systemConfigs.findFirst({...});
+    if (config) {
+      await this.redis.setex(cacheKey, 300, JSON.stringify(config.value)); // TTL 5 分鐘
+    }
+    return config?.value ?? null;
+  }
+}
+```
+
+#### Seed 腳本規格
+
+```typescript
+// server/seed/configSeed.ts
+const defaultConfigs = [
+  { category: 'gacha', key: 'daily_free_quota', value: 3, label: '每日免費扭蛋次數', isReadOnly: false },
+  { category: 'gacha', key: 'places_per_gacha', value: 5, label: '每次扭蛋景點數', isReadOnly: true },
+  { category: 'merchant', key: 'grace_period_days', value: 3, label: '付款寬限天數', isReadOnly: false },
+  // ...
+];
+
+export async function seedConfigs() {
+  for (const config of defaultConfigs) {
+    await db.insert(systemConfigs)
+      .values({ ...config, defaultValue: config.value })
+      .onConflictDoNothing();
+  }
+}
 ```
 
 #### 可調整的參數範例
@@ -199,6 +310,7 @@ export const configService = new ConfigService();
 | 記憶庫更新 | 30 天內有更新 | 每週 |
 | API 一致性 | 回應格式統一 | 每月 |
 | 資料表索引 | 常用查詢有索引 | 每月 |
+| 設定檔漂移 | JSON/YAML 格式正確 | 每次提交 |
 
 #### 自動化檢查腳本
 
@@ -216,27 +328,50 @@ interface CheckResult {
 
 const results: CheckResult[] = [];
 
-// 1. 檔案大小檢查
-function checkFileSize(dir: string, maxLines: number = 500) {
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.ts'));
+// 遞迴取得所有 .ts 檔案
+function getAllTsFiles(dir: string): string[] {
+  const files: string[] = [];
   
-  for (const file of files) {
-    const content = fs.readFileSync(path.join(dir, file), 'utf-8');
+  function walk(currentDir: string) {
+    if (!fs.existsSync(currentDir)) return;
+    
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+        walk(fullPath);
+      } else if (entry.isFile() && entry.name.endsWith('.ts')) {
+        files.push(fullPath);
+      }
+    }
+  }
+  
+  walk(dir);
+  return files;
+}
+
+// 1. 檔案大小檢查（遞迴）
+function checkFileSize(dir: string, maxLines: number = 500) {
+  const files = getAllTsFiles(dir);
+  
+  for (const filePath of files) {
+    const content = fs.readFileSync(filePath, 'utf-8');
     const lines = content.split('\n').length;
+    const relativePath = path.relative(process.cwd(), filePath);
     
     if (lines > maxLines * 2) {
       results.push({
         category: '檔案大小',
         status: 'fail',
-        message: `${file} 有 ${lines} 行，超過 ${maxLines * 2} 行上限`,
-        details: { file, lines, limit: maxLines * 2 }
+        message: `${relativePath} 有 ${lines} 行，超過 ${maxLines * 2} 行上限`,
+        details: { file: relativePath, lines, limit: maxLines * 2 }
       });
     } else if (lines > maxLines) {
       results.push({
         category: '檔案大小',
         status: 'warn',
-        message: `${file} 有 ${lines} 行，建議控制在 ${maxLines} 行以內`,
-        details: { file, lines, suggested: maxLines }
+        message: `${relativePath} 有 ${lines} 行，建議控制在 ${maxLines} 行以內`,
+        details: { file: relativePath, lines, suggested: maxLines }
       });
     }
   }
@@ -266,7 +401,7 @@ function checkMemorySync() {
   }
 }
 
-// 3. 硬編碼數字檢查
+// 3. 硬編碼數字檢查（遞迴）
 function checkHardcodedNumbers(dir: string) {
   const patterns = [
     { regex: /\.default\((\d+)\)/g, name: '預設值' },
@@ -274,18 +409,19 @@ function checkHardcodedNumbers(dir: string) {
     { regex: /quota.*?[=:]\s*(\d+)/gi, name: '額度' },
   ];
   
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.ts'));
+  const files = getAllTsFiles(dir);
   const findings: string[] = [];
   
-  for (const file of files) {
-    const content = fs.readFileSync(path.join(dir, file), 'utf-8');
+  for (const filePath of files) {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const relativePath = path.relative(process.cwd(), filePath);
     
     for (const pattern of patterns) {
       const matches = content.matchAll(pattern.regex);
       for (const match of matches) {
         const num = parseInt(match[1]);
-        if (num > 1 && num < 1000) { // 排除常見的 0、1、大數
-          findings.push(`${file}: ${pattern.name} = ${num}`);
+        if (num > 1 && num < 1000) {
+          findings.push(`${relativePath}: ${pattern.name} = ${num}`);
         }
       }
     }
@@ -301,14 +437,39 @@ function checkHardcodedNumbers(dir: string) {
   }
 }
 
+// 4. 設定檔格式檢查
+function checkConfigFiles() {
+  const configPatterns = ['*.json', 'tsconfig.json', 'package.json'];
+  const configFiles = ['tsconfig.json', 'package.json', 'drizzle.config.ts'];
+  
+  for (const file of configFiles) {
+    if (!fs.existsSync(file)) continue;
+    
+    if (file.endsWith('.json')) {
+      try {
+        const content = fs.readFileSync(file, 'utf-8');
+        JSON.parse(content);
+      } catch (e) {
+        results.push({
+          category: '設定檔',
+          status: 'fail',
+          message: `${file} JSON 格式錯誤`,
+          details: { file, error: (e as Error).message }
+        });
+      }
+    }
+  }
+}
+
 // 執行檢查
 async function runHealthCheck() {
   console.log('🏥 開始架構健康檢查...\n');
   
+  // 遞迴掃描所有目錄
   checkFileSize('server');
-  checkFileSize('server/lib');
   checkMemorySync();
   checkHardcodedNumbers('server');
+  checkConfigFiles();
   
   // 輸出報告
   const fails = results.filter(r => r.status === 'fail');
@@ -359,51 +520,100 @@ cat logs/architecture-report.json
 
 ## 🔧 實作步驟
 
+> **原則**：健康檢查先行，及早發現問題
+
+### Phase 0：健康檢查機制（最先實作）
+
+| 步驟 | 內容 | 預估時間 |
+|------|------|---------|
+| 0.1 | 建立 `server/scripts/architecture-check.ts` | 30 分鐘 |
+| 0.2 | 設定遞迴掃描 + JSON 報告輸出 | 15 分鐘 |
+| 0.3 | 執行首次檢查，記錄 baseline | 10 分鐘 |
+
 ### Phase 1：路由模組化（優先級高）
 
 | 步驟 | 內容 | 預估時間 |
 |------|------|---------|
 | 1.1 | 建立 `server/routes/` 目錄結構 | 10 分鐘 |
-| 1.2 | 拆分 auth 相關路由 | 30 分鐘 |
-| 1.3 | 拆分 gacha 相關路由 | 45 分鐘 |
-| 1.4 | 拆分 places 相關路由 | 45 分鐘 |
-| 1.5 | 拆分 merchant 相關路由 | 45 分鐘 |
-| 1.6 | 拆分其他路由 | 60 分鐘 |
-| 1.7 | 建立路由註冊中心 | 20 分鐘 |
-| 1.8 | 測試所有 API 端點 | 30 分鐘 |
+| 1.2 | 抽取共用 middleware 至 `server/middleware/` | 30 分鐘 |
+| 1.3 | 拆分 auth 相關路由 | 30 分鐘 |
+| 1.4 | 拆分 gacha 相關路由 | 45 分鐘 |
+| 1.5 | 拆分 places 相關路由 | 45 分鐘 |
+| 1.6 | 拆分 merchant 相關路由 | 45 分鐘 |
+| 1.7 | 拆分其他路由（admin、specialist、trip、seo） | 60 分鐘 |
+| 1.8 | 建立路由註冊中心 `server/routes/index.ts` | 20 分鐘 |
+| 1.9 | 執行健康檢查，確認無 fail | 10 分鐘 |
+| 1.10 | 測試所有 API 端點 | 30 分鐘 |
+
+### Phase 1b：Storage 層拆分（Phase 1 完成後）
+
+| 步驟 | 內容 | 預估時間 |
+|------|------|---------|
+| 1b.1 | 建立 `server/storage/` 目錄結構 | 10 分鐘 |
+| 1b.2 | 定義各領域 Storage 介面 | 30 分鐘 |
+| 1b.3 | 拆分 userStorage、placeStorage | 45 分鐘 |
+| 1b.4 | 拆分 gachaStorage、merchantStorage | 45 分鐘 |
+| 1b.5 | 拆分 tripStorage、adminStorage | 45 分鐘 |
+| 1b.6 | 建立統一匯出 `server/storage/index.ts` | 15 分鐘 |
+| 1b.7 | 更新路由層引用 | 30 分鐘 |
+| 1b.8 | 執行健康檢查 + 測試 | 20 分鐘 |
 
 ### Phase 2：系統設定表（優先級中）
 
 | 步驟 | 內容 | 預估時間 |
 |------|------|---------|
-| 2.1 | 新增 `system_configs` 資料表 | 15 分鐘 |
-| 2.2 | 建立 ConfigService | 30 分鐘 |
-| 2.3 | 遷移現有硬編碼參數 | 60 分鐘 |
-| 2.4 | 建立管理後台 API | 45 分鐘 |
-| 2.5 | 建立管理後台 UI | 90 分鐘 |
-
-### Phase 3：健康檢查機制（優先級中）
-
-| 步驟 | 內容 | 預估時間 |
-|------|------|---------|
-| 3.1 | 建立檢查腳本 | 45 分鐘 |
-| 3.2 | 設定報告輸出 | 15 分鐘 |
-| 3.3 | 建立報告模板 | 20 分鐘 |
+| 2.1 | 新增 `system_configs` 資料表（含 isReadOnly） | 15 分鐘 |
+| 2.2 | 建立 Zod 驗證器 `shared/validators/configValidators.ts` | 20 分鐘 |
+| 2.3 | 建立 ConfigService（含快取） | 30 分鐘 |
+| 2.4 | 建立 seed 腳本 `server/seed/configSeed.ts` | 20 分鐘 |
+| 2.5 | 執行 seed，初始化預設值 | 10 分鐘 |
+| 2.6 | 遷移現有硬編碼參數 | 60 分鐘 |
+| 2.7 | 建立管理後台 API（GET/PUT） | 45 分鐘 |
+| 2.8 | 建立管理後台 UI | 90 分鐘 |
 
 ---
 
 ## 📁 新增檔案清單
 
+### Phase 0
+| 檔案 | 說明 |
+|------|------|
+| `server/scripts/architecture-check.ts` | 架構健康檢查腳本 |
+
+### Phase 1
 | 檔案 | 說明 |
 |------|------|
 | `server/routes/index.ts` | 路由註冊中心 |
 | `server/routes/auth.ts` | 認證路由 |
+| `server/routes/user.ts` | 用戶路由 |
 | `server/routes/gacha.ts` | 扭蛋路由 |
 | `server/routes/places.ts` | 景點路由 |
 | `server/routes/merchant.ts` | 商家路由 |
+| `server/routes/specialist.ts` | 策劃師路由 |
+| `server/routes/trip.ts` | 行程路由 |
 | `server/routes/admin.ts` | 管理路由 |
-| `server/services/configService.ts` | 設定服務 |
-| `server/scripts/architecture-check.ts` | 架構檢查腳本 |
+| `server/routes/webhooks.ts` | Webhook 路由 |
+| `server/routes/seo.ts` | SEO 路由 |
+| `server/middleware/validate.ts` | 請求驗證中間件 |
+| `server/middleware/errorHandler.ts` | 統一錯誤處理 |
+
+### Phase 1b
+| 檔案 | 說明 |
+|------|------|
+| `server/storage/index.ts` | Storage 統一匯出 |
+| `server/storage/userStorage.ts` | 用戶資料存取 |
+| `server/storage/placeStorage.ts` | 景點資料存取 |
+| `server/storage/gachaStorage.ts` | 扭蛋資料存取 |
+| `server/storage/merchantStorage.ts` | 商家資料存取 |
+| `server/storage/tripStorage.ts` | 行程資料存取 |
+| `server/storage/adminStorage.ts` | 管理資料存取 |
+
+### Phase 2
+| 檔案 | 說明 |
+|------|------|
+| `server/services/configService.ts` | 設定讀取服務 |
+| `server/seed/configSeed.ts` | 設定 seed 腳本 |
+| `shared/validators/configValidators.ts` | 設定值 Zod 驗證器 |
 
 ---
 
