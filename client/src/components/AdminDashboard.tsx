@@ -6,6 +6,7 @@ import { PlaceDraftsReviewPage } from '../pages/admin/PlaceDraftsReviewPage';
 import { BatchGeneratePage } from '../pages/admin/BatchGeneratePage';
 import { AnnouncementsPage } from '../pages/admin/AnnouncementsPage';
 import { ExclusionsPage } from '../pages/admin/ExclusionsPage';
+import { SubscriptionPlansPage } from '../pages/admin/SubscriptionPlansPage';
 
 interface PlaceDraft {
   id: number;
@@ -19,7 +20,7 @@ interface AdminDashboardProps {
   t: Record<string, string>;
 }
 
-type AdminView = 'home' | 'users_review' | 'drafts_review' | 'batch_generate' | 'announcements' | 'exclusions';
+type AdminView = 'home' | 'users_review' | 'drafts_review' | 'batch_generate' | 'announcements' | 'exclusions' | 'subscription_plans';
 
 const BackButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
   <div className="flex items-center gap-3 mb-4">
@@ -124,6 +125,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
           <div className="space-y-6 pb-24">
             <BackButton onClick={() => setCurrentView('home')} />
             <ExclusionsPage language={language} t={t} />
+          </div>
+        );
+      case 'subscription_plans':
+        return (
+          <div className="space-y-6 pb-24">
+            <BackButton onClick={() => setCurrentView('home')} />
+            <SubscriptionPlansPage language={language} t={t} />
           </div>
         );
       default:
@@ -312,6 +320,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
+                </div>
+              </div>
+
+              <div 
+                onClick={() => setCurrentView('subscription_plans')}
+                className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 hover:border-green-300 hover:shadow-md transition-all cursor-pointer"
+                data-testid="card-subscription-plans"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center flex-shrink-0">
+                    <span className="text-3xl">💳</span>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-slate-800 text-xl">訂閱方案管理</h3>
+                    <p className="text-slate-500">管理商家訂閱方案與金流設定</p>
+                  </div>
+                  <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
                 </div>
               </div>
             </div>
