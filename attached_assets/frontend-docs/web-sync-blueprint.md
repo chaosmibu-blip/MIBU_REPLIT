@@ -545,14 +545,84 @@ WebSocket connection failed
 
 ---
 
+## 響應式設計規範
+
+### 斷點定義（Tailwind CSS）
+```css
+/* 建議使用 Tailwind 預設斷點 */
+sm: 640px   /* 手機橫向 */
+md: 768px   /* 平板 */
+lg: 1024px  /* 筆電 */
+xl: 1280px  /* 桌機 */
+```
+
+### 訂閱方案頁面（Pricing）
+
+| 螢幕 | 佈局 | 建議 |
+|------|------|------|
+| 手機 (<768px) | 單欄堆疊 | 卡片垂直排列，推薦方案置頂 |
+| 平板/桌機 (≥768px) | 三欄並排 | 使用 `grid-cols-3` 對照顯示 |
+
+```tsx
+// 範例：響應式方案卡片
+<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+  {plans.map((plan) => (
+    <PricingCard 
+      key={plan.tier}
+      plan={plan}
+      className={cn(
+        "p-6 rounded-xl border",
+        plan.highlighted && "border-primary ring-2 ring-primary"
+      )}
+    />
+  ))}
+</div>
+```
+
+### 登入頁面
+
+| 螢幕 | 佈局 | 建議 |
+|------|------|------|
+| 手機 | 全寬表單 | 表單佔滿螢幕，Logo 上方置中 |
+| 桌機 | 雙欄分割 | 左側品牌區 + 右側登入表單 |
+
+```tsx
+// 範例：響應式登入頁
+<div className="min-h-screen flex">
+  {/* 品牌區：手機隱藏 */}
+  <div className="hidden lg:flex lg:w-1/2 bg-primary items-center justify-center">
+    <BrandIllustration />
+  </div>
+  
+  {/* 表單區 */}
+  <div className="w-full lg:w-1/2 flex items-center justify-center p-6">
+    <LoginForm className="w-full max-w-md" />
+  </div>
+</div>
+```
+
+### 功能列表（Features）
+
+| 螢幕 | 顯示方式 |
+|------|---------|
+| 手機 | 可折疊手風琴 (`Accordion`) |
+| 桌機 | 直接展開列表 |
+
+---
+
 ## 版本同步
 
 | 項目 | 版本 | 更新日期 |
 |------|------|---------|
-| 後端 API | v1.1 | 2026-01-05 |
-| 本同步藍圖 | v1.1 | 2026-01-05 |
+| 後端 API | v1.2 | 2026-01-05 |
+| 本同步藍圖 | v1.2 | 2026-01-05 |
 | Recur SDK | 0.11.0 | - |
 | Socket.io | 4.x | - |
+
+### v1.2 更新內容
+- 新增響應式設計規範（手機/桌機斷點、佈局建議）
+- 新增登入頁雙欄設計範例
+- 新增功能列表手風琴建議
 
 ### v1.1 更新內容
 - 新增 `/api/subscription-plans` 公開 API（動態訂閱方案）
