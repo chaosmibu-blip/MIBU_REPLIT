@@ -455,6 +455,85 @@ npx tsx server/scripts/architecture-check.ts
 
 ---
 
+## 📚 記憶庫治理規範
+
+### 唯一來源原則
+
+> **每個功能只記錄在一個記憶庫**，避免資訊重複與不同步
+
+當需要新增功能文件時：
+1. 確認該功能的職權歸屬
+2. 更新對應的**唯一記憶庫**
+3. 若跨越多個領域，選擇「主要職責」的記憶庫
+
+### 完整索引（15 個記憶庫）
+
+#### 功能模組（業務邏輯）
+
+| 檔案 | 職權範圍 | 唯一負責內容 | 相關 API 前綴 |
+|------|---------|-------------|--------------|
+| `memory-travel-gacha.md` | 行程扭蛋 | Gacha V1/V2/V3 邏輯、**採集/審核/升級流程**、去重保護、七大分類、黑名單 | `/api/gacha/*` |
+| `memory-trip-planner.md` | 旅程策劃 | 天數管理、活動排程、旅伴邀請 | `/api/trips/*` |
+| `memory-user-client.md` | 用戶端 | 用戶 App 功能：背包、通知、收藏、每日額度 | `/api/users/*`, `/api/backpack/*` |
+| `memory-merchant.md` | 商家端 | 商家認領、優惠券發放、**訂閱方案權限**、數據報表 | `/api/merchants/*` |
+| `memory-specialist.md` | 專員端 | 策劃師服務、訂單管理、等級制度 | `/api/specialists/*` |
+| `memory-admin.md` | 管理端 | 後台 UI、用戶/商家/專員審核、公告管理（不含採集流程） | `/api/admin/*` |
+| `memory-web-official.md` | 官方網站 | Next.js 官網、程式化 SEO、商家訂閱購買流程 | `/api/seo/*` |
+
+#### 基礎設施（跨模組共用）
+
+| 檔案 | 職權範圍 | 唯一負責內容 | 使用場景 |
+|------|---------|-------------|---------|
+| `memory-data-schema.md` | 資料架構 | 47 張表定義、欄位關聯、約束條件 | 修改任何資料表時 |
+| `memory-api-dictionary.md` | API 規範 | 所有端點清單、請求/回應格式、錯誤代碼、分頁規範 | 新增/修改 API 時 |
+| `memory-auth.md` | 認證權限 | JWT、Session、Apple/Google Sign In、RBAC 角色 | 認證相關修改 |
+| `memory-payment-commerce.md` | 金流商品 | Stripe 整合、購物車、訂單生命週期 | 金流/商品邏輯 |
+| `memory-sos-safety.md` | SOS 安全 | 緊急求助、位置分享、警報觸發 | 安全功能開發 |
+| `memory-integrations.md` | 第三方整合 | Google Places API、Gemini AI、Mapbox、Twilio | 外部 API 調用 |
+| `memory-deployment.md` | 部署環境 | 環境變數、**開發→正式同步流程**、排程任務 | 部署/環境設定 |
+| `memory-i18n.md` | 國際化 | 四語支援、JSONB 多語欄位、Fallback 機制 | 多語系功能 |
+
+### 強制查閱規則
+
+| 動作類型 | 必讀記憶庫 | 原因 |
+|---------|-----------|------|
+| 採集/審核/升級景點 | `memory-travel-gacha.md` | 唯一流程定義處 |
+| 修改資料表結構 | `memory-data-schema.md` | 確認欄位關聯 |
+| 新增/修改 API | `memory-api-dictionary.md` | 確認命名規範與錯誤碼 |
+| 認證相關修改 | `memory-auth.md` | JWT/Session 規範 |
+| 第三方 API 調用 | `memory-integrations.md` | API Key 與呼叫慣例 |
+| 金流/商品邏輯 | `memory-payment-commerce.md` | Stripe/Recur 整合規範 |
+| 官網開發 | `memory-web-official.md` | SEO 頁面、訂閱購買流程 |
+| 部署/環境變數 | `memory-deployment.md` | 環境配置 |
+
+### 記憶庫健康標準
+
+| 項目 | 標準 | 檢查方式 |
+|------|------|---------|
+| 更新頻率 | 30 天內有更新 | 檢查「更新日期」欄位 |
+| 內容結構 | 有「模組範圍」開頭說明 | 人工檢查 |
+| 職權邊界 | 無與其他記憶庫重複的內容 | 交叉比對 |
+| API 對應 | 列出相關的 API 端點 | 與 api-dictionary 核對 |
+
+### 衝突解決機制
+
+當同一功能可能歸屬於多個記憶庫時：
+
+1. **流程優先**：如果是一個完整流程（如採集→審核→升級），歸屬於流程主記憶庫
+2. **業務優先**：業務邏輯歸功能模組，技術細節歸基礎設施
+3. **指向原則**：其他記憶庫可用 `> 參見 xxx.md` 指向唯一來源
+
+範例：
+```markdown
+# memory-admin.md
+
+## 景點採集
+
+> ⚠️ **職權說明**：採集/審核/升級流程請參閱 `memory-travel-gacha.md`
+```
+
+---
+
 ## 🔗 相關藍圖
 
 - [程式化 SEO 藍圖](./blueprint-seo.md)

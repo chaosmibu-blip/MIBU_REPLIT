@@ -96,36 +96,38 @@ Mibu 是專為自由行旅客打造的旅遊 App，包含兩大核心模組：
 
 ---
 
-## 記憶庫索引與職權定義
+## 記憶庫索引與職權定義（共 15 個）
 
 > 📁 **位置**：所有記憶庫檔案統一存放於 `docs/` 目錄
 > 
 > ⚠️ **唯一來源原則**：每個功能只記錄在一個記憶庫，避免重複與不同步
+>
+> 📋 **完整治理規範**：參見 `docs/blueprint-architecture.md` 的「記憶庫治理規範」章節
 
-### 功能模組（業務邏輯）
+### 功能模組（7 個）
 
-| 檔案 | 職權範圍 | 唯一負責內容 |
-|------|---------|-------------|
-| memory-travel-gacha.md | 行程扭蛋 | Gacha V1/V2/V3 邏輯、**採集/審核/升級流程**、去重保護、七大分類、黑名單 |
-| memory-trip-planner.md | 旅程策劃 | 天數管理、活動排程、旅伴邀請 |
-| memory-user-client.md | 用戶端 | 用戶 App 功能：背包、通知、收藏、每日額度 |
-| memory-merchant.md | 商家端 | 商家認領、優惠券發放、**訂閱方案權限**、數據報表 |
-| memory-specialist.md | 專員端 | 策劃師服務、訂單管理、等級制度 |
-| memory-admin.md | 管理端 | 後台 UI、用戶/商家/專員審核、公告管理（不含採集流程） |
-| memory-web-official.md | 官方網站 | Next.js 官網、程式化 SEO、商家訂閱購買流程 |
+| 檔案 | 職權範圍 | 唯一負責內容 | API 前綴 |
+|------|---------|-------------|----------|
+| memory-travel-gacha.md | 行程扭蛋 | Gacha V1/V2/V3 邏輯、**採集/審核/升級流程**、去重保護、七大分類、黑名單 | `/api/gacha/*` |
+| memory-trip-planner.md | 旅程策劃 | 天數管理、活動排程、旅伴邀請 | `/api/trips/*` |
+| memory-user-client.md | 用戶端 | 用戶 App 功能：背包、通知、收藏、每日額度 | `/api/users/*` |
+| memory-merchant.md | 商家端 | 商家認領、優惠券發放、**訂閱方案權限**、數據報表 | `/api/merchants/*` |
+| memory-specialist.md | 專員端 | 策劃師服務、訂單管理、等級制度 | `/api/specialists/*` |
+| memory-admin.md | 管理端 | 後台 UI、用戶/商家/專員審核、公告管理（不含採集流程） | `/api/admin/*` |
+| memory-web-official.md | 官方網站 | Next.js 官網、程式化 SEO、商家訂閱購買流程 | `/api/seo/*` |
 
-### 基礎設施（跨模組共用）
+### 基礎設施（8 個）
 
-| 檔案 | 職權範圍 | 唯一負責內容 |
-|------|---------|-------------|
-| memory-data-schema.md | 資料架構 | 47 張表定義、欄位關聯、約束條件 |
-| memory-api-dictionary.md | API 規範 | 所有端點清單、請求/回應格式、錯誤代碼、分頁規範 |
-| memory-auth.md | 認證權限 | JWT、Session、Apple/Google Sign In、RBAC 角色 |
-| memory-payment-commerce.md | 金流商品 | Stripe 整合、購物車、訂單生命週期 |
-| memory-sos-safety.md | SOS 安全 | 緊急求助、位置分享、警報觸發 |
-| memory-integrations.md | 第三方整合 | Google Places API、Gemini AI、Mapbox、Twilio |
-| memory-deployment.md | 部署環境 | 環境變數、**開發→正式同步流程**、排程任務 |
-| memory-i18n.md | 國際化 | 四語支援、JSONB 多語欄位、Fallback 機制 |
+| 檔案 | 職權範圍 | 唯一負責內容 | 查閱時機 |
+|------|---------|-------------|---------|
+| memory-data-schema.md | 資料架構 | 47 張表定義、欄位關聯、約束條件 | 修改資料表時 |
+| memory-api-dictionary.md | API 規範 | 所有端點清單、請求/回應格式、錯誤代碼、分頁規範 | 新增/修改 API |
+| memory-auth.md | 認證權限 | JWT、Session、Apple/Google Sign In、RBAC 角色 | 認證相關修改 |
+| memory-payment-commerce.md | 金流商品 | Stripe 整合、購物車、訂單生命週期 | 金流/商品邏輯 |
+| memory-sos-safety.md | SOS 安全 | 緊急求助、位置分享、警報觸發 | 安全功能開發 |
+| memory-integrations.md | 第三方整合 | Google Places API、Gemini AI、Mapbox、Twilio | 外部 API 調用 |
+| memory-deployment.md | 部署環境 | 環境變數、**開發→正式同步流程**、排程任務 | 部署/環境設定 |
+| memory-i18n.md | 國際化 | 四語支援、JSONB 多語欄位、Fallback 機制 | 多語系功能 |
 
 ---
 
