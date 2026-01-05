@@ -220,3 +220,37 @@ SEO_SERVICE_TOKEN=your-seo-service-token
 | **目標關鍵字** | 「{城市}{區域}一日遊」「{城市}景點推薦」 |
 | **內容更新頻率** | 每次扭蛋自動更新 |
 | **頁面載入速度** | ISR 預渲染，首次載入 < 1 秒 |
+
+---
+
+## 🖥️ 三專案職責區分
+
+### 後端 (本 Replit)
+
+| 項目 | 內容 |
+|------|------|
+| **新增檔案** | `server/seo/sync.ts`、`server/seo/routes.ts` |
+| **API 端點** | `/api/seo/itineraries`、`/api/seo/sitemap` |
+| **腳本指令** | 無額外腳本（自動同步） |
+
+### Expo App
+
+| 項目 | 內容 |
+|------|------|
+| **無需修改** | SEO 功能不涉及 App 端 |
+
+### Web 官網 (另一 Replit)
+
+| 項目 | 內容 |
+|------|------|
+| **新增頁面** | `app/itinerary/page.tsx`、`app/itinerary/[parentSlug]/page.tsx`、`app/itinerary/[parentSlug]/[version]/page.tsx` |
+| **新增 API** | `app/api/revalidate/route.ts` |
+| **新增元件** | `ItineraryCard`、`PlaceCard`、`ItineraryHero`、`CitySelector` |
+| **Sitemap** | `app/sitemap.ts` |
+
+---
+
+## 🔗 相關藍圖
+
+- [架構優化藍圖](./blueprint-architecture.md)（三專案指令總覽）
+- [商家訂閱金流藍圖](./blueprint-merchant-subscription.md)

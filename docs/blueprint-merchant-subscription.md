@@ -390,3 +390,39 @@ DROP TABLE IF EXISTS merchant_subscriptions;
 | **ARPU** | 提升每商家平均收入 |
 | **留存率** | 訂閱商家更願意持續使用 |
 | **營運效率** | 自動續約減少人工處理 |
+
+---
+
+## 🖥️ 三專案職責區分
+
+### 後端 (本 Replit)
+
+| 項目 | 內容 |
+|------|------|
+| **Schema 修改** | `merchants` 新增 3 欄位、`places` 新增 2 欄位、新增 `merchant_subscriptions` 表 |
+| **新增檔案** | `server/webhooks/unified.ts`、`server/merchant/subscription.ts` |
+| **API 端點** | `/api/merchant/subscription/*`、`/api/webhooks/stripe`、`/api/webhooks/recur` |
+| **Socket.io** | 添加 `subscription:updated` 事件推送 |
+
+### Expo App (另一專案)
+
+| 項目 | 內容 |
+|------|------|
+| **修改檔案** | `hooks/useSocket.ts`（添加監聽）、`stores/merchantStore.ts`（權限更新） |
+| **新增元件** | `MerchantDashboard`、`SubscriptionBadge`、`UpgradePrompt`、`PlaceCardTierSelector`、`PaymentSuccessScreen` |
+| **監聽事件** | `subscription:updated` → 刷新商家權限 |
+
+### Web 官網 (另一 Replit)
+
+| 項目 | 內容 |
+|------|------|
+| **新增頁面** | `app/for-business/page.tsx`、`app/for-business/pricing/page.tsx`、`app/for-business/checkout/page.tsx` |
+| **新增元件** | `PricingCard`、`PaymentMethodSelector`、`CheckoutForm`、`SubscriptionSuccessPage`、`SubscriptionManagement` |
+| **金流整合** | Stripe Checkout、Recur 結帳頁跳轉 |
+
+---
+
+## 🔗 相關藍圖
+
+- [架構優化藍圖](./blueprint-architecture.md)（三專案指令總覽）
+- [程式化 SEO 藍圖](./blueprint-seo.md)

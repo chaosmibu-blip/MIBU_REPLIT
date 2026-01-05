@@ -981,6 +981,159 @@ npx tsx server/scripts/architecture-check.ts
 
 ---
 
+## 🖥️ 三專案指令總覽
+
+> **重要**：所有藍圖功能需要在三個專案中協作完成，以下明確區分各專案職責
+
+### 專案一：後端 (本 Replit)
+
+#### 腳本指令
+
+| 指令 | 說明 | 使用時機 |
+|------|------|---------|
+| `npm run dev` | 啟動開發伺服器 | 日常開發 |
+| `npm run db:push` | 同步資料表結構 | 修改 schema.ts 後 |
+| `npx tsx server/scripts/architecture-check.ts` | 架構健康檢查 | 每次提交前 |
+| `npm run contract:gen` | 產生 API 契約 | 修改 API 後 |
+| `npm run validate` | 完整驗證（型別+lint+測試+契約） | 重大變更後 |
+| `npx tsx server/scripts/batch-parallel-collect.ts 城市名` | 景點採集 | 新增城市 |
+| `npx tsx server/scripts/short-batch-review.ts` | 景點審核 | 採集後 |
+
+#### 需建立的檔案
+
+| 來源藍圖 | 檔案 | 說明 |
+|---------|------|------|
+| 架構 | `server/routes/index.ts` | 路由註冊中心 |
+| 架構 | `server/routes/auth.ts` | 認證路由 |
+| 架構 | `server/routes/gacha.ts` | 扭蛋路由 |
+| 架構 | `server/routes/places.ts` | 景點路由 |
+| 架構 | `server/routes/merchant.ts` | 商家路由 |
+| 架構 | `server/routes/admin.ts` | 管理路由 |
+| 架構 | `server/routes/webhooks.ts` | Webhook 路由 |
+| 架構 | `server/routes/seo.ts` | SEO 路由 |
+| 架構 | `server/services/configService.ts` | 設定讀取服務 |
+| 架構 | `server/scripts/generate-contract.ts` | API 契約產生器 |
+| SEO | `server/seo/sync.ts` | SEO 同步邏輯 |
+| 訂閱 | `server/webhooks/unified.ts` | 統一 Webhook 處理 |
+| 訂閱 | `server/merchant/subscription.ts` | 訂閱管理邏輯 |
+
+---
+
+### 專案二：Expo App (另一專案)
+
+#### 腳本指令
+
+| 指令 | 說明 | 使用時機 |
+|------|------|---------|
+| `npm run start` | 啟動 Expo 開發 | 日常開發 |
+| `npm run contract:pull` | 拉取最新 API 契約 | 後端 API 變更後 |
+| `npm run validate` | 型別檢查 | 每次提交前 |
+| `npm run build:ios` | 建置 iOS | 發布前 |
+| `npm run build:android` | 建置 Android | 發布前 |
+
+#### 需建立/修改的檔案
+
+| 來源藍圖 | 檔案 | 說明 |
+|---------|------|------|
+| 架構 | `types/api.d.ts` | API 型別（從契約自動產生） |
+| 架構 | `scripts/pull-contract.ts` | 契約拉取腳本 |
+| 架構 | `scripts/generate-types.ts` | 型別產生腳本 |
+| 訂閱 | 修改 `hooks/useSocket.ts` | 添加 `subscription:updated` 監聽 |
+| 訂閱 | 修改 `stores/merchantStore.ts` | 添加權限更新邏輯 |
+
+#### 需建立的 UI 元件
+
+| 來源藍圖 | 元件 | 說明 |
+|---------|------|------|
+| 訂閱 | `MerchantDashboard` | 商家儀表板（顯示當前等級、到期日） |
+| 訂閱 | `SubscriptionBadge` | 訂閱狀態徽章（Pro/Premium 標示） |
+| 訂閱 | `UpgradePrompt` | 升級提示彈窗 |
+| 訂閱 | `PlaceCardTierSelector` | 行程卡等級選擇器 |
+| 訂閱 | `PaymentSuccessScreen` | 付款成功畫面 |
+
+---
+
+### 專案三：Web 官網 (另一 Replit)
+
+#### 腳本指令
+
+| 指令 | 說明 | 使用時機 |
+|------|------|---------|
+| `npm run dev` | 啟動 Next.js 開發 | 日常開發 |
+| `npm run build` | 建置生產版本 | 部署前 |
+| `npm run contract:pull` | 拉取最新 API 契約 | 後端 API 變更後 |
+| `npm run validate` | 型別檢查 | 每次提交前 |
+
+#### 需建立的檔案
+
+| 來源藍圖 | 檔案 | 說明 |
+|---------|------|------|
+| 架構 | `types/api.d.ts` | API 型別（從契約自動產生） |
+| 架構 | `scripts/pull-contract.ts` | 契約拉取腳本 |
+| SEO | `app/itinerary/page.tsx` | 城市列表頁 |
+| SEO | `app/itinerary/[parentSlug]/page.tsx` | 聚合頁 |
+| SEO | `app/itinerary/[parentSlug]/[version]/page.tsx` | 子頁 |
+| SEO | `app/api/revalidate/route.ts` | ISR 重新驗證 API |
+| SEO | `app/sitemap.ts` | 動態 Sitemap |
+| 訂閱 | `app/for-business/page.tsx` | 商家合作頁 |
+| 訂閱 | `app/for-business/pricing/page.tsx` | 方案比較與購買頁 |
+| 訂閱 | `app/for-business/checkout/page.tsx` | 結帳頁面 |
+
+#### 需建立的 UI 元件
+
+| 來源藍圖 | 元件 | 說明 |
+|---------|------|------|
+| 訂閱 | `PricingCard` | 訂閱方案卡片（Free/Pro/Premium 比較） |
+| 訂閱 | `PaymentMethodSelector` | 付款方式選擇（Stripe/Recur） |
+| 訂閱 | `CheckoutForm` | 結帳表單 |
+| 訂閱 | `SubscriptionSuccessPage` | 訂閱成功頁 |
+| 訂閱 | `SubscriptionManagement` | 訂閱管理區塊（升降級、取消） |
+| SEO | `ItineraryCard` | 行程卡片（顯示在聚合頁） |
+| SEO | `PlaceCard` | 景點卡片（顯示在子頁） |
+| SEO | `ItineraryHero` | 行程頁面 Hero 區塊 |
+| SEO | `CitySelector` | 城市/區域選擇器 |
+
+---
+
+## 🔍 三藍圖交叉比對
+
+### 潛在衝突檢查
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| API 前綴衝突 | ✅ 無衝突 | SEO `/api/seo/*`、訂閱 `/api/merchant/*`、架構 `/api/admin/*` |
+| 資料表衝突 | ✅ 無衝突 | SEO 用 `seo_itineraries`、訂閱用 `merchant_subscriptions` |
+| 環境變數衝突 | ✅ 無衝突 | 各藍圖使用不同前綴（SEO_、STRIPE_、RECUR_） |
+| Webhook 衝突 | ⚠️ 需注意 | 訂閱藍圖 `unified.ts` 需處理多種事件，確保事件路由正確 |
+
+### 共用依賴
+
+| 項目 | 說明 | 藍圖來源 |
+|------|------|---------|
+| Socket.io | 訂閱藍圖用於即時推送 | 訂閱 |
+| Stripe | 已整合，訂閱藍圖擴展使用 | 訂閱 |
+| ISR 觸發 | SEO 藍圖需要，架構藍圖提供驗證機制 | SEO + 架構 |
+
+### 遺漏項目補充
+
+| 藍圖 | 遺漏項目 | 補充內容 |
+|------|---------|---------|
+| 訂閱 | App 端 UI | 已在上方 Expo App 章節補充 5 個元件 |
+| 訂閱 | 官網 UI | 已在上方 Web 官網章節補充 5 個元件 |
+| SEO | 官網 UI | 已在上方 Web 官網章節補充 4 個元件 |
+| 架構 | 管理後台 UI | 需補充 `SystemConfigEditor` 元件 |
+
+### 需補充的管理後台 UI
+
+| 元件 | 位置 | 說明 |
+|------|------|------|
+| `SystemConfigEditor` | 後端 client 或官網 | 系統設定編輯介面（slider、switch、input） |
+| `ConfigCategoryTabs` | 同上 | 設定分類標籤頁（gacha、merchant、places） |
+| `ConfigHistoryLog` | 同上 | 設定變更歷史記錄 |
+| `ArchitectureHealthDashboard` | 同上 | 架構健康狀態儀表板 |
+
+---
+
 ## 🔗 相關藍圖
 
 - [程式化 SEO 藍圖](./blueprint-seo.md)
