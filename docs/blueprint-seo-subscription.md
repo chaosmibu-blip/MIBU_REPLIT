@@ -301,13 +301,22 @@ export async function generateStaticParams() {
 
 ### 2.2 資料表修改
 
-#### 修改 `merchants` 表
+> **重要**：沿用現有 `merchants.merchantLevel` 欄位控制商家等級
+
+#### 修改 `merchants` 表（新增 3 個欄位）
 ```typescript
-// 新增欄位
-merchantTier: text("merchant_tier").default("free"), // free/pro/premium
-merchantTierExpiresAt: timestamp("merchant_tier_expires_at"),
-stripeCustomerId: text("stripe_customer_id"),
-recurCustomerId: text("recur_customer_id"),
+// 沿用現有欄位：merchantLevel: varchar("merchant_level", { length: 20 }).default('free')
+// 新增欄位：
+merchantLevelExpiresAt: timestamp("merchant_level_expires_at"),
+stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+recurCustomerId: varchar("recur_customer_id", { length: 255 }),
+```
+
+#### 修改 `places` 表（新增 2 個欄位）
+```typescript
+// 行程卡等級（直接存於 places 表，無需額外表）
+placeCardTier: varchar("place_card_tier", { length: 20 }).default('free'),
+placeCardTierExpiresAt: timestamp("place_card_tier_expires_at"),
 ```
 
 #### 新增 `merchant_subscriptions` 表
@@ -317,48 +326,31 @@ export const merchantSubscriptions = pgTable("merchant_subscriptions", {
   merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
   
   // 訂閱類型
-  subscriptionType: text("subscription_type").notNull(), // merchant_tier / place_card_tier
-  tier: text("tier").notNull(),                          // free/pro/premium
+  type: varchar("type", { length: 20 }).notNull(), // 'merchant' | 'place'
+  tier: varchar("tier", { length: 20 }).notNull(), // 'pro' | 'premium'
+  placeId: integer("place_id").references(() => places.id), // null for merchant subscription
   
   // 金流資訊
-  provider: text("provider").notNull(),      // stripe / recur
-  providerSubscriptionId: text("provider_subscription_id"), // Stripe/Recur subscription ID
-  providerCustomerId: text("provider_customer_id"),
+  provider: varchar("provider", { length: 20 }).notNull(), // 'stripe' | 'recur'
+  providerSubscriptionId: varchar("provider_subscription_id", { length: 255 }).notNull(),
+  providerCustomerId: varchar("provider_customer_id", { length: 255 }),
   
   // 狀態
-  status: text("status").default("active"),  // active/cancelled/past_due/expired
+  status: varchar("status", { length: 20 }).default("active").notNull(),
   currentPeriodStart: timestamp("current_period_start"),
   currentPeriodEnd: timestamp("current_period_end"),
+  scheduledDowngradeTo: varchar("scheduled_downgrade_to", { length: 20 }),
   cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
   
   // 價格
-  amount: integer("amount"),                 // 金額（分/角）
-  currency: text("currency").default("TWD"),
+  amount: integer("amount"),
+  currency: varchar("currency", { length: 10 }).default("TWD"),
+  lastPaymentIntentId: varchar("last_payment_intent_id", { length: 255 }),
   
   // 時間戳
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-```
-
-#### 新增 `merchant_place_subscriptions` 表（行程卡訂閱）
-```typescript
-export const merchantPlaceSubscriptions = pgTable("merchant_place_subscriptions", {
-  id: serial("id").primaryKey(),
-  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
-  placeId: integer("place_id").references(() => places.id).notNull(),
-  
-  // 等級
-  tier: text("tier").default("free"),        // free/pro/premium
-  
-  // 關聯主訂閱
-  subscriptionId: integer("subscription_id").references(() => merchantSubscriptions.id),
-  
-  // 狀態
-  isActive: boolean("is_active").default(true),
-  expiresAt: timestamp("expires_at"),
-  
-  createdAt: timestamp("created_at").defaultNow(),
+  cancelledAt: timestamp("cancelled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 ```
 
@@ -402,7 +394,7 @@ export const merchantPlaceSubscriptions = pgTable("merchant_place_subscriptions"
 │  ┌──────────────────────┴────────────────────┐                  │
 │  │ 訂閱狀態更新                               │                  │
 │  │ - 更新 merchant_subscriptions              │                  │
-│  │ - 更新 merchants.merchantTier              │                  │
+│  │ - 更新 merchants.merchantLevel             │                  │
 │  └──────────────────────┬────────────────────┘                  │
 │                         ↓                                       │
 │  ┌───────────────────────────────────────────┐                  │
@@ -458,7 +450,7 @@ export const merchantPlaceSubscriptions = pgTable("merchant_place_subscriptions"
 ```typescript
 // 後端：Webhook 處理完成後
 io.to(`merchant:${merchantId}`).emit('subscription:updated', {
-  merchantTier: 'pro',
+  merchantLevel: 'pro',
   placeCardTier: 'premium',
   expiresAt: '2026-02-05T00:00:00Z'
 });
@@ -524,37 +516,615 @@ RECUR_PLACE_PREMIUM_PRODUCT_ID=prod_...
 
 ---
 
+## 🔄 資料庫遷移計畫
+
+### 4.1 現況分析
+
+經程式碼掃描確認 `merchants` 表已有欄位：
+- `subscriptionPlan`: text, default 'free' — 舊欄位，保留向下相容
+- `merchantLevel`: varchar(20), default 'free' — **沿用此欄位控制商家等級**
+
+### 4.2 需新增的欄位
+
+```sql
+-- merchants 表新增欄位（沿用 merchantLevel）
+ALTER TABLE merchants ADD COLUMN merchant_level_expires_at TIMESTAMP;
+ALTER TABLE merchants ADD COLUMN stripe_customer_id VARCHAR(255);
+ALTER TABLE merchants ADD COLUMN recur_customer_id VARCHAR(255);
+
+-- places 表新增欄位（行程卡等級）
+ALTER TABLE places ADD COLUMN place_card_tier VARCHAR(20) DEFAULT 'free';
+ALTER TABLE places ADD COLUMN place_card_tier_expires_at TIMESTAMP;
+```
+
+### 4.3 遷移步驟
+
+| 步驟 | 動作 | 風險 |
+|------|------|------|
+| 1 | 新增 `seo_itineraries` 表 | 無（新表） |
+| 2 | 新增 `merchant_subscriptions` 表 | 無（新表） |
+| 3 | `merchants` 表新增 3 個欄位 | 低（純新增，有預設值） |
+| 4 | `places` 表新增 2 個欄位 | 低（純新增，有預設值） |
+| 5 | 執行 `npm run db:push` | 低（安全同步） |
+| 6 | 部署新 API 端點 | 低（新端點不影響現有功能） |
+| 7 | 啟用 Webhook 處理 | 中（需測試金流） |
+
+### 4.4 回滾方案
+
+若出現問題：
+```sql
+-- 回滾：移除新增的欄位
+ALTER TABLE merchants DROP COLUMN merchant_level_expires_at;
+ALTER TABLE merchants DROP COLUMN stripe_customer_id;
+ALTER TABLE merchants DROP COLUMN recur_customer_id;
+ALTER TABLE places DROP COLUMN place_card_tier;
+ALTER TABLE places DROP COLUMN place_card_tier_expires_at;
+
+-- 回滾：刪除新表
+DROP TABLE IF EXISTS merchant_subscriptions;
+DROP TABLE IF EXISTS seo_itineraries;
+```
+
+---
+
+## 🔁 訂閱生命週期
+
+### 5.1 訂閱狀態流程
+
+```
+                    ┌─────────────┐
+                    │   建立訂閱   │
+                    │  (checkout) │
+                    └──────┬──────┘
+                           ↓
+           ┌───────────────┴───────────────┐
+           ↓                               ↓
+    ┌─────────────┐                 ┌─────────────┐
+    │ 付款成功    │                 │ 付款失敗    │
+    │ → active    │                 │ → cancelled │
+    └──────┬──────┘                 └─────────────┘
+           ↓
+    ┌─────────────┐
+    │  正常使用   │
+    └──────┬──────┘
+           │
+     ┌─────┼─────┬─────────┬────────────┐
+     ↓     ↓     ↓         ↓            ↓
+┌────────┐ ┌────────┐ ┌────────┐ ┌──────────┐ ┌────────┐
+│ 自動續約│ │ 升級   │ │ 降級   │ │ 取消續約 │ │ 到期   │
+│→ active│ │→ active│ │→ active│ │→ canceling│ │→ expired│
+└────────┘ └────────┘ └────────┘ └──────────┘ └────────┘
+```
+
+### 5.2 狀態定義
+
+| 狀態 | 說明 | 權限 |
+|------|------|------|
+| `active` | 訂閱有效 | 完整權限 |
+| `past_due` | 付款失敗，寬限期 | 完整權限（3 天寬限） |
+| `canceling` | 已取消續約，期限內仍有效 | 完整權限至到期日 |
+| `expired` | 已到期 | 降為 Free 權限 |
+| `cancelled` | 已取消（立即失效） | 降為 Free 權限 |
+
+### 5.3 生命週期事件處理
+
+> **欄位對應**：使用現有 `merchants.merchantLevel` 欄位（非新增 merchantTier）
+
+#### 自動續約成功
+```typescript
+// Webhook: invoice.paid (Stripe) / payment.success (Recur)
+async function handleRenewalSuccess(providerSubscriptionId: string, provider: 'stripe' | 'recur') {
+  const subscription = await db.query.merchantSubscriptions.findFirst({
+    where: and(
+      eq(merchantSubscriptions.providerSubscriptionId, providerSubscriptionId),
+      eq(merchantSubscriptions.provider, provider),
+    ),
+  });
+  
+  if (!subscription) return;
+  
+  await db.update(merchantSubscriptions)
+    .set({
+      status: 'active',
+      currentPeriodStart: new Date(),
+      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // +30 days
+      updatedAt: new Date(),
+    })
+    .where(eq(merchantSubscriptions.id, subscription.id));
+}
+```
+
+#### 續約失敗
+```typescript
+// Webhook: invoice.payment_failed
+async function handlePaymentFailed(providerSubscriptionId: string, provider: 'stripe' | 'recur') {
+  const subscription = await db.query.merchantSubscriptions.findFirst({
+    where: and(
+      eq(merchantSubscriptions.providerSubscriptionId, providerSubscriptionId),
+      eq(merchantSubscriptions.provider, provider),
+    ),
+  });
+  
+  if (!subscription) return;
+  
+  await db.update(merchantSubscriptions)
+    .set({ status: 'past_due', updatedAt: new Date() })
+    .where(eq(merchantSubscriptions.id, subscription.id));
+  
+  // 設定 3 天寬限期
+  const graceDeadline = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  
+  // 發送通知給商家（透過現有通知系統）
+  await storage.createNotification({
+    userId: subscription.merchantId.toString(), // 需轉換為 user 關聯
+    type: 'payment_failed',
+    title: '付款失敗',
+    body: `您的訂閱付款失敗，請在 ${graceDeadline.toLocaleDateString('zh-TW')} 前更新付款方式`,
+  });
+}
+```
+
+#### 升級方案
+```typescript
+// API: POST /api/merchant/subscription/upgrade
+async function upgradeSubscription(merchantId: number, newLevel: 'pro' | 'premium', provider: 'stripe' | 'recur') {
+  // 1. 使用資料庫交易確保原子性
+  await db.transaction(async (tx) => {
+    // 2. 更新商家等級
+    await tx.update(merchants)
+      .set({ 
+        merchantLevel: newLevel,
+        merchantLevelExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(),
+      })
+      .where(eq(merchants.id, merchantId));
+    
+    // 3. 更新訂閱記錄
+    await tx.update(merchantSubscriptions)
+      .set({ 
+        tier: newLevel, 
+        updatedAt: new Date() 
+      })
+      .where(eq(merchantSubscriptions.merchantId, merchantId));
+  });
+  
+  // 4. 推送權限更新
+  io.to(`merchant:${merchantId}`).emit('subscription:updated', { merchantLevel: newLevel });
+}
+```
+
+#### 降級方案
+```typescript
+// 降級在當期結束後生效（避免用戶損失已付費權益）
+async function downgradeSubscription(merchantId: number, newLevel: 'free' | 'pro') {
+  const subscription = await db.query.merchantSubscriptions.findFirst({
+    where: eq(merchantSubscriptions.merchantId, merchantId),
+  });
+  
+  if (!subscription) return;
+  
+  // 記錄待降級，不立即生效
+  await db.update(merchantSubscriptions)
+    .set({ 
+      scheduledDowngradeTo: newLevel,
+      updatedAt: new Date(),
+    })
+    .where(eq(merchantSubscriptions.id, subscription.id));
+  
+  // 到期處理排程會檢查此欄位
+}
+```
+
+#### 到期處理（排程任務）
+```typescript
+// 每小時執行一次：server/scripts/process-expired-subscriptions.ts
+async function processExpiredSubscriptions() {
+  const now = new Date();
+  const gracePeriodEnd = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000); // 3 天前
+  
+  // 1. 處理超過寬限期的 past_due 訂閱
+  const pastDueExpired = await db.query.merchantSubscriptions.findMany({
+    where: and(
+      eq(merchantSubscriptions.status, 'past_due'),
+      lt(merchantSubscriptions.updatedAt, gracePeriodEnd),
+    ),
+  });
+  
+  for (const sub of pastDueExpired) {
+    await db.transaction(async (tx) => {
+      await tx.update(merchantSubscriptions)
+        .set({ status: 'expired', updatedAt: now })
+        .where(eq(merchantSubscriptions.id, sub.id));
+      
+      await tx.update(merchants)
+        .set({ merchantLevel: 'free', merchantLevelExpiresAt: null, updatedAt: now })
+        .where(eq(merchants.id, sub.merchantId));
+    });
+    
+    io.to(`merchant:${sub.merchantId}`).emit('subscription:updated', { merchantLevel: 'free' });
+  }
+  
+  // 2. 處理已到期的 active 訂閱
+  const activeExpired = await db.query.merchantSubscriptions.findMany({
+    where: and(
+      eq(merchantSubscriptions.status, 'active'),
+      lt(merchantSubscriptions.currentPeriodEnd, now),
+    ),
+  });
+  
+  for (const sub of activeExpired) {
+    const newLevel = sub.scheduledDowngradeTo || 'free';
+    
+    await db.transaction(async (tx) => {
+      await tx.update(merchantSubscriptions)
+        .set({ status: 'expired', scheduledDowngradeTo: null, updatedAt: now })
+        .where(eq(merchantSubscriptions.id, sub.id));
+      
+      await tx.update(merchants)
+        .set({ merchantLevel: newLevel, merchantLevelExpiresAt: null, updatedAt: now })
+        .where(eq(merchants.id, sub.merchantId));
+    });
+    
+    io.to(`merchant:${sub.merchantId}`).emit('subscription:updated', { merchantLevel: newLevel });
+  }
+}
+```
+
+### 5.4 金流切換處理
+
+商家想從 Stripe 換成 Recur（或反過來）：
+
+```typescript
+// 不支援自動切換，用戶須手動操作
+// 流程：取消現有訂閱 → 等到期 → 用新金流重新訂閱
+
+// API: POST /api/merchant/subscription/cancel
+async function cancelSubscription(merchantId: number, options: { atPeriodEnd: boolean }) {
+  const subscription = await db.query.merchantSubscriptions.findFirst({
+    where: eq(merchantSubscriptions.merchantId, merchantId),
+  });
+  
+  if (!subscription) throw new Error('No active subscription');
+  
+  if (options.atPeriodEnd) {
+    // 標記為取消中，到期自動失效
+    await db.update(merchantSubscriptions)
+      .set({ status: 'canceling', updatedAt: new Date() })
+      .where(eq(merchantSubscriptions.id, subscription.id));
+    
+    // 在 Stripe/Recur 設定到期後不續約
+    if (subscription.provider === 'stripe') {
+      await stripe.subscriptions.update(subscription.providerSubscriptionId, {
+        cancel_at_period_end: true,
+      });
+    }
+  } else {
+    // 立即取消
+    await db.transaction(async (tx) => {
+      await tx.update(merchantSubscriptions)
+        .set({ status: 'cancelled', updatedAt: new Date() })
+        .where(eq(merchantSubscriptions.id, subscription.id));
+      
+      await tx.update(merchants)
+        .set({ merchantLevel: 'free', merchantLevelExpiresAt: null })
+        .where(eq(merchants.id, merchantId));
+    });
+  }
+}
+```
+
+### 5.5 退款處理
+
+```typescript
+// Admin API: POST /api/admin/subscription/refund
+async function refundSubscription(subscriptionId: number, reason: string) {
+  const sub = await db.query.merchantSubscriptions.findFirst({
+    where: eq(merchantSubscriptions.id, subscriptionId),
+  });
+  
+  if (!sub) throw new Error('Subscription not found');
+  
+  if (sub.provider === 'stripe' && sub.lastPaymentIntentId) {
+    // Stripe 自動退款
+    await stripe.refunds.create({
+      payment_intent: sub.lastPaymentIntentId,
+      reason: 'requested_by_customer',
+    });
+  } else {
+    // Recur 退款需人工處理
+    // 記錄退款請求，通知管理員
+    console.log(`[REFUND REQUEST] subscriptionId=${subscriptionId}, reason=${reason}`);
+  }
+  
+  // 立即取消權限
+  await db.transaction(async (tx) => {
+    await tx.update(merchants)
+      .set({ merchantLevel: 'free', merchantLevelExpiresAt: null })
+      .where(eq(merchants.id, sub.merchantId));
+    
+    await tx.update(merchantSubscriptions)
+      .set({ status: 'cancelled', cancelledAt: new Date() })
+      .where(eq(merchantSubscriptions.id, subscriptionId));
+  });
+  
+  io.to(`merchant:${sub.merchantId}`).emit('subscription:updated', { merchantLevel: 'free' });
+}
+
+---
+
+## 🔗 資料模型統一方案
+
+### 6.1 最終決策
+
+採用**方案 A**：直接在 `places` 表新增欄位，不額外新增 `merchant_place_subscriptions` 表。
+
+| 表名 | 用途 | 狀態 |
+|------|------|------|
+| `merchants` | 商家資料 + 商家等級（`merchantLevel`） | **現有 + 新增欄位** |
+| `merchant_place_links` | 商家認領景點的關聯 | **現有** |
+| `places` | 景點資料 + 行程卡等級（`placeCardTier`） | **現有 + 新增欄位** |
+| `merchant_subscriptions` | 訂閱交易紀錄 | **新增** |
+
+### 6.2 關係設計
+
+```
+merchants (1) ─────────────────────────────────────────────┐
+    │                                                      │
+    │ merchantLevel (free/pro/premium)                     │
+    │ merchantLevelExpiresAt                               │
+    │ stripeCustomerId / recurCustomerId                   │
+    │                                                      │
+    ↓                                                      ↓
+merchant_place_links (N)                    merchant_subscriptions (N)
+    │ (已認領的景點)                               │ (付款紀錄)
+    │                                              │
+    ↓                                              │
+places (1)                                         │
+    │                                              │
+    │ merchantId ←─────────────────────────────────┘
+    │ placeCardTier (free/pro/premium)
+    │ placeCardTierExpiresAt
+```
+
+### 6.3 欄位定義
+
+```typescript
+// shared/schema.ts - merchants 表新增欄位
+merchantLevelExpiresAt: timestamp("merchant_level_expires_at"),
+stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+recurCustomerId: varchar("recur_customer_id", { length: 255 }),
+
+// shared/schema.ts - places 表新增欄位
+placeCardTier: varchar("place_card_tier", { length: 20 }).default('free'),
+placeCardTierExpiresAt: timestamp("place_card_tier_expires_at"),
+
+// shared/schema.ts - merchant_subscriptions 表（新增）
+export const merchantSubscriptions = pgTable("merchant_subscriptions", {
+  id: serial("id").primaryKey(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  type: varchar("type", { length: 20 }).notNull(), // 'merchant' | 'place'
+  tier: varchar("tier", { length: 20 }).notNull(), // 'pro' | 'premium'
+  placeId: integer("place_id").references(() => places.id), // null for merchant subscription
+  provider: varchar("provider", { length: 20 }).notNull(), // 'stripe' | 'recur'
+  providerSubscriptionId: varchar("provider_subscription_id", { length: 255 }).notNull(),
+  providerCustomerId: varchar("provider_customer_id", { length: 255 }),
+  status: varchar("status", { length: 20 }).default('active').notNull(),
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  scheduledDowngradeTo: varchar("scheduled_downgrade_to", { length: 20 }),
+  lastPaymentIntentId: varchar("last_payment_intent_id", { length: 255 }),
+  cancelledAt: timestamp("cancelled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+```
+
+### 6.4 優點
+
+- 查詢簡單，不需 JOIN
+- 與現有 `merchantId` 欄位邏輯一致
+- 減少表數量，降低維護成本
+
+---
+
+## 📝 SEO 內容管理策略
+
+### 7.1 去重邏輯
+
+每個 **區域 + 分類** 組合只產生一篇文章：
+
+```sql
+-- 使用 COALESCE 處理 NULL district（避免 NULL 繞過唯一索引）
+CREATE UNIQUE INDEX idx_seo_itineraries_unique 
+ON seo_itineraries (region_id, COALESCE(district_id, 0), category);
+```
+
+```typescript
+// 生成前檢查
+async function generateSeoItinerary(regionId: number, districtId: number | null, category: string) {
+  const existing = await db.query.seoItineraries.findFirst({
+    where: and(
+      eq(seoItineraries.regionId, regionId),
+      districtId ? eq(seoItineraries.districtId, districtId) : isNull(seoItineraries.districtId),
+      eq(seoItineraries.category, category),
+    ),
+  });
+  
+  if (existing) {
+    // 更新現有文章，而非新增
+    return updateSeoItinerary(existing.id, newContent);
+  }
+  
+  // 新增文章
+  return createSeoItinerary({ regionId, districtId, category, ...newContent });
+}
+```
+
+### 7.2 版本控制
+
+```typescript
+// seo_itineraries 表欄位
+version: integer("version").default(1).notNull(),
+contentHash: varchar("content_hash", { length: 64 }), // SHA-256 of source data
+
+// 每次更新時遞增版本號
+await db.update(seoItineraries)
+  .set({ 
+    itineraryIntro: newContent,
+    version: sql`version + 1`,
+    contentHash: crypto.createHash('sha256').update(sourceData).digest('hex'),
+    updatedAt: new Date(),
+  })
+  .where(eq(seoItineraries.id, id));
+```
+
+### 7.3 更新觸發條件
+
+| 觸發條件 | 動作 | 實現方式 |
+|---------|------|---------|
+| 手動觸發（Admin） | 重新生成指定區域的文章 | Admin API |
+| 景點資料變更超過 10% | 排程任務自動檢測並重新生成 | 每日排程 |
+| 每月定期更新 | 批次重新生成所有文章 | 月初排程 |
+
+#### 10% 資料變更閾值計算
+
+```typescript
+// server/scripts/check-seo-regeneration.ts
+// 每日 00:00 執行
+
+async function checkAndRegenerateSeoContent() {
+  // 1. 取得所有已發布的 SEO 文章
+  const seoArticles = await db.query.seoItineraries.findMany({
+    where: eq(seoItineraries.status, 'published'),
+  });
+  
+  for (const article of seoArticles) {
+    // 2. 計算該區域當前景點資料的 hash
+    const currentPlaces = await db.query.places.findMany({
+      where: and(
+        eq(places.regionId, article.regionId),
+        article.districtId 
+          ? eq(places.districtId, article.districtId) 
+          : sql`1=1`,
+        eq(places.category, article.category),
+        eq(places.isActive, true),
+      ),
+      orderBy: asc(places.id), // 確保順序一致
+    });
+    
+    // 3. 計算變更比例
+    const currentHash = crypto
+      .createHash('sha256')
+      .update(JSON.stringify(currentPlaces.map(p => p.id)))
+      .digest('hex');
+    
+    if (article.contentHash !== currentHash) {
+      // 4. 計算實際變更比例
+      const originalPlaceIds = JSON.parse(article.sourcePlaceIds || '[]');
+      const currentPlaceIds = currentPlaces.map(p => p.id);
+      
+      const added = currentPlaceIds.filter(id => !originalPlaceIds.includes(id));
+      const removed = originalPlaceIds.filter(id => !currentPlaceIds.includes(id));
+      
+      const changeRatio = (added.length + removed.length) / Math.max(originalPlaceIds.length, 1);
+      
+      if (changeRatio >= 0.1) { // 超過 10%
+        console.log(`[SEO] Regenerating article ${article.id}: ${changeRatio * 100}% changed`);
+        await regenerateSeoItinerary(article.id);
+      }
+    }
+  }
+}
+```
+
+### 7.4 發布流程
+
+```
+AI 生成 → 存入 DB (status=draft) → 人工審核（可選）→ 發布 (status=published) → 觸發 ISR
+```
+
+```typescript
+// API: POST /api/admin/seo-itineraries/:id/publish
+async function publishSeoItinerary(id: number) {
+  await db.update(seoItineraries)
+    .set({ status: 'published', publishedAt: new Date() })
+    .where(eq(seoItineraries.id, id));
+  
+  // 觸發官網 ISR
+  const article = await db.query.seoItineraries.findFirst({
+    where: eq(seoItineraries.id, id),
+  });
+  
+  if (article) {
+    await triggerIsrRevalidation(article.slug);
+  }
+}
+
+async function triggerIsrRevalidation(slug: string) {
+  const OFFICIAL_SITE_URL = process.env.OFFICIAL_SITE_URL;
+  const SEO_SERVICE_TOKEN = process.env.SEO_SERVICE_TOKEN;
+  
+  await fetch(`${OFFICIAL_SITE_URL}/api/revalidate`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${SEO_SERVICE_TOKEN}`,
+    },
+    body: JSON.stringify({ path: `/itinerary/${slug}` }),
+  });
+}
+```
+
+### 7.5 舊文章處理
+
+| 情境 | 處理方式 | URL 處理 |
+|------|---------|---------|
+| 內容過時 | 更新 + 保留 URL | 不變（SEO 連續性） |
+| 區域停用 | 設為 archived | 301 重導至上級頁面 |
+| 重複內容 | 合併至主文章 | 舊 URL 301 重導 |
+
+```typescript
+// seo_itineraries.status 欄位值
+type SeoStatus = 'draft' | 'published' | 'archived';
+```
+
+---
+
 ## 📅 實作步驟
 
-### Phase 1：資料結構與 API（後端）
-1. [ ] 新增 `seo_itineraries` 資料表（含 regionId/districtId 關聯）
+### Phase 1：資料結構（後端）
+1. [ ] 新增 `seo_itineraries` 資料表
 2. [ ] 新增 `merchant_subscriptions` 資料表
-3. [ ] 新增 `merchant_place_subscriptions` 資料表
-4. [ ] 修改 `merchants` 表：`subscriptionTier` → `merchantTier`
-5. [ ] 實作 SEO API 端點（含 ISR 觸發）
-6. [ ] 實作商家訂閱 API 端點
-7. [ ] 完善 Stripe/Recur Webhook 處理
-8. [ ] 建立權限限制 Helper（`server/lib/merchantPermissions.ts`）
+3. [ ] `merchants` 表新增 3 個欄位（merchantLevelExpiresAt、stripeCustomerId、recurCustomerId）
+4. [ ] `places` 表新增 2 個欄位（placeCardTier、placeCardTierExpiresAt）
+5. [ ] 執行 `npm run db:push` 同步資料庫
 
-### Phase 2：AI 內容生成（後端）
-1. [ ] 修改 Gemini prompt 生成 SEO 內容
-2. [ ] 建立批次生成腳本（`server/scripts/generate-seo-itineraries.ts`）
-3. [ ] 實作內容審核機制
+### Phase 2：訂閱 API（後端）
+1. [ ] 實作商家訂閱 API 端點
+2. [ ] 完善 Stripe Webhook 處理（訂閱事件）
+3. [ ] 完善 Recur Webhook 處理（訂閱事件）
+4. [ ] 建立權限限制 Helper（`server/lib/merchantPermissions.ts`）
+5. [ ] 實作到期處理排程任務
+6. [ ] 實作 Socket.io 權限推送
+
+### Phase 3：SEO API 與內容生成（後端）
+1. [ ] 實作 SEO API 端點
+2. [ ] 修改 Gemini prompt 生成 SEO 內容
+3. [ ] 建立批次生成腳本（`server/scripts/generate-seo-itineraries.ts`）
 4. [ ] 實作 ISR 重新驗證觸發函式
 
-### Phase 3：官方網站開發（前端 - Next.js 15）
-1. [ ] 建立 Next.js 15 專案（App Router）
+### Phase 4：官方網站擴充（前端 - 另一 Replit 專案）
+1. [ ] 確認現有框架並規劃擴充方式
 2. [ ] 實作 SEO 頁面（SSG/ISR + Schema.org JSON-LD）
-3. [ ] 實作 `/api/revalidate` 路由（On-Demand ISR）
-4. [ ] 實作商家訂閱購買頁面
-5. [ ] 整合 Stripe/Recur 結帳（含國家偵測）
-6. [ ] 動態 sitemap.xml 生成
+3. [ ] 實作商家訂閱購買頁面（用戶自選付款方式）
+4. [ ] 整合 Stripe/Recur 結帳
+5. [ ] 動態 sitemap.xml 生成
+6. [ ] 實作 `/api/revalidate` 路由（On-Demand ISR）
 
-### Phase 4：App 權限同步
-1. [ ] 實作 Socket.io 權限推送事件
-2. [ ] App 端監聽 `subscription:updated` 事件
-3. [ ] 功能權限控制邏輯（商家等級 + 行程卡等級）
-4. [ ] 刷新商家 session 機制
+### Phase 5：App 權限同步（Expo 專案）
+1. [ ] App 端監聽 `subscription:updated` 事件
+2. [ ] 功能權限控制邏輯（商家等級 + 行程卡等級）
+3. [ ] 刷新商家 session 機制
 
 ---
 
@@ -619,7 +1189,7 @@ Google 搜尋「台北美食」
                        ↓
   ┌─────────────────────────────────────────────┐
   │ 更新 merchant_subscriptions                  │
-  │ 更新 merchants.merchantTier                  │
+  │ 更新 merchants.merchantLevel                 │
   └────────────────────┬────────────────────────┘
                        ↓
   ┌─────────────────────────────────────────────┐
