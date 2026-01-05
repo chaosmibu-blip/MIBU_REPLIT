@@ -7,10 +7,13 @@ import { createTripPlannerRoutes } from "../modules/trip-planner/server/routes";
 import { createPlannerServiceRoutes } from "../modules/trip-planner/server/planner-routes";
 import { registerStripeRoutes } from "./stripeRoutes";
 import modularRouter from "./routes/index";
+import webhooksRouter from "./routes/webhooks";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
 
+  app.use(webhooksRouter);
+  
   app.use('/api', queryLogger);
   app.use('/api/admin', adminRateLimiter);
 

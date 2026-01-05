@@ -239,7 +239,15 @@ export function setupSocketIO(httpServer: HttpServer): Server {
 
   console.log('🚀 Socket.IO initialized for real-time location tracking');
   
+  setIOInstance(io);
+  
   return io;
+}
+
+let ioInstance: Server | null = null;
+
+export function setIOInstance(io: Server): void {
+  ioInstance = io;
 }
 
 export function getConnectedUsers(): string[] {
@@ -248,4 +256,28 @@ export function getConnectedUsers(): string[] {
 
 export function isUserOnline(userId: string): boolean {
   return userSocketMap.has(userId) && userSocketMap.get(userId)!.size > 0;
+}
+
+export interface SubscriptionUpdatedPayload {
+  merchantId: number;
+  type: 'merchant' | 'place';
+  tier: 'free' | 'pro' | 'premium';
+  status: string;
+  placeId?: number;
+  expiresAt?: Date | null;
+}
+
+export function emitSubscriptionUpdated(userId: string, payload: SubscriptionUpdatedPayload): void {
+  if (!ioInstance) {
+    console.warn('[Socket] IO instance not initialized, cannot emit subscription update');
+    return;
+  }
+
+  const userSockets = userSocketMap.get(userId);
+  if (userSockets && userSockets.size > 0) {
+    userSockets.forEach(socketId => {
+      ioInstance!.to(socketId).emit('subscription:updated', payload);
+    });
+    console.log(`📣 Emitted subscription:updated to ${userId}`);
+  }
 }
