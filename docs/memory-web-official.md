@@ -3,277 +3,213 @@
 ## 模組範圍
 Mibu 官方網站前端，負責 SEO 內容展示、商家訂閱購買、品牌行銷。
 
+> **完整開發藍圖**：`attached_assets/frontend-docs/web-official-blueprint.md`
+> 
+> **API 同步藍圖**：`attached_assets/frontend-docs/web-sync-blueprint.md`
+
 ---
 
 ## 技術棧
 
 | 項目 | 選擇 | 說明 |
 |------|------|------|
-| 框架 | 待確認（現有 Replit 專案） | 需擴充 SEO 頁面與訂閱功能 |
-| 樣式 | Tailwind CSS | 與 App 風格一致 |
-| 狀態管理 | React Query | API 快取 |
-| 金流 | Stripe + Recur SDK | 用戶自選付款方式 |
+| 框架 | Next.js 15 (App Router) | SSR/SSG 支援 |
+| 樣式 | Tailwind CSS 3.x | 響應式設計 |
+| UI 元件 | shadcn/ui | 可客製化元件庫 |
+| 狀態管理 | TanStack Query 5.x | API 快取 |
+| 表單 | React Hook Form + Zod | 驗證 |
+| 金流 | Stripe + Recur SDK | 雙軌金流 |
 | 部署 | Replit | 已建立專案 |
-
-> **現況**：官網專案已在另一個 Replit 建立，目前僅有隱私權政策、使用條款頁面
 
 ---
 
 ## 頁面結構
 
-### 公開頁面（SEO）
-```
-/                                    # 首頁
-/about                               # 關於 Mibu
-/features                            # 功能介紹
+### 公開頁面
 
-# 程式化 SEO 頁面（聚合頁 + 子頁結構）
-/itinerary                           # 所有城市列表
-/itinerary/[parentSlug]              # 聚合頁：如 /itinerary/tainan-east
-/itinerary/[parentSlug]/[version]    # 子頁：如 /itinerary/tainan-east/v001
+| 路由 | 說明 | 渲染方式 |
+|------|------|---------|
+| `/` | 首頁 | SSG |
+| `/for-business` | 商家合作頁 | SSG |
+| `/for-business/pricing` | 訂閱方案頁 | SSG + ISR |
+| `/explore` | 城市列表 | SSG + ISR |
+| `/city/[slug]` | 城市詳情 | SSG + ISR |
+| `/place/[slug]` | 景點詳情 | SSG + ISR |
 
-# 商家 SEO（獨立頁面，不放在行程頁）
-/for-business                        # 商家合作頁（旅遊行銷、店家曝光）
+### 商家專區（需登入）
 
-# SEO 資源
-/sitemap.xml                         # 動態 Sitemap
-/robots.txt                          # 爬蟲規則
-```
+| 路由 | 說明 |
+|------|------|
+| `/merchant/login` | 商家登入 |
+| `/merchant/dashboard` | 商家後台 |
+| `/merchant/subscription/success` | 購買成功 |
+| `/merchant/subscription/cancel` | 購買取消 |
 
-### 程式化 SEO 說明
+---
 
-**資料來源**：直接沿用 `gacha_ai_logs.aiReason`（AI 排序理由）
+## 官網記憶庫索引
 
-**頁面結構**：
-- **聚合頁**：`/itinerary/tainan-east` → 台南東區所有行程總覽
-- **子頁**：`/itinerary/tainan-east/v001` → 單一行程詳情
+官網需建立以下記憶庫（存放於官網專案 `docs/` 目錄）：
 
-**標題格式**：`{城市}{區域}一日遊｜{前3分類}精選路線`
-- 範例：「台南東區一日遊｜美食、景點、購物精選路線」
-
-**同步時機**：用戶扭蛋完成後自動同步，不需人工審核
-
-**商家策略**：行程頁保持純淨，只在 Footer 放「我是商家」連結
-
-### 商家專區
-```
-/merchant/login             # 商家登入
-/merchant/register          # 商家註冊
-/merchant/dashboard         # 儀表板
-/merchant/subscription      # 訂閱管理
-/merchant/checkout          # 訂閱購買
-/merchant/checkout/success  # 購買成功
-/merchant/checkout/cancel   # 購買取消
-```
+| 檔案 | 職權範圍 |
+|------|---------|
+| `memory-web-pages.md` | 頁面結構、路由定義 |
+| `memory-web-components.md` | 共用元件庫 |
+| `memory-web-api.md` | API 整合、hook 定義 |
+| `memory-web-auth.md` | 認證機制（Cookie JWT） |
+| `memory-web-payment.md` | 金流整合（Stripe/Recur） |
+| `memory-web-seo.md` | SEO 頁面、Meta 設定 |
 
 ---
 
 ## 與後端 API 整合
 
+### 後端 URL
+
+| 環境 | URL |
+|------|-----|
+| 開發 | `https://591965a7-25f6-479c-b527-3890b1193c21-00-1m08cwv9a4rev.picard.replit.dev` |
+| 生產 | `https://gacha-travel--s8869420.replit.app` |
+
 ### 認證方式
 
-| 場景 | 認證 | Header |
-|------|------|--------|
-| SEO 頁面 | Service Token | `X-Service-Token: {token}` |
-| 商家操作 | JWT | `Authorization: Bearer {jwt}` |
+| 項目 | 值 |
+|------|-----|
+| Cookie 名稱 | `auth_token` |
+| 類型 | HttpOnly, Secure |
+| 有效期 | 7 天 |
+| SameSite | Lax |
 
-### SEO API
+### 核心 API 端點
 
-```typescript
-// 取得所有行程（分頁）
-GET /api/seo/itineraries
-Query: { page, limit, city }
-Response: {
-  itineraries: SeoItinerary[];
-  pagination: { page, limit, total };
-}
+#### 公開 API
 
-// 取得聚合頁下所有子頁
-GET /api/seo/itineraries/:parentSlug
-Response: {
-  parentSlug: string;
-  title: string;  // 如「台南東區一日遊」
-  itineraries: SeoItinerary[];  // 該區域所有行程
-}
+| 方法 | 端點 | 說明 |
+|------|------|------|
+| GET | `/api/subscription-plans` | 訂閱方案列表（動態） |
+| GET | `/api/seo/cities` | 城市列表 |
+| GET | `/api/seo/cities/:slug` | 城市詳情 |
+| GET | `/api/seo/places/:slug` | 景點詳情 |
 
-// 取得單一子頁
-GET /api/seo/itineraries/:parentSlug/:version
-Response: SeoItinerary
+#### 認證 API
 
-// 取得 Sitemap 資料
-GET /api/seo/sitemap
-Response: { urls: SitemapUrl[] }
-```
+| 方法 | 端點 | 說明 |
+|------|------|------|
+| POST | `/api/merchant/login` | 商家登入 |
+| POST | `/api/merchant/logout` | 商家登出 |
+| GET | `/api/merchant/verify` | 驗證登入狀態 |
 
-### 商家訂閱 API
+#### 訂閱 API（需登入）
 
-```typescript
-// 取得當前訂閱
-GET /api/merchant/subscription
-Response: {
-  merchantLevel: 'free' | 'pro' | 'premium';
-  merchantLevelExpiresAt: string | null;
-  placeSubscriptions: PlaceSubscription[];
-}
-
-// 建立訂閱結帳
-POST /api/merchant/subscription/checkout
-Body: {
-  type: 'merchant_tier' | 'place_card_tier';
-  tier: 'pro' | 'premium';
-  placeId?: number;  // 行程卡訂閱時需要
-  provider?: 'stripe' | 'recur';  // 自動偵測或指定
-}
-Response: {
-  checkoutUrl: string;  // Stripe/Recur 結帳頁面
-  sessionId: string;
-}
-
-// 取消訂閱
-POST /api/merchant/subscription/cancel
-Body: { subscriptionId: number }
-Response: { success: true }
-```
+| 方法 | 端點 | 說明 |
+|------|------|------|
+| GET | `/api/merchant/subscription` | 當前訂閱狀態 |
+| POST | `/api/merchant/subscription/checkout` | 建立結帳 Session |
+| POST | `/api/merchant/subscription/cancel` | 取消訂閱 |
 
 ---
 
 ## 金流整合
 
-### 付款方式選擇（用戶自選）
-```tsx
-// 訂閱購買頁面 - 讓用戶自行選擇付款方式
-const PaymentMethodSelector = ({ onSelect }) => {
-  return (
-    <div className="grid grid-cols-2 gap-4">
-      <button onClick={() => onSelect('stripe')} className="payment-option">
-        <CreditCard className="w-8 h-8" />
-        <span>信用卡</span>
-        <span className="text-sm text-gray-500">Visa / Mastercard / JCB</span>
-      </button>
-      <button onClick={() => onSelect('recur')} className="payment-option">
-        <Building className="w-8 h-8" />
-        <span>台灣在地支付</span>
-        <span className="text-sm text-gray-500">ATM / 超商 / 信用卡</span>
-      </button>
-    </div>
-  );
-};
-```
+### 雙軌金流
 
-### Stripe 整合
-```typescript
-// 使用 @stripe/stripe-js
-import { loadStripe } from '@stripe/stripe-js';
+| 金流 | 適用場景 | 整合方式 |
+|------|---------|---------|
+| Stripe | 海外用戶 | Checkout Session 跳轉 |
+| Recur | 台灣用戶 | SDK + redirectToCheckout |
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY);
+### Recur SDK 載入
 
-// 跳轉結帳
-const stripe = await stripePromise;
-await stripe.redirectToCheckout({ sessionId });
-```
-
-### Recur 整合
 ```html
-<!-- CDN 引入 -->
-<script src="https://unpkg.com/recur-tw@0.7.5/dist/recur.umd.js"></script>
-
-<!-- 或使用 Web Component -->
-<recur-checkout
-  publishable-key="pk_xxx"
-  product-id="prod_xxx"
-  success-url="https://mibu.tw/merchant/checkout/success"
-  cancel-url="https://mibu.tw/merchant/checkout/cancel"
-  button-text="訂閱方案"
+<Script 
+  src="https://unpkg.com/recur-tw@0.11.0/dist/recur.umd.js"
+  strategy="beforeInteractive"
 />
 ```
 
+### 結帳流程
+
+1. 用戶選擇方案 + 金流
+2. POST /api/merchant/subscription/checkout
+3. Stripe → 跳轉 Checkout 頁面
+4. Recur → 使用 SDK redirectToCheckout
+5. 成功 → /merchant/subscription/success
+6. 取消 → /merchant/subscription/cancel
+
 ---
 
-## SEO 優化
+## UI/UX 設計規範
 
-### Meta Tags
+### 響應式斷點
+
+| 斷點 | 寬度 | 用途 |
+|------|------|------|
+| sm | 640px | 手機橫向 |
+| md | 768px | 平板 |
+| lg | 1024px | 筆電 |
+| xl | 1280px | 桌機 |
+
+### 頁面佈局
+
+#### 訂閱方案頁
+
+- 手機 (<768px)：單欄堆疊，推薦方案置頂
+- 平板/桌機 (≥768px)：三欄並排
+
 ```tsx
-// app/itinerary/[slug]/page.tsx
-export async function generateMetadata({ params }) {
-  const itinerary = await fetchItinerary(params.slug);
+<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+  {plans.map((plan) => (
+    <PricingCard key={plan.tier} plan={plan} />
+  ))}
+</div>
+```
+
+#### 登入頁
+
+- 手機：全寬表單，Logo 上方
+- 桌機：左側品牌區 + 右側登入表單
+
+```tsx
+<div className="min-h-screen flex">
+  <div className="hidden lg:flex lg:w-1/2 bg-primary items-center justify-center">
+    <BrandIllustration />
+  </div>
+  <div className="w-full lg:w-1/2 flex items-center justify-center p-6">
+    <LoginForm className="w-full max-w-md" />
+  </div>
+</div>
+```
+
+#### 商家後台
+
+- 手機：底部導航或漢堡選單
+- 桌機：左側 Sidebar + 右側內容
+
+---
+
+## SEO 規範
+
+### Meta Tags 範本
+
+```typescript
+export async function generateMetadata({ params }): Promise<Metadata> {
+  const city = await getCityData(params.slug);
   return {
-    title: itinerary.title,
-    description: itinerary.metaDescription,
-    keywords: itinerary.seoKeywords,
+    title: `${city.name} 必去景點推薦 | Mibu`,
+    description: `探索 ${city.name} 最熱門的景點...`,
     openGraph: {
-      title: itinerary.title,
-      description: itinerary.metaDescription,
-      type: 'article',
+      title: `${city.name} 必去景點推薦 | Mibu`,
+      description: `...`,
+      images: [city.coverImage],
     },
   };
 }
 ```
 
-### Schema.org JSON-LD
-```tsx
-// 行程頁面結構化資料
-const jsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'TouristTrip',
-  name: itinerary.title,
-  description: itinerary.metaDescription,
-  touristType: itinerary.targetAudience,
-  itinerary: {
-    '@type': 'ItemList',
-    itemListElement: places.map((p, i) => ({
-      '@type': 'ListItem',
-      position: i + 1,
-      item: {
-        '@type': 'TouristAttraction',
-        name: p.name,
-        address: p.address,
-      },
-    })),
-  },
-};
-```
+### ISR 設定
 
-### Sitemap 生成
 ```typescript
-// app/sitemap.ts
-export default async function sitemap() {
-  const itineraries = await fetchAllItineraries();
-  
-  return [
-    { url: 'https://mibu.tw', lastModified: new Date() },
-    ...itineraries.map(i => ({
-      url: `https://mibu.tw/itinerary/${i.slug}`,
-      lastModified: i.updatedAt,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    })),
-  ];
-}
-```
-
----
-
-## 設計規範
-
-### 品牌色彩
-```css
-:root {
-  --primary: #FF6B6B;      /* Mibu 主色 */
-  --secondary: #4ECDC4;    /* 輔助色 */
-  --accent: #FFE66D;       /* 強調色 */
-  --dark: #2C3E50;         /* 深色文字 */
-  --light: #F8F9FA;        /* 淺色背景 */
-}
-```
-
-### 響應式斷點
-```css
-/* Tailwind 預設 */
-sm: 640px
-md: 768px
-lg: 1024px
-xl: 1280px
-2xl: 1536px
+export const revalidate = 3600; // 每小時重新驗證
 ```
 
 ---
@@ -282,17 +218,10 @@ xl: 1280px
 
 ```bash
 # 後端 API
-NEXT_PUBLIC_API_URL=https://mibu-backend.replit.app
-SEO_SERVICE_TOKEN=xxx
-
-# Stripe
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_xxx
+NEXT_PUBLIC_API_URL=後端 URL
 
 # Recur
 NEXT_PUBLIC_RECUR_PUBLISHABLE_KEY=pk_xxx
-
-# Analytics
-NEXT_PUBLIC_GA_ID=G-xxx
 
 # 網站
 NEXT_PUBLIC_SITE_URL=https://mibu.tw
@@ -300,16 +229,34 @@ NEXT_PUBLIC_SITE_URL=https://mibu.tw
 
 ---
 
+## 開發指令
+
+```bash
+# 專案初始化
+npx create-next-app@latest mibu-web --typescript --tailwind --eslint --app --src-dir
+npm install @tanstack/react-query react-hook-form zod @hookform/resolvers lucide-react framer-motion
+npx shadcn@latest init
+npx shadcn@latest add button card input label toast tabs accordion dialog
+
+# 開發
+npm run dev
+
+# 建構
+npm run build
+```
+
+---
+
 ## 待開發功能
 
 - [ ] Next.js 15 專案建置
-- [ ] SEO 行程頁面（SSG）
-- [ ] 商家登入/註冊
-- [ ] 訂閱購買流程
+- [ ] 首頁設計
+- [ ] 訂閱方案頁（動態載入）
+- [ ] 商家登入/後台
 - [ ] Stripe 結帳整合
 - [ ] Recur 結帳整合
+- [ ] SEO 城市/景點頁面
 - [ ] 動態 Sitemap
-- [ ] Google Analytics
 
 ---
 
@@ -317,5 +264,6 @@ NEXT_PUBLIC_SITE_URL=https://mibu.tw
 
 | 日期 | 變更內容 |
 |------|---------|
-| 2026-01-05 | 修正：金流為用戶自選（非自動導向）、官網為現有 Replit 專案 |
+| 2026-01-05 | 重構：整合完整開發藍圖，新增記憶庫索引、UI/UX 規範、指令集 |
+| 2026-01-05 | 修正：金流為用戶自選（非自動導向） |
 | 2026-01-05 | 初版記憶庫建立 |
