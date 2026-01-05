@@ -7,8 +7,12 @@ import { hasAdminAccess } from "./shared";
 
 const router = Router();
 
-router.get("/configs", hasAdminAccess, async (req: any, res) => {
+router.get("/configs", async (req: any, res) => {
   try {
+    if (!(await hasAdminAccess(req))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    
     const configs = await configService.getAll();
     
     const grouped: Record<string, SystemConfig[]> = {};
@@ -26,8 +30,12 @@ router.get("/configs", hasAdminAccess, async (req: any, res) => {
   }
 });
 
-router.get("/configs/:category", hasAdminAccess, async (req: any, res) => {
+router.get("/configs/:category", async (req: any, res) => {
   try {
+    if (!(await hasAdminAccess(req))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    
     const { category } = req.params;
     const configs = await configService.getByCategory(category);
     res.json({ configs });
@@ -37,8 +45,12 @@ router.get("/configs/:category", hasAdminAccess, async (req: any, res) => {
   }
 });
 
-router.patch("/configs/:category/:key", hasAdminAccess, async (req: any, res) => {
+router.patch("/configs/:category/:key", async (req: any, res) => {
   try {
+    if (!(await hasAdminAccess(req))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    
     const { category, key } = req.params;
     const { value } = req.body;
     const userId = req.user?.id;
@@ -86,8 +98,12 @@ router.patch("/configs/:category/:key", hasAdminAccess, async (req: any, res) =>
   }
 });
 
-router.post("/configs/:category/:key/reset", hasAdminAccess, async (req: any, res) => {
+router.post("/configs/:category/:key/reset", async (req: any, res) => {
   try {
+    if (!(await hasAdminAccess(req))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    
     const { category, key } = req.params;
     const userId = req.user?.id;
 
