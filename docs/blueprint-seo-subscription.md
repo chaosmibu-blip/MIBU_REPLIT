@@ -198,7 +198,69 @@ export const seoItineraries = pgTable("seo_itineraries", {
 
 ### 1.12 同步邏輯與 ISR 重新驗證
 
-#### 從 gacha_ai_logs 同步到 seo_itineraries
+#### 1.12.1 去重機制（SEO 內容品質控制）
+
+同區域景點重複率 > 70% 時跳過同步，確保每個聚合頁下的子頁內容有差異性。
+
+```typescript
+// 計算景點重複率
+function calculatePlaceOverlap(a: number[], b: number[]): number {
+  if (!a?.length || !b?.length) return 0;
+  const setA = new Set(a);
+  const setB = new Set(b);
+  const intersection = [...setA].filter(x => setB.has(x));
+  const smaller = Math.min(a.length, b.length);
+  return smaller === 0 ? 0 : intersection.length / smaller;
+}
+
+// 檢查是否為重複內容
+async function isDuplicateContent(
+  parentSlug: string, 
+  placeIds: number[]
+): Promise<boolean> {
+  const existing = await db.query.seoItineraries.findMany({
+    where: eq(seoItineraries.parentSlug, parentSlug),
+  });
+  
+  for (const item of existing) {
+    const overlap = calculatePlaceOverlap(item.placeIds || [], placeIds);
+    if (overlap > 0.7) return true; // 70% 以上景點重複，視為重複
+  }
+  
+  return false;
+}
+```
+
+#### 1.12.2 Slug 併發安全機制
+
+**資料表約束**：
+```sql
+-- 確保 slug 唯一
+CREATE UNIQUE INDEX idx_seo_itineraries_slug ON seo_itineraries(slug);
+
+-- 確保 gachaSessionId 唯一（避免同一扭蛋重複同步）
+CREATE UNIQUE INDEX idx_seo_itineraries_session ON seo_itineraries(gacha_session_id);
+```
+
+**交易鎖定**：
+```typescript
+// 使用資料庫交易 + 序列化隔離確保版本號不衝突
+async function getNextVersionSafe(parentSlug: string): Promise<number> {
+  return await db.transaction(async (tx) => {
+    const latest = await tx.query.seoItineraries.findFirst({
+      where: eq(seoItineraries.parentSlug, parentSlug),
+      orderBy: desc(seoItineraries.createdAt),
+    });
+    
+    // 解析現有版本號
+    if (!latest) return 1;
+    const match = latest.slug.match(/v(\d+)$/);
+    return match ? parseInt(match[1]) + 1 : 1;
+  }, { isolationLevel: 'serializable' });
+}
+```
+
+#### 1.12.3 完整同步流程（含自動 ISR 觸發）
 
 ```typescript
 // 扭蛋完成後自動同步
@@ -206,19 +268,27 @@ async function syncToSeoItineraries(gachaLog: GachaAiLog) {
   // 1. 只同步有 aiReason 的記錄
   if (!gachaLog.aiReason) return;
   
-  // 2. 生成 slug
   const parentSlug = generateParentSlug(gachaLog.city, gachaLog.district);
-  const version = await getNextVersion(parentSlug);
+  
+  // 2. 去重檢查：同區域景點重複率 > 70% 則跳過
+  const isDuplicate = await isDuplicateContent(parentSlug, gachaLog.orderedPlaceIds);
+  if (isDuplicate) {
+    console.log(`Skipped: ${parentSlug} - duplicate content (>70% overlap)`);
+    return;
+  }
+  
+  // 3. 使用交易確保版本號不衝突
+  const version = await getNextVersionSafe(parentSlug);
   const slug = `${parentSlug}/v${version.toString().padStart(3, '0')}`;
   
-  // 3. 自動生成標題
+  // 4. 自動生成標題
   const title = generateTitle(
     gachaLog.city, 
     gachaLog.district, 
     gachaLog.categoryDistribution
   );
   
-  // 4. 存入 seo_itineraries
+  // 5. 存入 seo_itineraries
   await db.insert(seoItineraries).values({
     gachaSessionId: gachaLog.sessionId,
     city: gachaLog.city,
@@ -229,8 +299,11 @@ async function syncToSeoItineraries(gachaLog: GachaAiLog) {
     itineraryIntro: gachaLog.aiReason,
     placeIds: gachaLog.orderedPlaceIds,
     categoryDistribution: gachaLog.categoryDistribution,
-    status: 'published',  // 自動發布
+    status: 'published',
   });
+  
+  // 6. 【重要】自動觸發 ISR 重新驗證
+  await triggerISRRevalidation(slug, parentSlug);
 }
 
 // Slug 生成（城市+區域 → 英文）
@@ -249,33 +322,16 @@ function generateParentSlug(city: string, district?: string): string {
 }
 ```
 
-#### ISR 重新驗證觸發機制
+#### 1.12.4 ISR 重新驗證函式
 
 ```typescript
-// 後端：發布行程後觸發 ISR 重新驗證
-// PATCH /api/seo/itineraries/:id/publish
-app.patch("/api/seo/itineraries/:id/publish", async (req, res) => {
-  const { id } = req.params;
-  
-  // 1. 更新狀態為 published
-  const itinerary = await db.update(seoItineraries)
-    .set({ status: 'published', publishedAt: new Date() })
-    .where(eq(seoItineraries.id, Number(id)))
-    .returning();
-  
-  // 2. 通知官網進行 ISR 重新驗證（包含子頁和聚合頁）
-  await triggerISRRevalidation(itinerary[0].slug, itinerary[0].parentSlug);
-  
-  return res.json({ success: true, itinerary: itinerary[0] });
-});
-
-// ISR 重新驗證函式
 const triggerISRRevalidation = async (slug: string, parentSlug: string) => {
-  const OFFICIAL_SITE_URL = process.env.OFFICIAL_SITE_URL; // https://mibu.tw
+  const OFFICIAL_SITE_URL = process.env.OFFICIAL_SITE_URL;
   const REVALIDATE_SECRET = process.env.REVALIDATE_SECRET;
   
+  if (!OFFICIAL_SITE_URL) return; // 開發環境可跳過
+  
   try {
-    // 呼叫 Next.js On-Demand Revalidation API
     await fetch(`${OFFICIAL_SITE_URL}/api/revalidate`, {
       method: 'POST',
       headers: {
@@ -285,7 +341,7 @@ const triggerISRRevalidation = async (slug: string, parentSlug: string) => {
       body: JSON.stringify({
         paths: [
           `/itinerary/${slug}`,          // 子頁
-          `/itinerary/${parentSlug}`,    // 聚合頁（必須更新！）
+          `/itinerary/${parentSlug}`,    // 聚合頁
           '/itinerary',                  // 城市列表頁
           '/sitemap.xml',                // Sitemap
         ],
@@ -293,6 +349,7 @@ const triggerISRRevalidation = async (slug: string, parentSlug: string) => {
     });
   } catch (error) {
     console.error('ISR revalidation failed:', error);
+    // 不中斷主流程，ISR 失敗時頁面仍會在 revalidate 時間後自動更新
   }
 };
 ```
@@ -665,7 +722,76 @@ DROP TABLE IF EXISTS seo_itineraries;
 | `expired` | 已到期 | 降為 Free 權限 |
 | `cancelled` | 已取消（立即失效） | 降為 Free 權限 |
 
-### 5.3 生命週期事件處理
+### 5.3 雙金流 Webhook 事件映射表
+
+> **統一處理**：Stripe 和 Recur 的事件名稱不同，需透過此映射表轉換為統一的訂閱狀態
+
+| Stripe 事件 | Recur 事件 | 統一動作 | 結果狀態 |
+|------------|-----------|---------|---------|
+| `checkout.session.completed` | `checkout.completed` | 訂閱建立成功 | `active` |
+| `invoice.paid` | `payment.success` | 續約成功 | `active` |
+| `invoice.payment_failed` | `payment.failed` | 續約失敗 | `past_due` |
+| `customer.subscription.updated` | `subscription.updated` | 方案變更 | 依新方案 |
+| `customer.subscription.deleted` | `subscription.cancelled` | 訂閱取消 | `cancelled` |
+| - | `subscription.expired` | 訂閱到期 | `expired` |
+
+```typescript
+// 統一 Webhook 處理入口
+type WebhookEvent = {
+  provider: 'stripe' | 'recur';
+  eventType: string;
+  subscriptionId: string;
+  data: any;
+};
+
+async function handleWebhookEvent(event: WebhookEvent) {
+  // 映射到統一動作
+  const actionMap: Record<string, Record<string, string>> = {
+    stripe: {
+      'checkout.session.completed': 'subscription_created',
+      'invoice.paid': 'renewal_success',
+      'invoice.payment_failed': 'payment_failed',
+      'customer.subscription.updated': 'subscription_updated',
+      'customer.subscription.deleted': 'subscription_cancelled',
+    },
+    recur: {
+      'checkout.completed': 'subscription_created',
+      'payment.success': 'renewal_success',
+      'payment.failed': 'payment_failed',
+      'subscription.updated': 'subscription_updated',
+      'subscription.cancelled': 'subscription_cancelled',
+      'subscription.expired': 'subscription_expired',
+    },
+  };
+  
+  const action = actionMap[event.provider]?.[event.eventType];
+  if (!action) return;
+  
+  switch (action) {
+    case 'subscription_created':
+      await handleSubscriptionCreated(event);
+      break;
+    case 'renewal_success':
+      await handleRenewalSuccess(event.subscriptionId, event.provider);
+      break;
+    case 'payment_failed':
+      await handlePaymentFailed(event.subscriptionId, event.provider);
+      break;
+    case 'subscription_updated':
+      await handleSubscriptionUpdated(event);
+      break;
+    case 'subscription_cancelled':
+    case 'subscription_expired':
+      await handleSubscriptionEnded(event.subscriptionId, event.provider, action);
+      break;
+  }
+  
+  // 所有狀態變更後，通知 App 同步權限
+  await notifyAppPermissionChange(event.subscriptionId);
+}
+```
+
+### 5.4 生命週期事件處理
 
 > **欄位對應**：使用現有 `merchants.merchantLevel` 欄位（非新增 merchantTier）
 
