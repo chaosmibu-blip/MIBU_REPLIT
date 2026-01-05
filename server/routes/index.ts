@@ -7,8 +7,8 @@ import specialistRouter from './specialist';
 import chatRouter from './chat';
 import commerceRouter from './commerce';
 import locationsRouter from './locations';
-import gachaRouter from './gacha';
-import adminRouter from './admin';
+import gachaRouter from './gacha/index';
+import adminRouter from './admin/index';
 
 const router = Router();
 

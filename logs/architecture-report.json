@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-01-05T13:31:21.575Z",
+  "timestamp": "2026-01-05T13:58:20.483Z",
   "summary": {
-    "fails": 4,
-    "warns": 6,
+    "fails": 2,
+    "warns": 10,
     "passes": 2,
-    "total": 12
+    "total": 14
   },
   "results": [
     {
@@ -29,12 +29,12 @@
     },
     {
       "category": "檔案大小",
-      "status": "fail",
-      "message": "server/routes/admin.ts 有 1496 行，超過 1000 行上限",
+      "status": "warn",
+      "message": "server/routes/admin/admin-places.ts 有 993 行，建議控制在 500 行以內",
       "details": {
-        "file": "server/routes/admin.ts",
-        "lines": 1496,
-        "limit": 1000
+        "file": "server/routes/admin/admin-places.ts",
+        "lines": 993,
+        "suggested": 500
       }
     },
     {
@@ -49,12 +49,32 @@
     },
     {
       "category": "檔案大小",
-      "status": "fail",
-      "message": "server/routes/gacha.ts 有 2745 行，超過 1000 行上限",
+      "status": "warn",
+      "message": "server/routes/gacha/gacha-core.ts 有 736 行，建議控制在 500 行以內",
       "details": {
-        "file": "server/routes/gacha.ts",
-        "lines": 2745,
-        "limit": 1000
+        "file": "server/routes/gacha/gacha-core.ts",
+        "lines": 736,
+        "suggested": 500
+      }
+    },
+    {
+      "category": "檔案大小",
+      "status": "warn",
+      "message": "server/routes/gacha/gacha-main.ts 有 658 行，建議控制在 500 行以內",
+      "details": {
+        "file": "server/routes/gacha/gacha-main.ts",
+        "lines": 658,
+        "suggested": 500
+      }
+    },
+    {
+      "category": "檔案大小",
+      "status": "warn",
+      "message": "server/routes/gacha/gacha-v2v3.ts 有 989 行，建議控制在 500 行以內",
+      "details": {
+        "file": "server/routes/gacha/gacha-v2v3.ts",
+        "lines": 989,
+        "suggested": 500
       }
     },
     {
