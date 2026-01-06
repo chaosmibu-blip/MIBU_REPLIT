@@ -458,11 +458,16 @@ export const gachaAiLogs = pgTable("gacha_ai_logs", {
   categoryDistribution: jsonb("category_distribution"),
   isShortfall: boolean("is_shortfall").default(false),
   
+  tripImageUrl: text("trip_image_url"),
+  isPublished: boolean("is_published").default(false),
+  publishedAt: timestamp("published_at"),
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_gacha_ai_logs_user").on(table.userId),
   uniqueIndex("IDX_gacha_ai_logs_session_unique").on(table.sessionId),
   index("IDX_gacha_ai_logs_created").on(table.createdAt),
+  index("IDX_gacha_ai_logs_published").on(table.isPublished),
 ]);
 
 // User's collected places (圖鑑/背包)
