@@ -318,6 +318,7 @@ router.post('/login', async (req, res) => {
 router.post('/apple', async (req, res) => {
   console.log('[Apple Auth] Request received:', JSON.stringify({
     hasIdentityToken: !!req.body?.identityToken,
+    hasIdToken: !!req.body?.idToken,
     hasUser: !!req.body?.user,
     portal: req.body?.portal,
     targetPortal: req.body?.targetPortal,
@@ -326,25 +327,30 @@ router.post('/apple', async (req, res) => {
   
   try {
     const appleAuthSchema = z.object({
-      identityToken: z.string().min(1, 'Identity token is required'),
+      identityToken: z.string().min(1).optional(),
+      idToken: z.string().min(1).optional(),
       fullName: z.object({
         givenName: z.string().nullable().optional(),
         familyName: z.string().nullable().optional(),
       }).nullable().optional(),
       email: z.string().email().nullable().optional(),
-      user: z.string().min(1, 'Apple user ID is required'),
+      user: z.string().optional(),
       targetPortal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).nullable().optional(),
       portal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).nullable().optional(),
+    }).refine(data => data.identityToken || data.idToken, {
+      message: 'Either identityToken or idToken is required',
     });
     
     const validated = appleAuthSchema.parse(req.body);
-    const { identityToken, fullName, email, user: appleUserId } = validated;
+    const identityToken = validated.identityToken || validated.idToken!;
+    const { fullName, email } = validated;
     const targetPortal = validated.targetPortal || validated.portal || 'traveler';
     
-    console.log(`[Apple Auth] Verifying token for Apple user: ${appleUserId}`);
+    console.log(`[Apple Auth] Verifying token...`);
     
     const validAudiences = [
       process.env.APPLE_CLIENT_ID,
+      'com.chaos.mibu.travel',
       'host.exp.Exponent',
     ].filter(Boolean) as string[];
     
@@ -377,6 +383,7 @@ router.post('/apple', async (req, res) => {
     
     console.log(`[Apple Auth] Verified. Email: ${userEmail}, Apple sub: ${appleTokenPayload.sub}`);
     
+    const appleUserId = validated.user || appleTokenPayload.sub;
     const userId = `apple_${appleUserId}`;
     
     let existingUser = await storage.getUser(userId);
