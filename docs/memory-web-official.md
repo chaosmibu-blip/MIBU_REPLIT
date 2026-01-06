@@ -89,7 +89,26 @@ Mibu 官方網站前端，負責 SEO 內容展示、商家訂閱購買、品牌�
 | GET | `/api/subscription-plans` | 訂閱方案列表（動態） |
 | GET | `/api/seo/cities` | 城市列表 |
 | GET | `/api/seo/cities/:slug` | 城市詳情 |
-| GET | `/api/seo/places/:slug` | 景點詳情 |
+| GET | `/api/seo/places/by-id/:id` | 景點詳情（推薦，使用 ID） |
+| GET | `/api/seo/places/:slug?city=xxx` | 景點詳情（使用 slug） |
+| GET | `/api/seo/places?city=xxx` | 景點列表（搜尋/篩選） |
+
+#### OAuth 登入 API（2026-01-06 更新）
+
+| 方法 | 端點 | 說明 |
+|------|------|------|
+| POST | `/api/auth/google` | Google 登入（已註冊商家可用） |
+| POST | `/api/auth/apple` | Apple 登入（已註冊商家可用） |
+
+**OAuth 請求格式**：
+```json
+{
+  "idToken": "xxx",
+  "targetPortal": "merchant"
+}
+```
+
+**限制**：新商家/專員必須先用 Email 註冊，之後可用 OAuth 登入。
 
 #### 認證 API
 
