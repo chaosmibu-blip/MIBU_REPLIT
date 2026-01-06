@@ -147,6 +147,186 @@ router.get("/cities/:slug", async (req: Request, res: Response) => {
   }
 });
 
+router.get("/cities/:slug/districts", async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+
+    const [matchedCity] = await db
+      .select({
+        city: places.city,
+        country: places.country,
+      })
+      .from(places)
+      .where(and(
+        eq(places.isActive, true),
+        sql`lower(replace(replace(${places.city}, ' ', '-'), '''', '')) = ${slug}`
+      ))
+      .groupBy(places.city, places.country)
+      .limit(1);
+
+    if (!matchedCity) {
+      return res.status(404).json({ 
+        error: "City not found",
+        message: "找不到該城市",
+      });
+    }
+
+    const districtsData = await db
+      .select({
+        district: places.district,
+        count: sql<number>`count(*)::int`,
+        sampleImage: sql<string>`min(${places.photoReference})`,
+      })
+      .from(places)
+      .where(and(
+        eq(places.isActive, true),
+        eq(places.city, matchedCity.city),
+        sql`${places.district} IS NOT NULL AND ${places.district} != ''`
+      ))
+      .groupBy(places.district)
+      .orderBy(desc(sql`count(*)`));
+
+    const districts = districtsData
+      .filter((d) => d.district && d.district.trim() !== '')
+      .map((d) => ({
+        name: d.district,
+        slug: generateSlug(d.district),
+        placeCount: d.count,
+        imageUrl: d.sampleImage || null,
+      }));
+
+    res.json({
+      city: {
+        name: matchedCity.city,
+        slug: slug,
+        country: matchedCity.country,
+      },
+      districts,
+      total: districts.length,
+      message: districts.length === 0 ? '該城市目前還沒有行政區資料' : undefined,
+    });
+  } catch (error) {
+    console.error("Error fetching city districts:", error);
+    res.status(500).json({ error: "Failed to fetch districts" });
+  }
+});
+
+router.get("/districts/:citySlug/:districtSlug", async (req: Request, res: Response) => {
+  try {
+    const { citySlug, districtSlug } = req.params;
+    const { page = '1', limit = '20' } = req.query;
+    
+    const pageNum = Math.max(1, parseInt(page as string) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit as string) || 20));
+    const offset = (pageNum - 1) * limitNum;
+
+    const [matchedCity] = await db
+      .select({
+        city: places.city,
+        country: places.country,
+      })
+      .from(places)
+      .where(and(
+        eq(places.isActive, true),
+        sql`lower(replace(replace(${places.city}, ' ', '-'), '''', '')) = ${citySlug}`
+      ))
+      .groupBy(places.city, places.country)
+      .limit(1);
+
+    if (!matchedCity) {
+      return res.status(404).json({ 
+        error: "City not found",
+        message: "找不到該城市",
+      });
+    }
+
+    const [matchedDistrict] = await db
+      .select({
+        district: places.district,
+      })
+      .from(places)
+      .where(and(
+        eq(places.isActive, true),
+        eq(places.city, matchedCity.city),
+        sql`${places.district} IS NOT NULL AND ${places.district} != ''`,
+        sql`lower(replace(replace(${places.district}, ' ', '-'), '''', '')) = ${districtSlug}`
+      ))
+      .groupBy(places.district)
+      .limit(1);
+
+    if (!matchedDistrict) {
+      return res.status(404).json({ 
+        error: "District not found",
+        message: "找不到該行政區",
+      });
+    }
+
+    const [totalResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(places)
+      .where(and(
+        eq(places.isActive, true),
+        eq(places.city, matchedCity.city),
+        eq(places.district, matchedDistrict.district)
+      ));
+
+    const districtPlaces = await db
+      .select({
+        id: places.id,
+        name: places.placeName,
+        category: places.category,
+        subcategory: places.subcategory,
+        rating: places.rating,
+        photoReference: places.photoReference,
+        description: places.description,
+      })
+      .from(places)
+      .where(and(
+        eq(places.isActive, true),
+        eq(places.city, matchedCity.city),
+        eq(places.district, matchedDistrict.district)
+      ))
+      .orderBy(desc(places.rating))
+      .limit(limitNum)
+      .offset(offset);
+
+    const placesWithSlug = districtPlaces.map((place) => ({
+      ...place,
+      slug: generateSlug(place.name),
+      imageUrl: place.photoReference || null,
+    }));
+
+    const total = totalResult?.count || 0;
+    const totalPages = Math.ceil(total / limitNum);
+
+    res.json({
+      city: {
+        name: matchedCity.city,
+        slug: citySlug,
+        country: matchedCity.country,
+      },
+      district: {
+        name: matchedDistrict.district,
+        slug: districtSlug,
+        placeCount: total,
+      },
+      places: placesWithSlug,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
+      },
+      message: placesWithSlug.length === 0 ? '該行政區目前還沒有景點資料' : undefined,
+    });
+  } catch (error) {
+    console.error("Error fetching district details:", error);
+    res.status(500).json({ error: "Failed to fetch district details" });
+  }
+});
+
 router.get("/places/by-id/:id", async (req: Request, res: Response) => {
   try {
     const placeId = parseInt(req.params.id);

@@ -775,6 +775,90 @@ GET /api/seo/cities/:slug
 Query: ?page=1&limit=50 (選填，預設 page=1, limit=20)
 ```
 
+---
+
+### 2.1 城市行政區列表（程式化 SEO）
+
+**Endpoint**
+```
+GET /api/seo/cities/:slug/districts
+```
+
+**TypeScript Interface**
+```typescript
+interface CityDistrictsResponse {
+  city: {
+    name: string;
+    slug: string;
+    country: string;
+  };
+  districts: Array<{
+    name: string;
+    slug: string;
+    placeCount: number;
+    imageUrl: string | null;
+  }>;
+  total: number;
+  message?: string;
+}
+```
+
+**cURL 範例**
+```bash
+curl "https://[API_URL]/api/seo/cities/台北市/districts"
+```
+
+---
+
+### 2.2 行政區詳情（程式化 SEO）
+
+**Endpoint**
+```
+GET /api/seo/districts/:citySlug/:districtSlug
+Query: ?page=1&limit=20 (選填)
+```
+
+**TypeScript Interface**
+```typescript
+interface DistrictDetailResponse {
+  city: {
+    name: string;
+    slug: string;
+    country: string;
+  };
+  district: {
+    name: string;
+    slug: string;
+    placeCount: number;
+  };
+  places: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    category: string;
+    subcategory: string | null;
+    rating: number | null;
+    imageUrl: string | null;
+    description: string | null;
+  }>;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+  message?: string;
+}
+```
+
+**cURL 範例**
+```bash
+curl "https://[API_URL]/api/seo/districts/台北市/萬華區"
+curl "https://[API_URL]/api/seo/districts/台北市/大安區?page=2&limit=50"
+```
+
 **TypeScript Interface**
 ```typescript
 interface CityDetailResponse {
