@@ -14,6 +14,21 @@
 | 4. Google/Apple 登入 | ✅ 已支援商家 | ⏳ 待實作 |
 | 5. 行程 SEO 頁面 | ✅ **新增** App 行程 API | ⏳ 待實作 |
 
+### 通用錯誤回應格式
+
+```typescript
+// 404 Not Found
+interface NotFoundResponse {
+  error: string;      // "City not found" | "Place not found" | ...
+  message: string;    // "找不到該城市" | "找不到該景點" | ...
+}
+
+// 500 Internal Server Error
+interface ServerErrorResponse {
+  error: string;      // "Failed to fetch cities" | ...
+}
+```
+
 ### 後端測試結果 (2026-01-06)
 
 ```bash
@@ -53,6 +68,8 @@ GET /api/seo/trips/:id → 行程詳情（含景點列表）
 |------|---------|------|
 | 城市列表 | `GET /api/seo/cities` | 支援 country 篩選 |
 | 城市詳情 | `GET /api/seo/cities/:slug?page=1&limit=50` | **必須處理分頁** |
+| 行政區列表 | `GET /api/seo/cities/:slug/districts` | 程式化 SEO |
+| 行政區詳情 | `GET /api/seo/districts/:city/:district` | 程式化 SEO + 分頁 |
 | 景點詳情 | `GET /api/seo/places/by-id/:id` | **推薦** |
 | 景點列表 | `GET /api/seo/places?city=xxx` | 搜尋/篩選用 |
 | 行程列表 | `GET /api/seo/trips?city=xxx` | 支援 city/district 篩選 |
@@ -89,6 +106,8 @@ GET /api/seo/trips/:id → 行程詳情（含景點列表）
 |------|------|---------|------|
 | 城市列表 | `/explore` | `GET /api/seo/cities` | |
 | 城市詳情 | `/city/[slug]` | `GET /api/seo/cities/:slug?page=N&limit=50` | 必須分頁 |
+| 行政區列表 | `/city/[slug]/districts` | `GET /api/seo/cities/:slug/districts` | 程式化 SEO |
+| 行政區詳情 | `/district/[city]/[district]` | `GET /api/seo/districts/:city/:district` | 程式化 SEO |
 | 景點詳情 | `/place/[id]` | `GET /api/seo/places/by-id/:id` | **使用 ID 路由** |
 | 行程列表 | `/trips` | `GET /api/seo/trips` | **新增** App 生成行程 |
 | 行程詳情 | `/trip/[id]` | `GET /api/seo/trips/:id` | **新增** |
@@ -857,43 +876,6 @@ interface DistrictDetailResponse {
 ```bash
 curl "https://[API_URL]/api/seo/districts/台北市/萬華區"
 curl "https://[API_URL]/api/seo/districts/台北市/大安區?page=2&limit=50"
-```
-
-**TypeScript Interface**
-```typescript
-interface CityDetailResponse {
-  city: {
-    name: string;
-    slug: string;
-    country: string;
-    placeCount: number;
-  };
-  places: Array<{
-    id: number;
-    name: string;
-    slug: string;
-    district: string;
-    category: string;
-    rating: number | null;
-    imageUrl: string | null;
-    description: string | null;
-  }>;
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNext: boolean;
-    hasPrev: boolean;
-  };
-  message?: string;
-}
-```
-
-**cURL 範例**
-```bash
-curl "https://[API_URL]/api/seo/cities/台北市"
-curl "https://[API_URL]/api/seo/cities/台北市?page=2&limit=50"
 ```
 
 ---
