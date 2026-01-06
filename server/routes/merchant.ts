@@ -824,17 +824,34 @@ router.post("/api/merchant/subscription/checkout", isAuthenticated, async (req: 
       return res.status(404).json({ error: "Merchant not found" });
     }
 
-    const { type, tier, placeId, provider = 'stripe', successUrl, cancelUrl } = req.body;
+    const { 
+      type: rawType, 
+      tier: rawTier, 
+      placeId, 
+      provider = 'recur', 
+      successUrl, 
+      cancelUrl,
+      planId,
+      billingInterval 
+    } = req.body;
+
+    let type = rawType;
+    let tier = rawTier;
+
+    if (planId && !tier) {
+      tier = planId;
+      type = type || 'merchant';
+    }
 
     if (!type || !tier) {
-      return res.status(400).json({ error: "type and tier are required" });
+      return res.status(400).json({ error: "type and tier (or planId) are required" });
     }
 
     if (!['merchant', 'place'].includes(type)) {
       return res.status(400).json({ error: "Invalid subscription type" });
     }
 
-    if (!['pro', 'premium'].includes(tier)) {
+    if (!['pro', 'premium', 'partner'].includes(tier)) {
       return res.status(400).json({ error: "Invalid tier" });
     }
 
@@ -842,7 +859,8 @@ router.post("/api/merchant/subscription/checkout", isAuthenticated, async (req: 
       return res.status(400).json({ error: "placeId is required for place subscription" });
     }
 
-    const priceConfig = SUBSCRIPTION_PRICES[type as 'merchant' | 'place'][tier as 'pro' | 'premium'];
+    const tierKey = tier === 'partner' ? 'premium' : tier;
+    const priceConfig = SUBSCRIPTION_PRICES[type as 'merchant' | 'place'][tierKey as 'pro' | 'premium'];
 
     if (provider === 'stripe') {
       const stripe = await getUncachableStripeClient();
@@ -878,7 +896,7 @@ router.post("/api/merchant/subscription/checkout", isAuthenticated, async (req: 
         },
       });
 
-      res.json({ url: session.url, sessionId: session.id });
+      res.json({ url: session.url, checkoutUrl: session.url, sessionId: session.id });
     } else if (provider === 'recur') {
       const productId = priceConfig.recur;
       if (!productId) {
