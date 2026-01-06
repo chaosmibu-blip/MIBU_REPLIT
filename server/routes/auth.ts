@@ -414,7 +414,7 @@ router.post('/apple', async (req, res) => {
       if (targetPortal !== 'traveler') {
         return res.status(400).json({
           success: false,
-          error: '新商家/專員帳號請使用 Email 註冊，註冊後可使用 Apple 登入',
+          error: '請下載 Mibu App 註冊商家帳號，註冊後即可使用 Apple 登入',
           code: 'OAUTH_NEW_USER_TRAVELER_ONLY',
         });
       }
@@ -596,7 +596,7 @@ router.post('/google', async (req, res) => {
       if (targetPortal !== 'traveler') {
         return res.status(400).json({
           success: false,
-          error: '新商家/專員帳號請使用 Email 註冊，註冊後可使用 Google 登入',
+          error: '請下載 Mibu App 註冊商家帳號，註冊後即可使用 Google 登入',
           code: 'OAUTH_NEW_USER_TRAVELER_ONLY',
         });
       }

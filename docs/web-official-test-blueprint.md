@@ -399,7 +399,7 @@ export default function PricingPage() {
 // 錯誤 - 新用戶
 {
   success: false,
-  error: '新商家/專員帳號請使用 Email 註冊，註冊後可使用 Google 登入',
+  error: '請下載 Mibu App 註冊商家帳號，註冊後即可使用 Google 登入',
   code: 'OAUTH_NEW_USER_TRAVELER_ONLY',
 }
 ```
@@ -460,7 +460,7 @@ export function SocialLoginButtons() {
         if (data.code === 'ROLE_MISMATCH') {
           setError('此帳號不是商家帳號');
         } else if (data.code === 'OAUTH_NEW_USER_TRAVELER_ONLY') {
-          setError('請先使用 Email 註冊商家帳號');
+          setError('請下載 App 註冊商家帳號');
         } else {
           setError(data.error || '登入失敗');
         }
