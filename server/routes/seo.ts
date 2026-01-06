@@ -352,7 +352,7 @@ router.get("/trips", async (req: Request, res: Response) => {
         district: gachaAiLogs.district,
         aiReason: gachaAiLogs.aiReason,
         tripImageUrl: gachaAiLogs.tripImageUrl,
-        requestedCount: gachaAiLogs.requestedCount,
+        orderedPlaceIds: gachaAiLogs.orderedPlaceIds,
         categoryDistribution: gachaAiLogs.categoryDistribution,
         publishedAt: gachaAiLogs.publishedAt,
       })
@@ -362,18 +362,38 @@ router.get("/trips", async (req: Request, res: Response) => {
       .limit(limitNum)
       .offset(offset);
 
-    const trips = tripsList.map((trip) => ({
-      id: trip.id,
-      sessionId: trip.sessionId,
-      title: `${trip.city}${trip.district ? `・${trip.district}` : ''} 一日遊`,
-      city: trip.city,
-      district: trip.district,
-      description: trip.aiReason,
-      imageUrl: trip.tripImageUrl,
-      placeCount: trip.requestedCount,
-      categoryDistribution: trip.categoryDistribution,
-      publishedAt: trip.publishedAt,
+    const tripsWithSequence = await Promise.all(tripsList.map(async (trip) => {
+      const placeCount = Math.min(5, trip.orderedPlaceIds?.length || 0);
+      
+      const seqConditions = [
+        eq(gachaAiLogs.isPublished, true),
+        eq(gachaAiLogs.city, trip.city),
+        sql`${gachaAiLogs.id} <= ${trip.id}`,
+      ];
+      if (trip.district) {
+        seqConditions.push(eq(gachaAiLogs.district, trip.district));
+      }
+      const [seqResult] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(gachaAiLogs)
+        .where(and(...seqConditions));
+      const sequenceNum = seqResult?.count || 1;
+      
+      return {
+        id: trip.id,
+        sessionId: trip.sessionId,
+        title: `${trip.city}${trip.district ? trip.district : ''} 一日遊 #${sequenceNum}`,
+        city: trip.city,
+        district: trip.district,
+        description: trip.aiReason,
+        imageUrl: trip.tripImageUrl,
+        placeCount,
+        categoryDistribution: trip.categoryDistribution,
+        publishedAt: trip.publishedAt,
+      };
     }));
+
+    const trips = tripsWithSequence;
 
     const total = totalResult?.count || 0;
     const totalPages = Math.ceil(total / limitNum);
@@ -423,7 +443,23 @@ router.get("/trips/:id", async (req: Request, res: Response) => {
       });
     }
 
-    const tripPlaces = trip.orderedPlaceIds && trip.orderedPlaceIds.length > 0
+    const sequenceConditions = [
+      eq(gachaAiLogs.isPublished, true),
+      eq(gachaAiLogs.city, trip.city),
+      sql`${gachaAiLogs.id} <= ${tripId}`,
+    ];
+    if (trip.district) {
+      sequenceConditions.push(eq(gachaAiLogs.district, trip.district));
+    }
+    const [seqResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(gachaAiLogs)
+      .where(and(...sequenceConditions));
+    const sequenceNum = seqResult?.count || 1;
+
+    const first5PlaceIds = trip.orderedPlaceIds?.slice(0, 5) || [];
+    
+    const tripPlaces = first5PlaceIds.length > 0
       ? await db
           .select({
             id: places.id,
@@ -439,41 +475,39 @@ router.get("/trips/:id", async (req: Request, res: Response) => {
             locationLng: places.locationLng,
           })
           .from(places)
-          .where(sql`${places.id} = ANY(${trip.orderedPlaceIds})`)
+          .where(sql`${places.id} = ANY(${first5PlaceIds})`)
       : [];
 
-    const orderedPlaces = trip.orderedPlaceIds
-      ? trip.orderedPlaceIds
-          .map(id => tripPlaces.find(p => p.id === id))
-          .filter(Boolean)
-          .map(p => ({
-            id: p!.id,
-            name: p!.name,
-            slug: generateSlug(p!.name),
-            district: p!.district,
-            category: p!.category,
-            subcategory: p!.subcategory,
-            address: p!.address,
-            description: p!.description,
-            rating: p!.rating,
-            imageUrl: p!.photoReference || null,
-            location: p!.locationLat && p!.locationLng ? {
-              lat: p!.locationLat,
-              lng: p!.locationLng,
-            } : null,
-          }))
-      : [];
+    const orderedPlaces = first5PlaceIds
+      .map(id => tripPlaces.find(p => p.id === id))
+      .filter(Boolean)
+      .map(p => ({
+        id: p!.id,
+        name: p!.name,
+        slug: generateSlug(p!.name),
+        district: p!.district,
+        category: p!.category,
+        subcategory: p!.subcategory,
+        address: p!.address,
+        description: p!.description,
+        rating: p!.rating,
+        imageUrl: p!.photoReference || null,
+        location: p!.locationLat && p!.locationLng ? {
+          lat: p!.locationLat,
+          lng: p!.locationLng,
+        } : null,
+      }));
 
     res.json({
       trip: {
         id: trip.id,
         sessionId: trip.sessionId,
-        title: `${trip.city}${trip.district ? `・${trip.district}` : ''} 一日遊`,
+        title: `${trip.city}${trip.district ? trip.district : ''} 一日遊 #${sequenceNum}`,
         city: trip.city,
         district: trip.district,
         description: trip.aiReason,
         imageUrl: trip.tripImageUrl,
-        placeCount: trip.requestedCount,
+        placeCount: orderedPlaces.length,
         categoryDistribution: trip.categoryDistribution,
         publishedAt: trip.publishedAt,
       },

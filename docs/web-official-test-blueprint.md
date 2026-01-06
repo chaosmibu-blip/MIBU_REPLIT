@@ -701,54 +701,22 @@ curl https://[DEV_URL]/api/seo/places?limit=5
 ### 資料來源
 App 扭蛋完成後，用戶可選擇「分享行程」，App 將行程截圖上傳並回傳給後端，成為官網 SEO 內容。
 
-### App 端 API（📱 給 App 團隊）
+### 自動發布機制（2026-01-06 更新）
 
-**提交行程**
-```
-POST /api/gacha/submit-trip
-Authorization: Bearer <JWT Token>
-```
+**無需 App 額外操作**：扭蛋完成後，後端自動執行以下邏輯：
 
-**請求格式**
-```typescript
-{
-  sessionId: string;      // 扭蛋的 session ID（從 V3 回應取得）
-  tripImageUrl: string;   // 行程截圖的 URL（上傳至 Object Storage 後取得）
-}
-```
+1. **去重檢查**：比對 `orderedPlaceIds`，若與已發布行程完全相同則不發布
+2. **自動標記**：通過去重則設定 `isPublished = true`、`publishedAt = now()`
+3. **標題生成**：格式為 `{城市}{區域} 一日遊 #N`（N 為該區域的序號）
 
-**成功回應**
-```json
-{
-  "success": true,
-  "message": "行程已成功提交",
-  "trip": {
-    "sessionId": "abc-123",
-    "city": "台北市",
-    "district": "萬華區",
-    "tripImageUrl": "https://...",
-    "aiReason": "這是一趟融合...",
-    "isPublished": true,
-    "publishedAt": "2026-01-06T12:00:00Z"
-  }
-}
-```
+**發布條件**：
+- 景點數量 ≥ 3
+- 非重複行程（景點組合不同即視為不同行程）
+- 僅限登入用戶（guest 不發布）
 
-**錯誤回應**
-| 狀態碼 | 錯誤 | 說明 |
-|--------|------|------|
-| 400 | sessionId is required | 缺少 session ID |
-| 400 | tripImageUrl is required | 缺少行程截圖 URL |
-| 401 | Invalid token | Token 無效或過期 |
-| 403 | Unauthorized | 無權限修改此記錄（非該用戶的扭蛋） |
-| 404 | Session not found | 找不到該扭蛋記錄 |
+### App 端影響
 
-### App 端整合步驟
-
-1. 扭蛋完成後，儲存 `meta.sessionId`
-2. 用戶點擊「分享行程」→ 截圖行程畫面
-3. 上傳截圖至 Object Storage → 取得 URL
-4. 呼叫 `POST /api/gacha/submit-trip` 提交
+**無需修改**：現有 V3 API 回應不變，發布邏輯在後端自動處理。
 
 ### 官網 SEO 頁面
 

@@ -299,11 +299,69 @@ export const gachaStorage = {
   },
 
   async saveGachaAiLog(log: InsertGachaAiLog): Promise<GachaAiLog> {
+    const shouldPublish = await gachaStorage.checkTripDedup(log.orderedPlaceIds ?? undefined);
+    
     const [newLog] = await db
       .insert(gachaAiLogs)
-      .values(log)
+      .values({
+        ...log,
+        isPublished: shouldPublish,
+        publishedAt: shouldPublish ? new Date() : undefined,
+      })
       .returning();
+    
+    if (shouldPublish) {
+      console.log('[Gacha] Trip auto-published:', { 
+        sessionId: log.sessionId, 
+        city: log.city, 
+        district: log.district,
+        placeCount: log.orderedPlaceIds?.length 
+      });
+    }
+    
     return newLog;
+  },
+
+  async checkTripDedup(orderedPlaceIds?: number[]): Promise<boolean> {
+    if (!orderedPlaceIds || orderedPlaceIds.length < 3) {
+      return false;
+    }
+    
+    const sortedIds = [...orderedPlaceIds].sort((a, b) => a - b);
+    
+    const existingTrips = await db
+      .select({ orderedPlaceIds: gachaAiLogs.orderedPlaceIds })
+      .from(gachaAiLogs)
+      .where(eq(gachaAiLogs.isPublished, true))
+      .limit(1000);
+    
+    for (const trip of existingTrips) {
+      if (!trip.orderedPlaceIds) continue;
+      const existingSorted = [...trip.orderedPlaceIds].sort((a, b) => a - b);
+      if (JSON.stringify(existingSorted) === JSON.stringify(sortedIds)) {
+        console.log('[Gacha] Duplicate trip detected, skipping publish');
+        return false;
+      }
+    }
+    
+    return true;
+  },
+
+  async getTripSequenceNumber(city: string, district?: string): Promise<number> {
+    const conditions = [
+      eq(gachaAiLogs.isPublished, true),
+      eq(gachaAiLogs.city, city),
+    ];
+    if (district) {
+      conditions.push(eq(gachaAiLogs.district, district));
+    }
+    
+    const [result] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(gachaAiLogs)
+      .where(and(...conditions));
+    
+    return (result?.count || 0) + 1;
   },
 
   async saveToCollectionWithCoupon(userId: string, place: Place, wonCoupon?: Coupon, aiReason?: string, gachaSessionId?: string): Promise<Collection> {
