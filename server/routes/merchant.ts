@@ -725,13 +725,13 @@ const SUBSCRIPTION_PRICES = {
   merchant: {
     pro: { 
       stripe: process.env.STRIPE_MERCHANT_PRO_PRICE_ID, 
-      recur: 'fpbnn9ah9090j7hxx5wcv7f4',
+      recur: process.env.RECUR_MERCHANT_PRO_PRODUCT_ID || 'fpbnn9ah9090j7hxx5wcv7f4',
       amount: 29900, 
       currency: 'TWD' 
     },
     premium: { 
       stripe: process.env.STRIPE_MERCHANT_PREMIUM_PRICE_ID, 
-      recur: 'adkwbl9dya0wc6b53parl9yk',
+      recur: process.env.RECUR_MERCHANT_PREMIUM_PRODUCT_ID || 'adkwbl9dya0wc6b53parl9yk',
       amount: 79900, 
       currency: 'TWD' 
     },
@@ -753,7 +753,7 @@ const SUBSCRIPTION_PRICES = {
 } as const;
 
 const RECUR_CONFIG = {
-  publishableKey: process.env.RECUR_PUBLISHABLE_KEY || 'pk_test_95b6695679feee448947ab70433b9628b2006e056c71d49fc251e1323a81468f',
+  publishableKey: process.env.RECUR_PUBLISHABLE_KEY,
 };
 
 router.get("/api/merchant/subscription", isAuthenticated, async (req: any, res) => {
