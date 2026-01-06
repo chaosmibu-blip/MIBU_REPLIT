@@ -729,3 +729,396 @@ curl https://[DEV_URL]/api/seo/places?limit=5
 4. 測試完整登入流程
 5. 測試 SEO 頁面 SSR/ISR 正常
 6. 測試行程 API 正常運作
+
+---
+
+## 📱 官網前端 API 完整規格
+
+> 每個 API 包含：Endpoint、TypeScript Interface、cURL 範例
+
+### 1. 城市列表
+
+**Endpoint**
+```
+GET /api/seo/cities
+Query: ?country=台灣 (選填)
+```
+
+**TypeScript Interface**
+```typescript
+interface CitiesResponse {
+  cities: Array<{
+    name: string;
+    slug: string;
+    country: string;
+    placeCount: number;
+    imageUrl: string | null;
+  }>;
+  total: number;
+  message?: string;
+}
+```
+
+**cURL 範例**
+```bash
+curl "https://[API_URL]/api/seo/cities"
+curl "https://[API_URL]/api/seo/cities?country=台灣"
+```
+
+---
+
+### 2. 城市詳情（含景點分頁）
+
+**Endpoint**
+```
+GET /api/seo/cities/:slug
+Query: ?page=1&limit=50 (選填，預設 page=1, limit=20)
+```
+
+**TypeScript Interface**
+```typescript
+interface CityDetailResponse {
+  city: {
+    name: string;
+    slug: string;
+    country: string;
+    placeCount: number;
+  };
+  places: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    district: string;
+    category: string;
+    rating: number | null;
+    imageUrl: string | null;
+    description: string | null;
+  }>;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+  message?: string;
+}
+```
+
+**cURL 範例**
+```bash
+curl "https://[API_URL]/api/seo/cities/台北市"
+curl "https://[API_URL]/api/seo/cities/台北市?page=2&limit=50"
+```
+
+---
+
+### 3. 景點詳情（推薦使用）
+
+**Endpoint**
+```
+GET /api/seo/places/by-id/:id
+```
+
+**TypeScript Interface**
+```typescript
+interface PlaceDetailResponse {
+  place: {
+    id: number;
+    name: string;
+    nameI18n: object | null;
+    slug: string;
+    country: string;
+    city: string;
+    district: string;
+    address: string | null;
+    category: string;
+    subcategory: string | null;
+    description: string | null;
+    rating: number | null;
+    imageUrl: string | null;
+    openingHours: object | null;
+    location: { lat: number; lng: number } | null;
+    googlePlaceId: string | null;
+    googleMapUrl: string | null;
+  };
+  relatedPlaces: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    district: string;
+    category: string;
+    rating: number | null;
+    imageUrl: string | null;
+  }>;
+}
+```
+
+**cURL 範例**
+```bash
+curl "https://[API_URL]/api/seo/places/by-id/3406"
+```
+
+---
+
+### 4. 景點列表（搜尋/篩選）
+
+**Endpoint**
+```
+GET /api/seo/places
+Query: ?city=台北市&category=美食&q=咖啡&page=1&limit=20 (皆選填)
+```
+
+**TypeScript Interface**
+```typescript
+interface PlacesListResponse {
+  places: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    city: string;
+    district: string;
+    category: string;
+    subcategory: string | null;
+    rating: number | null;
+    imageUrl: string | null;
+    description: string | null;
+  }>;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+  message?: string;
+}
+```
+
+**cURL 範例**
+```bash
+curl "https://[API_URL]/api/seo/places?city=台北市&limit=10"
+curl "https://[API_URL]/api/seo/places?category=美食&q=咖啡"
+```
+
+---
+
+### 5. 行程列表
+
+**Endpoint**
+```
+GET /api/seo/trips
+Query: ?city=台北市&district=萬華區&page=1&limit=20 (皆選填)
+```
+
+**TypeScript Interface**
+```typescript
+interface TripsListResponse {
+  trips: Array<{
+    id: number;
+    sessionId: string;
+    title: string;              // 格式: "台北市萬華區 一日遊 #1"
+    city: string;
+    district: string | null;
+    description: string | null; // AI 生成的行程簡介
+    imageUrl: string | null;
+    placeCount: number;         // 最多 5
+    categoryDistribution: object | null;
+    publishedAt: string;
+  }>;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+  message?: string;
+}
+```
+
+**cURL 範例**
+```bash
+curl "https://[API_URL]/api/seo/trips"
+curl "https://[API_URL]/api/seo/trips?city=台北市"
+curl "https://[API_URL]/api/seo/trips?city=台北市&district=萬華區"
+```
+
+---
+
+### 6. 行程詳情
+
+**Endpoint**
+```
+GET /api/seo/trips/:id
+```
+
+**TypeScript Interface**
+```typescript
+interface TripDetailResponse {
+  trip: {
+    id: number;
+    sessionId: string;
+    title: string;
+    city: string;
+    district: string | null;
+    description: string | null;
+    imageUrl: string | null;
+    placeCount: number;
+    categoryDistribution: object | null;
+    publishedAt: string;
+  };
+  places: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    district: string;
+    category: string;
+    subcategory: string | null;
+    address: string | null;
+    description: string | null;
+    rating: number | null;
+    imageUrl: string | null;
+    location: { lat: number; lng: number } | null;
+  }>;
+}
+```
+
+**cURL 範例**
+```bash
+curl "https://[API_URL]/api/seo/trips/1"
+```
+
+---
+
+### 7. 訂閱方案
+
+**Endpoint**
+```
+GET /api/subscription-plans
+（公開存取，無需認證）
+```
+
+**TypeScript Interface**
+```typescript
+interface SubscriptionPlansResponse {
+  plans: Array<{
+    tier: string;
+    name: string;
+    nameEn: string;
+    priceMonthly: number;
+    priceYearly: number | null;
+    pricePeriodLabel: string;
+    features: string[];
+    buttonText: string;
+    highlighted: boolean;
+    highlightLabel: string | null;
+    maxPlaces: number;
+    maxCoupons: number;
+    hasAdvancedAnalytics: boolean;
+    hasPriorityExposure: boolean;
+    hasDedicatedSupport: boolean;
+  }>;
+}
+```
+
+**cURL 範例**
+```bash
+curl "https://[API_URL]/api/subscription-plans"
+```
+
+---
+
+### 8. Google 登入（商家）
+
+**Endpoint**
+```
+POST /api/auth/google
+Content-Type: application/json
+```
+
+**TypeScript Interface**
+```typescript
+// 請求
+interface GoogleLoginRequest {
+  idToken: string;           // Google OAuth ID Token
+  targetPortal: 'merchant';  // 指定商家入口
+  user?: {                   // Google 專用
+    email: string;
+    name: string;
+    picture?: string;
+  };
+}
+
+// 成功回應
+interface AuthSuccessResponse {
+  success: true;
+  token: string;  // JWT Token
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    role: 'merchant';
+    isApproved: boolean;
+    isSuperAdmin: boolean;
+  };
+}
+
+// 錯誤回應
+interface AuthErrorResponse {
+  success: false;
+  error: string;
+  code: 'ROLE_MISMATCH' | 'OAUTH_NEW_USER_TRAVELER_ONLY';
+  currentRole?: string;
+  targetPortal?: string;
+}
+```
+
+**cURL 範例**
+```bash
+curl -X POST "https://[API_URL]/api/auth/google" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "idToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6...",
+    "targetPortal": "merchant"
+  }'
+```
+
+---
+
+### 9. Apple 登入（商家）
+
+**Endpoint**
+```
+POST /api/auth/apple
+Content-Type: application/json
+```
+
+**TypeScript Interface**
+```typescript
+// 請求
+interface AppleLoginRequest {
+  identityToken: string;     // Apple ID Token
+  targetPortal: 'merchant';  // 指定商家入口
+  user?: string;             // Email（首次登入時提供）
+  fullName?: {
+    givenName?: string;
+    familyName?: string;
+  };
+}
+
+// 回應格式同 Google 登入
+```
+
+**cURL 範例**
+```bash
+curl -X POST "https://[API_URL]/api/auth/apple" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identityToken": "eyJraWQiOiJXNldjT...",
+    "targetPortal": "merchant"
+  }'
+```
