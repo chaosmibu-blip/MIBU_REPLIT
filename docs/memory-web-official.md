@@ -3,9 +3,13 @@
 ## 模組範圍
 Mibu 官方網站前端，負責 SEO 內容展示、商家訂閱購買、品牌行銷。
 
-> **完整開發藍圖**：`attached_assets/frontend-docs/web-official-blueprint.md`
-> 
-> **API 同步藍圖**：`attached_assets/frontend-docs/web-sync-blueprint.md`
+## ⚡ 施工文檔（2026-01-06 更新）
+
+| 文檔 | 內容 | 狀態 |
+|------|------|:----:|
+| `docs/官網前端施工手冊.md` | **完整實作指令**（頁面 + 元件 + API） | ✅ 主文檔 |
+| `docs/web-official-merchant-flow.md` | 商家登入 + 訂閱購買流程 | ✅ 詳細程式碼 |
+| `docs/web-official-test-blueprint.md` | API 規格 + 測試清單 | ✅ 參考 |
 
 ---
 
