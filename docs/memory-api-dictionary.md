@@ -235,6 +235,96 @@ interface ReclassifyResponse {
 }
 ```
 
+### SEO 公開 API
+| Method | Endpoint | 說明 |
+|--------|----------|------|
+| GET | /api/seo/cities | 城市列表 |
+| GET | /api/seo/cities/:slug | 城市詳情（含景點分頁） |
+| GET | /api/seo/places | 景點列表（搜尋/篩選） |
+| GET | /api/seo/places/by-id/:id | 景點詳情（推薦） |
+| GET | /api/seo/trips | 行程列表（App 扭蛋生成） |
+| GET | /api/seo/trips/:id | 行程詳情（含景點） |
+
+#### GET /api/seo/trips（2026-01-06 新增）
+列出所有已發布的扭蛋行程
+
+**Query Parameters:**
+```
+city?: string      // 篩選城市
+district?: string  // 篩選區域
+page?: number      // 分頁（預設 1）
+limit?: number     // 每頁筆數（預設 20）
+```
+
+**Response:**
+```json
+{
+  "trips": [{
+    "id": 123,
+    "sessionId": "abc-123",
+    "title": "台北市・萬華區 一日遊",
+    "city": "台北市",
+    "district": "萬華區",
+    "description": "探索萬華的古蹟與美食...",
+    "imageUrl": "https://...",
+    "placeCount": 5,
+    "publishedAt": "2026-01-06T12:00:00Z"
+  }],
+  "pagination": { "page": 1, "limit": 20, "total": 50, "totalPages": 3 }
+}
+```
+
+#### GET /api/seo/trips/:id
+取得單一行程詳情
+
+**Response:**
+```json
+{
+  "trip": { /* 同上 */ },
+  "places": [{
+    "id": 3406,
+    "name": "西門町",
+    "slug": "西門町",
+    "district": "萬華區",
+    "category": "文化",
+    "description": "...",
+    "imageUrl": "https://...",
+    "location": { "lat": 25.0, "lng": 121.5 }
+  }]
+}
+```
+
+### App 專用 API
+| Method | Endpoint | 說明 |
+|--------|----------|------|
+| POST | /api/gacha/submit-trip | 提交行程至官網 SEO |
+
+#### POST /api/gacha/submit-trip（2026-01-06 新增）
+App 提交扭蛋行程成為官網 SEO 內容
+
+**Request:**
+```json
+{
+  "sessionId": "abc-123",
+  "tripImageUrl": "https://storage.replit.dev/..."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "行程已成功提交",
+  "trip": {
+    "sessionId": "abc-123",
+    "city": "台北市",
+    "tripImageUrl": "https://...",
+    "isPublished": true,
+    "publishedAt": "2026-01-06T12:00:00Z"
+  }
+}
+```
+
 ## 分頁參數
 ```typescript
 // 標準分頁

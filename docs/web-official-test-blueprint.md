@@ -12,6 +12,7 @@
 | 2. 訂閱方案導航錯誤 | - | ⏳ 待修正連結 |
 | 3. 訂閱方案未顯示 | ✅ API 正常運作 | ⏳ 改用 API |
 | 4. Google/Apple 登入 | ✅ 已支援商家 | ⏳ 待實作 |
+| 5. 行程 SEO 頁面 | ✅ **新增** App 行程 API | ⏳ 待實作 |
 
 ### 後端測試結果 (2026-01-06)
 
@@ -30,6 +31,10 @@ GET /api/seo/places/by-id/3406 → 西門町詳情（推薦）
 
 # 訂閱方案 API ✅
 GET /api/subscription-plans → 3 個方案（公開存取）
+
+# 行程 API ✅（新增 2026-01-06）
+GET /api/seo/trips → App 生成的已發布行程列表
+GET /api/seo/trips/:id → 行程詳情（含景點列表）
 ```
 
 **建議**：官網前端優先使用 `/api/seo/places/by-id/:id` 端點，可避免中文 slug 編碼問題。
@@ -50,6 +55,8 @@ GET /api/subscription-plans → 3 個方案（公開存取）
 | 城市詳情 | `GET /api/seo/cities/:slug?page=1&limit=50` | **必須處理分頁** |
 | 景點詳情 | `GET /api/seo/places/by-id/:id` | **推薦** |
 | 景點列表 | `GET /api/seo/places?city=xxx` | 搜尋/篩選用 |
+| 行程列表 | `GET /api/seo/trips?city=xxx` | 支援 city/district 篩選 |
+| 行程詳情 | `GET /api/seo/trips/:id` | 含完整景點陣列 |
 
 **關鍵原則**：
 1. 景點詳情頁 → **必須使用 `/api/seo/places/by-id/:id`**
@@ -71,6 +78,8 @@ GET /api/subscription-plans → 3 個方案（公開存取）
 | `GET /api/seo/places/by-id/:id` | 景點詳情（推薦） | ✅ **主要端點** |
 | `GET /api/seo/places` | 景點列表 (搜尋/篩選) | ✅ 35,044 景點 |
 | `GET /api/seo/places/:slug` | 景點詳情（舊版） | ⚠️ 有限制 |
+| `GET /api/seo/trips` | 行程列表（App 生成） | ✅ **新增** |
+| `GET /api/seo/trips/:id` | 行程詳情 | ✅ **新增** |
 
 ### 官網前端待辦
 
@@ -81,6 +90,8 @@ GET /api/subscription-plans → 3 個方案（公開存取）
 | 城市列表 | `/explore` | `GET /api/seo/cities` | |
 | 城市詳情 | `/city/[slug]` | `GET /api/seo/cities/:slug?page=N&limit=50` | 必須分頁 |
 | 景點詳情 | `/place/[id]` | `GET /api/seo/places/by-id/:id` | **使用 ID 路由** |
+| 行程列表 | `/trips` | `GET /api/seo/trips` | **新增** App 生成行程 |
+| 行程詳情 | `/trip/[id]` | `GET /api/seo/trips/:id` | **新增** |
 
 #### 2. API 回應格式
 
@@ -163,6 +174,70 @@ interface PlaceDetailResponse {
   }>;
 }
 ```
+
+**行程列表**（新增 2026-01-06）
+```typescript
+interface TripsListResponse {
+  trips: Array<{
+    id: number;
+    sessionId: string;
+    title: string;           // 例：「台北市・萬華區 一日遊」
+    city: string;
+    district: string | null;
+    description: string | null;  // AI 生成的行程簡介
+    imageUrl: string | null;     // App 截圖
+    placeCount: number;
+    categoryDistribution: object | null;
+    publishedAt: string;
+  }>;
+  pagination: { page, limit, total, totalPages, hasNext, hasPrev };
+  message?: string;
+}
+```
+
+**行程詳情**
+```typescript
+interface TripDetailResponse {
+  trip: {
+    id: number;
+    sessionId: string;
+    title: string;
+    city: string;
+    district: string | null;
+    description: string | null;
+    imageUrl: string | null;
+    placeCount: number;
+    categoryDistribution: object | null;
+    publishedAt: string;
+  };
+  places: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    district: string;
+    category: string;
+    subcategory: string | null;
+    address: string | null;
+    description: string | null;
+    rating: number | null;
+    imageUrl: string | null;
+    location: { lat: number; lng: number } | null;
+  }>;
+}
+```
+
+#### 行程頁面欄位對應
+
+| JSON 欄位 | 顯示位置 | 空值處理 |
+|----------|---------|---------|
+| `trip.title` | 頁面標題 `<h1>` | 必有值 |
+| `trip.description` | 行程簡介區塊 | 空值顯示「探索這趟精彩旅程」 |
+| `trip.imageUrl` | 主視覺圖（Hero） | 空值顯示預設行程圖 |
+| `trip.city` | 麵包屑導航 | 必有值 |
+| `trip.district` | 副標題 | 空值不顯示 |
+| `places[].name` | 景點卡片標題 | 必有值 |
+| `places[].imageUrl` | 景點卡片圖片 | 空值顯示預設景點圖 |
+| `places[].category` | 景點類型標籤 | 必有值 |
 
 #### 3. 景點頁面實作（推薦方式）
 
@@ -621,6 +696,70 @@ curl https://[DEV_URL]/api/seo/places?limit=5
 
 ---
 
+## 問題 5：行程 SEO 頁面（新增 2026-01-06）
+
+### 資料來源
+App 扭蛋完成後，用戶可選擇「分享行程」，App 將行程截圖上傳並回傳給後端，成為官網 SEO 內容。
+
+### App 端 API（📱 給 App 團隊）
+
+**提交行程**
+```
+POST /api/gacha/submit-trip
+Authorization: Bearer <JWT Token>
+```
+
+**請求格式**
+```typescript
+{
+  sessionId: string;      // 扭蛋的 session ID（從 V3 回應取得）
+  tripImageUrl: string;   // 行程截圖的 URL（上傳至 Object Storage 後取得）
+}
+```
+
+**成功回應**
+```json
+{
+  "success": true,
+  "message": "行程已成功提交",
+  "trip": {
+    "sessionId": "abc-123",
+    "city": "台北市",
+    "district": "萬華區",
+    "tripImageUrl": "https://...",
+    "aiReason": "這是一趟融合...",
+    "isPublished": true,
+    "publishedAt": "2026-01-06T12:00:00Z"
+  }
+}
+```
+
+**錯誤回應**
+| 狀態碼 | 錯誤 | 說明 |
+|--------|------|------|
+| 400 | sessionId is required | 缺少 session ID |
+| 400 | tripImageUrl is required | 缺少行程截圖 URL |
+| 401 | Invalid token | Token 無效或過期 |
+| 403 | Unauthorized | 無權限修改此記錄（非該用戶的扭蛋） |
+| 404 | Session not found | 找不到該扭蛋記錄 |
+
+### App 端整合步驟
+
+1. 扭蛋完成後，儲存 `meta.sessionId`
+2. 用戶點擊「分享行程」→ 截圖行程畫面
+3. 上傳截圖至 Object Storage → 取得 URL
+4. 呼叫 `POST /api/gacha/submit-trip` 提交
+
+### 官網 SEO 頁面
+
+| 頁面 | 路由 | API | 說明 |
+|------|------|-----|------|
+| 行程列表 | `/trips` | `GET /api/seo/trips` | 所有已發布行程 |
+| 城市行程 | `/city/[slug]/trips` | `GET /api/seo/trips?city=xxx` | 特定城市的行程 |
+| 行程詳情 | `/trip/[id]` | `GET /api/seo/trips/:id` | 單一行程詳情 |
+
+---
+
 ## 部署後驗證
 
 1. 確認環境變數已設定
@@ -628,3 +767,4 @@ curl https://[DEV_URL]/api/seo/places?limit=5
 3. 確認 API URL 指向正確環境
 4. 測試完整登入流程
 5. 測試 SEO 頁面 SSR/ISR 正常
+6. 測試行程 API 正常運作

@@ -34,7 +34,9 @@ Mibu 官方網站前端，負責 SEO 內容展示、商家訂閱購買、品牌�
 | `/for-business/pricing` | 訂閱方案頁 | SSG + ISR |
 | `/explore` | 城市列表 | SSG + ISR |
 | `/city/[slug]` | 城市詳情 | SSG + ISR |
-| `/place/[slug]` | 景點詳情 | SSG + ISR |
+| `/place/[id]` | 景點詳情 | SSG + ISR |
+| `/trips` | 行程列表 | SSG + ISR |
+| `/trip/[id]` | 行程詳情 | SSG + ISR |
 
 ### 商家專區（需登入）
 

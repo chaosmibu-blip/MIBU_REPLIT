@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { db } from "../db";
-import { places } from "@shared/schema";
+import { places, gachaAiLogs } from "@shared/schema";
 import { eq, sql, desc, ilike, and } from "drizzle-orm";
 
 const router = Router();
@@ -319,6 +319,169 @@ router.get("/places/:slug", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error fetching place details:", error);
     res.status(500).json({ error: "Failed to fetch place details" });
+  }
+});
+
+router.get("/trips", async (req: Request, res: Response) => {
+  try {
+    const { city, district, page = '1', limit = '20' } = req.query;
+    
+    const pageNum = Math.max(1, parseInt(page as string) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit as string) || 20));
+    const offset = (pageNum - 1) * limitNum;
+
+    let conditions = [eq(gachaAiLogs.isPublished, true)];
+    
+    if (city) {
+      conditions.push(eq(gachaAiLogs.city, city as string));
+    }
+    if (district) {
+      conditions.push(eq(gachaAiLogs.district, district as string));
+    }
+
+    const [totalResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(gachaAiLogs)
+      .where(and(...conditions));
+
+    const tripsList = await db
+      .select({
+        id: gachaAiLogs.id,
+        sessionId: gachaAiLogs.sessionId,
+        city: gachaAiLogs.city,
+        district: gachaAiLogs.district,
+        aiReason: gachaAiLogs.aiReason,
+        tripImageUrl: gachaAiLogs.tripImageUrl,
+        requestedCount: gachaAiLogs.requestedCount,
+        categoryDistribution: gachaAiLogs.categoryDistribution,
+        publishedAt: gachaAiLogs.publishedAt,
+      })
+      .from(gachaAiLogs)
+      .where(and(...conditions))
+      .orderBy(desc(gachaAiLogs.publishedAt))
+      .limit(limitNum)
+      .offset(offset);
+
+    const trips = tripsList.map((trip) => ({
+      id: trip.id,
+      sessionId: trip.sessionId,
+      title: `${trip.city}${trip.district ? `・${trip.district}` : ''} 一日遊`,
+      city: trip.city,
+      district: trip.district,
+      description: trip.aiReason,
+      imageUrl: trip.tripImageUrl,
+      placeCount: trip.requestedCount,
+      categoryDistribution: trip.categoryDistribution,
+      publishedAt: trip.publishedAt,
+    }));
+
+    const total = totalResult?.count || 0;
+    const totalPages = Math.ceil(total / limitNum);
+
+    res.json({
+      trips,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
+      },
+      message: trips.length === 0 ? '目前還沒有行程資料' : undefined,
+    });
+  } catch (error) {
+    console.error("Error fetching trips:", error);
+    res.status(500).json({ error: "Failed to fetch trips" });
+  }
+});
+
+router.get("/trips/:id", async (req: Request, res: Response) => {
+  try {
+    const tripId = parseInt(req.params.id);
+    
+    if (isNaN(tripId)) {
+      return res.status(400).json({ 
+        error: "Invalid trip ID",
+        message: "無效的行程 ID",
+      });
+    }
+
+    const [trip] = await db
+      .select()
+      .from(gachaAiLogs)
+      .where(and(
+        eq(gachaAiLogs.id, tripId),
+        eq(gachaAiLogs.isPublished, true)
+      ))
+      .limit(1);
+    
+    if (!trip) {
+      return res.status(404).json({ 
+        error: "Trip not found",
+        message: "找不到該行程",
+      });
+    }
+
+    const tripPlaces = trip.orderedPlaceIds && trip.orderedPlaceIds.length > 0
+      ? await db
+          .select({
+            id: places.id,
+            name: places.placeName,
+            district: places.district,
+            category: places.category,
+            subcategory: places.subcategory,
+            address: places.address,
+            description: places.description,
+            rating: places.rating,
+            photoReference: places.photoReference,
+            locationLat: places.locationLat,
+            locationLng: places.locationLng,
+          })
+          .from(places)
+          .where(sql`${places.id} = ANY(${trip.orderedPlaceIds})`)
+      : [];
+
+    const orderedPlaces = trip.orderedPlaceIds
+      ? trip.orderedPlaceIds
+          .map(id => tripPlaces.find(p => p.id === id))
+          .filter(Boolean)
+          .map(p => ({
+            id: p!.id,
+            name: p!.name,
+            slug: generateSlug(p!.name),
+            district: p!.district,
+            category: p!.category,
+            subcategory: p!.subcategory,
+            address: p!.address,
+            description: p!.description,
+            rating: p!.rating,
+            imageUrl: p!.photoReference || null,
+            location: p!.locationLat && p!.locationLng ? {
+              lat: p!.locationLat,
+              lng: p!.locationLng,
+            } : null,
+          }))
+      : [];
+
+    res.json({
+      trip: {
+        id: trip.id,
+        sessionId: trip.sessionId,
+        title: `${trip.city}${trip.district ? `・${trip.district}` : ''} 一日遊`,
+        city: trip.city,
+        district: trip.district,
+        description: trip.aiReason,
+        imageUrl: trip.tripImageUrl,
+        placeCount: trip.requestedCount,
+        categoryDistribution: trip.categoryDistribution,
+        publishedAt: trip.publishedAt,
+      },
+      places: orderedPlaces,
+    });
+  } catch (error) {
+    console.error("Error fetching trip details:", error);
+    res.status(500).json({ error: "Failed to fetch trip details" });
   }
 });
 
