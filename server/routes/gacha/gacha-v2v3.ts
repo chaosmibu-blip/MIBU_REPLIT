@@ -9,6 +9,377 @@ import { getLocalizedDescription } from "./shared";
 
 const router = Router();
 
+// ============= Prefetch Cache =============
+interface PrefetchCacheEntry {
+  places: any[];
+  aiReason: string;
+  anchorDistrict?: string;
+  city: string;
+  computedAt: number;
+  expiresAt: number;
+}
+
+const gachaPrefetchCache = new Map<string, PrefetchCacheEntry>();
+const PREFETCH_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const PREFETCH_MAX_COUNT = 12; // Always compute max for flexible truncation
+
+// Generate cache key: userId + regionId + district (optional)
+function getPrefetchCacheKey(userId: string, regionId?: number, district?: string): string {
+  return `${userId}:${regionId || 'all'}:${district || 'random'}`;
+}
+
+// Cleanup expired prefetch entries periodically
+setInterval(() => {
+  const now = Date.now();
+  const entries = Array.from(gachaPrefetchCache.entries());
+  for (const [key, entry] of entries) {
+    if (entry.expiresAt < now) {
+      gachaPrefetchCache.delete(key);
+    }
+  }
+}, 60 * 1000); // Cleanup every 60 seconds
+
+// ============= Core Computation Function =============
+interface ComputeItineraryParams {
+  userId: string;
+  regionId?: number;
+  city?: string;
+  district?: string;
+  targetCount: number;
+  language?: string;
+}
+
+interface ComputeItineraryResult {
+  success: boolean;
+  places: any[];
+  aiReason: string;
+  anchorDistrict?: string;
+  city: string;
+  error?: string;
+  errorCode?: string;
+}
+
+async function computeItineraryCore(params: ComputeItineraryParams): Promise<ComputeItineraryResult> {
+  const { userId, regionId, language = 'zh-TW' } = params;
+  let { city, district, targetCount } = params;
+  
+  console.log('[Gacha Core] Computing itinerary:', { userId, regionId, city, district, targetCount });
+  
+  if (regionId && !city) {
+    const region = await storage.getRegionById(regionId);
+    if (!region) {
+      return { success: false, places: [], aiReason: '', city: '', error: "找不到指定的區域", errorCode: "REGION_NOT_FOUND" };
+    }
+    city = region.nameZh;
+  }
+  
+  if (!city) {
+    return { success: false, places: [], aiReason: '', city: '', error: "請選擇城市", errorCode: "CITY_REQUIRED" };
+  }
+  
+  let anchorDistrict = district;
+  if (!anchorDistrict && regionId) {
+    const districts = await storage.getDistrictsByRegion(regionId);
+    if (districts.length > 0) {
+      const randomIdx = Math.floor(Math.random() * districts.length);
+      anchorDistrict = districts[randomIdx].nameZh;
+      console.log('[Gacha Core] Anchor district selected:', anchorDistrict);
+    }
+  }
+  
+  const SIX_CATEGORIES = ['美食', '景點', '購物', '娛樂設施', '生態文化教育', '遊程體驗'];
+  const maxFoodCount = Math.floor(targetCount / 2);
+  let minFoodCount = 2;
+  if (targetCount >= 7 && targetCount <= 8) minFoodCount = 3;
+  if (targetCount >= 9) minFoodCount = 3;
+  minFoodCount = Math.min(minFoodCount, maxFoodCount);
+  const stayCount = targetCount >= 9 ? 1 : 0;
+  
+  let anchorPlaces = anchorDistrict 
+    ? await storage.getOfficialPlacesByDistrict(city, anchorDistrict, 200)
+    : await storage.getOfficialPlacesByCity(city, 200);
+  
+  if (anchorPlaces.length === 0 && anchorDistrict) {
+    anchorPlaces = await storage.getOfficialPlacesByCity(city, 200);
+    anchorDistrict = undefined;
+  }
+  
+  if (anchorPlaces.length === 0) {
+    return { 
+      success: true, 
+      places: [], 
+      aiReason: '', 
+      city, 
+      anchorDistrict,
+      error: `${city}目前還沒有上線的景點`,
+      errorCode: "NO_PLACES_AVAILABLE"
+    };
+  }
+  
+  const groupByCategory = (places: any[]) => {
+    const groups: Record<string, any[]> = {};
+    for (const p of places) {
+      const cat = p.category || '其他';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(p);
+    }
+    return groups;
+  };
+  
+  const anchorByCategory = groupByCategory(anchorPlaces);
+  const selectedPlaces: any[] = [];
+  
+  let recentCollectionIds: number[] = [];
+  if (userId && userId !== 'guest') {
+    recentCollectionIds = await storage.getRecentCollectionPlaceIds(userId, GACHA_DEDUP_LIMIT);
+  }
+  
+  const sessionKey = `guest:${city}`;
+  if (userId === 'guest') {
+    const sessionDedup = guestSessionDedup.get(sessionKey);
+    if (sessionDedup && Date.now() - sessionDedup.timestamp < 30 * 60 * 1000) {
+      recentCollectionIds = sessionDedup.placeIds;
+    }
+  }
+  
+  const usedIds = new Set<number>(recentCollectionIds);
+  
+  const pickFromCategory = (category: string, count: number): any[] => {
+    const picked: any[] = [];
+    let pool = [...(anchorByCategory[category] || [])];
+    
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    
+    for (const p of pool) {
+      if (picked.length >= count) break;
+      if (usedIds.has(p.id)) continue;
+      picked.push(p);
+      usedIds.add(p.id);
+    }
+    return picked;
+  };
+  
+  if (stayCount > 0) {
+    const stayPicks = pickFromCategory('住宿', stayCount);
+    selectedPlaces.push(...stayPicks);
+  }
+  
+  const foodPicks = pickFromCategory('美食', minFoodCount);
+  selectedPlaces.push(...foodPicks);
+  
+  let remaining = targetCount - selectedPlaces.length;
+  const categoryPickCounts: Record<string, number> = { '美食': foodPicks.length, '住宿': stayCount };
+  const categoryWeights: Record<string, number> = {};
+  let totalWeight = 0;
+  
+  for (const cat of SIX_CATEGORIES) {
+    if (anchorByCategory[cat] && anchorByCategory[cat].length > 0) {
+      categoryWeights[cat] = 1;
+      totalWeight += 1;
+    }
+  }
+  
+  while (remaining > 0 && totalWeight > 0) {
+    let rand = Math.random() * totalWeight;
+    let selectedCategory = '';
+    for (const [cat, weight] of Object.entries(categoryWeights)) {
+      rand -= weight;
+      if (rand <= 0) {
+        selectedCategory = cat;
+        break;
+      }
+    }
+    if (!selectedCategory) selectedCategory = Object.keys(categoryWeights)[0];
+    
+    const currentCategoryCount = categoryPickCounts[selectedCategory] || 0;
+    if (selectedCategory === '美食' && currentCategoryCount >= maxFoodCount) {
+      categoryWeights[selectedCategory] = 0;
+      totalWeight = Object.values(categoryWeights).reduce((a, b) => a + b, 0);
+      continue;
+    }
+    
+    const picks = pickFromCategory(selectedCategory, 1);
+    if (picks.length > 0) {
+      selectedPlaces.push(...picks);
+      categoryPickCounts[selectedCategory] = (categoryPickCounts[selectedCategory] || 0) + 1;
+      remaining--;
+    } else {
+      categoryWeights[selectedCategory] = 0;
+      totalWeight = Object.values(categoryWeights).reduce((a, b) => a + b, 0);
+    }
+  }
+  
+  const sortByCoordinates = (places: any[]) => {
+    if (places.length <= 1) return places;
+    const withCoords = places.filter(p => p.locationLat && p.locationLng);
+    const withoutCoords = places.filter(p => !p.locationLat || !p.locationLng);
+    if (withCoords.length <= 1) return [...withCoords, ...withoutCoords];
+    
+    const sorted: any[] = [];
+    const remainingCoords = [...withCoords];
+    remainingCoords.sort((a, b) => b.locationLat - a.locationLat);
+    sorted.push(remainingCoords.shift()!);
+    
+    while (remainingCoords.length > 0) {
+      const last = sorted[sorted.length - 1];
+      let nearestIdx = 0;
+      let nearestDist = Infinity;
+      
+      for (let i = 0; i < remainingCoords.length; i++) {
+        const p = remainingCoords[i];
+        const dist = Math.sqrt(
+          Math.pow(p.locationLat - last.locationLat, 2) +
+          Math.pow(p.locationLng - last.locationLng, 2)
+        );
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearestIdx = i;
+        }
+      }
+      sorted.push(remainingCoords.splice(nearestIdx, 1)[0]);
+    }
+    return [...sorted, ...withoutCoords];
+  };
+  
+  const coordinateSortedPlaces = sortByCoordinates(selectedPlaces);
+  const timeSlotSortedPlaces = sortPlacesByTimeSlot(coordinateSortedPlaces);
+  
+  let finalPlaces = timeSlotSortedPlaces;
+  let aiReason = '';
+  let rejectedPlaceIds: number[] = [];
+  
+  if (selectedPlaces.length >= 2) {
+    try {
+      const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+      const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+      
+      const formatOpeningHours = (hours: any): string => {
+        if (!hours) return '未提供';
+        if (Array.isArray(hours)) return hours.slice(0, 2).join('; ');
+        if (hours.weekday_text) return hours.weekday_text.slice(0, 2).join('; ');
+        return '未提供';
+      };
+      
+      const allPlacesInfo = selectedPlaces.map((p, idx) => ({
+        idx: idx + 1,
+        name: p.placeName,
+        category: p.category,
+        subcategory: p.subcategory || '一般',
+        lat: p.locationLat || 0,
+        lng: p.locationLng || 0,
+        description: (p.description || '').slice(0, 80),
+        hours: formatOpeningHours(p.openingHours)
+      }));
+      
+      const reorderPrompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
+
+地點列表：
+${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
+
+排序規則（依優先順序）：
+1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
+2. 地理動線：減少迂迴，鄰近地點連續安排
+3. 類別穿插：避免連續3個同類（夜市內美食除外）
+4. 排除不適合：永久歇業、非旅遊點、同園區重複景點（保留代表性最高者）
+
+【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
+{"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
+      
+      const reorderResponse = await fetch(`${baseUrl}/models/gemini-3-pro-preview:generateContent`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey || ''
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: reorderPrompt }] }],
+          generationConfig: { maxOutputTokens: 8192, temperature: 0.1 }
+        })
+      });
+      
+      const reorderData = await reorderResponse.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>, error?: { code?: string; message?: string } };
+      const reorderText = reorderData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      
+      if (reorderText) {
+        try {
+          let jsonText = reorderText;
+          if (jsonText.startsWith('```')) {
+            jsonText = jsonText.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+          }
+          
+          let aiResult: { order?: number[]; reason?: string; reject?: number[] } = {};
+          try {
+            aiResult = JSON.parse(jsonText);
+          } catch {
+            const orderMatch = jsonText.match(/"order"\s*:\s*\[([^\]]+)\]/);
+            const rejectMatch = jsonText.match(/"reject"\s*:\s*\[([^\]]*)\]/);
+            if (orderMatch) {
+              aiResult.order = orderMatch[1].split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+            }
+            if (rejectMatch && rejectMatch[1].trim()) {
+              aiResult.reject = rejectMatch[1].split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+            }
+          }
+          
+          if (aiResult.reject && Array.isArray(aiResult.reject)) {
+            for (const idx of aiResult.reject) {
+              if (idx >= 1 && idx <= selectedPlaces.length) {
+                rejectedPlaceIds.push(selectedPlaces[idx - 1].id);
+              }
+            }
+          }
+          
+          if (aiResult.order && Array.isArray(aiResult.order) && aiResult.order.length > 0) {
+            const validOrder = aiResult.order
+              .filter(n => typeof n === 'number' && n >= 1 && n <= selectedPlaces.length)
+              .filter(n => !rejectedPlaceIds.includes(selectedPlaces[n - 1]?.id));
+            const uniqueOrder = Array.from(new Set(validOrder));
+            
+            if (uniqueOrder.length >= 2) {
+              const reorderedPlaces = uniqueOrder.map(idx => selectedPlaces[idx - 1]).filter(p => p);
+              const reorderedIds = new Set(reorderedPlaces.map(p => p.id));
+              const missingPlaces = selectedPlaces.filter(p => 
+                !reorderedIds.has(p.id) && !rejectedPlaceIds.includes(p.id)
+              );
+              if (missingPlaces.length > 0) {
+                reorderedPlaces.push(...missingPlaces);
+              }
+              finalPlaces = reorderedPlaces;
+              aiReason = aiResult.reason || '';
+            }
+          }
+        } catch (parseError) {
+          console.error('[Gacha Core] JSON parse failed:', parseError);
+        }
+      }
+    } catch (reorderError) {
+      console.error('[Gacha Core] AI reorder failed:', reorderError);
+    }
+  }
+  
+  const stayPlacesInFinal = finalPlaces.filter(p => p.category === '住宿');
+  const nonStayPlacesInFinal = finalPlaces.filter(p => p.category !== '住宿');
+  if (stayPlacesInFinal.length > 0) {
+    const lastPlace = finalPlaces[finalPlaces.length - 1];
+    if (lastPlace.category !== '住宿') {
+      finalPlaces = [...nonStayPlacesInFinal, ...stayPlacesInFinal];
+    }
+  }
+  
+  console.log('[Gacha Core] Computed:', finalPlaces.length, 'places for', city, anchorDistrict || '');
+  
+  return {
+    success: true,
+    places: finalPlaces,
+    aiReason,
+    anchorDistrict,
+    city
+  };
+}
+
 router.post("/gacha/pull/v2", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
@@ -153,6 +524,109 @@ router.post("/gacha/pull/v2", isAuthenticated, async (req: any, res) => {
   } catch (error) {
     console.error("Gacha pull v2 error:", error);
     res.status(500).json({ error: "Failed to perform gacha pull" });
+  }
+});
+
+// ============= Prefetch API =============
+router.post("/gacha/prefetch", isAuthenticated, async (req: any, res) => {
+  const userId = req.user?.claims?.sub || req.jwtUser?.userId || 'guest';
+  
+  try {
+    const prefetchSchema = z.object({
+      regionId: z.number().optional(),
+      city: z.string().optional(),
+      district: z.string().optional(),
+      language: z.string().optional(),
+    });
+    
+    const validated = prefetchSchema.parse(req.body);
+    const { regionId, city, district, language } = validated;
+    
+    if (!regionId && !city) {
+      return res.status(400).json({
+        success: false,
+        error: "請提供 regionId 或 city",
+        code: "PARAMS_REQUIRED"
+      });
+    }
+    
+    const cacheKey = getPrefetchCacheKey(userId, regionId, district);
+    
+    const existingCache = gachaPrefetchCache.get(cacheKey);
+    if (existingCache && existingCache.expiresAt > Date.now()) {
+      console.log('[Gacha Prefetch] Cache hit, skipping computation:', cacheKey);
+      return res.json({
+        success: true,
+        cached: true,
+        expiresIn: Math.round((existingCache.expiresAt - Date.now()) / 1000),
+        placesCount: existingCache.places.length,
+        city: existingCache.city,
+        district: existingCache.anchorDistrict
+      });
+    }
+    
+    console.log('[Gacha Prefetch] Starting computation for:', cacheKey);
+    const startTime = Date.now();
+    
+    const result = await computeItineraryCore({
+      userId,
+      regionId,
+      city,
+      district,
+      targetCount: PREFETCH_MAX_COUNT,
+      language
+    });
+    
+    if (!result.success && result.errorCode) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+        code: result.errorCode
+      });
+    }
+    
+    const now = Date.now();
+    gachaPrefetchCache.set(cacheKey, {
+      places: result.places,
+      aiReason: result.aiReason,
+      anchorDistrict: result.anchorDistrict,
+      city: result.city,
+      computedAt: now,
+      expiresAt: now + PREFETCH_TTL_MS
+    });
+    
+    const durationMs = Date.now() - startTime;
+    console.log('[Gacha Prefetch] Computed and cached:', {
+      cacheKey,
+      placesCount: result.places.length,
+      durationMs
+    });
+    
+    res.json({
+      success: true,
+      cached: false,
+      expiresIn: Math.round(PREFETCH_TTL_MS / 1000),
+      placesCount: result.places.length,
+      city: result.city,
+      district: result.anchorDistrict,
+      computeTimeMs: durationMs
+    });
+  } catch (error) {
+    console.error('[Gacha Prefetch] Error:', error);
+    
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        success: false,
+        error: "請求參數格式錯誤",
+        code: "INVALID_PARAMS"
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: "預載失敗，請稍後再試",
+      code: "PREFETCH_ERROR"
+    });
   }
 });
 
@@ -364,27 +838,6 @@ router.post("/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
       console.log('[Gacha V3] Admin/Test account - daily limit exempted:', userEmail);
     }
     
-    if (regionId && !city) {
-      const region = await storage.getRegionById(regionId);
-      if (!region) {
-        return res.status(400).json({ 
-          success: false, 
-          error: "找不到指定的區域",
-          code: "REGION_NOT_FOUND"
-        });
-      }
-      city = region.nameZh;
-      console.log('[Gacha V3] Resolved regionId', regionId, 'to city:', city);
-    }
-    
-    if (!city) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "請選擇城市（需提供 city 或 regionId）",
-        code: "CITY_REQUIRED"
-      });
-    }
-    
     if (itemCount && !pace) {
       if (itemCount <= 5) pace = 'relaxed';
       else if (itemCount <= 7) pace = 'moderate';
@@ -392,132 +845,69 @@ router.post("/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
     }
     pace = pace || 'moderate';
     
-    console.log('[Gacha V3] Validated params:', { city, district, pace, itemCount, userId });
-
     const itemCounts = { relaxed: 5, moderate: 7, packed: 10 };
     const targetCount = itemCount || itemCounts[pace];
-
+    
+    // ============= Check Prefetch Cache First =============
+    const cacheKey = getPrefetchCacheKey(userId, regionId, district);
+    const cachedResult = gachaPrefetchCache.get(cacheKey);
+    
+    let finalPlaces: any[] = [];
+    let aiReason = '';
     let anchorDistrict = district;
-    if (!anchorDistrict && regionId) {
-      const districts = await storage.getDistrictsByRegion(regionId);
-      if (districts.length > 0) {
-        const randomIdx = Math.floor(Math.random() * districts.length);
-        anchorDistrict = districts[randomIdx].nameZh;
-        console.log('[Gacha V3] Anchor district selected:', anchorDistrict);
-      }
-    }
+    let usedCache = false;
     
-    const SIX_CATEGORIES = ['美食', '景點', '購物', '娛樂設施', '生態文化教育', '遊程體驗'];
-    
-    const maxFoodCount = Math.floor(targetCount / 2);
-    
-    let minFoodCount = 2;
-    if (targetCount >= 7 && targetCount <= 8) minFoodCount = 3;
-    if (targetCount >= 9) minFoodCount = 3;
-    minFoodCount = Math.min(minFoodCount, maxFoodCount);
-    
-    const stayCount = targetCount >= 9 ? 1 : 0;
-    
-    console.log('[Gacha V3] Selection config:', { targetCount, minFoodCount, maxFoodCount, stayCount });
-    
-    let anchorPlaces = anchorDistrict 
-      ? await storage.getOfficialPlacesByDistrict(city, anchorDistrict, 200)
-      : await storage.getOfficialPlacesByCity(city, 200);
-    
-    console.log('[Gacha V3] Anchor places found:', anchorPlaces.length, 'in', anchorDistrict || city);
-    
-    if (anchorPlaces.length === 0 && anchorDistrict) {
-      console.log('[Gacha V3] Anchor district empty, falling back to city-wide search');
-      anchorPlaces = await storage.getOfficialPlacesByCity(city, 200);
-      console.log('[Gacha V3] City-wide places found:', anchorPlaces.length);
-      anchorDistrict = undefined;
-    }
-    
-    if (anchorPlaces.length === 0) {
-      return res.json({
-        success: true,
-        itinerary: [],
-        couponsWon: [],
-        meta: { 
-          message: `${city}目前還沒有上線的景點，我們正在努力擴充中！`,
-          code: "NO_PLACES_AVAILABLE",
-          city, 
-          district: null
-        }
+    if (cachedResult && cachedResult.expiresAt > Date.now()) {
+      console.log('[Gacha V3] Cache HIT:', cacheKey, 'places:', cachedResult.places.length);
+      
+      finalPlaces = cachedResult.places.slice(0, targetCount);
+      aiReason = cachedResult.aiReason;
+      anchorDistrict = cachedResult.anchorDistrict;
+      city = cachedResult.city;
+      usedCache = true;
+      
+      gachaPrefetchCache.delete(cacheKey);
+    } else {
+      console.log('[Gacha V3] Cache MISS, computing via core function...:', cacheKey);
+      
+      const computeResult = await computeItineraryCore({
+        userId,
+        regionId,
+        city,
+        district,
+        targetCount,
+        language
       });
-    }
-    
-    const groupByCategory = (places: any[]) => {
-      const groups: Record<string, any[]> = {};
-      for (const p of places) {
-        const cat = p.category || '其他';
-        if (!groups[cat]) groups[cat] = [];
-        groups[cat].push(p);
-      }
-      return groups;
-    };
-    
-    const anchorByCategory = groupByCategory(anchorPlaces);
-    const selectedPlaces: any[] = [];
-    
-    let recentCollectionIds: number[] = [];
-    if (userId && userId !== 'guest') {
-      recentCollectionIds = await storage.getRecentCollectionPlaceIds(userId, GACHA_DEDUP_LIMIT);
-    }
-    
-    const sessionKey = `guest:${city}`;
-    if (userId === 'guest') {
-      const sessionDedup = guestSessionDedup.get(sessionKey);
-      if (sessionDedup && Date.now() - sessionDedup.timestamp < 30 * 60 * 1000) {
-        recentCollectionIds = sessionDedup.placeIds;
-      }
-    }
-    
-    const usedIds = new Set<number>(recentCollectionIds);
-    console.log('[Gacha V3] Collection dedup exclusion:', recentCollectionIds.length, 'places');
-    
-    const pickFromCategory = (category: string, count: number): any[] => {
-      const picked: any[] = [];
-      let pool = [...(anchorByCategory[category] || [])];
       
-      for (let i = pool.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [pool[i], pool[j]] = [pool[j], pool[i]];
+      if (!computeResult.success && computeResult.errorCode) {
+        return res.status(400).json({
+          success: false,
+          error: computeResult.error,
+          code: computeResult.errorCode
+        });
       }
       
-      for (const p of pool) {
-        if (picked.length >= count) break;
-        if (usedIds.has(p.id)) continue;
-        picked.push(p);
-        usedIds.add(p.id);
+      if (computeResult.places.length === 0) {
+        return res.json({
+          success: true,
+          itinerary: [],
+          couponsWon: [],
+          meta: { 
+            message: computeResult.error || `${computeResult.city}目前還沒有上線的景點`,
+            code: "NO_PLACES_AVAILABLE",
+            city: computeResult.city, 
+            district: null
+          }
+        });
       }
-      return picked;
-    };
-    
-    const districtPlaces = anchorPlaces;
-    
-    const availableAfterDedup = districtPlaces.filter(p => !usedIds.has(p.id)).length;
-    if (availableAfterDedup < targetCount) {
-      console.log('[Gacha V3] Dedup safety: only', availableAfterDedup, 'available (need', targetCount, '), ignoring dedup');
-      usedIds.clear();
+      
+      finalPlaces = computeResult.places;
+      aiReason = computeResult.aiReason;
+      anchorDistrict = computeResult.anchorDistrict;
+      city = computeResult.city;
     }
     
-    const categoryPickCounts: Record<string, number> = {};
-    
-    const foodPicks = pickFromCategory('美食', minFoodCount);
-    selectedPlaces.push(...foodPicks);
-    categoryPickCounts['美食'] = foodPicks.length;
-    console.log('[Gacha V3] Food picks (guaranteed):', foodPicks.length, '/', minFoodCount);
-    
-    if (stayCount > 0) {
-      const stayPicks = pickFromCategory('住宿', 1);
-      selectedPlaces.push(...stayPicks);
-      categoryPickCounts['住宿'] = stayPicks.length;
-      console.log('[Gacha V3] Stay picks:', stayPicks.length);
-    }
-    
-    let remaining = targetCount - selectedPlaces.length;
-    console.log('[Gacha V3] Remaining slots for random:', remaining);
+    console.log('[Gacha V3] Using', usedCache ? 'CACHED' : 'COMPUTED', 'places:', finalPlaces.length);
     
     const categoryWeights: Record<string, number> = {};
     let totalWeight = 0;
