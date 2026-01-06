@@ -22,17 +22,39 @@ GET /api/seo/cities/台北市 → 2504 景點
 
 # 景點 API ✅ 
 # 方法 1: 使用 ID（推薦，最可靠）
-GET /api/seo/places/by-id/3406 → 西門町詳情
+GET /api/seo/places/by-id/3406 → 西門町詳情（推薦）
 
-# 方法 2: 使用 slug（需提供 city 參數）
-GET /api/seo/places/西門町?city=台北市 → 景點詳情
-# 注意：slug 需完整匹配，如 "taipei-101" 或 "西門町"
+# 方法 2: 使用 slug（⚠️ 舊版，不推薦）
+# GET /api/seo/places/西門町?city=台北市
+# 限制：每城市最多搜尋 500 筆，高流量城市可能 404
 
 # 訂閱方案 API ✅
 GET /api/subscription-plans → 3 個方案（公開存取）
 ```
 
 **建議**：官網前端優先使用 `/api/seo/places/by-id/:id` 端點，可避免中文 slug 編碼問題。
+
+### ⚠️ 已知限制與解決方案
+
+| 端點 | 限制 | 狀態 | 解決方案 |
+|------|------|------|---------|
+| `/api/seo/cities/:slug` | 特殊標點城市名可能無法匹配 | 台灣城市正常 | 未來擴展需修復 |
+| `/api/seo/places/:slug` | 每城市最多搜尋 500 筆 | **不推薦使用** | 改用 by-id 端點 |
+| `/api/seo/places/by-id/:id` | 無 | ✅ **推薦使用** | 100% 可靠 |
+
+### 前端實作契約
+
+| 功能 | 使用端點 | 備註 |
+|------|---------|------|
+| 城市列表 | `GET /api/seo/cities` | 支援 country 篩選 |
+| 城市詳情 | `GET /api/seo/cities/:slug?page=1&limit=50` | **必須處理分頁** |
+| 景點詳情 | `GET /api/seo/places/by-id/:id` | **推薦** |
+| 景點列表 | `GET /api/seo/places?city=xxx` | 搜尋/篩選用 |
+
+**關鍵原則**：
+1. 景點詳情頁 → **必須使用 `/api/seo/places/by-id/:id`**
+2. URL slug 僅用於友善顯示，不可作為資料來源
+3. SSG 生成時需遍歷分頁獲取所有景點 ID
 
 ---
 
@@ -45,19 +67,20 @@ GET /api/subscription-plans → 3 個方案（公開存取）
 | 端點 | 說明 | 狀態 |
 |------|------|------|
 | `GET /api/seo/cities` | 城市列表 | ✅ 22 城市 |
-| `GET /api/seo/cities/:slug` | 城市詳情 + 景點 | ✅ |
+| `GET /api/seo/cities/:slug` | 城市詳情 + 景點（分頁） | ✅ |
+| `GET /api/seo/places/by-id/:id` | 景點詳情（推薦） | ✅ **主要端點** |
 | `GET /api/seo/places` | 景點列表 (搜尋/篩選) | ✅ 35,044 景點 |
-| `GET /api/seo/places/:slug` | 景點詳情 | ✅ |
+| `GET /api/seo/places/:slug` | 景點詳情（舊版） | ⚠️ 有限制 |
 
 ### 官網前端待辦
 
 #### 1. 建立頁面
 
-| 頁面 | 路由 | 呼叫 API |
-|------|------|---------|
-| 城市列表 | `/explore` | `GET /api/seo/cities` |
-| 城市詳情 | `/city/[slug]` | `GET /api/seo/cities/:slug` |
-| 景點詳情 | `/place/[slug]` | `GET /api/seo/places/:slug?city=xxx` |
+| 頁面 | 路由 | 呼叫 API | 備註 |
+|------|------|---------|------|
+| 城市列表 | `/explore` | `GET /api/seo/cities` | |
+| 城市詳情 | `/city/[slug]` | `GET /api/seo/cities/:slug?page=N&limit=50` | 必須分頁 |
+| 景點詳情 | `/place/[id]` | `GET /api/seo/places/by-id/:id` | **使用 ID 路由** |
 
 #### 2. API 回應格式
 
@@ -141,7 +164,54 @@ interface PlaceDetailResponse {
 }
 ```
 
-#### 3. 空狀態處理
+#### 3. 景點頁面實作（推薦方式）
+
+```tsx
+// /place/[id]/page.tsx - 使用 ID 路由（推薦）
+
+// 輔助函數：獲取城市所有景點（處理分頁）
+async function getAllPlacesForCity(citySlug: string): Promise<{ id: number }[]> {
+  const allPlaces: { id: number }[] = [];
+  let page = 1;
+  let hasNext = true;
+  
+  while (hasNext) {
+    const res = await fetch(
+      `${API_URL}/api/seo/cities/${citySlug}?page=${page}&limit=50`
+    );
+    const data = await res.json();
+    allPlaces.push(...data.places.map((p: any) => ({ id: p.id })));
+    hasNext = data.pagination.hasNext;
+    page++;
+  }
+  return allPlaces;
+}
+
+export async function generateStaticParams() {
+  const citiesRes = await fetch(`${API_URL}/api/seo/cities`);
+  const { cities } = await citiesRes.json();
+  const params: { id: string }[] = [];
+  
+  for (const city of cities) {
+    const places = await getAllPlacesForCity(city.slug);
+    places.forEach((place) => {
+      params.push({ id: String(place.id) });
+    });
+  }
+  return params;
+}
+
+export default async function PlacePage({ params }: { params: { id: string } }) {
+  const res = await fetch(`${API_URL}/api/seo/places/by-id/${params.id}`);
+  const { place, relatedPlaces } = await res.json();
+  
+  return <PlaceDetail place={place} related={relatedPlaces} />;
+}
+```
+
+**URL 友善化**：使用 Next.js 的 rewrites 將 `/place/西門町-3406` 重寫為 `/place/3406`（slug 僅用於 SEO 顯示）
+
+#### 4. 空狀態處理
 
 ```tsx
 {cities.length === 0 && (
@@ -153,7 +223,7 @@ interface PlaceDetailResponse {
 )}
 ```
 
-#### 4. 頁面底部 CTA
+#### 5. 頁面底部 CTA
 
 每個 SEO 頁面底部需加入下載 App 引導：
 
@@ -541,8 +611,8 @@ curl https://[DEV_URL]/api/seo/places?limit=5
 ### 官網前端測試（待完成）
 
 - [ ] `/explore` 頁面顯示城市列表
-- [ ] `/city/台北市` 頁面顯示城市景點
-- [ ] `/place/西門町?city=台北市` 頁面顯示景點詳情
+- [ ] `/city/台北市` 頁面顯示城市景點（需處理分頁）
+- [ ] `/place/3406` 頁面顯示西門町詳情（使用 ID 路由）
 - [ ] `/for-business/pricing` 頁面顯示 3 個訂閱方案
 - [ ] 所有「訂閱方案」連結指向正確頁面
 - [ ] Google 登入：已註冊商家可登入
