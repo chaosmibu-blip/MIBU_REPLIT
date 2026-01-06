@@ -42,3 +42,9 @@ waitForPort = 5000
 [agent]
 mockupState = "FULLSTACK"
 integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:1.0.0", "javascript_gemini_ai_integrations:1.0.0", "stripe:2.0.0"]
+
+[userenv]
+
+[userenv.shared]
+RECUR_MERCHANT_PRO_PRODUCT_ID = "fpbnn9ah9090j7hxx5wcv7f4"
+RECUR_MERCHANT_PREMIUM_PRODUCT_ID = "adkwbl9dya0wc6b53parl9yk"
