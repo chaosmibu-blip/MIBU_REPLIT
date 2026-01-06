@@ -389,24 +389,33 @@ router.post('/apple', async (req, res) => {
       }
     }
     
-    if (targetPortal !== 'traveler') {
-      return res.status(400).json({
-        success: false,
-        error: '商家與專員請使用 Email 註冊',
-        code: 'APPLE_LOGIN_TRAVELER_ONLY',
-      });
-    }
-    
+    // 檢查用戶是否已存在且角色匹配
     let userRole: string = 'traveler';
     if (existingUser) {
       userRole = existingUser.role || 'traveler';
-      if (userRole !== 'traveler' && existingUser.email !== SUPER_ADMIN_EMAIL) {
+      
+      // 超級管理員可以任意切換角色
+      if (existingUser.email === SUPER_ADMIN_EMAIL) {
+        userRole = targetPortal;
+      }
+      // 已存在用戶：驗證角色是否匹配請求的入口
+      else if (targetPortal !== 'traveler' && userRole !== targetPortal) {
         return res.status(403).json({
           success: false,
-          error: `您的帳號角色為 ${userRole}，請使用對應入口登入`,
+          error: `您的帳號角色為 ${userRole}，無法從 ${targetPortal} 入口登入`,
           code: 'ROLE_MISMATCH',
           currentRole: userRole,
           targetPortal: targetPortal,
+        });
+      }
+    } else {
+      // 新用戶：只有 traveler 可以透過 OAuth 直接註冊
+      // 商家/專員需要先用 Email 註冊，之後可透過 OAuth 登入
+      if (targetPortal !== 'traveler') {
+        return res.status(400).json({
+          success: false,
+          error: '新商家/專員帳號請使用 Email 註冊，註冊後可使用 Apple 登入',
+          code: 'OAUTH_NEW_USER_TRAVELER_ONLY',
         });
       }
     }
@@ -562,24 +571,33 @@ router.post('/google', async (req, res) => {
       }
     }
     
-    if (targetPortal !== 'traveler') {
-      return res.status(400).json({
-        success: false,
-        error: '商家與專員請使用 Email 註冊',
-        code: 'GOOGLE_LOGIN_TRAVELER_ONLY',
-      });
-    }
-    
+    // 檢查用戶是否已存在且角色匹配
     let userRole: string = 'traveler';
     if (existingUser) {
       userRole = existingUser.role || 'traveler';
-      if (userRole !== 'traveler' && existingUser.email !== SUPER_ADMIN_EMAIL) {
+      
+      // 超級管理員可以任意切換角色
+      if (existingUser.email === SUPER_ADMIN_EMAIL) {
+        userRole = targetPortal;
+      }
+      // 已存在用戶：驗證角色是否匹配請求的入口
+      else if (targetPortal !== 'traveler' && userRole !== targetPortal) {
         return res.status(403).json({
           success: false,
-          error: `您的帳號角色為 ${userRole}，請使用對應入口登入`,
+          error: `您的帳號角色為 ${userRole}，無法從 ${targetPortal} 入口登入`,
           code: 'ROLE_MISMATCH',
           currentRole: userRole,
           targetPortal: targetPortal,
+        });
+      }
+    } else {
+      // 新用戶：只有 traveler 可以透過 OAuth 直接註冊
+      // 商家/專員需要先用 Email 註冊，之後可透過 OAuth 登入
+      if (targetPortal !== 'traveler') {
+        return res.status(400).json({
+          success: false,
+          error: '新商家/專員帳號請使用 Email 註冊，註冊後可使用 Google 登入',
+          code: 'OAUTH_NEW_USER_TRAVELER_ONLY',
         });
       }
     }
