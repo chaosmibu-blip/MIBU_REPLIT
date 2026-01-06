@@ -18,7 +18,7 @@ router.use('/auth', authRouter);
 router.use('/', profileRouter);
 router.use('/', sosRouter);
 router.use('/collections', collectionsRouter);
-router.use('/merchant', merchantRouter);
+// merchant routes are mounted directly in routes.ts
 router.use('/specialist', specialistRouter);
 router.use('/', chatRouter);
 router.use('/commerce', commerceRouter);

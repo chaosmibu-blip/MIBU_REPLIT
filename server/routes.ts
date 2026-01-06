@@ -8,6 +8,7 @@ import { createPlannerServiceRoutes } from "../modules/trip-planner/server/plann
 import { registerStripeRoutes } from "./stripeRoutes";
 import modularRouter from "./routes/index";
 import webhooksRouter from "./routes/webhooks";
+import merchantRouter from "./routes/merchant";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
@@ -16,6 +17,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.use('/api', queryLogger);
   app.use('/api/admin', adminRateLimiter);
+  
+  app.use(merchantRouter);
 
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Server is running correctly!', timestamp: new Date().toISOString() });
