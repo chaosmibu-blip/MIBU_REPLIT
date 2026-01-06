@@ -1,6 +1,6 @@
 # Mibu 官方網站完整開發藍圖
 
-> **版本**: 2.0 | **建立日期**: 2026-01-05 | **狀態**: 實作中
+> **版本**: 2.1 | **更新日期**: 2026-01-06 | **狀態**: 實作中
 
 ---
 
@@ -231,38 +231,159 @@ export async function apiClient<T>(
 
 ### 4. memory-web-auth.md
 ```markdown
-# 認證機制
+# 認證機制（2026-01-06 更新）
 
-## Cookie-based JWT
+## 統一身份認證架構
+
+後端使用 `auth_identities` 表支援一個用戶多種登入方式。
+
+### auth_identities 表結構
+
+| 欄位 | 類型 | 說明 |
+|------|------|------|
+| id | serial | 主鍵 |
+| userId | varchar | 關聯 users.id |
+| provider | varchar(20) | 'google' \| 'apple' \| 'email' \| 'replit' |
+| providerUserId | varchar(255) | OAuth sub 或 email |
+| email | varchar | OAuth 回傳的 email |
+| emailVerified | boolean | 郵箱是否已驗證 |
+| createdAt | timestamp | 建立時間 |
+
+### 唯一約束
+- `(provider, providerUserId)` 組合唯一，確保每個外部帳號只能連結到一個用戶
+
+## 雙軌認證策略
+
+| 用戶類型 | 登入方式 | API | 使用場景 |
+|---------|---------|-----|---------|
+| 旅客 | Google OAuth | POST /api/auth/google | App、官網 |
+| 旅客 | Apple OAuth | POST /api/auth/apple | App、官網 |
+| 商家 | Email + 密碼 | POST /api/auth/login | 官網 |
+| 專員 | Email + 密碼 | POST /api/auth/login | 官網 |
+
+## JWT Token 規範
+
+### 雙軌傳輸支援
+
+後端同時支援兩種 JWT 傳輸方式，前端可根據場景選擇：
+
+| 方式 | 適用場景 | 說明 |
+|------|---------|------|
+| **HttpOnly Cookie** | 官網（Next.js）| 後端設定 `auth_token` Cookie，前端免處理 |
+| **Bearer Token** | App（Expo）| 前端儲存 token，每次請求附加 Header |
+
+### 官網推薦方式：Cookie（自動）
+
+\`\`\`typescript
+// 登入後，後端自動設定 HttpOnly Cookie
+// 後續請求自動帶入，前端無需額外處理
+const res = await fetch('/api/auth/login', {
+  method: 'POST',
+  credentials: 'include',  // 重要：確保 Cookie 會被發送
+  body: JSON.stringify({ email, password, target_role: 'merchant' })
+});
+\`\`\`
+
+### App 方式：Bearer Token
+
+\`\`\`typescript
+// 登入回應會包含 token
+const { token } = await login(email, password);
+await AsyncStorage.setItem('auth_token', token);
+
+// 後續請求需手動附加 Header
+fetch('/api/xxx', {
+  headers: { 'Authorization': \`Bearer \${token}\` }
+});
+\`\`\`
+
+### Token 規範
 
 | 項目 | 值 |
 |------|-----|
 | Cookie 名稱 | auth_token |
-| 類型 | HttpOnly, Secure |
+| Cookie 屬性 | HttpOnly, Secure, SameSite=Lax |
 | 有效期 | 7 天 |
-| SameSite | Lax |
+| Payload | { userId, email, role, activeRole }
 
 ## 認證流程
 
-1. POST /api/merchant/login → 後端設定 Cookie
-2. 後續請求自動帶 Cookie → 後端驗證 JWT
-3. GET /api/merchant/verify → 檢查登入狀態
-4. POST /api/merchant/logout → 清除 Cookie
+### 商家登入流程
+\`\`\`
+1. 用戶填寫 email + password
+2. POST /api/auth/login { email, password, target_role: 'merchant' }
+3. 後端驗證 → 回傳 { token, user }
+4. 前端儲存 token → 跳轉至 /merchant/dashboard
+\`\`\`
+
+### Google OAuth 流程（官網）
+\`\`\`
+1. 用戶點擊「Google 登入」
+2. Google SDK 取得 idToken
+3. POST /api/auth/google { idToken, targetPortal: 'traveler' }
+4. 後端驗證 idToken → 寫入 auth_identities → 回傳 { token, user }
+5. 前端儲存 token → 跳轉至首頁
+\`\`\`
+
+### Apple OAuth 流程（官網）
+\`\`\`
+1. 用戶點擊「Apple 登入」
+2. Apple SDK 取得 identityToken + user info
+3. POST /api/auth/apple { identityToken, user, fullName, email }
+4. 後端驗證 token → 寫入 auth_identities → 回傳 { token, user }
+5. 前端儲存 token → 跳轉至首頁
+\`\`\`
 
 ## 保護路由
 
 \`\`\`typescript
 // middleware.ts
+import { NextRequest, NextResponse } from 'next/server';
+
 export async function middleware(request: NextRequest) {
-  const authToken = request.cookies.get('auth_token');
+  const token = request.cookies.get('auth_token')?.value 
+    || request.headers.get('authorization')?.replace('Bearer ', '');
   
-  if (request.nextUrl.pathname.startsWith('/merchant/dashboard')) {
-    if (!authToken) {
-      return NextResponse.redirect(new URL('/merchant/login', request.url));
-    }
+  const protectedPaths = ['/merchant/dashboard', '/specialist'];
+  const isProtected = protectedPaths.some(path => 
+    request.nextUrl.pathname.startsWith(path)
+  );
+  
+  if (isProtected && !token) {
+    return NextResponse.redirect(new URL('/merchant/login', request.url));
   }
 }
+
+export const config = {
+  matcher: ['/merchant/:path*', '/specialist/:path*'],
+};
 \`\`\`
+
+## 帳號連結功能（待實作）
+
+允許用戶將多個登入方式連結到同一帳號：
+
+\`\`\`typescript
+// 連結新的登入方式
+POST /api/auth/link-identity
+{ provider: 'google', idToken: 'xxx' }
+
+// 取得已連結的登入方式
+GET /api/auth/identities
+→ { identities: [{ provider, email, createdAt }] }
+
+// 解除連結
+DELETE /api/auth/identities/:provider
+\`\`\`
+
+## 錯誤處理
+
+| 錯誤碼 | 說明 | 處理方式 |
+|--------|------|---------|
+| INVALID_CREDENTIALS | 帳密錯誤 | 顯示錯誤訊息 |
+| PENDING_APPROVAL | 審核中 | 顯示等待審核提示 |
+| ROLE_MISMATCH | 角色不符 | 引導至正確入口 |
+| IDENTITY_ALREADY_LINKED | 帳號已被連結 | 顯示衝突提示 |
 ```
 
 ### 5. memory-web-payment.md
@@ -538,13 +659,196 @@ const statusColors = {
 | GET | `/api/seo/cities/:slug` | 城市詳情 |
 | GET | `/api/seo/places/:slug` | 景點詳情 |
 
-#### 認證 API
+---
+
+### 認證 API（2026-01-06 更新）
+
+#### 統一身份認證架構
+
+後端採用 `auth_identities` 表支援一個用戶多種登入方式：
+
+```typescript
+// 支援的登入 Provider
+type AuthProvider = 'google' | 'apple' | 'email' | 'replit' | 'guest';
+
+// auth_identities 表結構
+interface AuthIdentity {
+  id: number;
+  userId: string;
+  provider: AuthProvider;
+  providerUserId: string;  // OAuth sub 或 email
+  email?: string;
+  emailVerified: boolean;
+  createdAt: Date;
+}
+```
+
+#### 雙軌認證策略
+
+| 用戶類型 | 登入方式 | 使用場景 |
+|---------|---------|---------|
+| 旅客 | Google/Apple OAuth | App 登入、官網旅客登入 |
+| 商家 | Email + 密碼 | 官網商家登入（需審核） |
+| 專員 | Email + 密碼 | 官網專員登入（需審核） |
+
+#### 商家登入 API
+
+```typescript
+POST /api/auth/login
+Content-Type: application/json
+
+// Request
+{
+  "email": "merchant@example.com",
+  "password": "password123",
+  "target_role": "merchant"  // 指定登入角色
+}
+
+// Response - 成功
+{
+  "user": {
+    "id": "email_xxx",
+    "email": "merchant@example.com",
+    "firstName": "店長",
+    "lastName": null,
+    "role": "merchant",
+    "isApproved": true
+  },
+  "token": "JWT_TOKEN"
+}
+
+// Response - 審核中
+{
+  "error": "帳號審核中，請等待管理員核准",
+  "code": "PENDING_APPROVAL",
+  "isApproved": false
+}
+
+// Response - 角色不符
+{
+  "error": "您的帳號角色為 traveler，無法從 merchant 入口登入",
+  "code": "ROLE_MISMATCH",
+  "currentRole": "traveler",
+  "targetRole": "merchant"
+}
+```
+
+#### Google OAuth 登入（旅客用）
+
+```typescript
+POST /api/auth/google
+Content-Type: application/json
+
+// Request
+{
+  "idToken": "GOOGLE_ID_TOKEN",  // 由 Google Sign-In SDK 取得
+  "targetPortal": "traveler"     // 目前只支援 traveler
+}
+
+// Response
+{
+  "success": true,
+  "token": "JWT_TOKEN",
+  "user": {
+    "id": "google_12345678",
+    "email": "user@gmail.com",
+    "name": "John Doe",
+    "role": "traveler",
+    "isApproved": true,
+    "isSuperAdmin": false
+  }
+}
+```
+
+⚠️ **重要**：後端會使用 `google-auth-library` 驗證 ID token 的真實性，從 Google 驗證後的 payload 提取用戶資訊。
+
+#### Apple OAuth 登入（旅客用）
+
+```typescript
+POST /api/auth/apple
+Content-Type: application/json
+
+// Request
+{
+  "identityToken": "APPLE_IDENTITY_TOKEN",
+  "user": "apple_user_id",
+  "fullName": { "givenName": "John", "familyName": "Doe" },
+  "email": "user@privaterelay.appleid.com",
+  "targetPortal": "traveler"
+}
+
+// Response
+{
+  "success": true,
+  "token": "JWT_TOKEN",
+  "user": {
+    "id": "apple_xxx",
+    "email": "user@privaterelay.appleid.com",
+    "name": "John Doe",
+    "role": "traveler",
+    "isApproved": true,
+    "isSuperAdmin": false
+  }
+}
+```
+
+#### 帳號連結 API（待實作）
+
+```typescript
+POST /api/auth/link-identity
+Authorization: Bearer JWT_TOKEN
+Content-Type: application/json
+
+// Request - 連結新的登入方式
+{
+  "provider": "google",
+  "idToken": "GOOGLE_ID_TOKEN"
+}
+
+// Response - 成功
+{
+  "success": true,
+  "message": "已成功連結 Google 帳號",
+  "identities": [
+    { "provider": "apple", "email": "user@appleid.com" },
+    { "provider": "google", "email": "user@gmail.com" }
+  ]
+}
+
+// Response - 帳號已被其他用戶使用
+{
+  "success": false,
+  "error": "此 Google 帳號已被其他用戶連結",
+  "code": "IDENTITY_ALREADY_LINKED"
+}
+```
+
+#### 取得用戶已連結的登入方式
+
+```typescript
+GET /api/auth/identities
+Authorization: Bearer JWT_TOKEN
+
+// Response
+{
+  "identities": [
+    { "provider": "apple", "email": "user@appleid.com", "createdAt": "2026-01-06" },
+    { "provider": "google", "email": "user@gmail.com", "createdAt": "2026-01-06" }
+  ]
+}
+```
+
+#### 其他認證端點
 
 | 方法 | 端點 | 說明 |
 |------|------|------|
-| POST | `/api/merchant/login` | 商家登入 |
-| POST | `/api/merchant/logout` | 商家登出 |
-| GET | `/api/merchant/verify` | 驗證登入狀態 |
+| GET | `/api/auth/user` | 取得當前登入用戶 |
+| POST | `/api/auth/logout` | 登出 |
+| POST | `/api/auth/register` | 註冊（Email + 密碼） |
+| POST | `/api/auth/register/merchant` | 商家註冊 |
+| POST | `/api/auth/register/specialist` | 專員註冊 |
+
+---
 
 #### 訂閱 API（需登入）
 
@@ -777,6 +1081,7 @@ export async function generateStaticParams() {
 
 | 版本 | 日期 | 變更內容 |
 |------|------|---------|
+| 2.1 | 2026-01-06 | 新增統一身份認證架構（Google/Apple OAuth、auth_identities 表、帳號連結 API 規格） |
 | 2.0 | 2026-01-05 | 完整重構藍圖，新增記憶庫、指令集、UI/UX 規範 |
 | 1.2 | 2026-01-05 | 新增響應式設計規範 |
 | 1.1 | 2026-01-05 | 新增動態訂閱方案 API |
