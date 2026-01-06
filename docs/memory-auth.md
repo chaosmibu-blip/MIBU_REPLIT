@@ -5,14 +5,38 @@
 
 ---
 
+## 統一身份認證架構（2026-01-06 建立）
+
+### auth_identities 表
+```typescript
+// 支援一個用戶多種登入方式
+export const authIdentities = pgTable("auth_identities", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  provider: varchar("provider", { length: 20 }).notNull(), // 'google' | 'apple' | 'email' | 'replit'
+  providerUserId: varchar("provider_user_id", { length: 255 }).notNull(),
+  email: varchar("email"), // 用於帳號連結比對
+  emailVerified: boolean("email_verified").default(false),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  tokenExpiresAt: timestamp("token_expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+```
+
+### AuthProvider 類型
+```typescript
+export type AuthProvider = 'google' | 'apple' | 'email' | 'replit' | 'guest';
+```
+
+---
+
 ## 認證方式
 
 ### 1. Replit Auth (Web Admin)
 ```typescript
-// Session-based 認證
-// 使用 connect.sid Cookie
-
-// 中介軟體
+// Session-based 認證，使用 connect.sid Cookie
 import { isAuthenticated } from './replitAuth';
 
 app.get('/api/protected', isAuthenticated, (req, res) => {
@@ -20,22 +44,53 @@ app.get('/api/protected', isAuthenticated, (req, res) => {
 });
 ```
 
-### 2. Apple Sign In (Mobile)
+### 2. Apple Sign In (Mobile App)
 ```typescript
 POST /api/auth/apple
-Body: { identityToken: string }
+Body: {
+  identityToken: string,
+  user: string,  // Apple user ID
+  fullName?: { givenName?: string, familyName?: string },
+  email?: string,
+  targetPortal?: 'traveler' | 'merchant' | 'specialist' | 'admin'
+}
 
-// 後端驗證
-import appleSignIn from 'apple-signin-auth';
-
-const payload = await appleSignIn.verifyIdToken(identityToken, {
-  audience: process.env.APPLE_CLIENT_ID
-});
-
-// payload = { sub, email, email_verified }
+// 回應
+{
+  success: true,
+  token: "JWT_TOKEN",
+  user: { id, email, name, role, isApproved, isSuperAdmin }
+}
 ```
 
-### 3. JWT Token (Mobile API)
+### 3. Google Sign In (Mobile App) ✅ 2026-01-06 新增
+```typescript
+POST /api/auth/google
+Body: {
+  idToken: string,
+  user: {
+    id: string,           // Google user ID
+    email?: string,
+    name?: string,
+    givenName?: string,
+    familyName?: string,
+    photo?: string
+  },
+  targetPortal?: 'traveler' | 'merchant' | 'specialist' | 'admin'
+}
+
+// 回應
+{
+  success: true,
+  token: "JWT_TOKEN",
+  user: { id, email, name, role, isApproved, isSuperAdmin }
+}
+
+// 用戶 ID 格式
+userId = `google_${googleUser.id}`
+```
+
+### 4. JWT Token (Mobile API)
 ```typescript
 // 登入成功後發放 JWT
 const token = jwt.sign(
@@ -280,7 +335,9 @@ await SecureStore.setItemAsync('userToken', token);
 ---
 
 ## 待開發功能
-- [ ] Google Sign In
+- [x] Google Sign In ✅ 2026-01-06 已完成
+- [x] auth_identities 同步（登入時自動寫入）✅ 2026-01-06 已完成
+- [ ] 帳號連結 API（讓用戶綁定多種登入方式）
 - [ ] Refresh Token 機制
 - [ ] 雙因素認證 (2FA)
 - [ ] 登入記錄 / 異常登入通知

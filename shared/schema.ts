@@ -98,7 +98,10 @@ export const sessions = pgTable(
 // User roles: traveler (default), merchant, specialist, admin
 export type UserRole = 'traveler' | 'merchant' | 'specialist' | 'admin';
 
-// Users table - supports Replit Auth, guest login, and email/password auth
+// Auth provider types
+export type AuthProvider = 'google' | 'apple' | 'email' | 'replit' | 'guest';
+
+// Users table - supports multiple OAuth providers and email/password auth
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email"),
@@ -107,7 +110,7 @@ export const users = pgTable("users", {
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
   role: varchar("role", { length: 20 }).default('traveler').notNull(),
-  provider: varchar("provider", { length: 20 }), // 'replit' | 'guest' | 'email'
+  provider: varchar("provider", { length: 20 }), // 'google' | 'apple' | 'email' | 'replit' | 'guest'
   isApproved: boolean("is_approved").default(false).notNull(), // Requires admin approval for certain roles
   stripeCustomerId: varchar("stripe_customer_id"),
   sosSecretKey: varchar("sos_secret_key", { length: 64 }), // Long-lived SOS webhook key
@@ -125,6 +128,36 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// Auth Identities - 支援一個用戶多種登入方式
+// 例如：同一個用戶可以用 Google 和 Apple 登入，都連結到同一個 users.id
+export const authIdentities = pgTable("auth_identities", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  provider: varchar("provider", { length: 20 }).notNull(), // 'google' | 'apple' | 'email' | 'replit'
+  providerUserId: varchar("provider_user_id", { length: 255 }).notNull(), // OAuth sub 或 email
+  email: varchar("email"), // OAuth 回傳的 email（用於帳號連結比對）
+  emailVerified: boolean("email_verified").default(false),
+  accessToken: text("access_token"), // OAuth access token（可選）
+  refreshToken: text("refresh_token"), // OAuth refresh token（可選）
+  tokenExpiresAt: timestamp("token_expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_auth_identities_user").on(table.userId),
+  index("IDX_auth_identities_email").on(table.email),
+  // Unique constraint: 每個 provider 只能有一個 providerUserId
+  uniqueIndex("UQ_auth_identities_provider_user").on(table.provider, table.providerUserId),
+]);
+
+// Insert schema for auth_identities
+export const insertAuthIdentitySchema = createInsertSchema(authIdentities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertAuthIdentity = z.infer<typeof insertAuthIdentitySchema>;
+export type AuthIdentity = typeof authIdentities.$inferSelect;
 
 // Merchants (商家)
 export type MerchantStatus = 'pending' | 'approved' | 'rejected';
@@ -500,6 +533,15 @@ export const subcategoriesRelations = relations(subcategories, ({ one }) => ({
 export const usersRelations = relations(users, ({ many }) => ({
   collections: many(collections),
   merchants: many(merchants),
+  authIdentities: many(authIdentities),
+}));
+
+// Auth identities relations
+export const authIdentitiesRelations = relations(authIdentities, ({ one }) => ({
+  user: one(users, {
+    fields: [authIdentities.userId],
+    references: [users.id],
+  }),
 }));
 
 export const collectionsRelations = relations(collections, ({ one }) => ({

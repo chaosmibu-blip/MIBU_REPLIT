@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import {
   users,
   collections,
@@ -26,8 +26,11 @@ import {
   sosEvents,
   travelCompanions,
   chatInvites,
+  authIdentities,
   type User,
   type UpsertUser,
+  type InsertAuthIdentity,
+  type AuthIdentity,
 } from "@shared/schema";
 
 export const userStorage = {
@@ -300,5 +303,59 @@ export const userStorage = {
         code: "DELETE_FAILED" 
       };
     }
+  },
+
+  // ============ Auth Identities ============
+  
+  async getAuthIdentity(provider: string, providerUserId: string): Promise<AuthIdentity | undefined> {
+    const [identity] = await db
+      .select()
+      .from(authIdentities)
+      .where(
+        and(
+          eq(authIdentities.provider, provider),
+          eq(authIdentities.providerUserId, providerUserId)
+        )
+      );
+    return identity || undefined;
+  },
+
+  async getAuthIdentitiesByUserId(userId: string): Promise<AuthIdentity[]> {
+    return await db
+      .select()
+      .from(authIdentities)
+      .where(eq(authIdentities.userId, userId));
+  },
+
+  async upsertAuthIdentity(data: InsertAuthIdentity): Promise<AuthIdentity> {
+    const [identity] = await db
+      .insert(authIdentities)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [authIdentities.provider, authIdentities.providerUserId],
+        set: {
+          userId: data.userId,
+          email: data.email,
+          emailVerified: data.emailVerified,
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+          tokenExpiresAt: data.tokenExpiresAt,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return identity;
+  },
+
+  async deleteAuthIdentity(provider: string, providerUserId: string): Promise<boolean> {
+    const result = await db
+      .delete(authIdentities)
+      .where(
+        and(
+          eq(authIdentities.provider, provider),
+          eq(authIdentities.providerUserId, providerUserId)
+        )
+      );
+    return true;
   },
 };

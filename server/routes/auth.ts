@@ -2,11 +2,15 @@ import { Router } from "express";
 import * as crypto from "crypto";
 import { z } from "zod";
 import appleSignin from "apple-signin-auth";
+import { OAuth2Client } from "google-auth-library";
 import { hashPassword, verifyPassword, generateToken } from "../lib/utils/auth";
 import { isAuthenticated, generateJwtToken } from "../replitAuth";
 import { storage } from "../storage";
 import { updateProfileSchema } from "@shared/schema";
 import { ErrorCode, createErrorResponse } from "@shared/errors";
+
+// Google OAuth client for ID token verification
+const googleClient = new OAuth2Client();
 
 const router = Router();
 const profileRouter = Router();
@@ -419,6 +423,16 @@ router.post('/apple', async (req, res) => {
     
     console.log(`[Apple Auth] User upserted: ${user.id}, role: ${user.role}`);
     
+    // Sync to auth_identities for multi-provider linking
+    await storage.upsertAuthIdentity({
+      userId: user.id,
+      provider: 'apple',
+      providerUserId: appleTokenPayload.sub,
+      email: userEmail,
+      emailVerified: appleTokenPayload.email_verified || false,
+    });
+    console.log(`[Apple Auth] Auth identity synced for provider=apple, sub=${appleTokenPayload.sub}`);
+    
     const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
     
     if (!isSuperAdmin && user.role !== 'traveler' && !user.isApproved) {
@@ -461,6 +475,171 @@ router.post('/apple', async (req, res) => {
       return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, `Invalid request data: ${issues}`));
     }
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, 'Apple authentication failed'));
+  }
+});
+
+// Google Sign In
+router.post('/google', async (req, res) => {
+  console.log('[Google Auth] Request received:', JSON.stringify({
+    hasIdToken: !!req.body?.idToken,
+    hasUser: !!req.body?.user,
+    portal: req.body?.portal,
+    targetPortal: req.body?.targetPortal,
+    keys: Object.keys(req.body || {}),
+  }));
+  
+  try {
+    const googleAuthSchema = z.object({
+      idToken: z.string().min(1, 'ID token is required'),
+      user: z.object({
+        id: z.string().min(1, 'Google user ID is required'),
+        email: z.string().email().nullable().optional(),
+        name: z.string().nullable().optional(),
+        givenName: z.string().nullable().optional(),
+        familyName: z.string().nullable().optional(),
+        photo: z.string().nullable().optional(),
+      }).optional(),
+      targetPortal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).nullable().optional(),
+      portal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).nullable().optional(),
+    });
+    
+    const validated = googleAuthSchema.parse(req.body);
+    const { idToken } = validated;
+    const targetPortal = validated.targetPortal || validated.portal || 'traveler';
+    
+    // ⚠️ CRITICAL: Verify ID token with Google
+    // This ensures the token is authentic and not forged
+    const validAudiences = [
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_IOS_CLIENT_ID,
+      process.env.GOOGLE_ANDROID_CLIENT_ID,
+      'host.exp.Exponent', // Expo development
+    ].filter(Boolean) as string[];
+    
+    let googleTokenPayload: any;
+    let verificationSucceeded = false;
+    
+    for (const audience of validAudiences) {
+      try {
+        const ticket = await googleClient.verifyIdToken({
+          idToken: idToken,
+          audience: audience,
+        });
+        googleTokenPayload = ticket.getPayload();
+        verificationSucceeded = true;
+        console.log(`[Google Auth] Token verified with audience: ${audience}`);
+        break;
+      } catch (verifyError: any) {
+        console.log(`[Google Auth] Token verification failed for audience ${audience}: ${verifyError.message}`);
+        continue;
+      }
+    }
+    
+    if (!verificationSucceeded || !googleTokenPayload) {
+      console.error('[Google Auth] Token verification failed for all audiences');
+      return res.status(401).json(createErrorResponse(ErrorCode.INVALID_CREDENTIALS, 'Google token verification failed'));
+    }
+    
+    // Extract verified user info from Google's payload (not from client)
+    const googleSub = googleTokenPayload.sub;
+    const userEmail = googleTokenPayload.email || null;
+    const emailVerified = googleTokenPayload.email_verified || false;
+    const firstName = googleTokenPayload.given_name || googleTokenPayload.name?.split(' ')[0] || null;
+    const lastName = googleTokenPayload.family_name || null;
+    const profileImageUrl = googleTokenPayload.picture || null;
+    
+    console.log(`[Google Auth] Verified. Email: ${userEmail}, Google sub: ${googleSub}`);
+    
+    const userId = `google_${googleSub}`;
+    
+    let existingUser = await storage.getUser(userId);
+    
+    if (!existingUser && userEmail) {
+      const existingUserByEmail = await storage.getUserByEmail(userEmail);
+      if (existingUserByEmail && existingUserByEmail.id !== userId) {
+        console.log(`[Google Auth] Found existing user with same email. Will merge: ${existingUserByEmail.id} -> ${userId}`);
+        existingUser = existingUserByEmail;
+      }
+    }
+    
+    if (targetPortal !== 'traveler') {
+      return res.status(400).json({
+        success: false,
+        error: '商家與專員請使用 Email 註冊',
+        code: 'GOOGLE_LOGIN_TRAVELER_ONLY',
+      });
+    }
+    
+    let userRole: string = 'traveler';
+    if (existingUser) {
+      userRole = existingUser.role || 'traveler';
+      if (userRole !== 'traveler' && existingUser.email !== SUPER_ADMIN_EMAIL) {
+        return res.status(403).json({
+          success: false,
+          error: `您的帳號角色為 ${userRole}，請使用對應入口登入`,
+          code: 'ROLE_MISMATCH',
+          currentRole: userRole,
+          targetPortal: targetPortal,
+        });
+      }
+    }
+    
+    const user = await storage.upsertUser({
+      id: userId,
+      email: userEmail,
+      firstName: firstName,
+      lastName: lastName,
+      profileImageUrl: profileImageUrl,
+      role: userRole,
+      provider: 'google',
+      isApproved: userRole === 'traveler' ? true : (existingUser?.isApproved || false),
+    });
+    
+    console.log(`[Google Auth] User upserted: ${user.id}, role: ${user.role}`);
+    
+    // Sync to auth_identities for multi-provider linking
+    await storage.upsertAuthIdentity({
+      userId: user.id,
+      provider: 'google',
+      providerUserId: googleSub,
+      email: userEmail,
+      emailVerified: emailVerified,
+    });
+    console.log(`[Google Auth] Auth identity synced for provider=google, sub=${googleSub}`);
+    
+    const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
+    
+    if (!isSuperAdmin && user.role !== 'traveler' && !user.isApproved) {
+      return res.status(403).json({
+        success: false,
+        error: '帳號審核中，請等待管理員核准',
+        code: 'PENDING_APPROVAL',
+      });
+    }
+    
+    const token = generateToken(user.id, user.role || 'traveler');
+    
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email || '',
+        name: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Google User',
+        role: user.role,
+        isApproved: user.isApproved,
+        isSuperAdmin,
+      },
+    });
+  } catch (error: any) {
+    console.error('[Google Auth] Error:', error);
+    if (error.name === 'ZodError') {
+      const zodError = error as z.ZodError;
+      const issues = zodError.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ');
+      console.error(`[Google Auth] Zod validation failed: ${issues}`);
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, `Invalid request data: ${issues}`));
+    }
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, 'Google authentication failed'));
   }
 });
 
