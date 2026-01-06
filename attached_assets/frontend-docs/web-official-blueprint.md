@@ -1,6 +1,6 @@
 # Mibu 官方網站完整開發藍圖
 
-> **版本**: 2.1 | **更新日期**: 2026-01-06 | **狀態**: 實作中
+> **版本**: 2.2 | **更新日期**: 2026-01-06 | **狀態**: 實作中
 
 ---
 
@@ -22,25 +22,36 @@
 
 ## 專案概述
 
-### 官網定位
-Mibu 官方網站是面向商家的 B2B 平台，主要功能：
-- 商家訂閱購買（Pro/Premium 方案）
-- 程式化 SEO 頁面（城市/景點）
-- 商家登入與管理後台
-- 品牌行銷與下載引導
+### 官網雙受眾定位（2026-01-06 更新）
+
+Mibu 官方網站同時服務兩類用戶：
+
+| 用戶 | 目標 | 實現方式 |
+|------|------|---------|
+| **一般旅客** | Google 搜尋「景點」「行程」時找到 Mibu → 下載 App | 程式化 SEO 頁面 |
+| **商家** | 購買訂閱（iOS 規定跨平台訂閱必須在官網完成） | 商家登入 + 訂閱購買 |
 
 ### 核心頁面
 
-| 頁面 | 路由 | 目的 |
-|------|------|------|
-| 首頁 | `/` | 品牌介紹、App 下載引導 |
-| 商家合作 | `/for-business` | 商家服務介紹 |
-| 訂閱方案 | `/for-business/pricing` | 方案比較與購買 |
-| 商家登入 | `/merchant/login` | Email + 密碼登入 |
-| 商家後台 | `/merchant/dashboard` | 訂閱管理、數據概覽 |
-| 城市列表 | `/explore` | SEO：所有城市 |
-| 城市詳情 | `/city/[slug]` | SEO：城市景點列表 |
-| 景點詳情 | `/place/[slug]` | SEO：單一景點資訊 |
+#### 面向一般旅客（SEO）
+
+| 頁面 | 路由 | 目的 | API |
+|------|------|------|-----|
+| 首頁 | `/` | 品牌介紹、App 下載引導 | 無 |
+| 城市列表 | `/explore` | SEO：所有城市 | `GET /api/seo/cities` |
+| 城市詳情 | `/city/[slug]` | SEO：城市景點列表 | `GET /api/seo/cities/:slug` |
+| 景點詳情 | `/place/[slug]` | SEO：單一景點資訊 | `GET /api/seo/places/:slug` |
+
+#### 面向商家
+
+| 頁面 | 路由 | 目的 | API |
+|------|------|------|-----|
+| 商家合作 | `/for-business` | 商家服務介紹 | 無 |
+| 訂閱方案 | `/for-business/pricing` | 方案比較與購買 | `GET /api/subscription-plans` |
+| 商家登入 | `/merchant/login` | Email + 密碼登入 | `POST /api/auth/login` |
+| 商家後台 | `/merchant/dashboard` | 查看訂閱狀態與權限（唯讀） | `GET /api/merchant/subscription` |
+
+> ⚠️ **重要**：商家註冊、店家認領、優惠券管理、數據報表等功能**僅在 App 中提供**。官網商家後台僅供查看訂閱狀態。
 
 ---
 
@@ -75,23 +86,19 @@ Mibu 官方網站是面向商家的 B2B 平台，主要功能：
 # Mibu 官方網站
 
 ## 專案簡介
-Mibu 官方網站是面向商家的 B2B 平台，提供訂閱購買、商家登入、SEO 頁面等功能。
+Mibu 官方網站同時服務兩類用戶：
+- **一般旅客**：透過程式化 SEO 頁面，讓 Google 搜尋「景點」「行程」時能找到 Mibu，引導下載 App
+- **商家**：購買訂閱方案（iOS 規定跨平台訂閱必須在官網完成）
 
 ## 角色定義
 你是**前端工程師**，負責實作官網功能，接受後端首席架構師的技術指揮。
 
-### 技術棧
+## 技術棧
 - Next.js 15 (App Router)
 - Tailwind CSS 3.x
 - shadcn/ui
 - TanStack Query 5.x
 - React Hook Form + Zod
-
-## 原則
-1. 全程使用中文溝通
-2. 遵循後端提供的 API 契約
-3. 所有頁面需響應式（手機優先）
-4. SEO 頁面使用 SSR/SSG
 
 ## 後端 API
 | 環境 | URL |
@@ -99,16 +106,46 @@ Mibu 官方網站是面向商家的 B2B 平台，提供訂閱購買、商家登�
 | 開發 | `https://591965a7-25f6-479c-b527-3890b1193c21-00-1m08cwv9a4rev.picard.replit.dev` |
 | 生產 | `https://gacha-travel--s8869420.replit.app` |
 
+## 頁面結構
+
+### 面向一般旅客（SEO）
+| 路由 | 說明 | API |
+|------|------|-----|
+| `/` | 首頁 + 下載按鈕 | 無 |
+| `/explore` | 城市列表 | `GET /api/seo/cities` |
+| `/city/[slug]` | 城市詳情 | `GET /api/seo/cities/:slug` |
+| `/place/[slug]` | 景點詳情 | `GET /api/seo/places/:slug` |
+
+### 面向商家
+| 路由 | 說明 | API |
+|------|------|-----|
+| `/for-business` | 商家合作介紹 | 無 |
+| `/for-business/pricing` | 訂閱方案 | `GET /api/subscription-plans` |
+| `/merchant/login` | 商家登入 | `POST /api/auth/login` |
+| `/merchant/dashboard` | 訂閱狀態 | `GET /api/merchant/subscription` |
+
+## 商家功能範圍（官網限定）
+
+| 功能 | 說明 |
+|------|------|
+| 登入 | Email + 密碼，無帳號引導下載 App |
+| 訂閱購買 | Stripe/Recur 雙軌金流 |
+| 查看訂閱 | 顯示方案、狀態、到期日（唯讀）|
+
+> ⚠️ 商家註冊、店家認領、數據報表等功能僅在 App 中提供
+
+## 下載按鈕規格
+- **Android**：Toast 顯示「敬請期待」
+- **iOS**：跳轉 App Store（待上架後補上連結）
+
 ## 記憶庫索引
 
 | 檔案 | 職權範圍 |
 |------|---------|
 | memory-web-pages.md | 頁面結構、路由定義 |
-| memory-web-components.md | 共用元件庫 |
-| memory-web-api.md | API 整合、hook 定義 |
-| memory-web-auth.md | 認證機制（Cookie JWT） |
-| memory-web-payment.md | 金流整合（Stripe/Recur） |
-| memory-web-seo.md | SEO 頁面、Meta 設定 |
+| memory-web-auth.md | 商家登入、JWT Cookie |
+| memory-web-payment.md | 訂閱購買（Stripe/Recur）|
+| memory-web-seo.md | SEO 頁面、Meta、結構化資料 |
 
 ## 環境變數
 
@@ -117,11 +154,12 @@ NEXT_PUBLIC_API_URL=後端 API URL
 NEXT_PUBLIC_RECUR_PUBLISHABLE_KEY=Recur 公開金鑰
 \`\`\`
 
-## 輸出協議
-完成功能後輸出：
-- 路由/檔案變更
-- 元件 Props 定義
-- API 依賴
+## 原則
+1. 全程使用中文溝通
+2. 遵循後端提供的 API 契約
+3. 所有頁面需響應式（手機優先）
+4. SEO 頁面使用 SSG + ISR
+5. 商家頁面需認證保護
 ```
 
 ---
@@ -967,6 +1005,208 @@ async function handleRecurCheckout(tier: 'pro' | 'premium') {
 
 ---
 
+## SEO API（2026-01-06 新增）
+
+> ⚠️ **待後端實作**：以下 API 需要後端首席架構師建立
+
+### GET /api/seo/cities
+
+取得有景點的城市列表（公開、無需認證）
+
+```typescript
+GET /api/seo/cities
+Query: ?country=taiwan&limit=50
+
+// Response
+{
+  "cities": [
+    {
+      "slug": "taipei",
+      "name": "台北",
+      "nameEn": "Taipei",
+      "country": "taiwan",
+      "coverImage": "https://...",
+      "placesCount": 245,
+      "categories": ["美食", "景點", "購物"]
+    }
+  ],
+  "total": 22
+}
+```
+
+### GET /api/seo/cities/:slug
+
+取得城市詳情 + 景點列表（公開、無需認證）
+
+```typescript
+GET /api/seo/cities/taipei
+Query: ?category=美食&page=1&limit=20
+
+// Response
+{
+  "city": {
+    "slug": "taipei",
+    "name": "台北",
+    "nameEn": "Taipei",
+    "country": "taiwan",
+    "coverImage": "https://...",
+    "description": "台北是台灣的首都...",
+    "placesCount": 245
+  },
+  "places": [
+    {
+      "slug": "din-tai-fung-xinyi",
+      "name": "鼎泰豐（信義店）",
+      "nameEn": "Din Tai Fung Xinyi",
+      "category": "美食",
+      "subcategory": "餐廳",
+      "coverImage": "https://...",
+      "rating": 4.8,
+      "reviewCount": 12500,
+      "shortDescription": "世界知名的小籠包餐廳..."
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 245,
+    "totalPages": 13
+  },
+  "categories": [
+    { "name": "美食", "count": 120 },
+    { "name": "景點", "count": 80 },
+    { "name": "購物", "count": 45 }
+  ]
+}
+```
+
+### GET /api/seo/places/:slug
+
+取得單一景點詳情（公開、無需認證）
+
+```typescript
+GET /api/seo/places/din-tai-fung-xinyi
+
+// Response
+{
+  "place": {
+    "slug": "din-tai-fung-xinyi",
+    "name": "鼎泰豐（信義店）",
+    "nameEn": "Din Tai Fung Xinyi",
+    "city": "taipei",
+    "cityName": "台北",
+    "district": "信義區",
+    "category": "美食",
+    "subcategory": "餐廳",
+    "coverImage": "https://...",
+    "images": ["https://...", "https://..."],
+    "description": "鼎泰豐是享譽國際的小籠包...",
+    "rating": 4.8,
+    "reviewCount": 12500,
+    "address": "台北市信義區...",
+    "phone": "+886-2-xxxx-xxxx",
+    "website": "https://...",
+    "openingHours": {
+      "monday": "10:00-21:00",
+      "tuesday": "10:00-21:00"
+    },
+    "coordinates": {
+      "lat": 25.0330,
+      "lng": 121.5654
+    },
+    "tags": ["米其林", "排隊名店", "觀光客必訪"]
+  },
+  "relatedPlaces": [
+    { "slug": "...", "name": "...", "coverImage": "..." }
+  ]
+}
+```
+
+---
+
+## 下載按鈕元件規格（2026-01-06 新增）
+
+### DownloadButton 元件
+
+**依賴**：
+- `sonner` - Toast 通知
+- `lucide-react` - Apple / Play Store 圖示
+- `cn` helper - 來自 `@/lib/utils`（shadcn/ui 預設提供）
+
+```typescript
+// components/common/DownloadButton.tsx
+'use client';
+
+import { toast } from 'sonner';
+import { Apple, Play } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface DownloadButtonProps {
+  platform: 'ios' | 'android';
+  className?: string;
+}
+
+const IOS_APP_STORE_URL = ''; // 待上架後補上
+
+export function DownloadButton({ platform, className }: DownloadButtonProps) {
+  const handleClick = () => {
+    if (platform === 'android') {
+      toast('敬請期待', {
+        description: 'Android 版本即將推出，敬請期待！',
+      });
+      return;
+    }
+    
+    if (platform === 'ios') {
+      if (IOS_APP_STORE_URL) {
+        window.open(IOS_APP_STORE_URL, '_blank');
+      } else {
+        toast('即將上架', {
+          description: 'iOS 版本審核中，即將上架 App Store！',
+        });
+      }
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      className={cn(
+        'flex items-center gap-2 px-6 py-3 rounded-lg font-medium',
+        platform === 'ios' 
+          ? 'bg-black text-white hover:bg-gray-800' 
+          : 'bg-green-600 text-white hover:bg-green-700',
+        className
+      )}
+    >
+      {platform === 'ios' ? (
+        <>
+          <Apple className="w-5 h-5" />
+          <span>App Store</span>
+        </>
+      ) : (
+        <>
+          <Play className="w-5 h-5" />
+          <span>Google Play</span>
+        </>
+      )}
+    </button>
+  );
+}
+```
+
+### 使用方式
+
+```tsx
+// 在 SEO 頁面中使用
+<div className="flex gap-4">
+  <DownloadButton platform="ios" />
+  <DownloadButton platform="android" />
+</div>
+```
+
+---
+
 ## SEO 規範
 
 ### Meta Tags 範本
@@ -1077,10 +1317,456 @@ export async function generateStaticParams() {
 
 ---
 
+---
+
+## 官網完整實作指令集（2026-01-06 新增）
+
+### Phase 1：專案初始化（Day 1）
+
+```bash
+# 1. 建立 Next.js 專案
+npx create-next-app@latest mibu-web --typescript --tailwind --eslint --app --src-dir
+
+# 2. 安裝依賴
+cd mibu-web
+npm install @tanstack/react-query react-hook-form zod @hookform/resolvers lucide-react framer-motion sonner
+
+# 3. 安裝 shadcn/ui
+npx shadcn@latest init
+
+# 4. 安裝常用元件
+npx shadcn@latest add button card input label toast tabs dialog separator badge
+```
+
+### Phase 2：基礎架構（Day 1-2）
+
+#### 2.1 設定環境變數
+
+```bash
+# .env.local
+NEXT_PUBLIC_API_URL=https://591965a7-25f6-479c-b527-3890b1193c21-00-1m08cwv9a4rev.picard.replit.dev
+NEXT_PUBLIC_RECUR_PUBLISHABLE_KEY=pk_test_xxx
+```
+
+#### 2.2 建立 API Client
+
+```typescript
+// lib/api/client.ts
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+
+class ApiError extends Error {
+  constructor(public status: number, message: string, public code?: string) {
+    super(message);
+  }
+}
+
+export async function apiClient<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const res = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+    credentials: 'include',
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, error.error || 'Request failed', error.code);
+  }
+
+  return res.json();
+}
+```
+
+#### 2.3 建立目錄結構
+
+```
+src/
+├── app/
+│   ├── layout.tsx              # 根 Layout
+│   ├── page.tsx                # 首頁
+│   ├── explore/
+│   │   └── page.tsx            # 城市列表（SEO）
+│   ├── city/
+│   │   └── [slug]/
+│   │       └── page.tsx        # 城市詳情（SEO）
+│   ├── place/
+│   │   └── [slug]/
+│   │       └── page.tsx        # 景點詳情（SEO）
+│   ├── for-business/
+│   │   ├── page.tsx            # 商家合作介紹
+│   │   └── pricing/
+│   │       └── page.tsx        # 訂閱方案頁
+│   ├── merchant/
+│   │   ├── login/
+│   │   │   └── page.tsx        # 商家登入
+│   │   ├── dashboard/
+│   │   │   └── page.tsx        # 商家後台（訂閱狀態）
+│   │   └── subscription/
+│   │       ├── success/
+│   │       │   └── page.tsx    # 付款成功
+│   │       └── cancel/
+│   │           └── page.tsx    # 付款取消
+├── components/
+│   ├── layout/
+│   │   ├── Header.tsx
+│   │   └── Footer.tsx
+│   ├── common/
+│   │   └── DownloadButton.tsx
+│   ├── seo/
+│   │   ├── CityCard.tsx
+│   │   └── PlaceCard.tsx
+│   ├── pricing/
+│   │   └── PricingCard.tsx
+│   └── merchant/
+│       ├── LoginForm.tsx
+│       └── SubscriptionStatus.tsx
+├── hooks/
+│   ├── useAuth.ts
+│   ├── useCities.ts
+│   ├── useCity.ts
+│   ├── usePlace.ts
+│   └── useSubscription.ts
+├── lib/
+│   └── api/
+│       └── client.ts
+└── types/
+    ├── auth.ts
+    ├── seo.ts
+    └── subscription.ts
+```
+
+### Phase 3：頁面實作優先順序
+
+| 優先級 | 頁面 | 說明 | 依賴 API |
+|--------|------|------|----------|
+| 1 | `/` | 首頁 + 下載按鈕 | 無 |
+| 2 | `/for-business/pricing` | 訂閱方案 | `GET /api/subscription-plans` |
+| 3 | `/merchant/login` | 商家登入 | `POST /api/auth/login` |
+| 4 | `/merchant/dashboard` | 訂閱狀態 | `GET /api/merchant/subscription` |
+| 5 | `/explore` | 城市列表 | `GET /api/seo/cities` ⚠️ 待建 |
+| 6 | `/city/[slug]` | 城市詳情 | `GET /api/seo/cities/:slug` ⚠️ 待建 |
+| 7 | `/place/[slug]` | 景點詳情 | `GET /api/seo/places/:slug` ⚠️ 待建 |
+
+### Phase 4：各頁面實作要點
+
+#### 4.1 首頁 `/`
+
+```tsx
+// app/page.tsx
+import { DownloadButton } from '@/components/common/DownloadButton';
+
+export default function HomePage() {
+  return (
+    <main>
+      {/* Hero Section */}
+      <section className="min-h-screen flex items-center justify-center bg-gradient-to-b from-primary/10 to-white">
+        <div className="text-center max-w-2xl px-4">
+          <h1 className="text-4xl md:text-6xl font-bold mb-6">
+            探索世界，從 Mibu 開始
+          </h1>
+          <p className="text-lg text-muted-foreground mb-8">
+            行程扭蛋、在地嚮導、安全旅行，一個 App 搞定
+          </p>
+          <div className="flex justify-center gap-4">
+            <DownloadButton platform="ios" />
+            <DownloadButton platform="android" />
+          </div>
+        </div>
+      </section>
+      
+      {/* 商家 CTA */}
+      <section className="py-16 bg-slate-900 text-white text-center">
+        <h2 className="text-2xl font-bold mb-4">您是商家嗎？</h2>
+        <p className="mb-6">加入 Mibu，讓更多旅客發現您的店家</p>
+        <Link href="/for-business" className="btn-primary">
+          了解商家合作
+        </Link>
+      </section>
+    </main>
+  );
+}
+```
+
+#### 4.2 商家登入 `/merchant/login`
+
+```tsx
+// app/merchant/login/page.tsx
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { apiClient } from '@/lib/api/client';
+import { DownloadButton } from '@/components/common/DownloadButton';
+
+export default function MerchantLoginPage() {
+  const router = useRouter();
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    
+    const formData = new FormData(e.currentTarget);
+    
+    try {
+      const res = await apiClient<{ token: string; user: any }>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: formData.get('email'),
+          password: formData.get('password'),
+          target_role: 'merchant',
+        }),
+      });
+      
+      // Cookie 由後端設定，直接跳轉
+      router.push('/merchant/dashboard');
+    } catch (err: any) {
+      if (err.code === 'PENDING_APPROVAL') {
+        setError('帳號審核中，請等待管理員核准');
+      } else if (err.code === 'ROLE_MISMATCH') {
+        setError('此帳號不是商家帳號，請使用 App 登入');
+      } else {
+        setError(err.message || '登入失敗');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex">
+      {/* 左側品牌區（桌機顯示） */}
+      <div className="hidden lg:flex lg:w-1/2 bg-primary items-center justify-center">
+        <div className="text-white text-center">
+          <h2 className="text-3xl font-bold mb-4">Mibu 商家平台</h2>
+          <p>管理訂閱，查看權限</p>
+        </div>
+      </div>
+      
+      {/* 右側登入表單 */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6">
+        <div className="w-full max-w-md">
+          <h1 className="text-2xl font-bold mb-6">商家登入</h1>
+          
+          {error && (
+            <div className="bg-red-50 text-red-600 p-4 rounded mb-4">
+              {error}
+            </div>
+          )}
+          
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">電子郵件</label>
+              <input
+                type="email"
+                name="email"
+                required
+                className="w-full border rounded px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">密碼</label>
+              <input
+                type="password"
+                name="password"
+                required
+                className="w-full border rounded px-3 py-2"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-primary text-white py-2 rounded hover:bg-primary/90 disabled:opacity-50"
+            >
+              {loading ? '登入中...' : '登入'}
+            </button>
+          </form>
+          
+          <div className="mt-8 text-center text-sm text-muted-foreground">
+            <p className="mb-4">還沒有商家帳號？</p>
+            <p className="mb-2">請下載 App 完成商家註冊</p>
+            <div className="flex justify-center gap-2">
+              <DownloadButton platform="ios" className="text-xs px-3 py-1" />
+              <DownloadButton platform="android" className="text-xs px-3 py-1" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+#### 4.3 商家後台 `/merchant/dashboard`
+
+```tsx
+// app/merchant/dashboard/page.tsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { apiClient } from '@/lib/api/client';
+
+interface Subscription {
+  tier: string;
+  status: string;
+  currentPeriodEnd: string;
+  cancelAtPeriodEnd: boolean;
+}
+
+export default function MerchantDashboardPage() {
+  const router = useRouter();
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiClient<{ subscription: Subscription }>('/api/merchant/subscription')
+      .then((res) => setSubscription(res.subscription))
+      .catch(() => router.push('/merchant/login'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <div className="p-8">載入中...</div>;
+  }
+
+  const tierLabels: Record<string, string> = {
+    free: '免費方案',
+    pro: 'Pro 專業版',
+    premium: 'Premium 旗艦版',
+  };
+
+  const statusLabels: Record<string, { label: string; color: string }> = {
+    active: { label: '有效', color: 'bg-green-100 text-green-800' },
+    past_due: { label: '付款逾期', color: 'bg-yellow-100 text-yellow-800' },
+    cancelled: { label: '已取消', color: 'bg-red-100 text-red-800' },
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto p-8">
+      <h1 className="text-2xl font-bold mb-8">商家後台</h1>
+      
+      {/* 訂閱狀態卡片 */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-lg font-semibold mb-4">訂閱狀態</h2>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-sm text-muted-foreground">當前方案</p>
+            <p className="text-xl font-bold">{tierLabels[subscription?.tier || 'free']}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">狀態</p>
+            <span className={`inline-block px-2 py-1 rounded text-sm ${statusLabels[subscription?.status || 'active'].color}`}>
+              {statusLabels[subscription?.status || 'active'].label}
+            </span>
+          </div>
+          {subscription?.currentPeriodEnd && (
+            <div>
+              <p className="text-sm text-muted-foreground">到期日</p>
+              <p>{new Date(subscription.currentPeriodEnd).toLocaleDateString('zh-TW')}</p>
+            </div>
+          )}
+        </div>
+        
+        {subscription?.tier === 'free' && (
+          <div className="mt-6">
+            <Link href="/for-business/pricing" className="btn-primary">
+              升級方案
+            </Link>
+          </div>
+        )}
+      </div>
+      
+      {/* 功能說明 */}
+      <div className="mt-8 text-center text-muted-foreground">
+        <p>商家認領、數據報表等功能請使用 App</p>
+        <div className="flex justify-center gap-4 mt-4">
+          <DownloadButton platform="ios" />
+          <DownloadButton platform="android" />
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+### Phase 5：SEO 頁面實作（待後端 API）
+
+> ⚠️ 以下頁面需等待後端建立 SEO API 後才能實作
+
+#### 5.1 城市列表 `/explore`
+
+```tsx
+// app/explore/page.tsx
+import { apiClient } from '@/lib/api/client';
+import { CityCard } from '@/components/seo/CityCard';
+
+export const revalidate = 3600; // ISR: 每小時重新驗證
+
+export default async function ExplorePage() {
+  const { cities } = await apiClient<{ cities: City[] }>('/api/seo/cities');
+  
+  return (
+    <main className="max-w-6xl mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold mb-8">探索城市</h1>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {cities.map((city) => (
+          <CityCard key={city.slug} city={city} />
+        ))}
+      </div>
+      
+      {/* 下載 CTA */}
+      <div className="mt-16 text-center bg-slate-100 rounded-lg p-8">
+        <h2 className="text-xl font-bold mb-4">想要更多精彩行程？</h2>
+        <p className="text-muted-foreground mb-6">下載 Mibu App，讓 AI 幫你規劃完美旅程</p>
+        <div className="flex justify-center gap-4">
+          <DownloadButton platform="ios" />
+          <DownloadButton platform="android" />
+        </div>
+      </div>
+    </main>
+  );
+}
+```
+
+---
+
+## 商家功能範圍說明（2026-01-06 更新）
+
+### 官網商家功能（精簡版）
+
+| 功能 | 說明 | 備註 |
+|------|------|------|
+| 登入 | Email + 密碼登入 | 無帳號 → 引導下載 App 註冊 |
+| 訂閱購買 | 選擇方案 → Stripe/Recur 付款 | Pro / Premium |
+| 查看訂閱 | 顯示當前方案、狀態、到期日 | 唯讀 |
+| 取消訂閱 | 取消自動續訂 | 期限內仍可使用 |
+
+### 僅在 App 中提供的功能
+
+| 功能 | 說明 |
+|------|------|
+| 商家註冊 | 填寫商家資訊、等待審核 |
+| 店家認領 | 搜尋並認領自己的店家 |
+| 優惠券管理 | 建立、編輯、查看核銷 |
+| 數據報表 | 曝光次數、點擊率、收藏數 |
+| 核銷碼設定 | 每日核銷碼生成與驗證 |
+
+---
+
 ## 版本紀錄
 
 | 版本 | 日期 | 變更內容 |
 |------|------|---------|
+| 2.2 | 2026-01-06 | 新增 SEO API 規格、下載按鈕元件、完整實作指令集、簡化商家功能範圍 |
 | 2.1 | 2026-01-06 | 新增統一身份認證架構（Google/Apple OAuth、auth_identities 表、帳號連結 API 規格） |
 | 2.0 | 2026-01-05 | 完整重構藍圖，新增記憶庫、指令集、UI/UX 規範 |
 | 1.2 | 2026-01-05 | 新增響應式設計規範 |
