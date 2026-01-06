@@ -27,6 +27,7 @@ import {
   travelCompanions,
   chatInvites,
   authIdentities,
+  gachaAiLogs,
   type User,
   type UpsertUser,
   type InsertAuthIdentity,
@@ -197,6 +198,10 @@ export const userStorage = {
     await tx.update(merchants)
       .set({ userId: newUserId })
       .where(eq(merchants.userId, oldUserId));
+    
+    await tx.update(gachaAiLogs)
+      .set({ userId: newUserId })
+      .where(eq(gachaAiLogs.userId, oldUserId));
     
     console.log(`[migrateUserData] 遷移完成`);
   },
