@@ -1036,6 +1036,70 @@ router.get("/diagnose-city-names", async (req, res) => {
   }
 });
 
+// 測試 API：模擬 V3 扭蛋查詢
+router.get("/test-gacha-query", async (req, res) => {
+  try {
+    const key = req.query.key as string;
+    const expectedKey = process.env.ADMIN_MIGRATION_KEY;
+    
+    if (!key || key !== expectedKey) {
+      return res.status(401).json({ error: "Invalid migration key" });
+    }
+    
+    const city = (req.query.city as string) || '台北市';
+    const district = req.query.district as string;
+    
+    // 測試完全匹配查詢
+    const exactResult = await db.execute(sql`
+      SELECT district, COUNT(*) as count
+      FROM places
+      WHERE city = ${city} AND is_active = true
+      GROUP BY district
+      ORDER BY count DESC
+    `);
+    
+    // 測試 LIKE 查詢
+    const likeResult = await db.execute(sql`
+      SELECT city, district, COUNT(*) as count
+      FROM places
+      WHERE city LIKE ${'%' + city.replace('台', '%').replace('臺', '%') + '%'} AND is_active = true
+      GROUP BY city, district
+      ORDER BY count DESC
+      LIMIT 20
+    `);
+    
+    // 如果有指定區域，測試該區的詳細資料
+    let districtDetail = null;
+    if (district) {
+      const districtResult = await db.execute(sql`
+        SELECT id, place_name, category, subcategory
+        FROM places
+        WHERE city = ${city} AND district = ${district} AND is_active = true
+        LIMIT 20
+      `);
+      districtDetail = {
+        query: `city='${city}' AND district='${district}'`,
+        count: districtResult.rows.length,
+        samples: districtResult.rows
+      };
+    }
+    
+    res.json({
+      success: true,
+      queryCity: city,
+      exactMatch: {
+        totalDistricts: exactResult.rows.length,
+        districts: exactResult.rows
+      },
+      likeMatch: likeResult.rows,
+      districtDetail
+    });
+  } catch (error: any) {
+    console.error("Test gacha query error:", error);
+    res.status(500).json({ error: "測試失敗", details: error.message });
+  }
+});
+
 // 修正 API：將「臺」改為「台」
 router.post("/fix-city-names", async (req, res) => {
   try {
