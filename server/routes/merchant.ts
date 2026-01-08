@@ -864,6 +864,9 @@ router.post("/api/merchant/subscription/checkout", isAuthenticated, async (req: 
 
     if (provider === 'stripe') {
       const stripe = await getUncachableStripeClient();
+      if (!stripe) {
+        return res.status(400).json({ error: "Stripe is not configured. Please use Recur for payments." });
+      }
 
       let customerId = merchant.stripeCustomerId;
       if (!customerId) {
@@ -952,9 +955,11 @@ router.post("/api/merchant/subscription/cancel", isAuthenticated, async (req: an
 
     if (subscription.provider === 'stripe') {
       const stripe = await getUncachableStripeClient();
-      await stripe.subscriptions.update(subscription.providerSubscriptionId, {
-        cancel_at_period_end: true,
-      });
+      if (stripe) {
+        await stripe.subscriptions.update(subscription.providerSubscriptionId, {
+          cancel_at_period_end: true,
+        });
+      }
     }
 
     const updated = await subscriptionStorage.cancelSubscription(subscriptionId);
@@ -991,6 +996,9 @@ router.post("/api/merchant/subscription/upgrade", isAuthenticated, async (req: a
 
     if (subscription.provider === 'stripe' && merchant.stripeCustomerId) {
       const stripe = await getUncachableStripeClient();
+      if (!stripe) {
+        return res.status(400).json({ error: "Stripe is not configured" });
+      }
 
       const portal = await stripe.billingPortal.sessions.create({
         customer: merchant.stripeCustomerId,
