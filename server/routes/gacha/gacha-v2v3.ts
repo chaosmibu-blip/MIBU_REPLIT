@@ -723,10 +723,18 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
             console.log('[Gacha V3] AI Parsed:', { order: aiResult.order, reason: aiResult.reason, reject: aiResult.reject });
             
             if (aiResult.reject && Array.isArray(aiResult.reject)) {
-              for (const idx of aiResult.reject) {
-                if (idx >= 1 && idx <= selectedPlaces.length) {
-                  rejectedPlaceIds.push(selectedPlaces[idx - 1].id);
-                }
+              // 保護機制：AI 拒絕的景點不能超過 20%，否則忽略拒絕
+              const maxRejectCount = Math.floor(selectedPlaces.length * 0.2);
+              const validRejects = aiResult.reject
+                .filter(idx => idx >= 1 && idx <= selectedPlaces.length)
+                .slice(0, maxRejectCount);
+              
+              for (const idx of validRejects) {
+                rejectedPlaceIds.push(selectedPlaces[idx - 1].id);
+              }
+              
+              if (aiResult.reject.length > maxRejectCount) {
+                console.log('[Gacha V3] AI tried to reject too many places:', aiResult.reject.length, 'limited to:', maxRejectCount);
               }
               if (rejectedPlaceIds.length > 0) {
                 console.log('[Gacha V3] AI rejected places:', rejectedPlaceIds);
@@ -775,6 +783,15 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
     }
     
     console.log('[Gacha V3] AI reorder result:', aiReorderResult, 'rejected:', rejectedPlaceIds.length);
+    
+    // 最終保護：如果結果少於請求數量的 80%，回退到原始選擇
+    const minAcceptable = Math.ceil(targetCount * 0.8);
+    if (finalPlaces.length < minAcceptable && selectedPlaces.length >= minAcceptable) {
+      console.log('[Gacha V3] Final safeguard triggered: finalPlaces=', finalPlaces.length, 'selectedPlaces=', selectedPlaces.length, 'falling back');
+      finalPlaces = selectedPlaces.slice(0, targetCount);
+      aiReorderResult = 'safeguard_fallback';
+      rejectedPlaceIds = [];
+    }
     
     const stayPlacesInFinal = finalPlaces.filter(p => p.category === '住宿');
     const nonStayPlacesInFinal = finalPlaces.filter(p => p.category !== '住宿');
