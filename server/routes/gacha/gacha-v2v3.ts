@@ -560,10 +560,9 @@ router.post("/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
     
     // 【新增】類別全部耗盡時，從全城市補足
     if (remaining > 0 && selectedPlaces.length < targetCount) {
-      console.log('[Gacha V3] Categories exhausted in district, falling back to city-wide for', remaining, 'more places');
-      const cityWidePlaces = anchorDistrict 
-        ? await storage.getOfficialPlacesByCity(city, 200)
-        : [];
+      console.log('[Gacha V3] Categories exhausted, falling back to city-wide for', remaining, 'more places');
+      // 無論是否有 anchorDistrict，都嘗試從全城市補足
+      const cityWidePlaces = await storage.getOfficialPlacesByCity(city, 200);
       
       const cityPool = cityWidePlaces.filter(p => !usedIds.has(p.id));
       for (let i = cityPool.length - 1; i > 0; i--) {
