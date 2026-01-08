@@ -989,4 +989,123 @@ router.post("/places/reclassify", isAuthenticated, async (req: any, res) => {
   }
 });
 
+router.get("/export-places", async (req, res) => {
+  try {
+    const key = req.query.key as string;
+    const expectedKey = process.env.ADMIN_MIGRATION_KEY;
+    
+    if (!key || key !== expectedKey) {
+      return res.status(401).json({ error: "Invalid migration key" });
+    }
+    
+    const result = await db.execute(sql`
+      SELECT 
+        id, place_name, country, city, district, address,
+        location_lat, location_lng, google_place_id, rating,
+        opening_hours, category, subcategory, description,
+        photo_reference, is_promo_active, is_active, claim_status, place_card_tier,
+        google_types, primary_type
+      FROM places
+      WHERE is_active = true
+      ORDER BY id
+    `);
+    
+    res.json({
+      success: true,
+      count: result.rows.length,
+      exportedAt: new Date().toISOString(),
+      data: result.rows
+    });
+  } catch (error: any) {
+    console.error("Export places error:", error);
+    res.status(500).json({ error: "匯出失敗", details: error.message });
+  }
+});
+
+router.post("/seed-places", async (req, res) => {
+  try {
+    const { key, data } = req.body;
+    const expectedKey = process.env.ADMIN_MIGRATION_KEY;
+    
+    if (!key || key !== expectedKey) {
+      return res.status(401).json({ error: "Invalid migration key" });
+    }
+    
+    if (!Array.isArray(data) || data.length === 0) {
+      return res.status(400).json({ error: "No data provided" });
+    }
+    
+    let inserted = 0;
+    let updated = 0;
+    let errors = 0;
+    
+    for (const place of data) {
+      try {
+        const existing = await db.execute(sql`
+          SELECT id FROM places WHERE google_place_id = ${place.google_place_id}
+        `);
+        
+        if (existing.rows.length > 0) {
+          await db.execute(sql`
+            UPDATE places SET
+              place_name = ${place.place_name},
+              country = ${place.country},
+              city = ${place.city},
+              district = ${place.district},
+              address = ${place.address},
+              location_lat = ${place.location_lat},
+              location_lng = ${place.location_lng},
+              rating = ${place.rating},
+              opening_hours = ${place.opening_hours},
+              category = ${place.category},
+              subcategory = ${place.subcategory},
+              description = ${place.description},
+              photo_reference = ${place.photo_reference},
+              is_promo_active = ${place.is_promo_active || false},
+              is_active = ${place.is_active !== false},
+              claim_status = ${place.claim_status || 'unclaimed'},
+              place_card_tier = ${place.place_card_tier || 'free'},
+              google_types = ${place.google_types},
+              primary_type = ${place.primary_type}
+            WHERE google_place_id = ${place.google_place_id}
+          `);
+          updated++;
+        } else {
+          await db.execute(sql`
+            INSERT INTO places (
+              place_name, country, city, district, address,
+              location_lat, location_lng, google_place_id, rating,
+              opening_hours, category, subcategory, description,
+              photo_reference, is_promo_active, is_active, claim_status, place_card_tier,
+              google_types, primary_type
+            ) VALUES (
+              ${place.place_name}, ${place.country}, ${place.city}, ${place.district}, ${place.address},
+              ${place.location_lat}, ${place.location_lng}, ${place.google_place_id}, ${place.rating},
+              ${place.opening_hours}, ${place.category}, ${place.subcategory}, ${place.description},
+              ${place.photo_reference}, ${place.is_promo_active || false}, ${place.is_active !== false},
+              ${place.claim_status || 'unclaimed'}, ${place.place_card_tier || 'free'},
+              ${place.google_types}, ${place.primary_type}
+            )
+          `);
+          inserted++;
+        }
+      } catch (e: any) {
+        console.error(`Error processing place ${place.place_name}:`, e.message);
+        errors++;
+      }
+    }
+    
+    res.json({
+      success: true,
+      message: `匯入完成：新增 ${inserted} 筆，更新 ${updated} 筆，錯誤 ${errors} 筆`,
+      inserted,
+      updated,
+      errors
+    });
+  } catch (error: any) {
+    console.error("Seed places error:", error);
+    res.status(500).json({ error: "匯入失敗", details: error.message });
+  }
+});
+
 export default router;
