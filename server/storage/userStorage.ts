@@ -203,6 +203,34 @@ export const userStorage = {
       .set({ userId: newUserId })
       .where(eq(gachaAiLogs.userId, oldUserId));
     
+    // 遷移 authIdentities - 需要特別處理，因為可能有衝突
+    const oldIdentities = await tx.select().from(authIdentities)
+      .where(eq(authIdentities.userId, oldUserId));
+    
+    for (const identity of oldIdentities) {
+      // 檢查新用戶是否已有相同 provider 的 identity
+      const existingIdentity = await tx.select().from(authIdentities)
+        .where(
+          and(
+            eq(authIdentities.userId, newUserId),
+            eq(authIdentities.provider, identity.provider)
+          )
+        );
+      
+      if (existingIdentity.length > 0) {
+        // 如果新用戶已有相同 provider，刪除舊的
+        await tx.delete(authIdentities)
+          .where(eq(authIdentities.id, identity.id));
+        console.log(`[migrateUserData] 刪除重複 identity: ${identity.provider} (舊用戶已有)`);
+      } else {
+        // 否則遷移到新用戶
+        await tx.update(authIdentities)
+          .set({ userId: newUserId })
+          .where(eq(authIdentities.id, identity.id));
+        console.log(`[migrateUserData] 遷移 identity: ${identity.provider}`);
+      }
+    }
+    
     console.log(`[migrateUserData] 遷移完成`);
   },
 
