@@ -558,24 +558,36 @@ router.post("/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
       }
     }
     
-    // 【新增】類別全部耗盡時，從全城市補足
-    if (remaining > 0 && selectedPlaces.length < targetCount) {
-      console.log('[Gacha V3] Categories exhausted, falling back to city-wide for', remaining, 'more places');
-      // 無論是否有 anchorDistrict，都嘗試從全城市補足
-      const cityWidePlaces = await storage.getOfficialPlacesByCity(city, 200);
+    // 【新增】類別全部耗盡時，從同 region 的其他行政區補足
+    if (remaining > 0 && selectedPlaces.length < targetCount && regionId) {
+      console.log('[Gacha V3] Categories exhausted, falling back to other districts in region for', remaining, 'more places');
       
-      const cityPool = cityWidePlaces.filter(p => !usedIds.has(p.id));
-      for (let i = cityPool.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [cityPool[i], cityPool[j]] = [cityPool[j], cityPool[i]];
+      // 取得 region 下所有行政區
+      const allDistricts = await storage.getDistrictsByRegion(regionId);
+      const otherDistrictNames = allDistricts
+        .map(d => d.nameZh)
+        .filter(name => name !== anchorDistrict);
+      
+      // 從其他行政區收集景點
+      let regionPool: any[] = [];
+      for (const districtName of otherDistrictNames) {
+        const districtPlaces = await storage.getOfficialPlacesByDistrict(city, districtName, 50);
+        regionPool.push(...districtPlaces);
       }
       
-      for (const p of cityPool) {
+      // 過濾已使用的景點並隨機打亂
+      regionPool = regionPool.filter(p => !usedIds.has(p.id));
+      for (let i = regionPool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [regionPool[i], regionPool[j]] = [regionPool[j], regionPool[i]];
+      }
+      
+      for (const p of regionPool) {
         if (remaining <= 0) break;
         selectedPlaces.push(p);
         usedIds.add(p.id);
         remaining--;
-        console.log('[Gacha V3] City-wide fallback added:', p.placeName, p.district);
+        console.log('[Gacha V3] Region fallback added:', p.placeName, p.district);
       }
     }
     
