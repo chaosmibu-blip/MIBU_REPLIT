@@ -345,7 +345,7 @@ const SUBCATEGORY_TIME_SLOTS = {
 - 前端使用 **`category`** 欄位透過 `getCategoryLabel()` 顯示
 - 資料庫統一使用中文七大類：美食、住宿、景點、購物、娛樂設施、生態文化教育、遊程體驗（2025-12-30 移除活動類別）
 
-### 核心腳本（5 個）
+### 核心腳本（6 個）
 ```bash
 # 1. 批次採集（支援關鍵字模式與區域指定）
 npx tsx server/scripts/batch-parallel-collect.ts 城市名 [類別] [--mode=generic|local|mixed] [--district=區域名]
@@ -361,7 +361,31 @@ npx tsx server/scripts/generate-descriptions.ts [城市] [數量]  # ⚠️ 請�
 
 # 5. 深度審核（places 正式表）⭐ 2026-01-01 新增
 npx tsx server/scripts/deep-review-places.ts [批次大小] [起始ID]
+
+# 6. District 欄位審查 ⭐ 2026-01-08 新增
+npx tsx server/scripts/review-district.ts              # 掃描並顯示問題
+npx tsx server/scripts/review-district.ts --fix        # 執行規則修正
+npx tsx server/scripts/review-district.ts --fix --ai   # 規則+AI 修正
 ```
+
+### District 欄位審查腳本（2026-01-08 新增）
+
+#### 用途
+審查並修正 `places` 表中不符合標準行政區名稱的 `district` 欄位值。
+
+#### 修正邏輯（優先級由高到低）
+1. **已知規則修正**：台→臺、簡→繁 轉換（如 `台東市` → `臺東市`）
+2. **正則提取**：從 `address` 欄位中提取有效的行政區名稱
+3. **AI 智慧提取**：使用 Gemini AI 從地址中識別行政區
+
+#### 修正效果（2026-01-08 首次執行）
+- 修正前無效值：2,427 筆
+- 修正後：0 筆
+- 修正率：100%
+
+#### 驗證標準
+- 所有 `district` 值必須存在於 `districts` 表的 `name_zh` 欄位
+- 不接受簡體字、截斷值、地址混入等無效格式
 
 ### 深度審核腳本（2026-01-01 新增）
 
