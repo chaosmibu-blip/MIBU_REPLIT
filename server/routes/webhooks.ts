@@ -71,10 +71,6 @@ async function normalizeStripeEvent(event: Stripe.Event): Promise<NormalizedSubs
 
     try {
       const stripe = await getUncachableStripeClient();
-      if (!stripe) {
-        console.log('[Stripe Webhook] Stripe not configured, skipping');
-        return null;
-      }
       subscription = await stripe.subscriptions.retrieve(subscriptionId);
     } catch (error) {
       console.error(`[Stripe Webhook] Failed to retrieve subscription ${subscriptionId}:`, error);
@@ -275,10 +271,6 @@ router.post("/api/webhooks/stripe", raw({ type: 'application/json' }), async (re
 
   try {
     const stripe = await getUncachableStripeClient();
-    if (!stripe) {
-      console.warn("[Stripe Webhook] Stripe not configured");
-      return res.status(500).json({ error: "Stripe not configured" });
-    }
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err: any) {
     console.error(`[Stripe Webhook] Signature verification failed: ${err.message}`);

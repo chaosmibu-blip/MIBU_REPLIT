@@ -2,16 +2,8 @@ import { stripeStorage } from './stripeStorage';
 import { getUncachableStripeClient } from './stripeClient';
 
 export class StripeService {
-  async isAvailable(): Promise<boolean> {
-    const stripe = await getUncachableStripeClient();
-    return stripe !== null;
-  }
-
   async createCustomer(email: string, userId: string, name?: string) {
     const stripe = await getUncachableStripeClient();
-    if (!stripe) {
-      throw new Error('Stripe is not configured');
-    }
     return await stripe.customers.create({
       email,
       name,
@@ -27,9 +19,6 @@ export class StripeService {
     metadata?: Record<string, string>
   ) {
     const stripe = await getUncachableStripeClient();
-    if (!stripe) {
-      throw new Error('Stripe is not configured');
-    }
     return await stripe.checkout.sessions.create({
       customer: customerId,
       payment_method_types: ['card'],
@@ -48,9 +37,6 @@ export class StripeService {
     metadata?: Record<string, string>
   ) {
     const stripe = await getUncachableStripeClient();
-    if (!stripe) {
-      throw new Error('Stripe is not configured');
-    }
     return await stripe.paymentIntents.create({
       amount,
       currency,
