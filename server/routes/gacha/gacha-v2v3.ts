@@ -558,6 +558,28 @@ router.post("/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
       }
     }
     
+    // 【新增】類別全部耗盡時，從全城市補足
+    if (remaining > 0 && selectedPlaces.length < targetCount) {
+      console.log('[Gacha V3] Categories exhausted in district, falling back to city-wide for', remaining, 'more places');
+      const cityWidePlaces = anchorDistrict 
+        ? await storage.getOfficialPlacesByCity(city, 200)
+        : [];
+      
+      const cityPool = cityWidePlaces.filter(p => !usedIds.has(p.id));
+      for (let i = cityPool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cityPool[i], cityPool[j]] = [cityPool[j], cityPool[i]];
+      }
+      
+      for (const p of cityPool) {
+        if (remaining <= 0) break;
+        selectedPlaces.push(p);
+        usedIds.add(p.id);
+        remaining--;
+        console.log('[Gacha V3] City-wide fallback added:', p.placeName, p.district);
+      }
+    }
+    
     console.log('[Gacha V3] Selection result:', categoryPickCounts);
     console.log('[Gacha V3] Total selected:', selectedPlaces.length);
     
