@@ -101,32 +101,55 @@ DB: 生產用 PostgreSQL (獨立)
 
 #### 1. 匯出開發環境資料
 ```bash
-# 在開發環境執行
-curl "https://DEV_URL/api/admin/export-places?key=mibu2024migrate" > places.json
+# 在開發環境執行（需在 Replit shell 中執行）
+curl "http://localhost:5000/api/admin/export-places?key=$ADMIN_MIGRATION_KEY" > /tmp/places_export.json
+
+# 確認匯出結果
+jq '{count, exportedAt}' /tmp/places_export.json
 ```
 
-#### 2. 匯入生產環境
+#### 2. 匯入生產環境（分批）
 ```bash
-# 在生產環境執行
-curl -X POST "https://PROD_URL/api/admin/seed-places" \
-  -H "Content-Type: application/json" \
-  -d @places.json
+# ⚠️ 重要：每批最多 100 筆，超過會被拒絕（request entity too large）
+PROD_URL="https://gacha-travel--s8869420.replit.app"
+KEY="$ADMIN_MIGRATION_KEY"
+BATCH_SIZE=100
+TOTAL=$(jq '.data | length' /tmp/places_export.json)
+
+i=0
+while [ $i -lt $TOTAL ]; do
+  END=$((i + BATCH_SIZE))
+  [ $END -gt $TOTAL ] && END=$TOTAL
+  
+  jq --arg key "$KEY" --argjson s $i --argjson e $END \
+    '{key: $key, data: .data[$s:$e]}' /tmp/places_export.json > /tmp/b.json
+  
+  curl -s -X POST "$PROD_URL/api/admin/seed-places" \
+    -H "Content-Type: application/json" \
+    -d @/tmp/b.json
+  
+  echo "已處理 $END / $TOTAL"
+  i=$((i + BATCH_SIZE))
+done
 ```
 
-#### 3. API 端點
+#### 3. API 端點規格
 ```typescript
-// 匯出 (開發環境)
-GET /api/admin/export-places?key=mibu2024migrate&excludeCities=台北市
+// 匯出
+GET /api/admin/export-places?key={ADMIN_MIGRATION_KEY}
+回應: { success, count, exportedAt, data: Place[] }
 
-// 匯入 (生產環境)
+// 匯入
 POST /api/admin/seed-places
-Body: { key: "mibu2024migrate", data: [...] }
+Body: { key: string, data: Place[] }
+回應: { success, inserted, updated, errors, message }
 ```
 
 ### 同步注意事項
-- 使用 `ON CONFLICT DO NOTHING` 避免重複
-- 自動排除目標環境已有的城市
-- 遷移金鑰: `mibu2024migrate`
+- **批次大小限制**：每批最多 100 筆，正式環境有 body size 限制
+- **重複處理**：以 google_place_id 判斷，存在則更新，不存在則新增
+- **環境變數**：ADMIN_MIGRATION_KEY 需在 Secrets 中設定
+- **最後同步**：2026-01-08，26,338 筆，22 城市
 
 ---
 
