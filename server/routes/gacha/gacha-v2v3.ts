@@ -558,63 +558,7 @@ router.post("/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
       }
     }
     
-    // 【修正】類別耗盡時，優先從同區補足（忽略去重），再從全城市補足
-    if (remaining > 0 && selectedPlaces.length < targetCount) {
-      console.log('[Gacha V3] Categories exhausted, need', remaining, 'more. Trying district without dedup...');
-      
-      // 第一層補救：從同區抽取，但忽略去重限制
-      const districtPoolIgnoreDedup = anchorPlaces.filter(p => !usedIds.has(p.id));
-      if (districtPoolIgnoreDedup.length > 0) {
-        // Shuffle
-        for (let i = districtPoolIgnoreDedup.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [districtPoolIgnoreDedup[i], districtPoolIgnoreDedup[j]] = [districtPoolIgnoreDedup[j], districtPoolIgnoreDedup[i]];
-        }
-        for (const p of districtPoolIgnoreDedup) {
-          if (remaining <= 0) break;
-          selectedPlaces.push(p);
-          usedIds.add(p.id);
-          remaining--;
-          console.log('[Gacha V3] District fallback (any category):', p.placeName, p.category);
-        }
-      }
-      
-      // 第二層補救：從全城市補足
-      if (remaining > 0 && anchorDistrict) {
-        console.log('[Gacha V3] Still need', remaining, 'more. Falling back to city-wide...');
-        const cityWidePlaces = await storage.getOfficialPlacesByCity(city, 300);
-        const cityPool = cityWidePlaces.filter(p => !usedIds.has(p.id));
-        
-        for (let i = cityPool.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [cityPool[i], cityPool[j]] = [cityPool[j], cityPool[i]];
-        }
-        
-        for (const p of cityPool) {
-          if (remaining <= 0) break;
-          selectedPlaces.push(p);
-          usedIds.add(p.id);
-          remaining--;
-          console.log('[Gacha V3] City-wide fallback added:', p.placeName, p.district);
-        }
-      }
-      
-      // 第三層補救：完全忽略去重，從同區重新抽取
-      if (remaining > 0) {
-        console.log('[Gacha V3] Desperation mode: ignoring all dedup for', remaining, 'more places');
-        const absolutePool = anchorPlaces.filter(p => !selectedPlaces.some(sp => sp.id === p.id));
-        for (let i = absolutePool.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [absolutePool[i], absolutePool[j]] = [absolutePool[j], absolutePool[i]];
-        }
-        for (const p of absolutePool) {
-          if (remaining <= 0) break;
-          selectedPlaces.push(p);
-          remaining--;
-          console.log('[Gacha V3] Desperation fallback:', p.placeName);
-        }
-      }
-    }
+    // 備援機制移到 AI 排序後執行
     
     console.log('[Gacha V3] Selection result:', categoryPickCounts);
     console.log('[Gacha V3] Total selected:', selectedPlaces.length);
@@ -1080,6 +1024,52 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
           console.error('[Gacha V3] Round 2 AI failed:', round2Error);
         }
       }
+    }
+    
+    // ========== 兩層備援（AI 排序後執行）==========
+    // 只在 AI 排序完成後，若仍不足才補足
+    if (finalPlaces.length < targetCount) {
+      const postAiRemaining = targetCount - finalPlaces.length;
+      console.log('[Gacha V3] Post-AI fallback: need', postAiRemaining, 'more places');
+      
+      const postAiUsedIds = new Set(finalPlaces.map(p => p.id));
+      let postAiAdded = 0;
+      
+      // 第一層：同區任意類別（仍排除去重）
+      const dedupSet = new Set(recentCollectionIds);
+      const layer1Pool = anchorPlaces.filter(p => 
+        !postAiUsedIds.has(p.id) && !dedupSet.has(p.id)
+      );
+      for (let i = layer1Pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [layer1Pool[i], layer1Pool[j]] = [layer1Pool[j], layer1Pool[i]];
+      }
+      for (const p of layer1Pool) {
+        if (postAiAdded >= postAiRemaining) break;
+        finalPlaces.push(p);
+        postAiUsedIds.add(p.id);
+        postAiAdded++;
+        console.log('[Gacha V3] Layer 1 fallback:', p.placeName, p.category);
+      }
+      
+      // 第二層：完全忽略去重
+      if (finalPlaces.length < targetCount) {
+        const stillNeed = targetCount - finalPlaces.length;
+        console.log('[Gacha V3] Layer 2 fallback: ignoring dedup for', stillNeed, 'more');
+        const layer2Pool = anchorPlaces.filter(p => !postAiUsedIds.has(p.id));
+        for (let i = layer2Pool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [layer2Pool[i], layer2Pool[j]] = [layer2Pool[j], layer2Pool[i]];
+        }
+        for (const p of layer2Pool) {
+          if (finalPlaces.length >= targetCount) break;
+          finalPlaces.push(p);
+          postAiUsedIds.add(p.id);
+          console.log('[Gacha V3] Layer 2 fallback (ignore dedup):', p.placeName);
+        }
+      }
+      
+      console.log('[Gacha V3] Post-AI fallback complete, final count:', finalPlaces.length);
     }
     
     const stayPlacesInFinal = finalPlaces.filter(p => p.category === '住宿');
