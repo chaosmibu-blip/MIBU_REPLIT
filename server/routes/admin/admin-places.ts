@@ -989,6 +989,89 @@ router.post("/places/reclassify", isAuthenticated, async (req: any, res) => {
   }
 });
 
+// 臨時診斷 API：檢查城市名稱「台」vs「臺」分布
+router.get("/diagnose-city-names", async (req, res) => {
+  try {
+    const key = req.query.key as string;
+    const expectedKey = process.env.ADMIN_MIGRATION_KEY;
+    
+    if (!key || key !== expectedKey) {
+      return res.status(401).json({ error: "Invalid migration key" });
+    }
+    
+    const result = await db.execute(sql`
+      SELECT 
+        city,
+        district,
+        COUNT(*) as count
+      FROM places
+      WHERE is_active = true
+        AND (city LIKE '%北市' OR city LIKE '%中市' OR city LIKE '%南市' OR city LIKE '%東縣')
+      GROUP BY city, district
+      ORDER BY city, count DESC
+    `);
+    
+    // 統計「台」vs「臺」
+    const summary = {
+      台: 0,
+      臺: 0,
+      details: result.rows
+    };
+    
+    for (const row of result.rows as any[]) {
+      if (row.city?.includes('台')) summary.台 += parseInt(row.count);
+      if (row.city?.includes('臺')) summary.臺 += parseInt(row.count);
+    }
+    
+    res.json({
+      success: true,
+      summary,
+      message: summary.臺 > 0 
+        ? `發現 ${summary.臺} 筆使用「臺」，需要修正為「台」` 
+        : '所有資料都使用「台」，無需修正'
+    });
+  } catch (error: any) {
+    console.error("Diagnose city names error:", error);
+    res.status(500).json({ error: "診斷失敗", details: error.message });
+  }
+});
+
+// 修正 API：將「臺」改為「台」
+router.post("/fix-city-names", async (req, res) => {
+  try {
+    const { key } = req.body;
+    const expectedKey = process.env.ADMIN_MIGRATION_KEY;
+    
+    if (!key || key !== expectedKey) {
+      return res.status(401).json({ error: "Invalid migration key" });
+    }
+    
+    // 修正城市名稱
+    const cityResult = await db.execute(sql`
+      UPDATE places 
+      SET city = REPLACE(city, '臺', '台')
+      WHERE city LIKE '%臺%'
+    `);
+    
+    // 修正區域名稱
+    const districtResult = await db.execute(sql`
+      UPDATE places 
+      SET district = REPLACE(district, '臺', '台')
+      WHERE district LIKE '%臺%'
+    `);
+    
+    res.json({
+      success: true,
+      message: '已將所有「臺」修正為「台」',
+      cityUpdated: cityResult.rowCount || 0,
+      districtUpdated: districtResult.rowCount || 0
+    });
+  } catch (error: any) {
+    console.error("Fix city names error:", error);
+    res.status(500).json({ error: "修正失敗", details: error.message });
+  }
+});
+
 router.get("/export-places", async (req, res) => {
   try {
     const key = req.query.key as string;
