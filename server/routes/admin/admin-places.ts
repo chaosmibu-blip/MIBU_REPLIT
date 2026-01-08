@@ -989,6 +989,109 @@ router.post("/places/reclassify", isAuthenticated, async (req: any, res) => {
   }
 });
 
+// 臨時診斷 API：檢查所有表的「台」vs「臺」分布
+router.get("/diagnose-all-tables", async (req, res) => {
+  try {
+    const key = req.query.key as string;
+    const expectedKey = process.env.ADMIN_MIGRATION_KEY;
+    
+    if (!key || key !== expectedKey) {
+      return res.status(401).json({ error: "Invalid migration key" });
+    }
+    
+    // 檢查 places 表
+    const placesResult = await db.execute(sql`
+      SELECT 
+        CASE WHEN city LIKE '%臺%' THEN '臺' ELSE '台' END as char_type,
+        COUNT(*) as count
+      FROM places
+      WHERE city LIKE '%北市' OR city LIKE '%中市' OR city LIKE '%南市' OR city LIKE '%東縣'
+      GROUP BY CASE WHEN city LIKE '%臺%' THEN '臺' ELSE '台' END
+    `);
+    
+    // 檢查 regions 表
+    const regionsResult = await db.execute(sql`
+      SELECT id, name_zh
+      FROM regions
+      WHERE name_zh LIKE '%北市' OR name_zh LIKE '%中市' OR name_zh LIKE '%南市' OR name_zh LIKE '%東縣'
+      ORDER BY id
+    `);
+    
+    // 檢查 districts 表
+    const districtsResult = await db.execute(sql`
+      SELECT d.id, d.name_zh as district, r.name_zh as region
+      FROM districts d
+      JOIN regions r ON d.region_id = r.id
+      WHERE r.name_zh LIKE '%北%' OR r.name_zh LIKE '%臺%'
+      LIMIT 20
+    `);
+    
+    res.json({
+      success: true,
+      places: {
+        charDistribution: placesResult.rows,
+        note: "places 表中「台」vs「臺」的分布"
+      },
+      regions: {
+        data: regionsResult.rows,
+        note: "regions 表中的城市名稱"
+      },
+      districts: {
+        sample: districtsResult.rows,
+        note: "districts 表的樣本資料"
+      },
+      diagnosis: "如果 regions 用「臺」但 places 用「台」，會導致查詢失敗"
+    });
+  } catch (error: any) {
+    console.error("Diagnose all tables error:", error);
+    res.status(500).json({ error: "診斷失敗", details: error.message });
+  }
+});
+
+// 修正 API：將所有表的「臺」改為「台」
+router.post("/fix-all-tables", async (req, res) => {
+  try {
+    const { key } = req.body;
+    const expectedKey = process.env.ADMIN_MIGRATION_KEY;
+    
+    if (!key || key !== expectedKey) {
+      return res.status(401).json({ error: "Invalid migration key" });
+    }
+    
+    // 修正 places 表
+    const placesCity = await db.execute(sql`
+      UPDATE places SET city = REPLACE(city, '臺', '台') WHERE city LIKE '%臺%'
+    `);
+    const placesDistrict = await db.execute(sql`
+      UPDATE places SET district = REPLACE(district, '臺', '台') WHERE district LIKE '%臺%'
+    `);
+    
+    // 修正 regions 表
+    const regions = await db.execute(sql`
+      UPDATE regions SET name_zh = REPLACE(name_zh, '臺', '台') WHERE name_zh LIKE '%臺%'
+    `);
+    
+    // 修正 districts 表
+    const districts = await db.execute(sql`
+      UPDATE districts SET name_zh = REPLACE(name_zh, '臺', '台') WHERE name_zh LIKE '%臺%'
+    `);
+    
+    res.json({
+      success: true,
+      message: '已將所有表的「臺」修正為「台」',
+      updated: {
+        placesCity: placesCity.rowCount || 0,
+        placesDistrict: placesDistrict.rowCount || 0,
+        regions: regions.rowCount || 0,
+        districts: districts.rowCount || 0
+      }
+    });
+  } catch (error: any) {
+    console.error("Fix all tables error:", error);
+    res.status(500).json({ error: "修正失敗", details: error.message });
+  }
+});
+
 // 臨時診斷 API：檢查城市名稱「台」vs「臺」分布
 router.get("/diagnose-city-names", async (req, res) => {
   try {
