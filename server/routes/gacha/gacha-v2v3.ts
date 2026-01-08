@@ -812,6 +812,276 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
     
     console.log('[Gacha V3] AI reorder result:', aiReorderResult, 'rejected:', rejectedPlaceIds.length);
     
+    // ========== 第一輪有排除時，補抽並進入第二輪驗證 ==========
+    if (rejectedPlaceIds.length > 0 && finalPlaces.length < targetCount) {
+      console.log('[Gacha V3] Round 1 rejected', rejectedPlaceIds.length, 'places, starting replacement...');
+      
+      const round1CategoryCounts: Record<string, number> = {};
+      for (const p of finalPlaces) {
+        const cat = p.category || '其他';
+        round1CategoryCounts[cat] = (round1CategoryCounts[cat] || 0) + 1;
+      }
+      
+      const round1UsedIds = new Set([
+        ...Array.from(usedIds),
+        ...finalPlaces.map(p => p.id),
+        ...rejectedPlaceIds
+      ]);
+      
+      let addedCount = 0;
+      const slotsToFill = targetCount - finalPlaces.length;
+      for (let attempt = 0; attempt < 20 && addedCount < slotsToFill; attempt++) {
+        const replacementPool = anchorPlaces.filter(p => {
+          if (round1UsedIds.has(p.id)) return false;
+          const cat = p.category || '其他';
+          const currentCount = round1CategoryCounts[cat] || 0;
+          if (cat === '美食' && currentCount >= maxFoodCount) return false;
+          if (cat === '住宿' && currentCount >= stayCount) return false;
+          return true;
+        });
+        
+        if (replacementPool.length === 0) break;
+        
+        const randomIdx = Math.floor(Math.random() * replacementPool.length);
+        const replacement = replacementPool[randomIdx];
+        finalPlaces.push(replacement);
+        round1UsedIds.add(replacement.id);
+        usedIds.add(replacement.id);
+        
+        const cat = replacement.category || '其他';
+        round1CategoryCounts[cat] = (round1CategoryCounts[cat] || 0) + 1;
+        addedCount++;
+      }
+      
+      console.log('[Gacha V3] Added', addedCount, 'replacement places, final count:', finalPlaces.length);
+      
+      // ========== 第二輪 AI 驗證 ==========
+      if (addedCount > 0 && finalPlaces.length >= 2) {
+        try {
+          const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+          const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+          
+          const formatHours = (hours: any): string => {
+            if (!hours) return '未提供';
+            if (Array.isArray(hours)) return hours.slice(0, 2).join('; ');
+            if (hours.weekday_text) return hours.weekday_text.slice(0, 2).join('; ');
+            return '未提供';
+          };
+          
+          const round2PlacesInfo = finalPlaces.map((p, idx) => ({
+            idx: idx + 1,
+            name: p.placeName,
+            category: p.category,
+            subcategory: p.subcategory || '一般',
+            description: (p.description || '').slice(0, 80),
+            hours: formatHours(p.openingHours)
+          }));
+          
+          const round2Prompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
+
+地點列表：
+${round2PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
+
+排序規則（依優先順序）：
+1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
+2. 地理動線：減少迂迴，鄰近地點連續安排
+3. 類別穿插：避免連續3個同類（夜市內美食除外）
+4. 排除不適合：永久歇業、非旅遊點、同園區重複景點（保留代表性最高者）
+
+【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
+{"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
+          
+          const round2Response = await fetch(`${baseUrl}/models/gemini-2.0-flash:generateContent`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey || ''
+            },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: round2Prompt }] }],
+              generationConfig: { maxOutputTokens: 8192, temperature: 0.1 }
+            })
+          });
+          
+          const round2Data = await round2Response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+          const round2Text = round2Data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+          console.log('[Gacha V3] Round 2 AI response:', round2Text);
+          
+          if (round2Text) {
+            try {
+              let jsonText = round2Text;
+              if (jsonText.startsWith('```')) {
+                jsonText = jsonText.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+              }
+              
+              const round2Result = JSON.parse(jsonText) as { order?: number[]; reason?: string; reject?: number[] };
+              console.log('[Gacha V3] Round 2 Parsed:', round2Result);
+              
+              let round2RejectedIds: number[] = [];
+              if (round2Result.reject && Array.isArray(round2Result.reject)) {
+                for (const idx of round2Result.reject) {
+                  if (idx >= 1 && idx <= finalPlaces.length) {
+                    round2RejectedIds.push(finalPlaces[idx - 1].id);
+                  }
+                }
+                if (round2RejectedIds.length > 0) {
+                  console.log('[Gacha V3] Round 2 rejected:', round2RejectedIds.length);
+                  rejectedPlaceIds.push(...round2RejectedIds);
+                }
+              }
+              
+              if (round2Result.order && Array.isArray(round2Result.order) && round2Result.order.length > 0) {
+                const validOrder = round2Result.order
+                  .filter(n => typeof n === 'number' && n >= 1 && n <= finalPlaces.length)
+                  .filter(n => !round2RejectedIds.includes(finalPlaces[n - 1]?.id));
+                const uniqueOrder = Array.from(new Set(validOrder));
+                
+                if (uniqueOrder.length >= 2) {
+                  const round2Places = uniqueOrder.map(idx => finalPlaces[idx - 1]).filter(p => p);
+                  const round2Ids = new Set(round2Places.map(p => p.id));
+                  const stillMissing = finalPlaces.filter(p => 
+                    !round2Ids.has(p.id) && !round2RejectedIds.includes(p.id)
+                  );
+                  if (stillMissing.length > 0) round2Places.push(...stillMissing);
+                  
+                  finalPlaces = round2Places;
+                  aiReorderResult = 'revalidated_round2';
+                  aiReason = round2Result.reason || aiReason;
+                  console.log('[Gacha V3] Round 2 completed, reason:', round2Result.reason || 'N/A');
+                }
+              }
+              
+              // ========== 第三輪：若第二輪有排除，補抽後只排序不排除 ==========
+              if (round2RejectedIds.length > 0) {
+                console.log('[Gacha V3] Round 3 starting: replacing', round2RejectedIds.length, 'rejected places');
+                
+                const round2RejectedSet = new Set(round2RejectedIds);
+                finalPlaces = finalPlaces.filter(p => !round2RejectedSet.has(p.id));
+                
+                const round3CategoryCounts: Record<string, number> = {};
+                for (const p of finalPlaces) {
+                  const cat = p.category || '其他';
+                  round3CategoryCounts[cat] = (round3CategoryCounts[cat] || 0) + 1;
+                }
+                
+                const round3UsedIds = new Set([
+                  ...Array.from(usedIds),
+                  ...finalPlaces.map(p => p.id),
+                  ...rejectedPlaceIds
+                ]);
+                
+                let round3Added = 0;
+                const round3SlotsToFill = targetCount - finalPlaces.length;
+                for (let attempt = 0; attempt < 20 && round3Added < round3SlotsToFill; attempt++) {
+                  const round3Pool = anchorPlaces.filter(p => {
+                    if (round3UsedIds.has(p.id)) return false;
+                    const cat = p.category || '其他';
+                    const currentCount = round3CategoryCounts[cat] || 0;
+                    if (cat === '美食' && currentCount >= maxFoodCount) return false;
+                    if (cat === '住宿' && currentCount >= stayCount) return false;
+                    return true;
+                  });
+                  
+                  if (round3Pool.length === 0) break;
+                  
+                  const randomIdx = Math.floor(Math.random() * round3Pool.length);
+                  const replacement = round3Pool[randomIdx];
+                  finalPlaces.push(replacement);
+                  round3UsedIds.add(replacement.id);
+                  usedIds.add(replacement.id);
+                  
+                  const cat = replacement.category || '其他';
+                  round3CategoryCounts[cat] = (round3CategoryCounts[cat] || 0) + 1;
+                  round3Added++;
+                }
+                
+                console.log('[Gacha V3] Round 3 added', round3Added, 'places, final count:', finalPlaces.length);
+                
+                // 第三輪 AI：只排序，不排除
+                if (finalPlaces.length >= 2) {
+                  try {
+                    const round3PlacesInfo = finalPlaces.map((p, idx) => ({
+                      idx: idx + 1,
+                      name: p.placeName,
+                      category: p.category,
+                      subcategory: p.subcategory || '一般',
+                      description: (p.description || '').slice(0, 80),
+                      hours: formatHours(p.openingHours)
+                    }));
+                    
+                    const round3Prompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
+
+地點列表：
+${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
+
+排序規則（依優先順序）：
+1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
+2. 地理動線：減少迂迴，鄰近地點連續安排
+3. 類別穿插：避免連續3個同類（夜市內美食除外）
+
+【重要】這是最後一輪，請不要排除任何地點，只需排序。
+
+【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
+{"order":[3,1,5,2,4],"reason":"早餐先逛景點"}`;
+                    
+                    const round3Response = await fetch(`${baseUrl}/models/gemini-2.0-flash:generateContent`, {
+                      method: 'POST',
+                      headers: { 
+                        'Content-Type': 'application/json',
+                        'x-goog-api-key': apiKey || ''
+                      },
+                      body: JSON.stringify({
+                        contents: [{ role: 'user', parts: [{ text: round3Prompt }] }],
+                        generationConfig: { maxOutputTokens: 8192, temperature: 0.1 }
+                      })
+                    });
+                    
+                    const round3Data = await round3Response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+                    const round3Text = round3Data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+                    console.log('[Gacha V3] Round 3 AI response:', round3Text);
+                    
+                    if (round3Text) {
+                      let jsonText = round3Text;
+                      if (jsonText.startsWith('```')) {
+                        jsonText = jsonText.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+                      }
+                      
+                      const round3Result = JSON.parse(jsonText) as { order?: number[]; reason?: string };
+                      console.log('[Gacha V3] Round 3 Parsed:', round3Result);
+                      
+                      if (round3Result.order && Array.isArray(round3Result.order) && round3Result.order.length > 0) {
+                        const validOrder = round3Result.order
+                          .filter(n => typeof n === 'number' && n >= 1 && n <= finalPlaces.length);
+                        const uniqueOrder = Array.from(new Set(validOrder));
+                        
+                        if (uniqueOrder.length >= 2) {
+                          const round3Places = uniqueOrder.map(idx => finalPlaces[idx - 1]).filter(p => p);
+                          const round3Ids = new Set(round3Places.map(p => p.id));
+                          const stillMissing = finalPlaces.filter(p => !round3Ids.has(p.id));
+                          if (stillMissing.length > 0) round3Places.push(...stillMissing);
+                          
+                          finalPlaces = round3Places;
+                          aiReorderResult = 'revalidated_round3';
+                          aiReason = round3Result.reason || aiReason;
+                          console.log('[Gacha V3] Round 3 completed, reason:', round3Result.reason || 'N/A');
+                        }
+                      }
+                    }
+                  } catch (round3Error) {
+                    console.error('[Gacha V3] Round 3 AI failed:', round3Error);
+                  }
+                }
+              }
+            } catch (parseError) {
+              console.error('[Gacha V3] Round 2 JSON parse failed:', parseError);
+            }
+          }
+        } catch (round2Error) {
+          console.error('[Gacha V3] Round 2 AI failed:', round2Error);
+        }
+      }
+    }
+    
     const stayPlacesInFinal = finalPlaces.filter(p => p.category === '住宿');
     const nonStayPlacesInFinal = finalPlaces.filter(p => p.category !== '住宿');
     if (stayPlacesInFinal.length > 0) {
