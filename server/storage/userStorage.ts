@@ -203,11 +203,6 @@ export const userStorage = {
       .set({ userId: newUserId })
       .where(eq(gachaAiLogs.userId, oldUserId));
     
-    // Delete old auth_identities records (they will be recreated for the new user)
-    await tx.delete(authIdentities)
-      .where(eq(authIdentities.userId, oldUserId));
-    console.log(`[migrateUserData] 已刪除舊 auth_identities 記錄`);
-    
     console.log(`[migrateUserData] 遷移完成`);
   },
 
