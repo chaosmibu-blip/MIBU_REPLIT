@@ -223,7 +223,63 @@ NormalizedSubscriptionEvent {
 7. 用戶被 redirect 回 /checkout/success
 ```
 
-## 退款處理
+## 退款與取消政策（2026-01-09 新增）
+
+### 政策文件
+詳見：`docs/refund-cancellation-policy.md`
+
+### 取消訂閱 API
+```typescript
+POST /api/merchant/subscription/cancel
+Body: { subscriptionId: number }
+Response: { success: true, subscription: {...} }
+
+// 行為：
+// - Stripe: 設定 cancel_at_period_end = true
+// - 服務持續至當期結束
+// - 不會立即退款
+```
+
+### 退款資格檢查 API
+```typescript
+GET /api/merchant/subscription/refund-eligibility?subscriptionId=123
+Response: {
+  subscriptionId: number,
+  daysSinceCreation: number,
+  refundEligibility: {
+    isEligible: boolean,  // 7天內為 true
+    reason: string,
+    daysRemaining: number
+  }
+}
+```
+
+### 退款申請 API
+```typescript
+POST /api/merchant/subscription/refund-request
+Body: {
+  subscriptionId: number,
+  reason: string  // 至少 10 字
+}
+Response: {
+  success: boolean,
+  message: string,
+  eligibility: {...},
+  refundStatus: 'approved' | 'pending_manual_review' | 'not_eligible' | 'error'
+}
+
+// 邏輯：
+// - 7天內 + Stripe → 自動取消並退款
+// - 7天內 + Recur → 轉人工處理
+// - 7天後 → 拒絕，建議聯繫客服
+```
+
+### 台灣消費者保護法合規
+- B2C 線上購買享有 7 天鑑賞期
+- 7 天內可無條件全額退款
+- 7 天後：可取消但不退款
+
+### 退款處理（舊版 Admin API）
 ```typescript
 // 退款 API (Admin Only)
 POST /api/admin/refund

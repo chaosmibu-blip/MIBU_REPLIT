@@ -1007,6 +1007,207 @@ router.post("/api/merchant/subscription/upgrade", isAuthenticated, async (req: a
   }
 });
 
+router.post("/api/merchant/subscription/refund-request", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const merchant = await storage.getMerchantByUserId(userId);
+    if (!merchant) {
+      return res.status(404).json({ error: "Merchant not found" });
+    }
+
+    const { subscriptionId, reason } = req.body;
+    if (!subscriptionId) {
+      return res.status(400).json({ error: "subscriptionId is required" });
+    }
+    if (!reason || reason.trim().length < 10) {
+      return res.status(400).json({ error: "請提供至少 10 字的退款原因" });
+    }
+
+    const subscription = await subscriptionStorage.getSubscriptionById(subscriptionId);
+    if (!subscription || subscription.merchantId !== merchant.id) {
+      return res.status(404).json({ error: "Subscription not found" });
+    }
+
+    const createdAt = subscription.createdAt ? new Date(subscription.createdAt) : null;
+    const now = new Date();
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const msSinceCreation = createdAt ? now.getTime() - createdAt.getTime() : null;
+    const daysSinceCreation = msSinceCreation !== null ? Math.floor(msSinceCreation / (1000 * 60 * 60 * 24)) : null;
+
+    const isEligibleFor7DayRefund = msSinceCreation !== null && msSinceCreation <= SEVEN_DAYS_MS;
+
+    const eligibility = {
+      isEligible: isEligibleFor7DayRefund,
+      reason: isEligibleFor7DayRefund 
+        ? '符合 7 天鑑賞期退款條件'
+        : '已超過 7 天鑑賞期，需人工審核',
+      daysSinceCreation,
+      hoursRemaining: isEligibleFor7DayRefund && msSinceCreation !== null
+        ? Math.floor((SEVEN_DAYS_MS - msSinceCreation) / (1000 * 60 * 60))
+        : 0,
+      subscriptionStatus: subscription.status,
+      provider: subscription.provider,
+    };
+
+    console.log(`[Refund Request] Merchant ${merchant.id}, Subscription ${subscriptionId}, Eligible: ${isEligibleFor7DayRefund}, Days: ${daysSinceCreation}, MS: ${msSinceCreation}`);
+
+    if (isEligibleFor7DayRefund) {
+      if (subscription.provider === 'stripe' && subscription.providerSubscriptionId) {
+        try {
+          const stripe = await getUncachableStripeClient();
+          
+          const stripeSubscription = await stripe.subscriptions.retrieve(subscription.providerSubscriptionId);
+          const latestInvoiceId = stripeSubscription.latest_invoice;
+          
+          let refundCreated = false;
+          let refundId: string | null = null;
+
+          if (latestInvoiceId && typeof latestInvoiceId === 'string') {
+            const invoice = await stripe.invoices.retrieve(latestInvoiceId);
+            const chargeId = invoice.charge;
+
+            if (chargeId && typeof chargeId === 'string') {
+              const refund = await stripe.refunds.create({
+                charge: chargeId,
+                reason: 'requested_by_customer',
+              });
+              refundCreated = true;
+              refundId = refund.id;
+              console.log(`[Refund] Created Stripe refund ${refund.id} for charge ${chargeId}`);
+            }
+          }
+
+          await stripe.subscriptions.cancel(subscription.providerSubscriptionId);
+
+          await subscriptionStorage.updateSubscription(subscriptionId, {
+            status: 'cancelled',
+            cancelledAt: new Date(),
+          });
+
+          console.log(`[Refund] Stripe subscription ${subscription.providerSubscriptionId} cancelled, refund: ${refundCreated ? refundId : 'N/A'}`);
+          
+          res.json({
+            success: true,
+            message: refundCreated 
+              ? '退款申請已通過，款項將在 5-10 個工作天內退回原付款方式'
+              : '訂閱已取消，如有付款記錄將由客服處理退款',
+            eligibility,
+            refundStatus: refundCreated ? 'approved' : 'pending_manual_review',
+            refundId,
+          });
+        } catch (stripeError: any) {
+          console.error('[Refund] Stripe error:', stripeError);
+          res.json({
+            success: false,
+            message: '自動退款處理失敗，已轉人工處理，客服將於 1-2 個工作天內聯繫您',
+            eligibility,
+            refundStatus: 'pending_manual_review',
+            error: stripeError.message,
+          });
+        }
+      } else if (subscription.provider === 'recur') {
+        await subscriptionStorage.updateSubscription(subscriptionId, {
+          status: 'cancelled',
+          cancelledAt: new Date(),
+        });
+
+        console.log(`[Refund] Recur subscription ${subscriptionId} marked for manual refund processing`);
+
+        res.json({
+          success: true,
+          message: '退款申請已提交，Recur 退款需人工處理，客服將於 1-2 個工作天內聯繫您',
+          eligibility,
+          refundStatus: 'pending_manual_review',
+          note: 'Recur 退款需透過後台人工處理',
+        });
+      } else {
+        res.json({
+          success: false,
+          message: '無法處理此訂閱的退款，請聯繫客服',
+          eligibility,
+          refundStatus: 'error',
+        });
+      }
+    } else {
+      res.json({
+        success: false,
+        message: '已超過 7 天鑑賞期，無法自動退款。如有特殊情況，請聯繫客服。',
+        eligibility,
+        refundStatus: 'not_eligible',
+        contactEmail: 'support@mibu-travel.com',
+      });
+    }
+  } catch (error) {
+    console.error("Refund request error:", error);
+    res.status(500).json({ error: "Failed to process refund request" });
+  }
+});
+
+router.get("/api/merchant/subscription/refund-eligibility", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const merchant = await storage.getMerchantByUserId(userId);
+    if (!merchant) {
+      return res.status(404).json({ error: "Merchant not found" });
+    }
+
+    const subscriptionId = req.query.subscriptionId as string;
+    if (!subscriptionId) {
+      return res.status(400).json({ error: "subscriptionId query parameter is required" });
+    }
+
+    const subscription = await subscriptionStorage.getSubscriptionById(parseInt(subscriptionId));
+    if (!subscription || subscription.merchantId !== merchant.id) {
+      return res.status(404).json({ error: "Subscription not found" });
+    }
+
+    const createdAt = subscription.createdAt ? new Date(subscription.createdAt) : null;
+    const now = new Date();
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const msSinceCreation = createdAt ? now.getTime() - createdAt.getTime() : null;
+    const daysSinceCreation = msSinceCreation !== null 
+      ? Math.floor(msSinceCreation / (1000 * 60 * 60 * 24))
+      : null;
+
+    const isEligibleFor7DayRefund = msSinceCreation !== null && msSinceCreation <= SEVEN_DAYS_MS;
+    const hoursRemaining = isEligibleFor7DayRefund && msSinceCreation !== null
+      ? Math.floor((SEVEN_DAYS_MS - msSinceCreation) / (1000 * 60 * 60))
+      : 0;
+
+    res.json({
+      subscriptionId: subscription.id,
+      provider: subscription.provider,
+      tier: subscription.tier,
+      status: subscription.status,
+      createdAt: subscription.createdAt,
+      daysSinceCreation,
+      refundEligibility: {
+        isEligible: isEligibleFor7DayRefund,
+        reason: isEligibleFor7DayRefund 
+          ? '符合 7 天鑑賞期，可申請全額退款'
+          : '已超過 7 天鑑賞期，需人工審核',
+        hoursRemaining,
+        daysRemaining: Math.floor(hoursRemaining / 24),
+      },
+      cancellationPolicy: {
+        canCancel: subscription.status === 'active',
+        note: '取消後服務持續至當期結束',
+      },
+    });
+  } catch (error) {
+    console.error("Check refund eligibility error:", error);
+    res.status(500).json({ error: "Failed to check refund eligibility" });
+  }
+});
+
 router.get("/api/merchant/permissions", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
