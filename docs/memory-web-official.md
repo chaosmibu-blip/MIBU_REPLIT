@@ -283,10 +283,184 @@ npm run build
 
 ---
 
+## 📱 給前端的同步指令（2026-01-09 更新）
+
+### 新增：退款與取消訂閱功能
+
+商家登入後的訂閱管理頁面需新增以下功能：
+
+#### 1. 退款資格檢查 API
+
+```typescript
+// hooks/useRefundEligibility.ts
+import { useQuery } from '@tanstack/react-query';
+
+interface RefundEligibility {
+  subscriptionId: number;
+  provider: 'stripe' | 'recur';
+  tier: string;
+  status: string;
+  createdAt: string;
+  daysSinceCreation: number;
+  refundEligibility: {
+    isEligible: boolean;
+    reason: string;
+    hoursRemaining: number;
+    daysRemaining: number;
+  };
+  cancellationPolicy: {
+    canCancel: boolean;
+    note: string;
+  };
+}
+
+export function useRefundEligibility(subscriptionId: number) {
+  return useQuery<RefundEligibility>({
+    queryKey: ['refund-eligibility', subscriptionId],
+    queryFn: async () => {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/merchant/subscription/refund-eligibility?subscriptionId=${subscriptionId}`,
+        { credentials: 'include' }
+      );
+      if (!res.ok) throw new Error('Failed to check eligibility');
+      return res.json();
+    },
+    enabled: !!subscriptionId,
+  });
+}
+```
+
+#### 2. 申請退款 API
+
+```typescript
+// hooks/useRefundRequest.ts
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+interface RefundRequestInput {
+  subscriptionId: number;
+  reason: string; // 至少 10 字
+}
+
+interface RefundResponse {
+  success: boolean;
+  message: string;
+  refundStatus: 'approved' | 'pending_manual_review' | 'not_eligible' | 'error';
+  refundId?: string;
+  requestId?: number;
+  eligibility: any;
+  contactEmail?: string;
+}
+
+export function useRefundRequest() {
+  const queryClient = useQueryClient();
+  
+  return useMutation<RefundResponse, Error, RefundRequestInput>({
+    mutationFn: async (data) => {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/merchant/subscription/refund-request`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(data),
+        }
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      queryClient.invalidateQueries({ queryKey: ['refund-eligibility'] });
+    },
+  });
+}
+```
+
+#### 3. UI 建議放置位置
+
+```
+/merchant/dashboard
+  └── 訂閱管理區塊
+       ├── 目前方案資訊
+       ├── 付款歷史
+       └── 📌 訂閱設定（新增）
+            ├── [取消訂閱] 按鈕
+            └── [申請退款] 按鈕（7天內顯示）
+```
+
+#### 4. 退款申請 UI 元件
+
+```tsx
+// components/RefundRequestDialog.tsx
+function RefundRequestDialog({ subscriptionId }: { subscriptionId: number }) {
+  const { data: eligibility } = useRefundEligibility(subscriptionId);
+  const refundMutation = useRefundRequest();
+  const [reason, setReason] = useState('');
+  
+  if (!eligibility) return null;
+  
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="outline" disabled={!eligibility.refundEligibility.isEligible}>
+          申請退款
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>申請退款</DialogTitle>
+        </DialogHeader>
+        
+        {eligibility.refundEligibility.isEligible ? (
+          <>
+            <p className="text-sm text-green-600">
+              ✓ {eligibility.refundEligibility.reason}
+              （剩餘 {eligibility.refundEligibility.hoursRemaining} 小時）
+            </p>
+            <Textarea
+              placeholder="請說明退款原因（至少 10 字）"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              minLength={10}
+            />
+            <Button 
+              onClick={() => refundMutation.mutate({ subscriptionId, reason })}
+              disabled={reason.length < 10 || refundMutation.isPending}
+            >
+              {refundMutation.isPending ? '處理中...' : '確認申請退款'}
+            </Button>
+          </>
+        ) : (
+          <p className="text-sm text-slate-500">
+            {eligibility.refundEligibility.reason}
+          </p>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+#### 5. cURL 測試範例
+
+```bash
+# 檢查退款資格
+curl -X GET "https://api.mibu-travel.com/api/merchant/subscription/refund-eligibility?subscriptionId=1" \
+  -H "Cookie: connect.sid=xxx"
+
+# 申請退款
+curl -X POST "https://api.mibu-travel.com/api/merchant/subscription/refund-request" \
+  -H "Content-Type: application/json" \
+  -H "Cookie: connect.sid=xxx" \
+  -d '{"subscriptionId": 1, "reason": "產品不符合需求，希望申請退款"}'
+```
+
+---
+
 ## Changelog
 
 | 日期 | 變更內容 |
 |------|---------|
+| 2026-01-09 | 新增：退款與取消訂閱 API 前端同步指令 |
 | 2026-01-05 | 重構：整合完整開發藍圖，新增記憶庫索引、UI/UX 規範、指令集 |
 | 2026-01-05 | 修正：金流為用戶自選（非自動導向） |
 | 2026-01-05 | 初版記憶庫建立 |

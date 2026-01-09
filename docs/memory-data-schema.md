@@ -38,13 +38,49 @@ users ─┬── user_profiles
 ```
 merchants ─┬── merchant_profiles
            ├── merchant_place_links ── merchant_coupons
-           └── merchant_analytics
+           ├── merchant_analytics
+           ├── merchant_subscriptions ── refund_requests 🆕 2026-01-09
+           └── transactions
 
 coupons (用戶持有的優惠券)
   └── coupon_redemptions (核銷記錄)
 
 coupon_rarity_configs
 coupon_probability_settings
+```
+
+#### refund_requests 表欄位說明（2026-01-09 新增）
+```typescript
+{
+  id: serial PRIMARY KEY;
+  subscriptionId: integer REFERENCES merchant_subscriptions(id);
+  merchantId: integer REFERENCES merchants(id);
+  
+  reason: text NOT NULL;           // 用戶提供的退款原因
+  status: varchar(20);             // pending | approved | rejected | manual_review | processed
+  
+  daysSinceSubscription: integer;  // 申請時距訂閱多少天
+  isWithin7Days: boolean;          // 是否在 7 天鑑賞期內
+  
+  provider: varchar(20);           // stripe | recur
+  stripeRefundId: varchar(255);    // Stripe 退款 ID
+  stripeChargeId: varchar(255);    // 被退款的 charge ID
+  refundAmount: integer;           // 退款金額（分為單位）
+  refundCurrency: varchar(10);     // TWD
+  
+  processedBy: varchar(255);       // 處理人員
+  processedAt: timestamp;          // 處理時間
+  adminNotes: text;                // 客服備註
+  
+  createdAt: timestamp;
+  updatedAt: timestamp;
+}
+
+// 索引
+IDX_refund_requests_subscription (subscriptionId)
+IDX_refund_requests_merchant (merchantId)
+IDX_refund_requests_status (status)
+IDX_refund_requests_created (createdAt)
 ```
 
 ### 5. 專員系統 (Specialist System)

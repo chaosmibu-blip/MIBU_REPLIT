@@ -2,7 +2,8 @@ import { Router } from "express";
 import { isAuthenticated } from "../replitAuth";
 import { storage } from "../storage";
 import { subscriptionStorage } from "../storage/subscriptionStorage";
-import { insertMerchantSchema, insertCouponSchema } from "@shared/schema";
+import { refundStorage } from "../storage/refundStorage";
+import { insertMerchantSchema, insertCouponSchema, InsertRefundRequest } from "@shared/schema";
 import { ErrorCode, createErrorResponse } from "@shared/errors";
 import { z } from "zod";
 import crypto from "crypto";
@@ -1055,6 +1056,15 @@ router.post("/api/merchant/subscription/refund-request", isAuthenticated, async 
 
     console.log(`[Refund Request] Merchant ${merchant.id}, Subscription ${subscriptionId}, Eligible: ${isEligibleFor7DayRefund}, Days: ${daysSinceCreation}, MS: ${msSinceCreation}`);
 
+    const baseRefundData: InsertRefundRequest = {
+      subscriptionId,
+      merchantId: merchant.id,
+      reason: reason.trim(),
+      daysSinceSubscription: daysSinceCreation,
+      isWithin7Days: isEligibleFor7DayRefund,
+      provider: subscription.provider,
+    };
+
     if (isEligibleFor7DayRefund) {
       if (subscription.provider === 'stripe' && subscription.providerSubscriptionId) {
         try {
@@ -1065,19 +1075,23 @@ router.post("/api/merchant/subscription/refund-request", isAuthenticated, async 
           
           let refundCreated = false;
           let refundId: string | null = null;
+          let chargeId: string | null = null;
+          let refundAmount: number | null = null;
 
           if (latestInvoiceId && typeof latestInvoiceId === 'string') {
             const invoice = await stripe.invoices.retrieve(latestInvoiceId);
-            const chargeId = invoice.charge;
+            const invoiceCharge = (invoice as any).charge;
+            chargeId = typeof invoiceCharge === 'string' ? invoiceCharge : null;
 
-            if (chargeId && typeof chargeId === 'string') {
+            if (chargeId) {
               const refund = await stripe.refunds.create({
                 charge: chargeId,
                 reason: 'requested_by_customer',
               });
               refundCreated = true;
               refundId = refund.id;
-              console.log(`[Refund] Created Stripe refund ${refund.id} for charge ${chargeId}`);
+              refundAmount = refund.amount;
+              console.log(`[Refund] Created Stripe refund ${refund.id} for charge ${chargeId}, amount: ${refund.amount}`);
             }
           }
 
@@ -1088,7 +1102,17 @@ router.post("/api/merchant/subscription/refund-request", isAuthenticated, async 
             cancelledAt: new Date(),
           });
 
-          console.log(`[Refund] Stripe subscription ${subscription.providerSubscriptionId} cancelled, refund: ${refundCreated ? refundId : 'N/A'}`);
+          const refundRequest = await refundStorage.createRefundRequest({
+            ...baseRefundData,
+            status: refundCreated ? 'approved' : 'manual_review',
+            stripeRefundId: refundId,
+            stripeChargeId: chargeId,
+            refundAmount,
+            refundCurrency: 'TWD',
+            processedAt: refundCreated ? new Date() : undefined,
+          });
+
+          console.log(`[Refund] Stripe subscription ${subscription.providerSubscriptionId} cancelled, refund: ${refundCreated ? refundId : 'N/A'}, request ID: ${refundRequest.id}`);
           
           res.json({
             success: true,
@@ -1098,15 +1122,24 @@ router.post("/api/merchant/subscription/refund-request", isAuthenticated, async 
             eligibility,
             refundStatus: refundCreated ? 'approved' : 'pending_manual_review',
             refundId,
+            requestId: refundRequest.id,
           });
         } catch (stripeError: any) {
           console.error('[Refund] Stripe error:', stripeError);
+          
+          const refundRequest = await refundStorage.createRefundRequest({
+            ...baseRefundData,
+            status: 'manual_review',
+            adminNotes: `Stripe error: ${stripeError.message}`,
+          });
+
           res.json({
             success: false,
             message: '自動退款處理失敗，已轉人工處理，客服將於 1-2 個工作天內聯繫您',
             eligibility,
             refundStatus: 'pending_manual_review',
             error: stripeError.message,
+            requestId: refundRequest.id,
           });
         }
       } else if (subscription.provider === 'recur') {
@@ -1115,7 +1148,13 @@ router.post("/api/merchant/subscription/refund-request", isAuthenticated, async 
           cancelledAt: new Date(),
         });
 
-        console.log(`[Refund] Recur subscription ${subscriptionId} marked for manual refund processing`);
+        const refundRequest = await refundStorage.createRefundRequest({
+          ...baseRefundData,
+          status: 'manual_review',
+          adminNotes: 'Recur 退款需人工處理',
+        });
+
+        console.log(`[Refund] Recur subscription ${subscriptionId} marked for manual refund processing, request ID: ${refundRequest.id}`);
 
         res.json({
           success: true,
@@ -1123,22 +1162,37 @@ router.post("/api/merchant/subscription/refund-request", isAuthenticated, async 
           eligibility,
           refundStatus: 'pending_manual_review',
           note: 'Recur 退款需透過後台人工處理',
+          requestId: refundRequest.id,
         });
       } else {
+        const refundRequest = await refundStorage.createRefundRequest({
+          ...baseRefundData,
+          status: 'manual_review',
+          adminNotes: '未知支付提供者',
+        });
+
         res.json({
           success: false,
           message: '無法處理此訂閱的退款，請聯繫客服',
           eligibility,
           refundStatus: 'error',
+          requestId: refundRequest.id,
         });
       }
     } else {
+      const refundRequest = await refundStorage.createRefundRequest({
+        ...baseRefundData,
+        status: 'rejected',
+        adminNotes: '已超過 7 天鑑賞期',
+      });
+
       res.json({
         success: false,
         message: '已超過 7 天鑑賞期，無法自動退款。如有特殊情況，請聯繫客服。',
         eligibility,
         refundStatus: 'not_eligible',
         contactEmail: 'support@mibu-travel.com',
+        requestId: refundRequest.id,
       });
     }
   } catch (error) {

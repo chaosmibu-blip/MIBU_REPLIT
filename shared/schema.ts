@@ -267,6 +267,39 @@ export const merchantSubscriptions = pgTable("merchant_subscriptions", {
   index("IDX_merchant_subscriptions_provider").on(table.provider, table.providerSubscriptionId),
 ]);
 
+// Refund Requests (退款申請記錄)
+export type RefundRequestStatus = 'pending' | 'approved' | 'rejected' | 'manual_review' | 'processed';
+
+export const refundRequests = pgTable("refund_requests", {
+  id: serial("id").primaryKey(),
+  subscriptionId: integer("subscription_id").references(() => merchantSubscriptions.id).notNull(),
+  merchantId: integer("merchant_id").references(() => merchants.id).notNull(),
+  
+  reason: text("reason").notNull(), // 用戶提供的退款原因
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // 'pending' | 'approved' | 'rejected' | 'manual_review' | 'processed'
+  
+  daysSinceSubscription: integer("days_since_subscription"), // 申請時距訂閱多少天
+  isWithin7Days: boolean("is_within_7_days").default(false), // 是否在 7 天鑑賞期內
+  
+  provider: varchar("provider", { length: 20 }), // 'stripe' | 'recur'
+  stripeRefundId: varchar("stripe_refund_id", { length: 255 }), // Stripe 退款 ID
+  stripeChargeId: varchar("stripe_charge_id", { length: 255 }), // 被退款的 charge ID
+  refundAmount: integer("refund_amount"), // 退款金額（分為單位）
+  refundCurrency: varchar("refund_currency", { length: 10 }).default("TWD"),
+  
+  processedBy: varchar("processed_by", { length: 255 }), // 處理人員 (人工處理時)
+  processedAt: timestamp("processed_at"), // 處理時間
+  adminNotes: text("admin_notes"), // 客服備註
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_refund_requests_subscription").on(table.subscriptionId),
+  index("IDX_refund_requests_merchant").on(table.merchantId),
+  index("IDX_refund_requests_status").on(table.status),
+  index("IDX_refund_requests_created").on(table.createdAt),
+]);
+
 // Service Relations (專員-旅客服務關係)
 export const serviceRelations = pgTable("service_relations", {
   id: serial("id").primaryKey(),
@@ -667,6 +700,15 @@ export const insertMerchantSubscriptionSchema = createInsertSchema(merchantSubsc
 
 export type InsertMerchantSubscription = z.infer<typeof insertMerchantSubscriptionSchema>;
 export type MerchantSubscription = typeof merchantSubscriptions.$inferSelect;
+
+export const insertRefundRequestSchema = createInsertSchema(refundRequests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertRefundRequest = z.infer<typeof insertRefundRequestSchema>;
+export type RefundRequest = typeof refundRequests.$inferSelect;
 
 export const insertServiceRelationSchema = createInsertSchema(serviceRelations).omit({
   id: true,

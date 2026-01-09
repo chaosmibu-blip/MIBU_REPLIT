@@ -369,9 +369,102 @@ DAILY_LIMIT_EXCEEDED  // 429 - 每日限額
 
 ---
 
+## 商家訂閱與退款 API（2026-01-09 新增）
+
+### 取消訂閱
+```typescript
+POST /api/merchant/subscription/cancel
+Headers: { Authorization: Bearer <jwt> }
+Body: { subscriptionId: number }
+
+Response (成功):
+{
+  "success": true,
+  "subscription": { "id": 1, "status": "cancelled", ... }
+}
+
+Response (失敗):
+{ "error": "Subscription not found" }
+```
+
+### 檢查退款資格
+```typescript
+GET /api/merchant/subscription/refund-eligibility?subscriptionId=123
+Headers: { Authorization: Bearer <jwt> }
+
+Response:
+{
+  "subscriptionId": 1,
+  "provider": "stripe",
+  "tier": "pro",
+  "status": "active",
+  "createdAt": "2026-01-02T10:00:00Z",
+  "daysSinceCreation": 7,
+  "refundEligibility": {
+    "isEligible": true,
+    "reason": "符合 7 天鑑賞期，可申請全額退款",
+    "hoursRemaining": 12,
+    "daysRemaining": 0
+  },
+  "cancellationPolicy": {
+    "canCancel": true,
+    "note": "取消後服務持續至當期結束"
+  }
+}
+```
+
+### 申請退款
+```typescript
+POST /api/merchant/subscription/refund-request
+Headers: { Authorization: Bearer <jwt> }
+Body: {
+  "subscriptionId": 1,
+  "reason": "產品不符合需求，希望申請退款"  // 至少 10 字
+}
+
+Response (7天內 + Stripe 自動退款):
+{
+  "success": true,
+  "message": "退款申請已通過，款項將在 5-10 個工作天內退回原付款方式",
+  "eligibility": { ... },
+  "refundStatus": "approved",
+  "refundId": "re_xxx",
+  "requestId": 1
+}
+
+Response (7天內 + Recur 人工處理):
+{
+  "success": true,
+  "message": "退款申請已提交，Recur 退款需人工處理，客服將於 1-2 個工作天內聯繫您",
+  "eligibility": { ... },
+  "refundStatus": "pending_manual_review",
+  "requestId": 2
+}
+
+Response (超過 7 天):
+{
+  "success": false,
+  "message": "已超過 7 天鑑賞期，無法自動退款。如有特殊情況，請聯繫客服。",
+  "eligibility": { ... },
+  "refundStatus": "not_eligible",
+  "contactEmail": "support@mibu-travel.com",
+  "requestId": 3
+}
+```
+
+### 錯誤碼
+| 代碼 | HTTP | 說明 |
+|------|------|------|
+| UNAUTHORIZED | 401 | 未登入 |
+| MERCHANT_NOT_FOUND | 404 | 商家不存在 |
+| SUBSCRIPTION_NOT_FOUND | 404 | 訂閱不存在 |
+| VALIDATION_ERROR | 400 | 退款原因少於 10 字 |
+
+---
+
 ## API 端點統計
-- 總端點數: 80+
+- 總端點數: 85+
 - 認證相關: /api/auth/*
 - 扭蛋相關: /api/gacha/*
-- 商家相關: /api/merchants/*
+- 商家相關: /api/merchant/*
 - 管理相關: /api/admin/*
