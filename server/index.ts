@@ -101,6 +101,10 @@ async function startServer() {
       if (origin.endsWith('.replit.dev') || origin.endsWith('.replit.app')) {
         return callback(null, true);
       }
+      // 允許官網網域
+      if (origin === 'https://mibu-travel.com' || origin === 'https://www.mibu-travel.com') {
+        return callback(null, true);
+      }
       callback(new Error('Not allowed by CORS'));
     },
     credentials: true,

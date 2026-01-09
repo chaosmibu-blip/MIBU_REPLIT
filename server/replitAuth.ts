@@ -78,6 +78,8 @@ const JWT_EXPIRES_IN = '7d';
 
 const ALLOWED_REDIRECT_ORIGINS = [
   'https://cca44805-83a8-48a7-8754-2ce82f774385-00-1gu87zpyw11ng.pike.replit.dev',
+  'https://mibu-travel.com',
+  'https://www.mibu-travel.com',
   process.env.EXPO_APP_URL,
 ].filter(Boolean) as string[];
 
