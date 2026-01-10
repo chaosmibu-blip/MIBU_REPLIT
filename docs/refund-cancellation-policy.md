@@ -55,7 +55,7 @@
 
 ### 2.3 退款申請方式
 
-1. **Email 申請**：發送郵件至 support@mibu-travel.com
+1. **Email 申請**：發送郵件至 chaosmibu@gmail.com
    - 主旨：[退款申請] 您的商家名稱
    - 內容：訂閱帳號、退款原因、付款日期
 
@@ -99,9 +99,9 @@
 
 | 管道 | 資訊 |
 |------|------|
-| Email | support@mibu-travel.com |
+| Email | chaosmibu@gmail.com |
 | 客服時間 | 週一至週五 09:00-18:00 (台北時間) |
-| 官網 | https://mibu-travel.com/contact |
+| 官網 | (https://mibu-travel.com/support) |
 
 ---
 
