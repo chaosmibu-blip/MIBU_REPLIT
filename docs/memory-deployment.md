@@ -290,11 +290,24 @@ Response: { status: 'ok', timestamp: Date }
 ```typescript
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: 15,                      // 最大連線數（建議 10~20）
-  idleTimeoutMillis: 30000,     // 閒置 30 秒斷開
-  connectionTimeoutMillis: 5000, // 連線超時 5 秒
+  max: 25,                       // 最大連線數（Neon 優化）
+  idleTimeoutMillis: 60000,      // 閒置 60 秒斷開
+  connectionTimeoutMillis: 10000, // 連線超時 10 秒
 });
 ```
+
+### 資料庫穩定性機制（2026-01-11 新增）
+
+#### 預熱機制（DB Warmup）
+- **功能**：每 4 分鐘 ping 一次資料庫，保持 Neon 連線不休眠
+- **原因**：Neon serverless 閒置 5 分鐘後會暫停，導致首次查詢延遲
+- **日誌標記**：`[DB Warmup] Ping successful`
+
+#### 重試機制（withRetry）
+- **功能**：自動重試失敗的資料庫查詢（最多 2 次，指數退避）
+- **捕獲錯誤**：ECONNRESET、57P01/57P03（shutdown）、53300（too many clients）
+- **套用範圍**：gachaStorage 的關鍵查詢函數（getOfficialPlacesByCity、getPlacesByDistrict 等）
+- **日誌標記**：`[DB Retry] Attempt X failed...`
 
 ### Socket 位置追蹤優化（server/socketHandler.ts）
 | 設定 | 值 | 說明 |
@@ -320,6 +333,12 @@ export const pool = new Pool({
 ---
 
 ## Changelog
+
+### 2026-01-11 - Neon 資料庫穩定性優化
+- 擴充連線池設定（max: 15→25, timeout: 5s→10s）
+- 新增 DB 預熱機制（每 4 分鐘 ping 一次）
+- 新增 withRetry 重試機制（捕獲 Neon 暫態錯誤）
+- 目的：解決「暫無景點」偶發性問題
 
 ### 2025-12-26 - 效能優化（500~1000 用戶）
 - 新增資料庫連線池設定（max: 15, idle: 30s）
