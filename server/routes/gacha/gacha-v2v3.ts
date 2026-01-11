@@ -645,18 +645,18 @@ router.post("/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
         const reorderPrompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
 
 地點列表：
-${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
+${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜座標:(${p.lat},${p.lng})｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
 
 排序規則（依優先順序）：
 1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
-2. 地理動線：減少迂迴，鄰近地點連續安排
+2. 地理動線：根據座標減少迂迴，鄰近地點連續安排
 3. 類別穿插：避免連續3個同類（夜市內美食除外）
-4. 排除不適合：永久歇業、非旅遊點、同園區重複景點（保留代表性最高者）
+4. 排除不適合：非旅遊點、不適合排在當輪行程中的地點
 
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
-{"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
+{"order":[排序後的編號陣列],"reason":"<說明排序理由>","reject":[要排除的編號陣列]}`;
         
-        const reorderResponse = await fetch(`${baseUrl}/models/gemini-3-pro-preview:generateContent`, {
+        const reorderResponse = await fetch(`${baseUrl}/models/gemini-3-flash-preview:generateContent`, {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -666,7 +666,7 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
             contents: [{ role: 'user', parts: [{ text: reorderPrompt }] }],
             generationConfig: { 
               maxOutputTokens: 8192, 
-              temperature: 0.1
+              temperature: 0.2
             }
           })
         });
@@ -756,9 +756,10 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
     
     console.log('[Gacha V3] AI reorder result:', aiReorderResult, 'rejected:', rejectedPlaceIds.length);
     
-    // ========== 第一輪有排除時，補抽並進入第二輪驗證 ==========
-    if (rejectedPlaceIds.length > 0 && finalPlaces.length < targetCount) {
-      console.log('[Gacha V3] Round 1 rejected', rejectedPlaceIds.length, 'places, starting replacement...');
+    // ========== 第一輪有排除時，進入第二輪驗證（不論數量是否足夠） ==========
+    let round2RejectedIds: number[] = [];
+    if (rejectedPlaceIds.length > 0) {
+      console.log('[Gacha V3] Round 1 rejected', rejectedPlaceIds.length, 'places, entering Round 2...');
       
       const round1CategoryCounts: Record<string, number> = {};
       for (const p of finalPlaces) {
@@ -773,8 +774,8 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
       ]);
       
       let addedCount = 0;
-      const slotsToFill = targetCount - finalPlaces.length;
-      for (let attempt = 0; attempt < 20 && addedCount < slotsToFill; attempt++) {
+      const slotsToFill = Math.max(0, targetCount - finalPlaces.length);
+      for (let attempt = 0; attempt < 20 && addedCount < slotsToFill && slotsToFill > 0; attempt++) {
         const replacementPool = anchorPlaces.filter(p => {
           if (round1UsedIds.has(p.id)) return false;
           const cat = p.category || '其他';
@@ -799,8 +800,8 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
       
       console.log('[Gacha V3] Added', addedCount, 'replacement places, final count:', finalPlaces.length);
       
-      // ========== 第二輪 AI 驗證 ==========
-      if (addedCount > 0 && finalPlaces.length >= 2) {
+      // ========== 第二輪 AI 驗證（只要進入此區塊就執行） ==========
+      if (finalPlaces.length >= 2) {
         try {
           const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
           const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
@@ -817,6 +818,8 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
             name: p.placeName,
             category: p.category,
             subcategory: p.subcategory || '一般',
+            lat: p.locationLat || 0,
+            lng: p.locationLng || 0,
             description: (p.description || '').slice(0, 80),
             hours: formatHours(p.openingHours)
           }));
@@ -824,18 +827,18 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
           const round2Prompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
 
 地點列表：
-${round2PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
+${round2PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜座標:(${p.lat},${p.lng})｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
 
 排序規則（依優先順序）：
 1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
-2. 地理動線：減少迂迴，鄰近地點連續安排
+2. 地理動線：根據座標減少迂迴，鄰近地點連續安排
 3. 類別穿插：避免連續3個同類（夜市內美食除外）
-4. 排除不適合：永久歇業、非旅遊點、同園區重複景點（保留代表性最高者）
+4. 排除不適合：非旅遊點、不適合排在當輪行程中的地點
 
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
-{"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}`;
+{"order":[排序後的編號陣列],"reason":"<說明排序理由>","reject":[要排除的編號陣列]}`;
           
-          const round2Response = await fetch(`${baseUrl}/models/gemini-2.0-flash:generateContent`, {
+          const round2Response = await fetch(`${baseUrl}/models/gemini-3-flash-preview:generateContent`, {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
@@ -843,7 +846,7 @@ ${round2PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
             },
             body: JSON.stringify({
               contents: [{ role: 'user', parts: [{ text: round2Prompt }] }],
-              generationConfig: { maxOutputTokens: 8192, temperature: 0.1 }
+              generationConfig: { maxOutputTokens: 8192, temperature: 0.2 }
             })
           });
           
@@ -861,7 +864,6 @@ ${round2PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
               const round2Result = JSON.parse(jsonText) as { order?: number[]; reason?: string; reject?: number[] };
               console.log('[Gacha V3] Round 2 Parsed:', round2Result);
               
-              let round2RejectedIds: number[] = [];
               if (round2Result.reject && Array.isArray(round2Result.reject)) {
                 for (const idx of round2Result.reject) {
                   if (idx >= 1 && idx <= finalPlaces.length) {
@@ -949,6 +951,8 @@ ${round2PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
                       name: p.placeName,
                       category: p.category,
                       subcategory: p.subcategory || '一般',
+                      lat: p.locationLat || 0,
+                      lng: p.locationLng || 0,
                       description: (p.description || '').slice(0, 80),
                       hours: formatHours(p.openingHours)
                     }));
@@ -956,19 +960,19 @@ ${round2PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
                     const round3Prompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
 
 地點列表：
-${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
+${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜座標:(${p.lat},${p.lng})｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
 
 排序規則（依優先順序）：
 1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
-2. 地理動線：減少迂迴，鄰近地點連續安排
+2. 地理動線：根據座標減少迂迴，鄰近地點連續安排
 3. 類別穿插：避免連續3個同類（夜市內美食除外）
 
 【重要】這是最後一輪，請不要排除任何地點，只需排序。
 
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
-{"order":[3,1,5,2,4],"reason":"早餐先逛景點"}`;
+{"order":[排序後的編號陣列],"reason":"<說明排序理由>"}`;
                     
-                    const round3Response = await fetch(`${baseUrl}/models/gemini-2.0-flash:generateContent`, {
+                    const round3Response = await fetch(`${baseUrl}/models/gemini-3-flash-preview:generateContent`, {
                       method: 'POST',
                       headers: { 
                         'Content-Type': 'application/json',
@@ -976,7 +980,7 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
                       },
                       body: JSON.stringify({
                         contents: [{ role: 'user', parts: [{ text: round3Prompt }] }],
-                        generationConfig: { maxOutputTokens: 8192, temperature: 0.1 }
+                        generationConfig: { maxOutputTokens: 8192, temperature: 0.2 }
                       })
                     });
                     
@@ -1105,9 +1109,13 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
     
     const couponsWon: Array<{ couponId: number; placeId: number; placeName: string; title: string; code: string; terms?: string | null }> = [];
     
+    // 簡化輪數計算：依排除情況判斷
+    // - 第一輪無排除 = 1 輪
+    // - 第一輪有排除（進入第二輪）= 2 輪
+    // - 第二輪有新增排除（進入第三輪）= 3 輪
     let reorderRounds = 1;
-    if (aiReorderResult.includes('round3') || aiReorderResult.includes('revalidated')) {
-      reorderRounds = aiReorderResult.includes('round3') ? 3 : 2;
+    if (rejectedPlaceIds.length > 0) {
+      reorderRounds = round2RejectedIds.length > 0 ? 3 : 2;
     }
     
     const categoryDistribution: Record<string, number> = {};
