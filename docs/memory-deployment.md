@@ -290,8 +290,8 @@ Response: { status: 'ok', timestamp: Date }
 ```typescript
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: 25,                       // 最大連線數（Neon 優化）
-  idleTimeoutMillis: 60000,      // 閒置 60 秒斷開
+  max: 25,                        // 最大連線數（Neon 優化）
+  idleTimeoutMillis: 300000,      // 閒置 5 分鐘斷開（需 > 預熱間隔 4 分鐘）
   connectionTimeoutMillis: 10000, // 連線超時 10 秒
 });
 ```
