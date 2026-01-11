@@ -158,6 +158,14 @@ export const merchantStorage = {
     return updated;
   },
 
+  async getCouponById(couponId: number): Promise<Coupon | null> {
+    const [coupon] = await db
+      .select()
+      .from(coupons)
+      .where(eq(coupons.id, couponId));
+    return coupon || null;
+  },
+
   async getRegionPrizePoolCoupons(regionId: number): Promise<any[]> {
     const regionDistricts = await db
       .select()

@@ -94,6 +94,39 @@ router.patch("/api/coupons/:id", isAuthenticated, async (req, res) => {
   }
 });
 
+router.delete("/api/coupons/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required", code: "UNAUTHORIZED" });
+    }
+
+    const couponId = parseInt(req.params.id);
+    if (isNaN(couponId)) {
+      return res.status(400).json({ error: "無效的優惠券 ID", code: "VALIDATION_ERROR" });
+    }
+
+    // 確認優惠券存在且屬於該商家
+    const coupon = await storage.getCouponById(couponId);
+    if (!coupon) {
+      return res.status(404).json({ error: "優惠券不存在", code: "NOT_FOUND" });
+    }
+
+    const merchant = await storage.getMerchantByUserId(userId);
+    if (!merchant || coupon.merchantId !== merchant.id) {
+      return res.status(403).json({ error: "無權限刪除此優惠券", code: "FORBIDDEN" });
+    }
+
+    // 軟刪除（設為 archived）
+    await storage.updateCoupon(couponId, { archived: true, isActive: false });
+
+    res.json({ success: true, message: "優惠券已刪除" });
+  } catch (error) {
+    console.error("Delete coupon error:", error);
+    res.status(500).json({ error: "刪除優惠券失敗", code: "SERVER_ERROR" });
+  }
+});
+
 router.get("/api/coupons/region/:regionId/pool", async (req, res) => {
   try {
     const regionId = parseInt(req.params.regionId);

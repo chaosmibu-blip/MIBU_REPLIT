@@ -19,6 +19,59 @@ const SUPER_ADMIN_EMAIL = 's8869420@gmail.com';
 const VALID_ROLES = ['traveler', 'merchant', 'specialist', 'admin'] as const;
 const UNLIMITED_GENERATION_EMAILS = ["s8869420@gmail.com"];
 
+// 共用 OAuth 角色驗證函數
+type OAuthRoleValidationResult =
+  | { valid: true; userRole: string }
+  | { valid: false; status: number; response: object };
+
+function validateOAuthUserRole(
+  existingUser: { role?: string | null; email?: string | null; isApproved?: boolean | null } | null,
+  targetPortal: string,
+  provider: 'apple' | 'google'
+): OAuthRoleValidationResult {
+  if (existingUser) {
+    let userRole = existingUser.role || 'traveler';
+
+    // 超級管理員可以任意切換角色
+    if (existingUser.email === SUPER_ADMIN_EMAIL) {
+      return { valid: true, userRole: targetPortal };
+    }
+
+    // 已存在用戶：驗證角色是否匹配請求的入口
+    if (targetPortal !== 'traveler' && userRole !== targetPortal) {
+      return {
+        valid: false,
+        status: 403,
+        response: {
+          success: false,
+          error: `您的帳號角色為 ${userRole}，無法從 ${targetPortal} 入口登入`,
+          code: 'ROLE_MISMATCH',
+          currentRole: userRole,
+          targetPortal,
+        }
+      };
+    }
+
+    return { valid: true, userRole };
+  }
+
+  // 新用戶：只有 traveler 可以透過 OAuth 直接註冊
+  if (targetPortal !== 'traveler') {
+    const providerName = provider === 'apple' ? 'Apple' : 'Google';
+    return {
+      valid: false,
+      status: 400,
+      response: {
+        success: false,
+        error: `請下載 Mibu App 註冊商家帳號，註冊後即可使用 ${providerName} 登入`,
+        code: 'OAUTH_NEW_USER_TRAVELER_ONLY',
+      }
+    };
+  }
+
+  return { valid: true, userRole: 'traveler' };
+}
+
 // Email/Password Registration (Traveler only)
 router.post('/register', async (req, res) => {
   try {
@@ -396,37 +449,13 @@ router.post('/apple', async (req, res) => {
       }
     }
     
-    // 檢查用戶是否已存在且角色匹配
-    let userRole: string = 'traveler';
-    if (existingUser) {
-      userRole = existingUser.role || 'traveler';
-      
-      // 超級管理員可以任意切換角色
-      if (existingUser.email === SUPER_ADMIN_EMAIL) {
-        userRole = targetPortal;
-      }
-      // 已存在用戶：驗證角色是否匹配請求的入口
-      else if (targetPortal !== 'traveler' && userRole !== targetPortal) {
-        return res.status(403).json({
-          success: false,
-          error: `您的帳號角色為 ${userRole}，無法從 ${targetPortal} 入口登入`,
-          code: 'ROLE_MISMATCH',
-          currentRole: userRole,
-          targetPortal: targetPortal,
-        });
-      }
-    } else {
-      // 新用戶：只有 traveler 可以透過 OAuth 直接註冊
-      // 商家/專員需要先用 Email 註冊，之後可透過 OAuth 登入
-      if (targetPortal !== 'traveler') {
-        return res.status(400).json({
-          success: false,
-          error: '請下載 Mibu App 註冊商家帳號，註冊後即可使用 Apple 登入',
-          code: 'OAUTH_NEW_USER_TRAVELER_ONLY',
-        });
-      }
+    // 驗證角色
+    const roleValidation = validateOAuthUserRole(existingUser, targetPortal, 'apple');
+    if (!roleValidation.valid) {
+      return res.status(roleValidation.status).json(roleValidation.response);
     }
-    
+    const userRole = roleValidation.userRole;
+
     const user = await storage.upsertUser({
       id: userId,
       email: userEmail,
@@ -578,37 +607,13 @@ router.post('/google', async (req, res) => {
       }
     }
     
-    // 檢查用戶是否已存在且角色匹配
-    let userRole: string = 'traveler';
-    if (existingUser) {
-      userRole = existingUser.role || 'traveler';
-      
-      // 超級管理員可以任意切換角色
-      if (existingUser.email === SUPER_ADMIN_EMAIL) {
-        userRole = targetPortal;
-      }
-      // 已存在用戶：驗證角色是否匹配請求的入口
-      else if (targetPortal !== 'traveler' && userRole !== targetPortal) {
-        return res.status(403).json({
-          success: false,
-          error: `您的帳號角色為 ${userRole}，無法從 ${targetPortal} 入口登入`,
-          code: 'ROLE_MISMATCH',
-          currentRole: userRole,
-          targetPortal: targetPortal,
-        });
-      }
-    } else {
-      // 新用戶：只有 traveler 可以透過 OAuth 直接註冊
-      // 商家/專員需要先用 Email 註冊，之後可透過 OAuth 登入
-      if (targetPortal !== 'traveler') {
-        return res.status(400).json({
-          success: false,
-          error: '請下載 Mibu App 註冊商家帳號，註冊後即可使用 Google 登入',
-          code: 'OAUTH_NEW_USER_TRAVELER_ONLY',
-        });
-      }
+    // 驗證角色
+    const roleValidation = validateOAuthUserRole(existingUser, targetPortal, 'google');
+    if (!roleValidation.valid) {
+      return res.status(roleValidation.status).json(roleValidation.response);
     }
-    
+    const userRole = roleValidation.userRole;
+
     const user = await storage.upsertUser({
       id: userId,
       email: userEmail,

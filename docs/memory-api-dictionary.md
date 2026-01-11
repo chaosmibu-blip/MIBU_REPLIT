@@ -90,8 +90,31 @@ NO_PLACES_AVAILABLE   // 200 (success=false) 無景點
 | Method | Endpoint | 說明 |
 |--------|----------|------|
 | GET | /api/coupons/my | 我的優惠券 |
+| GET | /api/coupons/merchant/:merchantId | 商家的優惠券列表 |
+| POST | /api/coupons | 建立優惠券 |
+| PATCH | /api/coupons/:id | 更新優惠券 |
+| DELETE | /api/coupons/:id | 刪除優惠券（軟刪除） |
 | POST | /api/coupons/redeem | 核銷優惠券 |
 | GET | /api/coupons/verify/:code | 驗證優惠券 |
+| GET | /api/coupons/region/:regionId/pool | 區域獎池優惠券 |
+
+#### DELETE /api/coupons/:id（2026-01-12 新增）
+刪除商家的優惠券（軟刪除：設為 archived + isActive=false）
+
+**Headers:**
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Response (成功):**
+```json
+{ "success": true, "message": "優惠券已刪除" }
+```
+
+**Response (失敗):**
+```json
+{ "error": "無權限刪除此優惠券", "code": "FORBIDDEN" }
+```
 
 ### 地區 (Location)
 | Method | Endpoint | 說明 |

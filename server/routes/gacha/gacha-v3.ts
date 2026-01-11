@@ -14,7 +14,7 @@ router.post("/gacha/pull/v3", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json({ error: "Authentication required", code: "UNAUTHORIZED" });
     }
 
     const pullSchema = z.object({
@@ -150,10 +150,10 @@ router.post("/gacha/pull/v3", isAuthenticated, async (req: any, res) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors });
+      return res.status(400).json({ error: "參數格式錯誤", code: "VALIDATION_ERROR", details: error.errors });
     }
     console.error("Gacha pull v3 error:", error);
-    res.status(500).json({ error: "Failed to perform gacha pull" });
+    res.status(500).json({ error: "抽取失敗，請稍後再試", code: "SERVER_ERROR" });
   }
 });
 

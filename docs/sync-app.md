@@ -6,6 +6,63 @@
 
 ## 最新更新
 
+### 2026-01-12：新增刪除優惠券 API + Gacha 錯誤格式修正
+
+**變更類型**: API 新增 + API 修改
+
+---
+
+#### 1. 新增 DELETE /api/coupons/:id
+
+**Endpoint**:
+```
+DELETE /api/coupons/:id
+```
+
+**Headers**:
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Response (成功)**:
+```json
+{ "success": true, "message": "優惠券已刪除" }
+```
+
+**Response (失敗)**:
+```json
+{ "error": "無權限刪除此優惠券", "code": "FORBIDDEN" }
+{ "error": "優惠券不存在", "code": "NOT_FOUND" }
+```
+
+**邏輯說明**:
+- 軟刪除：設為 `archived: true` + `isActive: false`
+- 只有優惠券擁有者（商家）可以刪除
+
+---
+
+#### 2. Gacha /gacha/pull/v3 錯誤格式修正
+
+**修改前**:
+```json
+{ "error": "Authentication required" }
+{ "error": ["zod errors..."] }
+{ "error": "Failed to perform gacha pull" }
+```
+
+**修改後**:
+```json
+{ "error": "Authentication required", "code": "UNAUTHORIZED" }
+{ "error": "參數格式錯誤", "code": "VALIDATION_ERROR", "details": [...] }
+{ "error": "抽取失敗，請稍後再試", "code": "SERVER_ERROR" }
+```
+
+**前端需要做的事**:
+- [ ] 如有商家功能，新增刪除優惠券按鈕呼叫 `DELETE /api/coupons/:id`
+- [x] Gacha 錯誤處理已可使用 `response.code` 判斷
+
+---
+
 ### 2026-01-12：認證錯誤格式統一
 
 **變更類型**: API 修改（錯誤回應格式）
