@@ -1230,7 +1230,7 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
           orderedPlaceIds,
           rejectedPlaceIds: rejectedPlaceIds.length > 0 ? rejectedPlaceIds : undefined,
           aiReason: aiReason || undefined,
-          aiModel: 'gemini-3-pro-preview',
+          aiModel: 'gemini-3-flash-preview',
           reorderRounds,
           durationMs,
           categoryDistribution,
