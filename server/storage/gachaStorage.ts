@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db, withRetry } from "../db";
 import { eq, and, desc, sql, isNotNull } from "drizzle-orm";
 import {
   collections,
@@ -440,68 +440,78 @@ export const gachaStorage = {
   },
 
   async getOfficialPlacesByDistrict(city: string, district: string, limit?: number): Promise<Place[]> {
-    const query = db
-      .select()
-      .from(places)
-      .where(and(
-        eq(places.city, city), 
-        eq(places.district, district),
-        eq(places.isActive, true)
-      ))
-      .orderBy(sql`RANDOM()`);
-    
-    if (limit) {
-      return await query.limit(limit);
-    }
-    return await query;
+    return withRetry(async () => {
+      const query = db
+        .select()
+        .from(places)
+        .where(and(
+          eq(places.city, city), 
+          eq(places.district, district),
+          eq(places.isActive, true)
+        ))
+        .orderBy(sql`RANDOM()`);
+      
+      if (limit) {
+        return await query.limit(limit);
+      }
+      return await query;
+    });
   },
 
   async getOfficialPlacesByCity(city: string, limit?: number): Promise<Place[]> {
-    const query = db
-      .select()
-      .from(places)
-      .where(and(
-        eq(places.city, city),
-        eq(places.isActive, true)
-      ))
-      .orderBy(sql`RANDOM()`);
-    
-    if (limit) {
-      return await query.limit(limit);
-    }
-    return await query;
+    return withRetry(async () => {
+      const query = db
+        .select()
+        .from(places)
+        .where(and(
+          eq(places.city, city),
+          eq(places.isActive, true)
+        ))
+        .orderBy(sql`RANDOM()`);
+      
+      if (limit) {
+        return await query.limit(limit);
+      }
+      return await query;
+    });
   },
 
   async getPlaceByGoogleId(googlePlaceId: string): Promise<Place | undefined> {
-    const [place] = await db
-      .select()
-      .from(places)
-      .where(and(
-        eq(places.googlePlaceId, googlePlaceId),
-        eq(places.isActive, true)
-      ))
-      .limit(1);
-    return place;
+    return withRetry(async () => {
+      const [place] = await db
+        .select()
+        .from(places)
+        .where(and(
+          eq(places.googlePlaceId, googlePlaceId),
+          eq(places.isActive, true)
+        ))
+        .limit(1);
+      return place;
+    });
   },
 
   async getPlacesByDistrict(city: string, district: string): Promise<Place[]> {
-    return await db
-      .select()
-      .from(places)
-      .where(and(
-        eq(places.city, city), 
-        eq(places.district, district),
-        eq(places.isActive, true)
-      ));
+    return withRetry(async () => {
+      return await db
+        .select()
+        .from(places)
+        .where(and(
+          eq(places.city, city), 
+          eq(places.district, district),
+          eq(places.isActive, true)
+        ));
+    });
   },
 
   async getJackpotPlaces(city: string, district: string): Promise<Place[]> {
-    return await db
-      .select()
-      .from(places)
-      .where(
-        sql`${places.city} = ${city} AND ${places.district} = ${district} AND ${places.isActive} = true AND (${places.rating} >= 4.5 OR ${places.merchantId} IS NOT NULL)`
-      );
+    return withRetry(async () => {
+      return await db
+        .select()
+        .from(places)
+        .where(
+          sql`${places.city} = ${city} AND ${places.district} = ${district} AND ${places.isActive} = true AND (${places.rating} >= 4.5 OR ${places.merchantId} IS NOT NULL)`
+        );
+    });
   },
 
   async getCouponsByPlaceId(placeId: number): Promise<Coupon[]> {

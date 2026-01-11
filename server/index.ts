@@ -12,6 +12,7 @@ import { verifyJwtToken, initializeSuperAdmin } from "./replitAuth";
 import { checkGeofence } from "./lib/geofencing";
 import { setupSocketIO } from "./socketHandler";
 import { runDataCleanup } from "./lib/dataCleanup";
+import { startDbWarmup } from "./db";
 import { z } from "zod";
 
 declare module "http" {
@@ -344,6 +345,11 @@ async function startServer() {
     },
     () => {
       console.log("Server is running on port " + port);
+
+      // ============================================================
+      // 5.5 啟動資料庫預熱機制（避免 Neon 冷啟動）
+      // ============================================================
+      startDbWarmup();
 
       // ============================================================
       // 6. 每小時自動清除過期活動 (快閃活動、節日限定活動)
