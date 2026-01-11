@@ -397,6 +397,7 @@ export const places = pgTable("places", {
   claimStatus: varchar("claim_status", { length: 20 }).default('unclaimed'),
   placeCardTier: varchar("place_card_tier", { length: 20 }).default('free'), // 'free' | 'pro' | 'premium'
   placeCardTierExpiresAt: timestamp("place_card_tier_expires_at"), // 行程卡訂閱到期時間
+  businessStatus: varchar("business_status", { length: 50 }), // Google 營業狀態: OPERATIONAL, CLOSED_TEMPORARILY, CLOSED_PERMANENTLY
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [

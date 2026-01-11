@@ -272,11 +272,22 @@ async function migrateCacheToPlaces() {
   
   console.log('\n📥 階段一：匯入資料（批次處理）');
   
-  const toInsert = reviewedCache.filter(cache => 
-    cache.placeId && !existingPlaceIds.has(cache.placeId)
-  );
+  // 過濾條件：有 placeId、不重複、且營業狀態為 OPERATIONAL 或 null
+  // 排除：CLOSED_PERMANENTLY（永久歇業）、CLOSED_TEMPORARILY（暫停營業）
+  const EXCLUDED_STATUS = ['CLOSED_PERMANENTLY', 'CLOSED_TEMPORARILY'];
+  
+  const toInsert = reviewedCache.filter(cache => {
+    if (!cache.placeId || existingPlaceIds.has(cache.placeId)) return false;
+    if (cache.businessStatus && EXCLUDED_STATUS.includes(cache.businessStatus)) {
+      console.log(`   ⚠️ 排除歇業店家: ${cache.placeName} (${cache.businessStatus})`);
+      return false;
+    }
+    return true;
+  });
+  
   const toSkip = reviewedCache.filter(cache => 
-    !cache.placeId || existingPlaceIds.has(cache.placeId)
+    !cache.placeId || existingPlaceIds.has(cache.placeId) ||
+    (cache.businessStatus && EXCLUDED_STATUS.includes(cache.businessStatus))
   );
   
   if (toSkip.length > 0) {
@@ -306,6 +317,7 @@ async function migrateCacheToPlaces() {
       category: cache.category,
       subcategory: cache.subCategory,
       description: '',
+      businessStatus: cache.businessStatus || 'OPERATIONAL',
       isActive: true,
     }));
     
@@ -344,6 +356,7 @@ async function migrateCacheToPlaces() {
             category: cache.category,
             subcategory: cache.subCategory,
             description: '',
+            businessStatus: cache.businessStatus || 'OPERATIONAL',
             isActive: true,
           }).returning({ id: schema.places.id });
           
