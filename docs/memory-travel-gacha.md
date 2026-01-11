@@ -5,25 +5,17 @@
 
 ## API 版本
 
-### Gacha V1 (`POST /api/gacha/itinerary`)
-- **狀態**: Legacy，仍可用
-- **機制**: place_cache + Gemini AI 填充
-- **特點**: 依賴 AI 生成真實店名，較慢
-
-### Gacha V2 (`POST /api/gacha/itinerary/v2`)
-- **狀態**: 過渡版本
-- **機制**: AI worker 按時段分配
-- **特點**: 並行處理，效率較高
-
-### Gacha V3 (`POST /api/gacha/itinerary/v3`) ⭐ 推薦
+### Gacha V3 (`POST /api/gacha/itinerary/v3`) ⭐ 唯一版本
 - **狀態**: Production Ready
 - **機制**: Database-driven，從 `places` 表直接抽取
-- **特點**: 
+- **特點**:
   - **AI 智慧排序**（2026-01-01 重構）- Gemini 負責最終行程順序
   - 錨點區策略 + 縣市擴散 fallback
   - **圖鑑去重保護**（2026-01-01 改版）- 最近 36 張不再出現
   - 六大類別等權重隨機分配
   - 美食不超過總數一半、住宿最多 1 個
+
+> ⚠️ **V1/V2 已於 2026-01-12 移除**：舊版本程式碼已清理，僅保留 V3
 
 ## V3 核心邏輯
 
@@ -124,6 +116,98 @@ interface GachaV3Response {
 │  18. 回傳結果（含 isShortfall 提示）                         │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+## AI 排序 Prompt 詳解（2026-01-11 補充）
+
+### 使用模型
+
+| 輪次 | 模型 | 用途 |
+|------|------|------|
+| 第一輪 | `gemini-3-pro-preview` | 排序 + 可排除 |
+| 第二輪 | `gemini-2.0-flash` | 排序 + 可排除 |
+| 第三輪 | `gemini-2.0-flash` | 只排序，不排除 |
+
+### 輸入資料結構
+
+每個地點傳給 AI 的資訊：
+```typescript
+{
+  idx: 1,                          // 編號（1-based）
+  name: "阜杭豆漿",                 // 名稱
+  category: "美食",                 // 類別
+  subcategory: "在地早餐",          // 子類別
+  description: "傳統台式早餐...",   // 描述（前 80 字）
+  hours: "05:30-12:30"             // 營業時間
+}
+```
+
+### 第一輪 & 第二輪 Prompt（可排除）
+
+```
+你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
+
+地點列表：
+1. 阜杭豆漿｜美食/在地早餐｜傳統台式早餐店，必吃燒餅油條｜營業:05:30-12:30
+2. 龍山寺｜景點/宗教聖地｜國定古蹟，香火鼎盛｜營業:06:00-22:00
+3. 夜市熱炒｜美食/熱炒｜道地台菜，啤酒配菜｜營業:17:00-01:00
+...
+
+排序規則（依優先順序）：
+1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
+2. 地理動線：減少迂迴，鄰近地點連續安排
+3. 類別穿插：避免連續3個同類（夜市內美食除外）
+4. 排除不適合：永久歇業、非旅遊點、同園區重複景點（保留代表性最高者）
+
+【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
+{"order":[3,1,5,2,4],"reason":"早餐先逛景點","reject":[]}
+```
+
+### 第三輪 Prompt（只排序，不排除）
+
+```
+你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
+
+地點列表：
+（同上格式）
+
+排序規則（依優先順序）：
+1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
+2. 地理動線：減少迂迴，鄰近地點連續安排
+3. 類別穿插：避免連續3個同類（夜市內美食除外）
+
+【重要】這是最後一輪，請不要排除任何地點，只需排序。
+
+【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
+{"order":[3,1,5,2,4],"reason":"早餐先逛景點"}
+```
+
+### AI 回傳格式
+
+```json
+{
+  "order": [3, 1, 5, 2, 4],    // 排序後的編號順序
+  "reason": "早餐先逛景點",     // 排序理由（存入 gacha_ai_logs.aiReason）
+  "reject": [6, 7]             // 被排除的編號（第三輪無此欄位）
+}
+```
+
+### Generation Config
+
+```typescript
+{
+  maxOutputTokens: 8192,
+  temperature: 0.1    // 低溫度確保穩定輸出
+}
+```
+
+### 程式碼位置
+
+- **檔案**：`server/routes/gacha/gacha-v2v3.ts`
+- **第一輪**：第 645-672 行
+- **第二輪**：第 824-848 行
+- **第三輪**：第 956-981 行
+
+---
 
 ## AI 排序日誌系統（2026-01-03 新增）
 
@@ -581,6 +665,30 @@ npx tsx server/scripts/batch-parallel-collect.ts 桃園市 --district=觀音區 
 ---
 
 ## Changelog
+
+### 2026-01-12 - 移除 Gacha V1/V2 及舊版行程生成
+
+#### 刪除的檔案與路由
+- **刪除 `gacha-core.ts`**：V1 全部路由（`/gacha/pull`、`/gacha/itinerary`、`/gacha/pool/*`、`/gacha/prize-pool`）
+- **刪除 V2 路由**：`/gacha/pull/v2`（原在 `gacha-v2v3.ts`）
+- **刪除 `/generate-itinerary`**：舊版骨架式行程生成（原在 `gacha-main.ts`）
+- **重新命名**：`gacha-v2v3.ts` → `gacha-v3.ts`
+- **清理 `shared.ts`**：移除 V1 專用函數（`generateItinerarySkeleton`、`generatePlaceForSubcategory`、`CATEGORY_DATA` 等）
+- **清理 `gacha-main.ts`**：只保留 Recur 金流相關路由（checkout、webhook）
+
+#### 保留的功能
+- `POST /api/gacha/itinerary/v3` - 主要行程扭蛋 API
+- `POST /api/gacha/pull/v3` - 單一景點抽取
+- `POST /api/gacha/submit-trip` - 提交行程到官網 SEO
+- `POST /api/checkout/create-session` - Recur 結帳
+- `GET /api/checkout/session/:sessionId` - 查詢結帳
+- `POST /api/webhooks/recur` - Recur webhook
+
+#### 原因
+- V3 已穩定運作，V1/V2 及舊版行程生成無人使用
+- 減少維護負擔、簡化程式碼結構
+
+---
 
 ### 2026-01-01 - 深度審核腳本優化與黑名單共用模組
 

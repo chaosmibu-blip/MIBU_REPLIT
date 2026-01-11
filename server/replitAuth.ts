@@ -849,13 +849,13 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
       };
       return next();
     }
-    return res.status(401).json({ message: "Invalid token" });
+    return res.status(401).json({ error: "Invalid token", code: "INVALID_TOKEN" });
   }
 
   const user = req.user as any;
 
   if (!req.isAuthenticated() || !user.expires_at) {
-    return res.status(401).json({ message: "Unauthorized" });
+    return res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -865,7 +865,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
 
   const refreshToken = user.refresh_token;
   if (!refreshToken) {
-    res.status(401).json({ message: "Unauthorized" });
+    res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
     return;
   }
 
@@ -875,7 +875,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     updateUserSession(user, tokenResponse);
     return next();
   } catch (error) {
-    res.status(401).json({ message: "Unauthorized" });
+    res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
     return;
   }
 };
@@ -886,13 +886,13 @@ export const requireRole = (...allowedRoles: string[]): RequestHandler => {
     const user = req.user as any;
     
     if (!req.isAuthenticated() || !user?.claims?.sub) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return res.status(401).json({ error: "Unauthorized", code: "UNAUTHORIZED" });
     }
     
     try {
       const dbUser = await storage.getUser(user.claims.sub);
       if (!dbUser) {
-        return res.status(401).json({ message: "User not found" });
+        return res.status(401).json({ error: "User not found", code: "USER_NOT_FOUND" });
       }
       
       const userRole = dbUser.role || 'traveler';
@@ -901,7 +901,7 @@ export const requireRole = (...allowedRoles: string[]): RequestHandler => {
       const isSuperAdmin = dbUser.email === SUPER_ADMIN_EMAIL;
       
       if (!isSuperAdmin && !allowedRoles.includes(userRole)) {
-        return res.status(403).json({ message: "Forbidden: insufficient permissions" });
+        return res.status(403).json({ error: "Forbidden: insufficient permissions", code: "FORBIDDEN" });
       }
       
       // Attach role to request for downstream use
