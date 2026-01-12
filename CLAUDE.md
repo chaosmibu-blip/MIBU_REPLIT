@@ -126,6 +126,7 @@ server/                   # ⭐ 後端 API
 │   └── ...
 ├── lib/                  # 工具函式庫
 │   ├── placeGenerator/   # 景點生成引擎 (Gemini)
+│   ├── merchantPermissions.ts # 商家權限檢查
 │   ├── categoryMapping.ts
 │   ├── placeBlacklist.ts
 │   ├── timeSlotInferrer.ts

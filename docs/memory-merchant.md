@@ -109,10 +109,10 @@ R:   32%  // 最常見
 - `GET /api/merchants/me/analytics` - 取得數據
 
 ### 店家認領
-- `POST /api/merchants/places/claim` - 認領店家
-- `GET /api/merchants/places` - 列出已認領店家
-- `PATCH /api/merchants/places/:id` - 更新店家資料
-- `DELETE /api/merchants/places/:id` - 取消認領
+- `POST /api/merchant/places/claim` - 認領已有景點
+- `POST /api/merchant/places/new` - 新增自有景點（待審核）
+- `GET /api/merchant/places` - 列出已認領店家
+- `PUT /api/merchant/places/:id` - 更新店家資料
 
 ### 優惠券管理
 - `POST /api/merchants/coupons` - 建立優惠券模板
@@ -434,6 +434,8 @@ const checkPlaceCardPermission = (tier: string, feature: string) => {
 
 ## 待開發功能
 - [x] 訂閱方案權限定義 ← 已完成
+- [x] 權限檢查 API（canAddPlaceCard, canAddCoupon, isRarityAllowed）← 2026-01-12
+- [x] 商家自建景點審核流程（place_drafts）← 2026-01-12
 - [ ] Stripe 訂閱整合
 - [ ] Recur 訂閱整合
 - [ ] 商家儀表板
@@ -444,6 +446,15 @@ const checkPlaceCardPermission = (tier: string, feature: string) => {
 ---
 
 ## Changelog
+
+### 2026-01-12 - 權限檢查實作與商家自建景點
+- **權限檢查實作**：`server/lib/merchantPermissions.ts`
+  - `canAddPlaceCard()` - 檢查商家可否新增景點
+  - `canAddCoupon()` - 檢查景點可否新增優惠券
+  - `isRarityAllowed()` - 檢查稀有度是否允許
+- **新增錯誤碼**：`PLACE_LIMIT_REACHED` (E4009)、`COUPON_LIMIT_REACHED` (E4010)、`RARITY_NOT_ALLOWED` (E4011)
+- **商家自建景點**：`POST /api/merchant/places/new` 建立 `place_drafts` 待審核記錄
+- **Storage 擴展**：`locationStorage` 新增 `getCategoryByCode`、`getCategoryByNameZh`、`getSubcategoryByNameZh`
 
 ### 2026-01-05 - 訂閱方案權限重新定義
 - **商家等級（Merchant Tier）**：Free/Pro/Premium，控制行程卡數量與數據分析
