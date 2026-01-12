@@ -146,11 +146,32 @@ export const gachaStorage = {
     const [item] = await db.select().from(userInventory)
       .where(and(eq(userInventory.id, itemId), eq(userInventory.userId, userId)));
     if (!item) return false;
-    
+
     await db.update(userInventory)
       .set({ isDeleted: true, deletedAt: new Date(), status: 'deleted' })
       .where(eq(userInventory.id, itemId));
     return true;
+  },
+
+  async redeemInventoryItem(itemId: number, userId: string): Promise<UserInventoryItem | null> {
+    const [item] = await db.select().from(userInventory)
+      .where(and(
+        eq(userInventory.id, itemId),
+        eq(userInventory.userId, userId),
+        eq(userInventory.isDeleted, false),
+        eq(userInventory.isRedeemed, false)
+      ));
+    if (!item) return null;
+
+    const [updated] = await db.update(userInventory)
+      .set({
+        isRedeemed: true,
+        redeemedAt: new Date(),
+        status: 'redeemed',
+      })
+      .where(eq(userInventory.id, itemId))
+      .returning();
+    return updated || null;
   },
 
   async getInventoryItemById(itemId: number, userId: string): Promise<UserInventoryItem | undefined> {
