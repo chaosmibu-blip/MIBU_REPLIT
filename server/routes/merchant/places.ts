@@ -260,6 +260,17 @@ router.put("/:linkId", isAuthenticated, async (req: any, res) => {
       isPromoActive
     });
 
+    // 當更新優惠資訊時，通知擁有該景點圖鑑的用戶
+    if (updated && updated.officialPlaceId && (promoTitle || promoDescription)) {
+      try {
+        const notifiedCount = await storage.notifyCollectionHolders(updated.officialPlaceId);
+        console.log(`[Notification] Notified ${notifiedCount} users about place ${updated.officialPlaceId} promo update`);
+      } catch (notifyError) {
+        console.error("[Notification] Failed to notify collection holders:", notifyError);
+        // 不影響主要操作
+      }
+    }
+
     res.json({ success: true, link: updated });
   } catch (error) {
     console.error("Update merchant place error:", error);
