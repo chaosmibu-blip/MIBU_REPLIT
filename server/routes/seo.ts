@@ -18,7 +18,7 @@ function generateSlug(text: string): string {
 router.get("/cities", async (req: Request, res: Response) => {
   try {
     const { country } = req.query;
-    
+
     const conditions = [eq(places.isActive, true)];
     if (country) {
       conditions.push(eq(places.country, country as string));
@@ -36,15 +36,28 @@ router.get("/cities", async (req: Request, res: Response) => {
       .groupBy(places.city, places.country)
       .orderBy(desc(sql`count(*)`));
 
+    // 取得每個城市的行程數量
+    const tripCounts = await db
+      .select({
+        city: gachaAiLogs.city,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(gachaAiLogs)
+      .where(eq(gachaAiLogs.isPublished, true))
+      .groupBy(gachaAiLogs.city);
+
+    const tripCountMap = new Map(tripCounts.map(t => [t.city, t.count]));
+
     const cities = citiesData.map((city) => ({
       name: city.city,
       slug: generateSlug(city.city),
       country: city.country,
       placeCount: city.count,
+      tripCount: tripCountMap.get(city.city) || 0,
       imageUrl: city.sampleImage || null,
     }));
 
-    res.json({ 
+    res.json({
       cities,
       total: cities.length,
       message: cities.length === 0 ? '目前還沒有城市資料' : undefined,
@@ -142,6 +155,72 @@ router.get("/cities/:slug", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error fetching city details:", error);
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得城市詳情'));
+  }
+});
+
+// 相關城市 API（同國家的其他城市）
+router.get("/cities/:slug/related", async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+    const { limit = '6' } = req.query;
+    const limitNum = Math.min(12, Math.max(1, parseInt(limit as string) || 6));
+
+    // 先找到目標城市
+    const [matchedCity] = await db
+      .select({
+        city: places.city,
+        country: places.country,
+      })
+      .from(places)
+      .where(and(
+        eq(places.isActive, true),
+        sql`lower(replace(replace(${places.city}, ' ', '-'), '''', '')) = ${slug}`
+      ))
+      .groupBy(places.city, places.country)
+      .limit(1);
+
+    if (!matchedCity) {
+      return res.status(404).json(createErrorResponse(ErrorCode.REGION_NOT_FOUND, '找不到該城市'));
+    }
+
+    // 找同國家的其他城市
+    const relatedCitiesData = await db
+      .select({
+        city: places.city,
+        country: places.country,
+        count: sql<number>`count(*)::int`,
+        sampleImage: sql<string>`min(${places.photoReference})`,
+      })
+      .from(places)
+      .where(and(
+        eq(places.isActive, true),
+        eq(places.country, matchedCity.country),
+        sql`${places.city} != ${matchedCity.city}`
+      ))
+      .groupBy(places.city, places.country)
+      .orderBy(desc(sql`count(*)`))
+      .limit(limitNum);
+
+    const relatedCities = relatedCitiesData.map((city) => ({
+      name: city.city,
+      slug: generateSlug(city.city),
+      country: city.country,
+      placeCount: city.count,
+      imageUrl: city.sampleImage || null,
+    }));
+
+    res.json({
+      city: {
+        name: matchedCity.city,
+        slug: slug,
+        country: matchedCity.country,
+      },
+      relatedCities,
+      total: relatedCities.length,
+    });
+  } catch (error) {
+    console.error("Error fetching related cities:", error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得相關城市'));
   }
 });
 
@@ -667,6 +746,86 @@ router.get("/trips/:id", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error fetching trip details:", error);
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得行程詳情'));
+  }
+});
+
+// 相關行程 API（同城市/區域的其他行程）
+router.get("/trips/:id/related", async (req: Request, res: Response) => {
+  try {
+    const tripId = parseInt(req.params.id);
+    const { limit = '6' } = req.query;
+    const limitNum = Math.min(12, Math.max(1, parseInt(limit as string) || 6));
+
+    if (isNaN(tripId)) {
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的行程 ID'));
+    }
+
+    // 取得目標行程
+    const [trip] = await db
+      .select({
+        id: gachaAiLogs.id,
+        city: gachaAiLogs.city,
+        district: gachaAiLogs.district,
+      })
+      .from(gachaAiLogs)
+      .where(and(
+        eq(gachaAiLogs.id, tripId),
+        eq(gachaAiLogs.isPublished, true)
+      ))
+      .limit(1);
+
+    if (!trip) {
+      return res.status(404).json(createErrorResponse(ErrorCode.RESOURCE_NOT_FOUND, '找不到該行程'));
+    }
+
+    // 找同城市（優先同區域）的其他行程
+    const relatedTripsData = await db
+      .select({
+        id: gachaAiLogs.id,
+        sessionId: gachaAiLogs.sessionId,
+        city: gachaAiLogs.city,
+        district: gachaAiLogs.district,
+        aiReason: gachaAiLogs.aiReason,
+        tripImageUrl: gachaAiLogs.tripImageUrl,
+        orderedPlaceIds: gachaAiLogs.orderedPlaceIds,
+        publishedAt: gachaAiLogs.publishedAt,
+      })
+      .from(gachaAiLogs)
+      .where(and(
+        eq(gachaAiLogs.isPublished, true),
+        eq(gachaAiLogs.city, trip.city),
+        sql`${gachaAiLogs.id} != ${tripId}`
+      ))
+      .orderBy(
+        // 優先同區域
+        sql`CASE WHEN ${gachaAiLogs.district} = ${trip.district} THEN 0 ELSE 1 END`,
+        desc(gachaAiLogs.publishedAt)
+      )
+      .limit(limitNum);
+
+    const relatedTrips = relatedTripsData.map((t) => ({
+      id: t.id,
+      title: `${t.city}${t.district ? t.district : ''} 一日遊`,
+      city: t.city,
+      district: t.district,
+      description: t.aiReason,
+      imageUrl: t.tripImageUrl,
+      placeCount: t.orderedPlaceIds?.slice(0, 5).length || 0,
+      publishedAt: t.publishedAt,
+    }));
+
+    res.json({
+      trip: {
+        id: trip.id,
+        city: trip.city,
+        district: trip.district,
+      },
+      relatedTrips,
+      total: relatedTrips.length,
+    });
+  } catch (error) {
+    console.error("Error fetching related trips:", error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得相關行程'));
   }
 });
 
