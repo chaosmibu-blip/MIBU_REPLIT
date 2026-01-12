@@ -119,7 +119,7 @@ router.post('/register', async (req, res) => {
   } catch (error: any) {
     console.error("Registration error:", error);
     if (error.name === 'ZodError') {
-      return res.status(400).json({ error: '輸入資料格式錯誤', details: error.errors });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', error.errors));
     }
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '註冊失敗，請稍後再試'));
   }
@@ -189,7 +189,7 @@ router.post('/register/merchant', async (req, res) => {
   } catch (error: any) {
     console.error("Merchant registration error:", error);
     if (error.name === 'ZodError') {
-      return res.status(400).json({ error: '輸入資料格式錯誤', details: error.errors });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', error.errors));
     }
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '註冊失敗，請稍後再試'));
   }
@@ -251,7 +251,7 @@ router.post('/register/specialist', async (req, res) => {
   } catch (error: any) {
     console.error("Specialist registration error:", error);
     if (error.name === 'ZodError') {
-      return res.status(400).json({ error: '輸入資料格式錯誤', details: error.errors });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', error.errors));
     }
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '註冊失敗，請稍後再試'));
   }
@@ -329,20 +329,19 @@ router.post('/login', async (req, res) => {
     }
     
     if (user.role !== targetRole) {
-      return res.status(403).json({ 
-        error: `您的帳號角色為 ${user.role}，無法從 ${targetRole} 入口登入。請使用正確的入口或註冊新帳號。`,
-        code: 'ROLE_MISMATCH',
-        currentRole: user.role,
-        targetRole: targetRole,
-      });
+      return res.status(403).json(createErrorResponse(
+        ErrorCode.ROLE_MISMATCH,
+        `您的帳號角色為 ${user.role}，無法從 ${targetRole} 入口登入。請使用正確的入口或註冊新帳號。`,
+        { currentRole: user.role, targetRole: targetRole }
+      ));
     }
     
     if (user.role !== 'traveler' && !user.isApproved) {
-      return res.status(403).json({ 
-        error: '帳號審核中，請等待管理員核准',
-        code: 'PENDING_APPROVAL',
-        isApproved: user.isApproved 
-      });
+      return res.status(403).json(createErrorResponse(
+        ErrorCode.PENDING_APPROVAL,
+        '帳號審核中，請等待管理員核准',
+        { isApproved: user.isApproved }
+      ));
     }
     
     const token = generateToken(user.id, user.role || 'traveler');
@@ -481,15 +480,11 @@ router.post('/apple', async (req, res) => {
     const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
     
     if (!isSuperAdmin && user.role !== 'traveler' && !user.isApproved) {
-      return res.status(403).json({
-        success: false,
-        error: '帳號審核中，請等待管理員核准',
-        code: 'PENDING_APPROVAL',
-      });
+      return res.status(403).json(createErrorResponse(ErrorCode.PENDING_APPROVAL, '帳號審核中，請等待管理員核准'));
     }
-    
+
     const token = generateToken(user.id, user.role || 'traveler');
-    
+
     res.json({
       success: true,
       token,
@@ -640,15 +635,11 @@ router.post('/google', async (req, res) => {
     const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
     
     if (!isSuperAdmin && user.role !== 'traveler' && !user.isApproved) {
-      return res.status(403).json({
-        success: false,
-        error: '帳號審核中，請等待管理員核准',
-        code: 'PENDING_APPROVAL',
-      });
+      return res.status(403).json(createErrorResponse(ErrorCode.PENDING_APPROVAL, '帳號審核中，請等待管理員核准'));
     }
-    
+
     const token = generateToken(user.id, user.role || 'traveler');
-    
+
     res.json({
       success: true,
       token,
@@ -702,7 +693,7 @@ router.get('/user', isAuthenticated, async (req: any, res) => {
     });
   } catch (error) {
     console.error("Error fetching user:", error);
-    res.status(500).json({ message: "Failed to fetch user" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, 'Failed to fetch user'));
   }
 });
 
@@ -725,10 +716,7 @@ router.post('/switch-role', isAuthenticated, async (req: any, res) => {
       : [user?.role || 'traveler'];
     
     if (!accessibleRoles.includes(targetRole)) {
-      return res.status(403).json({ 
-        error: '您沒有權限切換到此角色', 
-        code: 'ROLE_NOT_ACCESSIBLE' 
-      });
+      return res.status(403).json(createErrorResponse(ErrorCode.ROLE_NOT_ACCESSIBLE, '您沒有權限切換到此角色'));
     }
     
     if (req.session) {
@@ -786,7 +774,7 @@ router.post('/switch-role', isAuthenticated, async (req: any, res) => {
   } catch (error: any) {
     console.error("Switch role error:", error);
     if (error.name === 'ZodError') {
-      return res.status(400).json({ error: '無效的角色', code: 'INVALID_ROLE' });
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_ROLE, '無效的角色'));
     }
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '切換角色失敗'));
   }
@@ -893,7 +881,7 @@ profileRouter.patch('/profile', isAuthenticated, async (req: any, res) => {
   } catch (error: any) {
     console.error('Update profile error:', error);
     if (error.name === 'ZodError') {
-      return res.status(400).json({ error: '資料格式錯誤', details: error.errors });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '資料格式錯誤', error.errors));
     }
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法更新用戶資料'));
   }

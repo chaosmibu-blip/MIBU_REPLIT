@@ -6,6 +6,7 @@ import { isAuthenticated } from "../../replitAuth";
 import { GACHA_DEDUP_LIMIT, guestSessionDedup, cleanupGuestSessions } from "../../lib/utils/gacha";
 import { inferTimeSlot, sortPlacesByTimeSlot, type TimeSlot } from "../../lib/timeSlotInferrer";
 import { getLocalizedDescription } from "./shared";
+import { ErrorCode, createErrorResponse } from "@shared/errors";
 
 const router = Router();
 
@@ -14,7 +15,7 @@ router.post("/gacha/pull/v3", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required", code: "UNAUTHORIZED" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const pullSchema = z.object({
@@ -150,10 +151,10 @@ router.post("/gacha/pull/v3", isAuthenticated, async (req: any, res) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: "參數格式錯誤", code: "VALIDATION_ERROR", details: error.errors });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '參數格式錯誤', error.errors));
     }
     console.error("Gacha pull v3 error:", error);
-    res.status(500).json({ error: "抽取失敗，請稍後再試", code: "SERVER_ERROR" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '抽取失敗，請稍後再試'));
   }
 });
 
@@ -1146,22 +1147,13 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
     });
   } catch (error) {
     console.error("[Gacha V3] Error:", error);
-    
+
     if (error instanceof z.ZodError) {
       const firstError = error.errors[0];
-      return res.status(400).json({ 
-        success: false,
-        error: firstError?.message || "請求參數格式錯誤",
-        code: "INVALID_PARAMS",
-        details: error.errors
-      });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, firstError?.message || "請求參數格式錯誤", error.errors));
     }
-    
-    res.status(500).json({ 
-      success: false,
-      error: "扭蛋系統暫時無法使用，請稍後再試",
-      code: "INTERNAL_ERROR"
-    });
+
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, "扭蛋系統暫時無法使用，請稍後再試"));
   }
 });
 

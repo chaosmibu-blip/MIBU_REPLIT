@@ -3,6 +3,7 @@ import { db } from "../../db";
 import { subscriptionPlans, insertSubscriptionPlanSchema } from "@shared/schema";
 import { eq, asc } from "drizzle-orm";
 import { hasAdminAccess } from "./shared";
+import { ErrorCode, createErrorResponse } from "@shared/errors";
 
 // 管理 Router（掛載在 /admin 下）
 const adminRouter = Router();
@@ -13,17 +14,17 @@ const publicRouter = Router();
 const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {
   const queryKey = req.query.key as string;
   const adminKey = process.env.ADMIN_MIGRATION_KEY;
-  
+
   if (queryKey && adminKey && queryKey === adminKey) {
     return next();
   }
-  
+
   const hasAccess = await hasAdminAccess(req);
   if (hasAccess) {
     return next();
   }
-  
-  return res.status(401).json({ error: "Unauthorized" });
+
+  return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 };
 
 // ============ 公開 API (官網讀取方案) ============
@@ -57,7 +58,7 @@ publicRouter.get("/subscription-plans", async (req: Request, res: Response) => {
     res.json({ plans: publicPlans });
   } catch (error) {
     console.error("Error fetching subscription plans:", error);
-    res.status(500).json({ error: "Failed to fetch subscription plans" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '取得訂閱方案失敗'));
   }
 });
 
@@ -73,7 +74,7 @@ adminRouter.get("/subscription-plans", requireAdmin, async (req: Request, res: R
     res.json({ plans });
   } catch (error) {
     console.error("Error fetching subscription plans:", error);
-    res.status(500).json({ error: "Failed to fetch subscription plans" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '取得訂閱方案失敗'));
   }
 });
 
@@ -86,13 +87,13 @@ adminRouter.get("/subscription-plans/:tier", requireAdmin, async (req: Request, 
       .where(eq(subscriptionPlans.tier, tier));
 
     if (!plan) {
-      return res.status(404).json({ error: "Subscription plan not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.PLAN_NOT_FOUND));
     }
 
     res.json({ plan });
   } catch (error) {
     console.error("Error fetching subscription plan:", error);
-    res.status(500).json({ error: "Failed to fetch subscription plan" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '取得訂閱方案失敗'));
   }
 });
 
@@ -100,7 +101,7 @@ adminRouter.post("/subscription-plans", requireAdmin, async (req: Request, res: 
   try {
     const parsed = insertSubscriptionPlanSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', parsed.error.flatten()));
     }
 
     const [newPlan] = await db
@@ -112,20 +113,20 @@ adminRouter.post("/subscription-plans", requireAdmin, async (req: Request, res: 
   } catch (error: any) {
     console.error("Error creating subscription plan:", error);
     if (error.code === "23505") {
-      return res.status(409).json({ error: "Tier already exists" });
+      return res.status(409).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '此方案等級已存在'));
     }
-    res.status(500).json({ error: "Failed to create subscription plan" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '建立訂閱方案失敗'));
   }
 });
 
 adminRouter.put("/subscription-plans/:tier", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { tier } = req.params;
-    
+
     const updateSchema = insertSubscriptionPlanSchema.partial();
     const parsed = updateSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', parsed.error.flatten()));
     }
 
     const [updatedPlan] = await db
@@ -138,22 +139,22 @@ adminRouter.put("/subscription-plans/:tier", requireAdmin, async (req: Request, 
       .returning();
 
     if (!updatedPlan) {
-      return res.status(404).json({ error: "Subscription plan not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.PLAN_NOT_FOUND));
     }
 
     res.json({ plan: updatedPlan });
   } catch (error) {
     console.error("Error updating subscription plan:", error);
-    res.status(500).json({ error: "Failed to update subscription plan" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '更新訂閱方案失敗'));
   }
 });
 
 adminRouter.delete("/subscription-plans/:tier", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { tier } = req.params;
-    
+
     if (tier === 'free') {
-      return res.status(400).json({ error: "Cannot delete the free plan" });
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無法刪除免費方案'));
     }
 
     const [deactivatedPlan] = await db
@@ -166,13 +167,13 @@ adminRouter.delete("/subscription-plans/:tier", requireAdmin, async (req: Reques
       .returning();
 
     if (!deactivatedPlan) {
-      return res.status(404).json({ error: "Subscription plan not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.PLAN_NOT_FOUND));
     }
 
     res.json({ success: true, message: `Plan ${tier} has been deactivated` });
   } catch (error) {
     console.error("Error deleting subscription plan:", error);
-    res.status(500).json({ error: "Failed to delete subscription plan" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '刪除訂閱方案失敗'));
   }
 });
 
@@ -272,14 +273,14 @@ adminRouter.post("/subscription-plans/seed", requireAdmin, async (req: Request, 
       .from(subscriptionPlans)
       .orderBy(asc(subscriptionPlans.sortOrder));
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: "Default subscription plans have been seeded",
-      plans: allPlans 
+      plans: allPlans
     });
   } catch (error) {
     console.error("Error seeding subscription plans:", error);
-    res.status(500).json({ error: "Failed to seed subscription plans" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '初始化訂閱方案失敗'));
   }
 });
 

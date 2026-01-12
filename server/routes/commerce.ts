@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { storage } from "../storage";
+import { ErrorCode, createErrorResponse } from "@shared/errors";
 
 const router = Router();
 
@@ -9,7 +10,7 @@ router.get("/places/names", async (req, res) => {
     res.json({ names });
   } catch (error) {
     console.error("Get place names error:", error);
-    res.status(500).json({ error: "Failed to get place names" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得景點名稱'));
   }
 });
 
@@ -23,7 +24,7 @@ router.get("/places/search", async (req, res) => {
     res.json(places);
   } catch (error) {
     console.error("Place search error:", error);
-    res.status(500).json({ error: "Failed to search places" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '搜尋景點失敗'));
   }
 });
 
@@ -34,7 +35,7 @@ router.get("/products/place/:placeId", async (req, res) => {
     res.json(products);
   } catch (error) {
     console.error("Get products error:", error);
-    res.status(500).json({ error: "Failed to get products" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得商品'));
   }
 });
 
@@ -48,7 +49,7 @@ router.get("/products/by-name", async (req, res) => {
     res.json({ products });
   } catch (error) {
     console.error("Get products by name error:", error);
-    res.status(500).json({ error: "Failed to get products" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得商品'));
   }
 });
 

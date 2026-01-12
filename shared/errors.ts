@@ -21,6 +21,10 @@ export enum ErrorCode {
   ROLE_MISMATCH = 'E1007',
   ROLE_NOT_ACCESSIBLE = 'E1008',
   INVALID_ROLE = 'E1009',
+  ADMIN_REQUIRED = 'E1010',
+  FORBIDDEN = 'E1011',
+  SPECIALIST_REQUIRED = 'E1012',
+  ALREADY_REGISTERED = 'E1013',
   
   // Gacha 扭蛋相關 (E2xxx)
   GACHA_NO_CREDITS = 'E2001',
@@ -49,23 +53,49 @@ export enum ErrorCode {
   VALIDATION_ERROR = 'E5001',
   INVALID_PARAMS = 'E5002',
   MISSING_REQUIRED_FIELD = 'E5003',
+  CONFIG_READONLY = 'E5004',
+  INVITE_EXPIRED = 'E5005',
+  INVITE_ALREADY_USED = 'E5006',
+  ALREADY_CLAIMED = 'E5007',
+  ALREADY_ACTIVE = 'E5008',
+  ALREADY_PROCESSED = 'E5009',
+  ALREADY_COMPLETED = 'E5010',
   
   // Resource 資源相關 (E6xxx)
   RESOURCE_NOT_FOUND = 'E6001',
   USER_NOT_FOUND = 'E6002',
   COLLECTION_NOT_FOUND = 'E6003',
   INVENTORY_ITEM_NOT_FOUND = 'E6004',
+  PLACE_NOT_FOUND = 'E6005',
+  ANNOUNCEMENT_NOT_FOUND = 'E6006',
+  CONFIG_NOT_FOUND = 'E6007',
+  DRAFT_NOT_FOUND = 'E6008',
+  SUBSCRIPTION_NOT_FOUND = 'E6009',
+  PLAN_NOT_FOUND = 'E6010',
+  SERVICE_NOT_FOUND = 'E6011',
+  PRODUCT_NOT_FOUND = 'E6012',
+  SOS_NOT_FOUND = 'E6013',
+  INVITE_NOT_FOUND = 'E6014',
+  EXCLUSION_NOT_FOUND = 'E6015',
+  APPLICATION_NOT_FOUND = 'E6016',
+  CONVERSATION_NOT_FOUND = 'E6017',
+  AD_NOT_FOUND = 'E6018',
+  TRANSACTION_NOT_FOUND = 'E6019',
   
   // Payment 支付相關 (E7xxx)
   PAYMENT_FAILED = 'E7001',
   SUBSCRIPTION_EXPIRED = 'E7002',
   INSUFFICIENT_BALANCE = 'E7003',
   
-  // Server 伺服器相關 (E9xxx)
+  // Server/Config 伺服器相關 (E9xxx)
   SERVER_ERROR = 'E9001',
   INTERNAL_ERROR = 'E9002',
   SERVICE_UNAVAILABLE = 'E9003',
   RATE_LIMITED = 'E9004',
+  CHAT_NOT_CONFIGURED = 'E9005',
+  WEBHOOK_NOT_CONFIGURED = 'E9006',
+  PAYMENT_NOT_CONFIGURED = 'E9007',
+  TWILIO_NOT_CONFIGURED = 'E9008',
 }
 
 // ============ Error Messages (Backend Default) ============
@@ -81,6 +111,10 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.ROLE_MISMATCH]: '帳號類型不符',
   [ErrorCode.ROLE_NOT_ACCESSIBLE]: '您沒有權限切換到此角色',
   [ErrorCode.INVALID_ROLE]: '無效的角色',
+  [ErrorCode.ADMIN_REQUIRED]: '需要管理員權限',
+  [ErrorCode.FORBIDDEN]: '無權限執行此操作',
+  [ErrorCode.SPECIALIST_REQUIRED]: '需要專員身份',
+  [ErrorCode.ALREADY_REGISTERED]: '已經註冊過',
   
   // Gacha
   [ErrorCode.GACHA_NO_CREDITS]: '扭蛋次數不足',
@@ -109,12 +143,34 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.VALIDATION_ERROR]: '輸入資料格式錯誤',
   [ErrorCode.INVALID_PARAMS]: '無效的參數',
   [ErrorCode.MISSING_REQUIRED_FIELD]: '缺少必要欄位',
+  [ErrorCode.CONFIG_READONLY]: '此設定為唯讀',
+  [ErrorCode.INVITE_EXPIRED]: '邀請已過期',
+  [ErrorCode.INVITE_ALREADY_USED]: '邀請已被使用',
+  [ErrorCode.ALREADY_CLAIMED]: '已被認領',
+  [ErrorCode.ALREADY_ACTIVE]: '已有進行中的服務',
+  [ErrorCode.ALREADY_PROCESSED]: '已處理',
+  [ErrorCode.ALREADY_COMPLETED]: '已完成',
   
   // Resource
   [ErrorCode.RESOURCE_NOT_FOUND]: '找不到資源',
   [ErrorCode.USER_NOT_FOUND]: '找不到用戶資料',
   [ErrorCode.COLLECTION_NOT_FOUND]: '找不到收藏',
   [ErrorCode.INVENTORY_ITEM_NOT_FOUND]: '找不到道具',
+  [ErrorCode.PLACE_NOT_FOUND]: '找不到景點',
+  [ErrorCode.ANNOUNCEMENT_NOT_FOUND]: '找不到公告',
+  [ErrorCode.CONFIG_NOT_FOUND]: '找不到設定',
+  [ErrorCode.DRAFT_NOT_FOUND]: '找不到草稿',
+  [ErrorCode.SUBSCRIPTION_NOT_FOUND]: '找不到訂閱',
+  [ErrorCode.PLAN_NOT_FOUND]: '找不到方案',
+  [ErrorCode.SERVICE_NOT_FOUND]: '找不到服務',
+  [ErrorCode.PRODUCT_NOT_FOUND]: '找不到商品',
+  [ErrorCode.SOS_NOT_FOUND]: '找不到求救記錄',
+  [ErrorCode.INVITE_NOT_FOUND]: '找不到邀請',
+  [ErrorCode.EXCLUSION_NOT_FOUND]: '找不到排除項目',
+  [ErrorCode.APPLICATION_NOT_FOUND]: '找不到申請',
+  [ErrorCode.CONVERSATION_NOT_FOUND]: '找不到對話',
+  [ErrorCode.AD_NOT_FOUND]: '找不到廣告',
+  [ErrorCode.TRANSACTION_NOT_FOUND]: '找不到交易',
   
   // Payment
   [ErrorCode.PAYMENT_FAILED]: '付款失敗',
@@ -126,6 +182,10 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.INTERNAL_ERROR]: '內部錯誤',
   [ErrorCode.SERVICE_UNAVAILABLE]: '服務暫時無法使用',
   [ErrorCode.RATE_LIMITED]: '請求過於頻繁，請稍後再試',
+  [ErrorCode.CHAT_NOT_CONFIGURED]: '聊天服務未設定',
+  [ErrorCode.WEBHOOK_NOT_CONFIGURED]: 'Webhook 未設定',
+  [ErrorCode.PAYMENT_NOT_CONFIGURED]: '支付系統未設定',
+  [ErrorCode.TWILIO_NOT_CONFIGURED]: 'Twilio 未設定',
 };
 
 // ============ Helper Functions ============

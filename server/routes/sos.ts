@@ -32,8 +32,8 @@ router.post('/sos/alert', isAuthenticated, async (req: any, res) => {
 
     const hasPurchased = await storage.hasUserPurchasedTripService(userId);
     if (!hasPurchased) {
-      return res.status(403).json({ 
-        error: '需購買旅程服務才能使用 SOS 求救功能',
+      return res.status(403).json({
+        ...createErrorResponse(ErrorCode.FORBIDDEN, '需購買旅程服務才能使用 SOS 求救功能'),
         requiresPurchase: true
       });
     }
@@ -52,7 +52,7 @@ router.post('/sos/alert', isAuthenticated, async (req: any, res) => {
   } catch (error: any) {
     console.error('Create SOS alert error:', error);
     if (error.name === 'ZodError') {
-      return res.status(400).json({ error: '資料格式錯誤', details: error.errors });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '資料格式錯誤', error.errors));
     }
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法發送求救訊號'));
   }
@@ -80,11 +80,11 @@ router.patch('/sos/alerts/:id/cancel', isAuthenticated, async (req: any, res) =>
 
     const alert = await storage.getSosAlertById(alertId);
     if (!alert || alert.userId !== userId) {
-      return res.status(404).json({ error: '找不到求救記錄' });
+      return res.status(404).json(createErrorResponse(ErrorCode.SOS_NOT_FOUND));
     }
 
     if (alert.status !== 'pending') {
-      return res.status(400).json({ error: '無法取消已處理的求救' });
+      return res.status(400).json(createErrorResponse(ErrorCode.ALREADY_PROCESSED, '無法取消已處理的求救'));
     }
 
     const updated = await storage.updateSosAlertStatus(alertId, 'cancelled');
@@ -146,10 +146,10 @@ router.post('/location/update', isAuthenticated, async (req: any, res) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ status: "error", error: error.errors });
+      return res.status(400).json({ status: "error", ...createErrorResponse(ErrorCode.VALIDATION_ERROR, '位置資料格式錯誤', error.errors) });
     }
     console.error("Error updating location:", error);
-    res.status(500).json({ status: "error", error: "Failed to update location" });
+    res.status(500).json({ status: "error", ...createErrorResponse(ErrorCode.SERVER_ERROR, '無法更新位置') });
   }
 });
 
@@ -160,7 +160,7 @@ router.get('/location/me', isAuthenticated, async (req: any, res) => {
     res.json(location || null);
   } catch (error) {
     console.error("Error fetching location:", error);
-    res.status(500).json({ error: "Failed to fetch location" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得位置'));
   }
 });
 
@@ -179,13 +179,13 @@ router.post('/sos/trigger', async (req, res) => {
   try {
     if (!key) {
       console.log('🚨 SOS Trigger Failed: Missing key');
-      return res.status(401).json({ status: "error", error: "Missing SOS key" });
+      return res.status(401).json({ status: "error", ...createErrorResponse(ErrorCode.AUTH_REQUIRED, '缺少 SOS 金鑰') });
     }
 
     const user = await storage.getUserBySosKey(key);
     if (!user) {
       console.log('🚨 SOS Trigger Failed: Invalid key');
-      return res.status(401).json({ status: "error", error: "Invalid SOS key" });
+      return res.status(401).json({ status: "error", ...createErrorResponse(ErrorCode.AUTH_TOKEN_INVALID, '無效的 SOS 金鑰') });
     }
 
     console.log('🚨 SOS Trigger Authenticated:', { userId: user.id, userName: `${user.firstName} ${user.lastName}` });
@@ -207,7 +207,7 @@ router.post('/sos/trigger', async (req, res) => {
       // Just enable SOS mode without updating location
       location = await storage.setSosMode(user.id, true);
     } else {
-      return res.status(400).json({ status: "error", error: "No location data available. Please provide lat/lon." });
+      return res.status(400).json({ status: "error", ...createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, '沒有位置資料，請提供 lat/lon') });
     }
 
     // TODO: Notify planner via push notification or SMS
@@ -220,10 +220,10 @@ router.post('/sos/trigger', async (req, res) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ status: "error", error: error.errors });
+      return res.status(400).json({ status: "error", ...createErrorResponse(ErrorCode.VALIDATION_ERROR, '資料格式錯誤', error.errors) });
     }
     console.error("Error triggering SOS:", error);
-    res.status(500).json({ status: "error", error: "Failed to trigger SOS" });
+    res.status(500).json({ status: "error", ...createErrorResponse(ErrorCode.SERVER_ERROR, '無法觸發 SOS') });
   }
 });
 
@@ -236,14 +236,14 @@ router.post('/sos/deactivate', isAuthenticated, async (req: any, res) => {
     const location = await storage.setSosMode(userId, false);
     
     if (!location) {
-      return res.status(404).json({ status: "error", error: "No location found" });
+      return res.status(404).json({ status: "error", ...createErrorResponse(ErrorCode.RESOURCE_NOT_FOUND, '找不到位置資料') });
     }
 
     console.log(`[SOS DEACTIVATED] User ${userId} deactivated SOS mode`);
     res.json({ status: "ok", message: "SOS mode deactivated", location });
   } catch (error) {
     console.error("Error deactivating SOS:", error);
-    res.status(500).json({ status: "error", error: "Failed to deactivate SOS" });
+    res.status(500).json({ status: "error", ...createErrorResponse(ErrorCode.SERVER_ERROR, '無法關閉 SOS 模式') });
   }
 });
 
@@ -256,7 +256,7 @@ router.get('/user/sos-link', isAuthenticated, async (req: any, res) => {
     const user = await storage.getUser(userId);
     
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.USER_NOT_FOUND));
     }
 
     let sosKey = user.sosSecretKey;
@@ -285,7 +285,7 @@ router.get('/user/sos-link', isAuthenticated, async (req: any, res) => {
     });
   } catch (error) {
     console.error("Error getting SOS link:", error);
-    res.status(500).json({ error: "Failed to get SOS link" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得 SOS 連結'));
   }
 });
 
@@ -302,7 +302,7 @@ router.post('/user/sos-key/regenerate', isAuthenticated, async (req: any, res) =
     });
   } catch (error) {
     console.error("Error regenerating SOS key:", error);
-    res.status(500).json({ error: "Failed to regenerate SOS key" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法重新產生 SOS 金鑰'));
   }
 });
 
@@ -313,10 +313,9 @@ router.delete('/user/account', isAuthenticated, async (req: any, res) => {
     const userId = req.user.claims.sub;
     
     if (!userId) {
-      return res.status(401).json({ 
-        success: false, 
-        error: "未授權",
-        code: "UNAUTHORIZED" 
+      return res.status(401).json({
+        success: false,
+        ...createErrorResponse(ErrorCode.AUTH_REQUIRED)
       });
     }
     
@@ -342,10 +341,9 @@ router.delete('/user/account', isAuthenticated, async (req: any, res) => {
     }
   } catch (error) {
     console.error("Delete account error:", error);
-    res.status(500).json({ 
-      success: false, 
-      error: "刪除帳號時發生錯誤",
-      code: "SERVER_ERROR" 
+    res.status(500).json({
+      success: false,
+      ...createErrorResponse(ErrorCode.SERVER_ERROR, '刪除帳號時發生錯誤')
     });
   }
 });

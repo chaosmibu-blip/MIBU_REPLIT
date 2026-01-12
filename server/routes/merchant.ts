@@ -20,12 +20,12 @@ router.get("/api/merchant", isAuthenticated, async (req: any, res) => {
     const merchant = await storage.getMerchantByUserId(userId);
     
     if (!merchant) {
-      return res.status(404).json({ error: "Merchant not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.MERCHANT_NOT_FOUND));
     }
-    
+
     res.json({ merchant });
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch merchant" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得商家資料'));
   }
 });
 
@@ -37,9 +37,9 @@ router.post("/api/merchant", isAuthenticated, async (req: any, res) => {
     res.json({ merchant });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', error.errors));
     }
-    res.status(500).json({ error: "Failed to create merchant" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法建立商家'));
   }
 });
 
@@ -49,13 +49,13 @@ router.patch("/api/merchant/:id/plan", isAuthenticated, async (req, res) => {
     const { plan } = req.body;
     
     if (!['free', 'partner', 'premium'].includes(plan)) {
-      return res.status(400).json({ error: "Invalid plan" });
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的方案'));
     }
-    
+
     const merchant = await storage.updateMerchantPlan(merchantId, plan);
     res.json({ merchant });
   } catch (error) {
-    res.status(500).json({ error: "Failed to update plan" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法更新方案'));
   }
 });
 
@@ -67,7 +67,7 @@ router.get("/api/coupons/merchant/:merchantId", isAuthenticated, async (req, res
     const allCoupons = await storage.getMerchantCoupons(merchantId);
     res.json({ coupons: allCoupons });
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch coupons" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得優惠券'));
   }
 });
 
@@ -78,9 +78,9 @@ router.post("/api/coupons", isAuthenticated, async (req, res) => {
     res.json({ coupon });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', error.errors));
     }
-    res.status(500).json({ error: "Failed to create coupon" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法建立優惠券'));
   }
 });
 
@@ -90,7 +90,7 @@ router.patch("/api/coupons/:id", isAuthenticated, async (req, res) => {
     const coupon = await storage.updateCoupon(couponId, req.body);
     res.json({ coupon });
   } catch (error) {
-    res.status(500).json({ error: "Failed to update coupon" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法更新優惠券'));
   }
 });
 
@@ -98,23 +98,23 @@ router.delete("/api/coupons/:id", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required", code: "UNAUTHORIZED" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const couponId = parseInt(req.params.id);
     if (isNaN(couponId)) {
-      return res.status(400).json({ error: "無效的優惠券 ID", code: "VALIDATION_ERROR" });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '無效的優惠券 ID'));
     }
 
     // 確認優惠券存在且屬於該商家
     const coupon = await storage.getCouponById(couponId);
     if (!coupon) {
-      return res.status(404).json({ error: "優惠券不存在", code: "NOT_FOUND" });
+      return res.status(404).json(createErrorResponse(ErrorCode.COUPON_NOT_FOUND));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant || coupon.merchantId !== merchant.id) {
-      return res.status(403).json({ error: "無權限刪除此優惠券", code: "FORBIDDEN" });
+      return res.status(403).json(createErrorResponse(ErrorCode.FORBIDDEN, '無權限刪除此優惠券'));
     }
 
     // 軟刪除（設為 archived）
@@ -123,7 +123,7 @@ router.delete("/api/coupons/:id", isAuthenticated, async (req: any, res) => {
     res.json({ success: true, message: "優惠券已刪除" });
   } catch (error) {
     console.error("Delete coupon error:", error);
-    res.status(500).json({ error: "刪除優惠券失敗", code: "SERVER_ERROR" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '刪除優惠券失敗'));
   }
 });
 
@@ -131,14 +131,14 @@ router.get("/api/coupons/region/:regionId/pool", async (req, res) => {
   try {
     const regionId = parseInt(req.params.regionId);
     if (isNaN(regionId)) {
-      return res.status(400).json({ error: "Invalid region ID" });
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的區域 ID'));
     }
-    
+
     const coupons = await storage.getRegionPrizePoolCoupons(regionId);
     res.json({ coupons });
   } catch (error) {
     console.error("Failed to fetch prize pool:", error);
-    res.status(500).json({ error: "Failed to fetch prize pool" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得獎品池'));
   }
 });
 
@@ -148,7 +148,7 @@ router.post("/api/merchant/register", isAuthenticated, async (req: any, res) => 
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     let merchant = await storage.getMerchantByUserId(userId);
@@ -170,7 +170,7 @@ router.post("/api/merchant/register", isAuthenticated, async (req: any, res) => 
     res.json({ success: true, merchant, isNew: true });
   } catch (error) {
     console.error("Merchant registration error:", error);
-    res.status(500).json({ error: "Failed to register merchant" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法註冊商家'));
   }
 });
 
@@ -178,7 +178,7 @@ router.get("/api/merchant/me", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
@@ -189,7 +189,7 @@ router.get("/api/merchant/me", isAuthenticated, async (req: any, res) => {
     res.json({ merchant });
   } catch (error) {
     console.error("Get merchant error:", error);
-    res.status(500).json({ error: "Failed to get merchant info" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得商家資料'));
   }
 });
 
@@ -234,7 +234,7 @@ router.get("/api/merchant/daily-code", isAuthenticated, async (req: any, res) =>
     });
   } catch (error) {
     console.error("Get daily code error:", error);
-    res.status(500).json({ error: "取得核銷碼失敗", code: "SERVER_ERROR" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '取得核銷碼失敗'));
   }
 });
 
@@ -242,30 +242,30 @@ router.post("/api/merchant/verify-code", isAuthenticated, async (req: any, res) 
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const { merchantId, code } = req.body;
     if (!merchantId || !code) {
-      return res.status(400).json({ error: "merchantId and code are required" });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, 'merchantId 和 code 為必填欄位'));
     }
 
     const codeData = await storage.getMerchantDailySeedCode(merchantId);
     if (!codeData) {
-      return res.status(404).json({ error: "No code found for this merchant" });
+      return res.status(404).json(createErrorResponse(ErrorCode.NO_CODE_SET));
     }
 
     const today = new Date().toDateString();
     const codeDate = new Date(codeData.updatedAt).toDateString();
     if (codeDate !== today) {
-      return res.status(400).json({ error: "Code has expired", isValid: false });
+      return res.status(400).json({ ...createErrorResponse(ErrorCode.CODE_EXPIRED), isValid: false });
     }
 
     const isValid = codeData.seedCode === code.toUpperCase();
     res.json({ isValid, merchantId });
   } catch (error) {
     console.error("Verify code error:", error);
-    res.status(500).json({ error: "Failed to verify code" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '驗證失敗'));
   }
 });
 
@@ -300,24 +300,23 @@ router.post("/api/merchant/verify", async (req, res) => {
     const isValid = existingCode.seedCode.toUpperCase() === validated.code.toUpperCase();
     
     if (isValid) {
-      res.json({ 
-        valid: true, 
+      res.json({
+        valid: true,
         merchantName: merchant.name,
-        message: "核銷碼驗證成功" 
+        message: "核銷碼驗證成功"
       });
     } else {
-      res.status(400).json({ 
-        error: "核銷碼錯誤", 
-        code: "INVALID_CODE", 
-        valid: false 
+      res.status(400).json({
+        ...createErrorResponse(ErrorCode.INVALID_CODE),
+        valid: false
       });
     }
   } catch (error: any) {
     console.error("Verify code error:", error);
     if (error.name === 'ZodError') {
-      return res.status(400).json({ error: "輸入資料格式錯誤", code: "VALIDATION_ERROR", valid: false });
+      return res.status(400).json({ ...createErrorResponse(ErrorCode.VALIDATION_ERROR), valid: false });
     }
-    res.status(500).json({ error: "驗證失敗", code: "SERVER_ERROR", valid: false });
+    res.status(500).json({ ...createErrorResponse(ErrorCode.SERVER_ERROR, '驗證失敗'), valid: false });
   }
 });
 
@@ -327,21 +326,21 @@ router.get("/api/merchant/credits", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(403).json({ error: "Merchant registration required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.MERCHANT_REQUIRED));
     }
 
-    res.json({ 
+    res.json({
       creditBalance: merchant.creditBalance || 0,
-      subscriptionPlan: merchant.subscriptionPlan 
+      subscriptionPlan: merchant.subscriptionPlan
     });
   } catch (error) {
     console.error("Get credits error:", error);
-    res.status(500).json({ error: "Failed to get credits" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得點數'));
   }
 });
 
@@ -429,9 +428,9 @@ router.post("/api/merchant/credits/purchase", isAuthenticated, async (req: any, 
   } catch (error: any) {
     console.error("Purchase credits error:", error);
     if (error.name === 'ZodError') {
-      return res.status(400).json({ error: "輸入資料格式錯誤", code: "VALIDATION_ERROR" });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR));
     }
-    res.status(500).json({ error: "購買失敗", code: "SERVER_ERROR" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '購買失敗'));
   }
 });
 
@@ -439,23 +438,23 @@ router.post("/api/merchant/credits/confirm", isAuthenticated, async (req: any, r
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(403).json({ error: "商家帳號必要" });
+      return res.status(403).json(createErrorResponse(ErrorCode.MERCHANT_REQUIRED));
     }
 
     const { transactionId, externalOrderId } = req.body;
-    
+
     const transaction = await storage.getTransactionById(transactionId);
     if (!transaction || transaction.merchantId !== merchant.id) {
-      return res.status(404).json({ error: "交易不存在" });
+      return res.status(404).json(createErrorResponse(ErrorCode.TRANSACTION_NOT_FOUND));
     }
 
     if (transaction.paymentStatus === 'paid') {
-      return res.status(400).json({ error: "此交易已完成" });
+      return res.status(400).json(createErrorResponse(ErrorCode.ALREADY_COMPLETED, '此交易已完成'));
     }
 
     await storage.updateTransactionStatus(transactionId, 'paid');
@@ -468,7 +467,7 @@ router.post("/api/merchant/credits/confirm", isAuthenticated, async (req: any, r
     });
   } catch (error) {
     console.error("Confirm credits error:", error);
-    res.status(500).json({ error: "確認付款失敗" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '確認付款失敗'));
   }
 });
 
@@ -476,19 +475,19 @@ router.get("/api/merchant/transactions", isAuthenticated, async (req: any, res) 
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(403).json({ error: "Merchant registration required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.MERCHANT_REQUIRED));
     }
 
     const transactions = await storage.getTransactionsByMerchantId(merchant.id);
     res.json({ transactions });
   } catch (error) {
     console.error("Get transactions error:", error);
-    res.status(500).json({ error: "Failed to get transactions" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得交易紀錄'));
   }
 });
 
@@ -498,57 +497,57 @@ router.get("/api/merchant/places/search", isAuthenticated, async (req: any, res)
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const { query, district, city } = req.query;
     if (!query || (query as string).length < 2) {
-      return res.status(400).json({ error: "Query must be at least 2 characters" });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '搜尋字串至少需要 2 個字元'));
     }
 
     const places = await storage.searchPlacesForClaim(query as string, district as string, city as string);
     res.json({ places });
   } catch (error) {
     console.error("Place search error:", error);
-    res.status(500).json({ error: "Failed to search places" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '搜尋景點失敗'));
   }
 });
 
 router.post("/api/merchant/places/claim", isAuthenticated, async (req: any, res) => {
   try {
     console.log("[ClaimAPI] Request body:", JSON.stringify(req.body));
-    
+
     const userId = req.user?.claims?.sub;
     if (!userId) {
       console.log("[ClaimAPI] No userId found");
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
     console.log("[ClaimAPI] userId:", userId);
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
       console.log("[ClaimAPI] No merchant found for userId:", userId);
-      return res.status(403).json({ error: "You must be a registered merchant to claim places" });
+      return res.status(403).json(createErrorResponse(ErrorCode.MERCHANT_REQUIRED, '需要商家帳號才能認領景點'));
     }
     console.log("[ClaimAPI] merchant:", merchant.id, merchant.businessName);
 
     let { placeName, district, city, country, placeCacheId, googlePlaceId } = req.body;
     console.log("[ClaimAPI] Parsed fields:", { placeName, district, city, country, placeCacheId, googlePlaceId });
-    
+
     if (placeCacheId && typeof placeCacheId === 'string' && placeCacheId.startsWith('ChIJ')) {
       console.log("[ClaimAPI] Detected Google Place ID in placeCacheId field, moving to googlePlaceId");
       googlePlaceId = placeCacheId;
       placeCacheId = null;
     }
-    
+
     if (placeCacheId && typeof placeCacheId === 'string') {
       const parsed = parseInt(placeCacheId, 10);
       placeCacheId = isNaN(parsed) ? null : parsed;
     }
-    
+
     if (!placeName || !district || !city || !country) {
       console.log("[ClaimAPI] Missing fields:", { placeName: !!placeName, district: !!district, city: !!city, country: !!country });
-      return res.status(400).json({ error: "Missing required fields", details: { placeName: !!placeName, district: !!district, city: !!city, country: !!country } });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, '缺少必要欄位', { placeName: !!placeName, district: !!district, city: !!city, country: !!country }));
     }
 
     let existingLink = null;
@@ -558,10 +557,10 @@ router.post("/api/merchant/places/claim", isAuthenticated, async (req: any, res)
     if (!existingLink) {
       existingLink = await storage.getPlaceLinkByPlace(placeName, district, city);
     }
-    
+
     if (existingLink) {
       console.log("[ClaimAPI] Place already claimed:", existingLink.id);
-      return res.status(409).json({ error: "This place is already claimed by another merchant" });
+      return res.status(409).json(createErrorResponse(ErrorCode.ALREADY_CLAIMED, '此景點已被其他商家認領'));
     }
 
     console.log("[ClaimAPI] Creating link with:", { merchantId: merchant.id, placeCacheId, googlePlaceId, placeName, district, city, country });
@@ -580,7 +579,7 @@ router.post("/api/merchant/places/claim", isAuthenticated, async (req: any, res)
     res.json({ success: true, link });
   } catch (error: any) {
     console.error("[ClaimAPI] Error:", error.message, error.stack);
-    res.status(500).json({ error: "Failed to claim place", details: error.message });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '認領景點失敗', error.message));
   }
 });
 
@@ -588,19 +587,19 @@ router.get("/api/merchant/places", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(403).json({ error: "Merchant account required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.MERCHANT_REQUIRED));
     }
 
     const links = await storage.getMerchantPlaceLinks(merchant.id);
     res.json({ places: links });
   } catch (error) {
     console.error("Get merchant places error:", error);
-    res.status(500).json({ error: "Failed to get merchant places" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得商家景點'));
   }
 });
 
@@ -608,12 +607,12 @@ router.put("/api/merchant/places/:linkId", isAuthenticated, async (req: any, res
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(403).json({ error: "Merchant account required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.MERCHANT_REQUIRED));
     }
 
     const linkId = parseInt(req.params.linkId);
@@ -629,7 +628,7 @@ router.put("/api/merchant/places/:linkId", isAuthenticated, async (req: any, res
     res.json({ success: true, link: updated });
   } catch (error) {
     console.error("Update merchant place error:", error);
-    res.status(500).json({ error: "Failed to update place" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法更新景點'));
   }
 });
 
@@ -639,19 +638,19 @@ router.get("/api/merchant/products", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(403).json({ error: "Merchant account required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.MERCHANT_REQUIRED));
     }
 
     const products = await storage.getMerchantProducts(merchant.id);
     res.json({ products });
   } catch (error) {
     console.error("Get merchant products error:", error);
-    res.status(500).json({ error: "Failed to get products" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得商品'));
   }
 });
 
@@ -659,17 +658,17 @@ router.post("/api/merchant/products", isAuthenticated, async (req: any, res) => 
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(403).json({ error: "Merchant account required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.MERCHANT_REQUIRED));
     }
 
     const { name, description, price, category, imageUrl, stock } = req.body;
     if (!name || price === undefined) {
-      return res.status(400).json({ error: "Name and price are required" });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, '商品名稱和價格為必填'));
     }
 
     const product = await storage.createProduct({
@@ -687,7 +686,7 @@ router.post("/api/merchant/products", isAuthenticated, async (req: any, res) => 
     res.json({ success: true, product });
   } catch (error) {
     console.error("Create product error:", error);
-    res.status(500).json({ error: "Failed to create product" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法建立商品'));
   }
 });
 
@@ -695,18 +694,18 @@ router.put("/api/merchant/products/:productId", isAuthenticated, async (req: any
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(403).json({ error: "Merchant account required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.MERCHANT_REQUIRED));
     }
 
     const productId = parseInt(req.params.productId);
     const existing = await storage.getProductById(productId);
     if (!existing || existing.merchantId !== merchant.id) {
-      return res.status(404).json({ error: "Product not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.PRODUCT_NOT_FOUND));
     }
 
     const { name, description, price, category, imageUrl, isActive, stock } = req.body;
@@ -723,7 +722,7 @@ router.put("/api/merchant/products/:productId", isAuthenticated, async (req: any
     res.json({ success: true, product: updated });
   } catch (error) {
     console.error("Update product error:", error);
-    res.status(500).json({ error: "Failed to update product" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法更新商品'));
   }
 });
 
@@ -731,25 +730,25 @@ router.delete("/api/merchant/products/:productId", isAuthenticated, async (req: 
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(403).json({ error: "Merchant account required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.MERCHANT_REQUIRED));
     }
 
     const productId = parseInt(req.params.productId);
     const existing = await storage.getProductById(productId);
     if (!existing || existing.merchantId !== merchant.id) {
-      return res.status(404).json({ error: "Product not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.PRODUCT_NOT_FOUND));
     }
 
     await storage.deleteProduct(productId);
     res.json({ success: true });
   } catch (error) {
     console.error("Delete product error:", error);
-    res.status(500).json({ error: "Failed to delete product" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法刪除商品'));
   }
 });
 
@@ -794,12 +793,12 @@ router.get("/api/merchant/subscription", isAuthenticated, async (req: any, res) 
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(404).json({ error: "Merchant not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.MERCHANT_NOT_FOUND));
     }
 
     const tier = await getMerchantTier(merchant.id);
@@ -821,7 +820,7 @@ router.get("/api/merchant/subscription", isAuthenticated, async (req: any, res) 
     });
   } catch (error) {
     console.error("Get subscription error:", error);
-    res.status(500).json({ error: "Failed to fetch subscription" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得訂閱資料'));
   }
 });
 
@@ -829,12 +828,12 @@ router.get("/api/merchant/subscription/history", isAuthenticated, async (req: an
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(404).json({ error: "Merchant not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.MERCHANT_NOT_FOUND));
     }
 
     const subscriptions = await subscriptionStorage.getMerchantSubscriptions(merchant.id);
@@ -842,7 +841,7 @@ router.get("/api/merchant/subscription/history", isAuthenticated, async (req: an
     res.json({ subscriptions });
   } catch (error) {
     console.error("Get subscription history error:", error);
-    res.status(500).json({ error: "Failed to fetch subscription history" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得訂閱歷史'));
   }
 });
 
@@ -850,23 +849,23 @@ router.post("/api/merchant/subscription/checkout", isAuthenticated, async (req: 
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(404).json({ error: "Merchant not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.MERCHANT_NOT_FOUND));
     }
 
-    const { 
-      type: rawType, 
-      tier: rawTier, 
-      placeId, 
-      provider = 'recur', 
-      successUrl, 
+    const {
+      type: rawType,
+      tier: rawTier,
+      placeId,
+      provider = 'recur',
+      successUrl,
       cancelUrl,
       planId,
-      billingInterval 
+      billingInterval
     } = req.body;
 
     let type = rawType;
@@ -878,19 +877,19 @@ router.post("/api/merchant/subscription/checkout", isAuthenticated, async (req: 
     }
 
     if (!type || !tier) {
-      return res.status(400).json({ error: "type and tier (or planId) are required" });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, 'type 和 tier (或 planId) 為必填'));
     }
 
     if (!['merchant', 'place'].includes(type)) {
-      return res.status(400).json({ error: "Invalid subscription type" });
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的訂閱類型'));
     }
 
     if (!['pro', 'premium', 'partner'].includes(tier)) {
-      return res.status(400).json({ error: "Invalid tier" });
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的等級'));
     }
 
     if (type === 'place' && !placeId) {
-      return res.status(400).json({ error: "placeId is required for place subscription" });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, '景點訂閱需要 placeId'));
     }
 
     const tierKey = tier === 'partner' ? 'premium' : tier;
@@ -912,7 +911,7 @@ router.post("/api/merchant/subscription/checkout", isAuthenticated, async (req: 
 
       const priceId = priceConfig.stripe;
       if (!priceId) {
-        return res.status(400).json({ error: "Stripe price not configured for this tier" });
+        return res.status(400).json(createErrorResponse(ErrorCode.PAYMENT_NOT_CONFIGURED, '此等級尚未設定 Stripe 價格'));
       }
 
       const session = await stripe.checkout.sessions.create({
@@ -934,14 +933,14 @@ router.post("/api/merchant/subscription/checkout", isAuthenticated, async (req: 
     } else if (provider === 'recur') {
       const productId = priceConfig.recur;
       if (!productId) {
-        return res.status(400).json({ error: "Recur product not configured for this tier" });
+        return res.status(400).json(createErrorResponse(ErrorCode.PAYMENT_NOT_CONFIGURED, '此等級尚未設定 Recur 商品'));
       }
 
       const user = await storage.getUser(userId);
       const customerEmail = user?.email || merchant.email;
 
       const externalCustomerId = `mibu_m${merchant.id}_${type}_${tier}${placeId ? `_p${placeId}` : ''}`;
-      
+
       await subscriptionStorage.updateMerchantRecurCustomerId(merchant.id, externalCustomerId);
 
       res.json({
@@ -954,11 +953,11 @@ router.post("/api/merchant/subscription/checkout", isAuthenticated, async (req: 
         cancelUrl: cancelUrl || `/merchant/subscription/cancel`,
       });
     } else {
-      res.status(400).json({ error: "Invalid payment provider" });
+      res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的支付提供者'));
     }
   } catch (error) {
     console.error("Create checkout error:", error);
-    res.status(500).json({ error: "Failed to create checkout session" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法建立結帳工作階段'));
   }
 });
 
@@ -966,22 +965,22 @@ router.post("/api/merchant/subscription/cancel", isAuthenticated, async (req: an
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(404).json({ error: "Merchant not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.MERCHANT_NOT_FOUND));
     }
 
     const { subscriptionId } = req.body;
     if (!subscriptionId) {
-      return res.status(400).json({ error: "subscriptionId is required" });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, 'subscriptionId 為必填'));
     }
 
     const subscription = await subscriptionStorage.getSubscriptionById(subscriptionId);
     if (!subscription || subscription.merchantId !== merchant.id) {
-      return res.status(404).json({ error: "Subscription not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.SUBSCRIPTION_NOT_FOUND));
     }
 
     if (subscription.provider === 'stripe') {
@@ -996,7 +995,7 @@ router.post("/api/merchant/subscription/cancel", isAuthenticated, async (req: an
     res.json({ success: true, subscription: updated });
   } catch (error) {
     console.error("Cancel subscription error:", error);
-    res.status(500).json({ error: "Failed to cancel subscription" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取消訂閱'));
   }
 });
 
@@ -1004,23 +1003,23 @@ router.post("/api/merchant/subscription/upgrade", isAuthenticated, async (req: a
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(404).json({ error: "Merchant not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.MERCHANT_NOT_FOUND));
     }
 
     const { subscriptionId, newTier, successUrl, cancelUrl } = req.body;
 
     if (!subscriptionId || !newTier) {
-      return res.status(400).json({ error: "subscriptionId and newTier are required" });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, 'subscriptionId 和 newTier 為必填'));
     }
 
     const subscription = await subscriptionStorage.getSubscriptionById(subscriptionId);
     if (!subscription || subscription.merchantId !== merchant.id) {
-      return res.status(404).json({ error: "Subscription not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.SUBSCRIPTION_NOT_FOUND));
     }
 
     if (subscription.provider === 'stripe' && merchant.stripeCustomerId) {
@@ -1033,11 +1032,11 @@ router.post("/api/merchant/subscription/upgrade", isAuthenticated, async (req: a
 
       res.json({ url: portal.url });
     } else {
-      res.status(400).json({ error: "Cannot upgrade subscription with current provider" });
+      res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '目前的支付提供者不支援升級'));
     }
   } catch (error) {
     console.error("Upgrade subscription error:", error);
-    res.status(500).json({ error: "Failed to upgrade subscription" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法升級訂閱'));
   }
 });
 
@@ -1045,25 +1044,25 @@ router.post("/api/merchant/subscription/refund-request", isAuthenticated, async 
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(404).json({ error: "Merchant not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.MERCHANT_NOT_FOUND));
     }
 
     const { subscriptionId, reason } = req.body;
     if (!subscriptionId) {
-      return res.status(400).json({ error: "subscriptionId is required" });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, 'subscriptionId 為必填'));
     }
     if (!reason || reason.trim().length < 10) {
-      return res.status(400).json({ error: "請提供至少 10 字的退款原因" });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '請提供至少 10 字的退款原因'));
     }
 
     const subscription = await subscriptionStorage.getSubscriptionById(subscriptionId);
     if (!subscription || subscription.merchantId !== merchant.id) {
-      return res.status(404).json({ error: "Subscription not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.SUBSCRIPTION_NOT_FOUND));
     }
 
     const createdAt = subscription.createdAt ? new Date(subscription.createdAt) : null;
@@ -1230,7 +1229,7 @@ router.post("/api/merchant/subscription/refund-request", isAuthenticated, async 
     }
   } catch (error) {
     console.error("Refund request error:", error);
-    res.status(500).json({ error: "Failed to process refund request" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法處理退款請求'));
   }
 });
 
@@ -1238,22 +1237,22 @@ router.get("/api/merchant/subscription/refund-eligibility", isAuthenticated, asy
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(404).json({ error: "Merchant not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.MERCHANT_NOT_FOUND));
     }
 
     const subscriptionId = req.query.subscriptionId as string;
     if (!subscriptionId) {
-      return res.status(400).json({ error: "subscriptionId query parameter is required" });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, 'subscriptionId 查詢參數為必填'));
     }
 
     const subscription = await subscriptionStorage.getSubscriptionById(parseInt(subscriptionId));
     if (!subscription || subscription.merchantId !== merchant.id) {
-      return res.status(404).json({ error: "Subscription not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.SUBSCRIPTION_NOT_FOUND));
     }
 
     const createdAt = subscription.createdAt ? new Date(subscription.createdAt) : null;
@@ -1291,7 +1290,7 @@ router.get("/api/merchant/subscription/refund-eligibility", isAuthenticated, asy
     });
   } catch (error) {
     console.error("Check refund eligibility error:", error);
-    res.status(500).json({ error: "Failed to check refund eligibility" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法檢查退款資格'));
   }
 });
 
@@ -1299,12 +1298,12 @@ router.get("/api/merchant/permissions", isAuthenticated, async (req: any, res) =
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const merchant = await storage.getMerchantByUserId(userId);
     if (!merchant) {
-      return res.status(404).json({ error: "Merchant not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.MERCHANT_NOT_FOUND));
     }
 
     const tier = await getMerchantTier(merchant.id);
@@ -1319,7 +1318,7 @@ router.get("/api/merchant/permissions", isAuthenticated, async (req: any, res) =
     });
   } catch (error) {
     console.error("Get permissions error:", error);
-    res.status(500).json({ error: "Failed to fetch permissions" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得權限資料'));
   }
 });
 

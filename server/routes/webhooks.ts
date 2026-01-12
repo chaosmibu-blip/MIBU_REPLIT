@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import Stripe from "stripe";
 import { storage } from "../storage";
 import { emitSubscriptionUpdated } from "../socketHandler";
+import { ErrorCode, createErrorResponse } from "@shared/errors";
 
 const router = Router();
 
@@ -264,7 +265,7 @@ router.post("/api/webhooks/stripe", raw({ type: 'application/json' }), async (re
 
   if (!webhookSecret) {
     console.warn("[Stripe Webhook] No webhook secret configured");
-    return res.status(500).json({ error: "Webhook not configured" });
+    return res.status(500).json(createErrorResponse(ErrorCode.WEBHOOK_NOT_CONFIGURED));
   }
 
   let event: Stripe.Event;
@@ -274,7 +275,7 @@ router.post("/api/webhooks/stripe", raw({ type: 'application/json' }), async (re
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err: any) {
     console.error(`[Stripe Webhook] Signature verification failed: ${err.message}`);
-    return res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
+    return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, `Webhook 簽名驗證失敗: ${err.message}`));
   }
 
   console.log(`[Stripe Webhook] Received event: ${event.type}`);
@@ -295,7 +296,7 @@ router.post("/api/webhooks/stripe", raw({ type: 'application/json' }), async (re
         await handleSubscriptionEvent(normalizedEvent);
       } catch (error) {
         console.error(`[Stripe Webhook] Error handling event: ${error}`);
-        return res.status(500).json({ error: "Failed to process webhook" });
+        return res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法處理 Webhook'));
       }
     }
   }
@@ -459,7 +460,7 @@ router.post("/api/webhooks/recur", async (req, res) => {
     res.json({ received: true });
   } catch (error) {
     console.error("[Recur Webhook] Error:", error);
-    res.status(500).json({ error: "Failed to process webhook" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法處理 Webhook'));
   }
 });
 
