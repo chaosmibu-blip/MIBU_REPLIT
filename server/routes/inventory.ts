@@ -60,6 +60,31 @@ router.get("/", isAuthenticated, async (req: any, res: Response) => {
 });
 
 /**
+ * GET /api/inventory/expiring
+ * 取得即將過期的優惠券
+ */
+router.get("/expiring", isAuthenticated, async (req: any, res: Response) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+    }
+
+    const days = parseInt(req.query.days as string) || 7;
+    const items = await gachaStorage.getExpiringInventoryItems(userId, days);
+
+    res.json({
+      items,
+      count: items.length,
+      withinDays: days,
+    });
+  } catch (error) {
+    console.error("Get expiring inventory error:", error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得即將過期的道具'));
+  }
+});
+
+/**
  * GET /api/inventory/:id
  * 取得單一道具詳情
  */

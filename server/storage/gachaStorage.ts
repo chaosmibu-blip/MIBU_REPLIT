@@ -541,4 +541,47 @@ export const gachaStorage = {
       .from(coupons)
       .where(eq(coupons.placeId, placeId));
   },
+
+  /**
+   * 標記過期的道具箱優惠券
+   * 檢查 validUntil 已過期且尚未標記的項目
+   */
+  async markExpiredInventoryItems(): Promise<number> {
+    const now = new Date();
+    const result = await db.update(userInventory)
+      .set({
+        isExpired: true,
+        status: 'expired',
+      })
+      .where(and(
+        eq(userInventory.isExpired, false),
+        eq(userInventory.isDeleted, false),
+        eq(userInventory.isRedeemed, false),
+        sql`${userInventory.validUntil} IS NOT NULL`,
+        sql`${userInventory.validUntil} < ${now}`
+      ))
+      .returning({ id: userInventory.id });
+    return result.length;
+  },
+
+  /**
+   * 取得即將過期的優惠券（未來 N 天內）
+   */
+  async getExpiringInventoryItems(userId: string, daysAhead: number = 7): Promise<UserInventoryItem[]> {
+    const now = new Date();
+    const futureDate = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+    return await db
+      .select()
+      .from(userInventory)
+      .where(and(
+        eq(userInventory.userId, userId),
+        eq(userInventory.isExpired, false),
+        eq(userInventory.isDeleted, false),
+        eq(userInventory.isRedeemed, false),
+        sql`${userInventory.validUntil} IS NOT NULL`,
+        sql`${userInventory.validUntil} > ${now}`,
+        sql`${userInventory.validUntil} <= ${futureDate}`
+      ))
+      .orderBy(userInventory.validUntil);
+  },
 };
