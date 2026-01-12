@@ -48,7 +48,10 @@ export enum ErrorCode {
   COUPON_NOT_FOUND = 'E4006',
   COUPON_EXPIRED = 'E4007',
   COUPON_ALREADY_USED = 'E4008',
-  
+  PLACE_LIMIT_REACHED = 'E4009',
+  COUPON_LIMIT_REACHED = 'E4010',
+  RARITY_NOT_ALLOWED = 'E4011',
+
   // Validation 驗證相關 (E5xxx)
   VALIDATION_ERROR = 'E5001',
   INVALID_PARAMS = 'E5002',
@@ -138,7 +141,10 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.COUPON_NOT_FOUND]: '找不到優惠券',
   [ErrorCode.COUPON_EXPIRED]: '優惠券已過期',
   [ErrorCode.COUPON_ALREADY_USED]: '優惠券已使用',
-  
+  [ErrorCode.PLACE_LIMIT_REACHED]: '已達景點認領上限',
+  [ErrorCode.COUPON_LIMIT_REACHED]: '已達優惠券數量上限',
+  [ErrorCode.RARITY_NOT_ALLOWED]: '您的方案不支援此稀有度',
+
   // Validation
   [ErrorCode.VALIDATION_ERROR]: '輸入資料格式錯誤',
   [ErrorCode.INVALID_PARAMS]: '無效的參數',
