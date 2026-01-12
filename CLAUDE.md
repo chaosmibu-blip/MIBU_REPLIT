@@ -102,7 +102,15 @@ server/                   # ⭐ 後端 API
 │   ├── auth.ts           # 認證路由
 │   ├── gacha/            # 扭蛋模組 (僅 V3)
 │   ├── admin/            # 管理後台 API
-│   ├── merchant.ts       # 商家路由
+│   ├── merchant/         # 商家模組（已模組化）
+│   │   ├── index.ts      # 路由匯總
+│   │   ├── profile.ts    # 基本資料、註冊
+│   │   ├── coupons.ts    # 優惠券管理
+│   │   ├── daily-code.ts # 每日核銷碼
+│   │   ├── credits.ts    # 點數系統
+│   │   ├── places.ts     # 景點認領
+│   │   ├── products.ts   # 商品管理
+│   │   └── subscription.ts # 訂閱、退款
 │   ├── specialist.ts     # 專員路由
 │   ├── sos.ts            # SOS 安全路由
 │   ├── collections.ts    # 收藏路由
@@ -155,7 +163,7 @@ docs/
 |----------|----------|------|
 | `routes/auth.ts` | `/api/auth/*` | Apple/Google Sign In, JWT |
 | `routes/gacha/` | `/api/gacha/*` | 扭蛋抽取（僅 V3）、Recur 金流 |
-| `routes/merchant.ts` | `/api/merchant/*` | 商家管理、訂閱 |
+| `routes/merchant/` | `/api/merchant/*`, `/api/coupons/*` | 商家管理、優惠券、訂閱、點數 |
 | `routes/specialist.ts` | `/api/specialist/*` | 專員服務 |
 | `routes/admin/` | `/api/admin/*` | 後台管理 API |
 | `routes/sos.ts` | `/api/sos/*` | 緊急求助 |
