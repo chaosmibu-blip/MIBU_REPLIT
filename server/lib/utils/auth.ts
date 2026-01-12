@@ -14,6 +14,9 @@ export const verifyPassword = (password: string, storedHash: string): boolean =>
 };
 
 export const generateToken = (userId: string, role: string): string => {
-  const secret = process.env.JWT_SECRET || 'mibu_secret_key_fixed_12345';
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is not set');
+  }
   return jwt.sign({ sub: userId, role }, secret, { expiresIn: '30d' });
 };

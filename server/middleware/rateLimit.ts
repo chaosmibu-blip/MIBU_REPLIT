@@ -1,5 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 
+// ⚠️ WARNING: This in-memory rate limiter only works for single-instance deployments.
+// For multi-instance/load-balanced setups, use Redis-backed rate limiting (e.g., rate-limit-redis).
+// TODO: Migrate to Redis when scaling to multiple instances.
+if (!process.env.REDIS_URL) {
+  console.warn('⚠️ [Rate Limit] Using in-memory store. Not suitable for multi-instance deployment.');
+  console.warn('   Set REDIS_URL environment variable to enable distributed rate limiting.');
+}
+
 interface RateLimitConfig {
   windowMs: number;
   maxRequests: number;
