@@ -4,6 +4,7 @@ import { systemConfigs, countries, regions, districts, announcements, type Syste
 import { eq, and } from "drizzle-orm";
 import { configService } from "../../services/configService";
 import { hasAdminAccess } from "./shared";
+import { ErrorCode, createErrorResponse } from "@shared/errors";
 
 const MIGRATION_KEY = process.env.ADMIN_MIGRATION_KEY || "mibu2024migrate";
 
@@ -12,11 +13,11 @@ const router = Router();
 router.get("/configs", async (req: any, res) => {
   try {
     if (!(await hasAdminAccess(req))) {
-      return res.status(403).json({ error: "Admin access required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
     }
-    
+
     const configs = await configService.getAll();
-    
+
     const grouped: Record<string, SystemConfig[]> = {};
     for (const config of configs) {
       if (!grouped[config.category]) {
@@ -24,35 +25,35 @@ router.get("/configs", async (req: any, res) => {
       }
       grouped[config.category].push(config);
     }
-    
+
     res.json({ configs: grouped });
   } catch (error) {
     console.error("Error fetching configs:", error);
-    res.status(500).json({ error: "Failed to fetch configs" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '取得系統設定失敗'));
   }
 });
 
 router.get("/configs/:category", async (req: any, res) => {
   try {
     if (!(await hasAdminAccess(req))) {
-      return res.status(403).json({ error: "Admin access required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
     }
-    
+
     const { category } = req.params;
     const configs = await configService.getByCategory(category);
     res.json({ configs });
   } catch (error) {
     console.error("Error fetching configs by category:", error);
-    res.status(500).json({ error: "Failed to fetch configs" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '取得系統設定失敗'));
   }
 });
 
 router.patch("/configs/:category/:key", async (req: any, res) => {
   try {
     if (!(await hasAdminAccess(req))) {
-      return res.status(403).json({ error: "Admin access required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
     }
-    
+
     const { category, key } = req.params;
     const { value } = req.body;
     const userId = req.user?.id;
@@ -65,27 +66,27 @@ router.patch("/configs/:category/:key", async (req: any, res) => {
     });
 
     if (!config) {
-      return res.status(404).json({ error: "Config not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.CONFIG_NOT_FOUND));
     }
 
     if (config.isReadOnly) {
-      return res.status(403).json({ error: "This config is read-only" });
+      return res.status(403).json(createErrorResponse(ErrorCode.CONFIG_READONLY));
     }
 
     if (config.validation) {
       const validation = config.validation as { min?: number; max?: number };
       if (typeof value === 'number') {
         if (validation.min !== undefined && value < validation.min) {
-          return res.status(400).json({ error: `Value must be at least ${validation.min}` });
+          return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, `數值必須至少為 ${validation.min}`));
         }
         if (validation.max !== undefined && value > validation.max) {
-          return res.status(400).json({ error: `Value must be at most ${validation.max}` });
+          return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, `數值最大為 ${validation.max}`));
         }
       }
     }
 
     await configService.set(category, key, value, userId);
-    
+
     const updated = await db.query.systemConfigs.findFirst({
       where: and(
         eq(systemConfigs.category, category),
@@ -96,16 +97,16 @@ router.patch("/configs/:category/:key", async (req: any, res) => {
     res.json({ config: updated });
   } catch (error) {
     console.error("Error updating config:", error);
-    res.status(500).json({ error: "Failed to update config" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '更新系統設定失敗'));
   }
 });
 
 router.post("/configs/:category/:key/reset", async (req: any, res) => {
   try {
     if (!(await hasAdminAccess(req))) {
-      return res.status(403).json({ error: "Admin access required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
     }
-    
+
     const { category, key } = req.params;
     const userId = req.user?.id;
 
@@ -117,11 +118,11 @@ router.post("/configs/:category/:key/reset", async (req: any, res) => {
     });
 
     if (!config) {
-      return res.status(404).json({ error: "Config not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.CONFIG_NOT_FOUND));
     }
 
     if (config.defaultValue === null) {
-      return res.status(400).json({ error: "No default value available" });
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '沒有可用的預設值'));
     }
 
     await configService.set(category, key, config.defaultValue, userId);
@@ -136,7 +137,7 @@ router.post("/configs/:category/:key/reset", async (req: any, res) => {
     res.json({ config: updated });
   } catch (error) {
     console.error("Error resetting config:", error);
-    res.status(500).json({ error: "Failed to reset config" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '重置系統設定失敗'));
   }
 });
 
@@ -144,11 +145,11 @@ router.post("/configs/:category/:key/reset", async (req: any, res) => {
 router.get("/export-config-data", async (req: any, res) => {
   try {
     const { key } = req.query;
-    
+
     if (key !== MIGRATION_KEY) {
-      return res.status(403).json({ error: "Invalid migration key" });
+      return res.status(403).json(createErrorResponse(ErrorCode.AUTH_TOKEN_INVALID, '無效的遷移金鑰'));
     }
-    
+
     const [countriesData, regionsData, districtsData, configsData, announcementsData] = await Promise.all([
       db.select().from(countries),
       db.select().from(regions),
@@ -156,9 +157,9 @@ router.get("/export-config-data", async (req: any, res) => {
       db.select().from(systemConfigs),
       db.select().from(announcements),
     ]);
-    
+
     console.log(`[Export] countries: ${countriesData.length}, regions: ${regionsData.length}, districts: ${districtsData.length}, configs: ${configsData.length}, announcements: ${announcementsData.length}`);
-    
+
     res.json({
       exportedAt: new Date().toISOString(),
       data: {
@@ -178,7 +179,7 @@ router.get("/export-config-data", async (req: any, res) => {
     });
   } catch (error) {
     console.error("Error exporting config data:", error);
-    res.status(500).json({ error: "Failed to export config data" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '匯出配置資料失敗'));
   }
 });
 
@@ -186,13 +187,13 @@ router.get("/export-config-data", async (req: any, res) => {
 router.post("/import-config-data", async (req: any, res) => {
   try {
     const { key, data } = req.body;
-    
+
     if (key !== MIGRATION_KEY) {
-      return res.status(403).json({ error: "Invalid migration key" });
+      return res.status(403).json(createErrorResponse(ErrorCode.AUTH_TOKEN_INVALID, '無效的遷移金鑰'));
     }
-    
+
     if (!data) {
-      return res.status(400).json({ error: "Missing data" });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, '缺少資料'));
     }
     
     const results = {
@@ -318,7 +319,7 @@ router.post("/import-config-data", async (req: any, res) => {
     });
   } catch (error) {
     console.error("Error importing config data:", error);
-    res.status(500).json({ error: "Failed to import config data" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '匯入配置資料失敗'));
   }
 });
 

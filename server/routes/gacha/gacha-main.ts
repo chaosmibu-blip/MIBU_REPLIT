@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { storage } from "../../storage";
 import { isAuthenticated } from "../../replitAuth";
+import { ErrorCode, createErrorResponse } from "@shared/errors";
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.post("/checkout/create-session", isAuthenticated, async (req: any, res) =
 
     const secretKey = process.env.RECUR_SECRET_KEY;
     if (!secretKey) {
-      return res.status(500).json({ error: "Payment system not configured" });
+      return res.status(500).json(createErrorResponse(ErrorCode.PAYMENT_NOT_CONFIGURED));
     }
 
     const appUrl = process.env.REPLIT_DEV_DOMAIN
@@ -46,13 +47,13 @@ router.post("/checkout/create-session", isAuthenticated, async (req: any, res) =
 
     if (!response.ok) {
       console.error("Recur API error:", data);
-      return res.status(response.status).json({ error: data.error || "Checkout failed" });
+      return res.status(response.status).json(createErrorResponse(ErrorCode.PAYMENT_FAILED, data.error || 'Checkout failed'));
     }
 
     res.json({ url: data.url, sessionId: data.id });
   } catch (error) {
     console.error("Create checkout session error:", error);
-    res.status(500).json({ error: "Failed to create checkout session" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, 'Failed to create checkout session'));
   }
 });
 
@@ -62,7 +63,7 @@ router.get("/checkout/session/:sessionId", isAuthenticated, async (req, res) => 
     const secretKey = process.env.RECUR_SECRET_KEY;
 
     if (!secretKey) {
-      return res.status(500).json({ error: "Payment system not configured" });
+      return res.status(500).json(createErrorResponse(ErrorCode.PAYMENT_NOT_CONFIGURED));
     }
 
     const response = await fetch(`${RECUR_API_URL}/checkout/sessions/${sessionId}`, {
@@ -74,13 +75,13 @@ router.get("/checkout/session/:sessionId", isAuthenticated, async (req, res) => 
     const session = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: session.error });
+      return res.status(response.status).json(createErrorResponse(ErrorCode.SERVER_ERROR, session.error));
     }
 
     res.json({ session });
   } catch (error) {
     console.error("Fetch checkout session error:", error);
-    res.status(500).json({ error: "Failed to fetch session" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, 'Failed to fetch session'));
   }
 });
 
@@ -175,7 +176,7 @@ router.post("/webhooks/recur", async (req, res) => {
     res.json({ received: true });
   } catch (error) {
     console.error("Webhook error:", error);
-    res.status(500).json({ error: "Webhook processing failed" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, 'Webhook processing failed'));
   }
 });
 

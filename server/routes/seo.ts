@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { db } from "../db";
 import { places, gachaAiLogs } from "@shared/schema";
 import { eq, sql, desc, ilike, and } from "drizzle-orm";
+import { ErrorCode, createErrorResponse } from "@shared/errors";
 
 const router = Router();
 
@@ -50,7 +51,7 @@ router.get("/cities", async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error fetching SEO cities:", error);
-    res.status(500).json({ error: "Failed to fetch cities" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得城市列表'));
   }
 });
 
@@ -77,10 +78,7 @@ router.get("/cities/:slug", async (req: Request, res: Response) => {
       .limit(1);
 
     if (!matchedCity) {
-      return res.status(404).json({ 
-        error: "City not found",
-        message: "找不到該城市",
-      });
+      return res.status(404).json(createErrorResponse(ErrorCode.REGION_NOT_FOUND, '找不到該城市'));
     }
 
     const [totalResult] = await db
@@ -143,7 +141,7 @@ router.get("/cities/:slug", async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error fetching city details:", error);
-    res.status(500).json({ error: "Failed to fetch city details" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得城市詳情'));
   }
 });
 
@@ -165,10 +163,7 @@ router.get("/cities/:slug/districts", async (req: Request, res: Response) => {
       .limit(1);
 
     if (!matchedCity) {
-      return res.status(404).json({ 
-        error: "City not found",
-        message: "找不到該城市",
-      });
+      return res.status(404).json(createErrorResponse(ErrorCode.REGION_NOT_FOUND, '找不到該城市'));
     }
 
     const districtsData = await db
@@ -207,7 +202,7 @@ router.get("/cities/:slug/districts", async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error fetching city districts:", error);
-    res.status(500).json({ error: "Failed to fetch districts" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得行政區列表'));
   }
 });
 
@@ -234,10 +229,7 @@ router.get("/districts/:citySlug/:districtSlug", async (req: Request, res: Respo
       .limit(1);
 
     if (!matchedCity) {
-      return res.status(404).json({ 
-        error: "City not found",
-        message: "找不到該城市",
-      });
+      return res.status(404).json(createErrorResponse(ErrorCode.REGION_NOT_FOUND, '找不到該城市'));
     }
 
     const [matchedDistrict] = await db
@@ -255,10 +247,7 @@ router.get("/districts/:citySlug/:districtSlug", async (req: Request, res: Respo
       .limit(1);
 
     if (!matchedDistrict) {
-      return res.status(404).json({ 
-        error: "District not found",
-        message: "找不到該行政區",
-      });
+      return res.status(404).json(createErrorResponse(ErrorCode.NO_DISTRICT_FOUND, '找不到該行政區'));
     }
 
     const [totalResult] = await db
@@ -323,7 +312,7 @@ router.get("/districts/:citySlug/:districtSlug", async (req: Request, res: Respo
     });
   } catch (error) {
     console.error("Error fetching district details:", error);
-    res.status(500).json({ error: "Failed to fetch district details" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得行政區詳情'));
   }
 });
 
@@ -332,10 +321,7 @@ router.get("/places/by-id/:id", async (req: Request, res: Response) => {
     const placeId = parseInt(req.params.id);
     
     if (isNaN(placeId)) {
-      return res.status(400).json({ 
-        error: "Invalid place ID",
-        message: "無效的景點 ID",
-      });
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的景點 ID'));
     }
 
     const [matchedPlace] = await db
@@ -348,10 +334,7 @@ router.get("/places/by-id/:id", async (req: Request, res: Response) => {
       .limit(1);
     
     if (!matchedPlace) {
-      return res.status(404).json({ 
-        error: "Place not found",
-        message: "找不到該景點",
-      });
+      return res.status(404).json(createErrorResponse(ErrorCode.PLACE_NOT_FOUND, '找不到該景點'));
     }
 
     const relatedPlaces = await db
@@ -409,7 +392,7 @@ router.get("/places/by-id/:id", async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error fetching place by ID:", error);
-    res.status(500).json({ error: "Failed to fetch place details" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得景點詳情'));
   }
 });
 
@@ -419,10 +402,7 @@ router.get("/places/:slug", async (req: Request, res: Response) => {
     const { city } = req.query;
 
     if (!city) {
-      return res.status(400).json({ 
-        error: "City parameter required",
-        message: "請提供城市參數",
-      });
+      return res.status(400).json(createErrorResponse(ErrorCode.CITY_REQUIRED, '請提供城市參數'));
     }
 
     const matchedPlaces = await db
@@ -437,10 +417,7 @@ router.get("/places/:slug", async (req: Request, res: Response) => {
     const matchedPlace = matchedPlaces.find(p => generateSlug(p.placeName) === slug);
     
     if (!matchedPlace) {
-      return res.status(404).json({ 
-        error: "Place not found",
-        message: "找不到該景點",
-      });
+      return res.status(404).json(createErrorResponse(ErrorCode.PLACE_NOT_FOUND, '找不到該景點'));
     }
 
     const relatedPlaces = await db
@@ -498,7 +475,7 @@ router.get("/places/:slug", async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error fetching place details:", error);
-    res.status(500).json({ error: "Failed to fetch place details" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得景點詳情'));
   }
 });
 
@@ -592,7 +569,7 @@ router.get("/trips", async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error fetching trips:", error);
-    res.status(500).json({ error: "Failed to fetch trips" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得行程列表'));
   }
 });
 
@@ -601,10 +578,7 @@ router.get("/trips/:id", async (req: Request, res: Response) => {
     const tripId = parseInt(req.params.id);
     
     if (isNaN(tripId)) {
-      return res.status(400).json({ 
-        error: "Invalid trip ID",
-        message: "無效的行程 ID",
-      });
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的行程 ID'));
     }
 
     const [trip] = await db
@@ -617,10 +591,7 @@ router.get("/trips/:id", async (req: Request, res: Response) => {
       .limit(1);
     
     if (!trip) {
-      return res.status(404).json({ 
-        error: "Trip not found",
-        message: "找不到該行程",
-      });
+      return res.status(404).json(createErrorResponse(ErrorCode.RESOURCE_NOT_FOUND, '找不到該行程'));
     }
 
     const sequenceConditions = [
@@ -695,7 +666,7 @@ router.get("/trips/:id", async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error fetching trip details:", error);
-    res.status(500).json({ error: "Failed to fetch trip details" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得行程詳情'));
   }
 });
 
@@ -767,7 +738,7 @@ router.get("/places", async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error fetching places:", error);
-    res.status(500).json({ error: "Failed to fetch places" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得景點列表'));
   }
 });
 

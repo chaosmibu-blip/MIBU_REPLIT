@@ -3,6 +3,7 @@ import { isAuthenticated } from "../replitAuth";
 import { storage } from "../storage";
 import { insertCollectionSchema } from "@shared/schema";
 import { z } from "zod";
+import { ErrorCode, createErrorResponse } from "@shared/errors";
 
 const router = Router();
 
@@ -13,7 +14,7 @@ router.get("/", isAuthenticated, async (req: any, res) => {
     res.json({ collections: items });
   } catch (error) {
     console.error("Fetch collections error:", error);
-    res.status(500).json({ error: "Failed to fetch collections" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得收藏'));
   }
 });
 
@@ -25,10 +26,10 @@ router.post("/", isAuthenticated, async (req: any, res) => {
     res.json({ collection });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', error.errors));
     }
     console.error("Add collection error:", error);
-    res.status(500).json({ error: "Failed to add to collection" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法新增收藏'));
   }
 });
 
@@ -63,7 +64,7 @@ router.get("/place/promo", async (req, res) => {
     });
   } catch (error) {
     console.error("Get place promo error:", error);
-    res.status(500).json({ error: "Failed to get place promo" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得景點優惠'));
   }
 });
 

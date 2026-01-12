@@ -13,22 +13,22 @@ router.post("/register", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const user = await storage.getUser(userId);
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.USER_NOT_FOUND));
     }
 
     const existing = await storage.getSpecialistByUserId(userId);
     if (existing) {
-      return res.status(400).json({ error: "Already registered as specialist" });
+      return res.status(400).json(createErrorResponse(ErrorCode.ALREADY_REGISTERED, '已經註冊為專員'));
     }
 
     const { name, serviceRegion } = req.body;
     if (!name || !serviceRegion) {
-      return res.status(400).json({ error: "name and serviceRegion are required" });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, 'name 和 serviceRegion 為必填'));
     }
 
     const specialist = await storage.createSpecialist({
@@ -43,7 +43,7 @@ router.post("/register", isAuthenticated, async (req: any, res) => {
     res.status(201).json({ specialist });
   } catch (error) {
     console.error("Specialist registration error:", error);
-    res.status(500).json({ error: "Failed to register as specialist" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法註冊為專員'));
   }
 });
 
@@ -52,14 +52,14 @@ router.get("/me", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const specialist = await storage.getSpecialistByUserId(userId);
     res.json({ specialist: specialist || null });
   } catch (error) {
     console.error("Get specialist error:", error);
-    res.status(500).json({ error: "Failed to get specialist profile" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得專員資料'));
   }
 });
 
@@ -68,12 +68,12 @@ router.post("/toggle-online", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const specialist = await storage.getSpecialistByUserId(userId);
     if (!specialist) {
-      return res.status(403).json({ error: "Specialist registration required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.SPECIALIST_REQUIRED));
     }
 
     if (!specialist.isAvailable) {
@@ -89,7 +89,7 @@ router.post("/toggle-online", isAuthenticated, async (req: any, res) => {
     }
   } catch (error) {
     console.error("Toggle online error:", error);
-    res.status(500).json({ error: "Failed to toggle online status" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法切換上線狀態'));
   }
 });
 
@@ -98,19 +98,19 @@ router.get("/services", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const specialist = await storage.getSpecialistByUserId(userId);
     if (!specialist) {
-      return res.status(403).json({ error: "Specialist registration required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.SPECIALIST_REQUIRED));
     }
 
     const relations = await storage.getActiveServiceRelationsBySpecialist(specialist.id);
     res.json({ services: relations });
   } catch (error) {
     console.error("Get services error:", error);
-    res.status(500).json({ error: "Failed to get services" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得服務列表'));
   }
 });
 
@@ -147,9 +147,8 @@ router.post("/match", isAuthenticated, async (req: any, res) => {
     const specialist = await storage.findAvailableSpecialist(validated.region);
     
     if (!specialist) {
-      return res.status(404).json({ 
-        error: `目前 ${validated.region} 地區沒有可用的專員，請稍後再試`, 
-        code: "NO_SPECIALIST_AVAILABLE",
+      return res.status(404).json({
+        ...createErrorResponse(ErrorCode.SERVICE_NOT_FOUND, `目前 ${validated.region} 地區沒有可用的專員，請稍後再試`),
         matched: false,
       });
     }
@@ -179,9 +178,9 @@ router.post("/match", isAuthenticated, async (req: any, res) => {
   } catch (error: any) {
     console.error("Specialist match error:", error);
     if (error.name === 'ZodError') {
-      return res.status(400).json({ error: "輸入資料格式錯誤", code: "VALIDATION_ERROR" });
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR));
     }
-    res.status(500).json({ error: "媒合失敗", code: "SERVER_ERROR" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '媒合失敗'));
   }
 });
 
@@ -190,7 +189,7 @@ router.post("/service/:serviceId/end", isAuthenticated, async (req: any, res) =>
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const serviceId = parseInt(req.params.serviceId);
@@ -198,7 +197,7 @@ router.post("/service/:serviceId/end", isAuthenticated, async (req: any, res) =>
 
     const service = await storage.getServiceRelationById(serviceId);
     if (!service) {
-      return res.status(404).json({ error: "服務不存在" });
+      return res.status(404).json(createErrorResponse(ErrorCode.SERVICE_NOT_FOUND));
     }
 
     const specialist = await storage.getSpecialistByUserId(userId);
@@ -206,7 +205,7 @@ router.post("/service/:serviceId/end", isAuthenticated, async (req: any, res) =>
     const isTraveler = service.travelerId === userId;
 
     if (!isSpecialist && !isTraveler) {
-      return res.status(403).json({ error: "無權限結束此服務" });
+      return res.status(403).json(createErrorResponse(ErrorCode.FORBIDDEN, '無權限結束此服務'));
     }
 
     const endedService = await storage.endServiceRelation(serviceId, rating);
@@ -227,7 +226,7 @@ router.post("/service/:serviceId/end", isAuthenticated, async (req: any, res) =>
     });
   } catch (error) {
     console.error("End service error:", error);
-    res.status(500).json({ error: "結束服務失敗" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '結束服務失敗'));
   }
 });
 
@@ -238,22 +237,22 @@ router.post("/service/request", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const { region } = req.body;
     if (!region) {
-      return res.status(400).json({ error: "region is required" });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, 'region 為必填'));
     }
 
     const existing = await storage.getActiveServiceRelationByTraveler(userId);
     if (existing) {
-      return res.status(400).json({ error: "Already have an active service session" });
+      return res.status(400).json(createErrorResponse(ErrorCode.ALREADY_ACTIVE, '已有進行中的服務'));
     }
 
     const specialist = await storage.findAvailableSpecialist(region);
     if (!specialist) {
-      return res.status(404).json({ error: "No available specialists in your region" });
+      return res.status(404).json(createErrorResponse(ErrorCode.SERVICE_NOT_FOUND, '該地區沒有可用的專員'));
     }
 
     const relation = await storage.createServiceRelation({
@@ -272,7 +271,7 @@ router.post("/service/request", isAuthenticated, async (req: any, res) => {
     });
   } catch (error) {
     console.error("Request service error:", error);
-    res.status(500).json({ error: "Failed to request specialist" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法請求專員'));
   }
 });
 
@@ -281,7 +280,7 @@ router.get("/service/current", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const relation = await storage.getActiveServiceRelationByTraveler(userId);
@@ -300,7 +299,7 @@ router.get("/service/current", isAuthenticated, async (req: any, res) => {
     });
   } catch (error) {
     console.error("Get current service error:", error);
-    res.status(500).json({ error: "Failed to get current service" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得目前服務'));
   }
 });
 
@@ -309,7 +308,7 @@ router.post("/service/:id/end", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const serviceId = parseInt(req.params.id);
@@ -317,11 +316,11 @@ router.post("/service/:id/end", isAuthenticated, async (req: any, res) => {
 
     const relation = await storage.getServiceRelationById(serviceId);
     if (!relation) {
-      return res.status(404).json({ error: "Service not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.SERVICE_NOT_FOUND));
     }
 
     if (relation.travelerId !== userId) {
-      return res.status(403).json({ error: "Not authorized to end this service" });
+      return res.status(403).json(createErrorResponse(ErrorCode.FORBIDDEN, '無權限結束此服務'));
     }
 
     const updated = await storage.endServiceRelation(serviceId, rating);
@@ -329,7 +328,7 @@ router.post("/service/:id/end", isAuthenticated, async (req: any, res) => {
     res.json({ success: true, service: updated });
   } catch (error) {
     console.error("End service error:", error);
-    res.status(500).json({ error: "Failed to end service" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '結束服務失敗'));
   }
 });
 

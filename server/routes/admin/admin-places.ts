@@ -5,69 +5,70 @@ import { sql } from "drizzle-orm";
 import { isAuthenticated } from "../../replitAuth";
 import { insertPlaceDraftSchema, type PlaceDraft, type Subcategory } from "@shared/schema";
 import { z } from "zod";
-import { 
-  callGemini, 
-  batchGeneratePlaces, 
+import {
+  callGemini,
+  batchGeneratePlaces,
   classifyAndDescribePlaces,
-  reclassifyPlace 
+  reclassifyPlace
 } from "../../lib/placeGenerator";
-import { 
-  determineCategory, 
-  determineSubcategory, 
-  generateFallbackDescription 
+import {
+  determineCategory,
+  determineSubcategory,
+  generateFallbackDescription
 } from "../../lib/categoryMapping";
+import { ErrorCode, createErrorResponse } from "@shared/errors";
 
 const router = Router();
 
 router.post("/place-drafts", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
-    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const user = await storage.getUser(userId);
-    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
     const validated = insertPlaceDraftSchema.parse({ ...req.body, source: 'ai' });
     const draft = await storage.createPlaceDraft(validated);
 
     res.json({ draft });
   } catch (error) {
-    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    if (error instanceof z.ZodError) return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', error.errors));
     console.error("Admin create place draft error:", error);
-    res.status(500).json({ error: "Failed to create place draft" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '建立景點草稿失敗'));
   }
 });
 
 router.get("/place-drafts", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
-    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const user = await storage.getUser(userId);
-    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
     const drafts = await storage.getAllPlaceDrafts();
     res.json({ drafts });
   } catch (error) {
     console.error("Admin get place drafts error:", error);
-    res.status(500).json({ error: "Failed to get place drafts" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '取得景點草稿失敗'));
   }
 });
 
 router.post("/place-drafts/:id/publish", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
-    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const user = await storage.getUser(userId);
-    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
     const draftId = parseInt(req.params.id);
     const draft = await storage.getPlaceDraftById(draftId);
-    if (!draft) return res.status(404).json({ error: "Draft not found" });
+    if (!draft) return res.status(404).json(createErrorResponse(ErrorCode.DRAFT_NOT_FOUND));
 
     const districtInfo = await storage.getDistrictWithParents(draft.districtId);
-    if (!districtInfo) return res.status(400).json({ error: "Invalid district" });
+    if (!districtInfo) return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的區域'));
 
     const categories = await storage.getCategories();
     const category = categories.find(c => c.id === draft.categoryId);
@@ -93,21 +94,21 @@ router.post("/place-drafts/:id/publish", isAuthenticated, async (req: any, res) 
     res.json({ placeCache: newPlace, published: true });
   } catch (error) {
     console.error("Admin publish place draft error:", error);
-    res.status(500).json({ error: "Failed to publish place draft" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '發布景點草稿失敗'));
   }
 });
 
 router.delete("/place-drafts/:id", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
-    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const user = await storage.getUser(userId);
-    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
     const draftId = parseInt(req.params.id);
     const draft = await storage.getPlaceDraftById(draftId);
-    if (!draft) return res.status(404).json({ error: "Draft not found" });
+    if (!draft) return res.status(404).json(createErrorResponse(ErrorCode.DRAFT_NOT_FOUND));
 
     const districtInfo = await storage.getDistrictWithParents(draft.districtId);
     if (districtInfo) {
@@ -124,21 +125,21 @@ router.delete("/place-drafts/:id", isAuthenticated, async (req: any, res) => {
     res.json({ success: true, message: "Draft deleted and added to exclusion list" });
   } catch (error: any) {
     console.error("Error deleting draft:", error);
-    res.status(500).json({ error: "Failed to delete draft" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '刪除草稿失敗'));
   }
 });
 
 router.patch("/place-drafts/:id", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
-    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const user = await storage.getUser(userId);
-    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
     const draftId = parseInt(req.params.id);
     const draft = await storage.getPlaceDraftById(draftId);
-    if (!draft) return res.status(404).json({ error: "Draft not found" });
+    if (!draft) return res.status(404).json(createErrorResponse(ErrorCode.DRAFT_NOT_FOUND));
 
     const updateSchema = z.object({
       placeName: z.string().min(1).optional(),
@@ -149,23 +150,23 @@ router.patch("/place-drafts/:id", isAuthenticated, async (req: any, res) => {
     const updated = await storage.updatePlaceDraft(draftId, validated);
     res.json({ draft: updated });
   } catch (error) {
-    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    if (error instanceof z.ZodError) return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', error.errors));
     console.error("Admin update place draft error:", error);
-    res.status(500).json({ error: "Failed to update place draft" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '更新景點草稿失敗'));
   }
 });
 
 router.post("/place-drafts/:id/regenerate-description", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
-    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const user = await storage.getUser(userId);
-    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
     const draftId = parseInt(req.params.id);
     const draft = await storage.getPlaceDraftById(draftId);
-    if (!draft) return res.status(404).json({ error: "Draft not found" });
+    if (!draft) return res.status(404).json(createErrorResponse(ErrorCode.DRAFT_NOT_FOUND));
 
     const districtInfo = await storage.getDistrictWithParents(draft.districtId);
     const categories = await storage.getCategories();
@@ -189,42 +190,42 @@ ${draft.address ? `地址：${draft.address}` : ''}
     res.json({ draft: updated, description: cleanDescription });
   } catch (error) {
     console.error("Admin regenerate description error:", error);
-    res.status(500).json({ error: "Failed to regenerate description" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '重新生成描述失敗'));
   }
 });
 
 router.get("/place-drafts/filter", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
-    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const user = await storage.getUser(userId);
-    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
     const minRating = req.query.minRating ? parseFloat(req.query.minRating) : undefined;
     const minReviewCount = req.query.minReviewCount ? parseInt(req.query.minReviewCount) : undefined;
     const status = req.query.status || 'pending';
 
     const drafts = await storage.getFilteredPlaceDrafts({ minRating, minReviewCount, status });
-    
-    res.json({ 
+
+    res.json({
       drafts,
       filters: { minRating, minReviewCount, status },
       count: drafts.length
     });
   } catch (error) {
     console.error("Admin filter place drafts error:", error);
-    res.status(500).json({ error: "Failed to filter place drafts" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '篩選景點草稿失敗'));
   }
 });
 
 router.post("/place-drafts/batch-publish", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
-    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const user = await storage.getUser(userId);
-    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
     const batchPublishSchema = z.object({
       minRating: z.number().min(0).max(5).optional(),
@@ -298,19 +299,19 @@ router.post("/place-drafts/batch-publish", isAuthenticated, async (req: any, res
       message: `Successfully published ${publishedIds.length} places`
     });
   } catch (error) {
-    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    if (error instanceof z.ZodError) return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', error.errors));
     console.error("Admin batch publish error:", error);
-    res.status(500).json({ error: "Failed to batch publish" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '批次發布失敗'));
   }
 });
 
 router.post("/place-drafts/batch-regenerate", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
-    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const user = await storage.getUser(userId);
-    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
     const { ids, filter } = req.body as {
       ids?: number[];
@@ -328,7 +329,7 @@ router.post("/place-drafts/batch-regenerate", isAuthenticated, async (req: any, 
         status: 'pending'
       });
     } else {
-      return res.status(400).json({ error: "必須提供 ids 或 filter 參數" });
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '必須提供 ids 或 filter 參數'));
     }
 
     if (draftsToRegenerate.length === 0) {
@@ -392,17 +393,17 @@ ${draft.googleRating ? `Google評分：${draft.googleRating}星` : ''}
     });
   } catch (error) {
     console.error("Admin batch regenerate error:", error);
-    res.status(500).json({ error: "批次重新生成失敗" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '批次重新生成失敗'));
   }
 });
 
 router.post("/place-drafts/backfill-review-count", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
-    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const user = await storage.getUser(userId);
-    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
     const { limit = 50 } = req.body as { limit?: number };
 
@@ -466,16 +467,16 @@ router.post("/place-drafts/backfill-review-count", isAuthenticated, async (req: 
     });
   } catch (error) {
     console.error("Admin backfill review count error:", error);
-    res.status(500).json({ error: "回填評論數失敗" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '回填評論數失敗'));
   }
 });
 
 router.post("/places/batch-generate", isAuthenticated, async (req: any, res) => {
   const userId = req.user?.claims?.sub;
-  if (!userId) return res.status(401).json({ error: "Authentication required" });
+  if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
   const user = await storage.getUser(userId);
-  if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+  if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
   const { 
     keyword = '', 
@@ -493,17 +494,17 @@ router.post("/places/batch-generate", isAuthenticated, async (req: any, res) => 
   const maxPagesPerKeyword = Math.min(Math.max(1, rawMaxPages), 3);
 
   if (!regionId) {
-    return res.status(400).json({ error: "regionId 為必填" });
+    return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, 'regionId 為必填'));
   }
 
   const regionData = await storage.getRegionById(regionId);
   if (!regionData) {
-    return res.status(400).json({ error: "無效的 regionId" });
+    return res.status(400).json(createErrorResponse(ErrorCode.REGION_NOT_FOUND, '無效的 regionId'));
   }
 
   const countryData = await storage.getCountryById(regionData.countryId);
   if (!countryData) {
-    return res.status(400).json({ error: "無效的國家" });
+    return res.status(400).json(createErrorResponse(ErrorCode.COUNTRY_NOT_FOUND, '無效的國家'));
   }
 
   let districtName = '';
@@ -779,20 +780,20 @@ router.post("/places/batch-generate", isAuthenticated, async (req: any, res) => 
     });
   } catch (error: any) {
     console.error("Admin batch generate error:", error);
-    res.status(500).json({ error: "批次生成失敗", details: error.message });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '批次生成失敗', error.message));
   }
 });
 
 router.post("/places/batch-preview", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
-    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const user = await storage.getUser(userId);
-    if (user?.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
-    const { 
-      keyword, 
+    const {
+      keyword,
       regionId,
       districtId,
       maxKeywords: rawMaxKeywords = 5,
@@ -804,12 +805,12 @@ router.post("/places/batch-preview", isAuthenticated, async (req: any, res) => {
     const maxPagesPerKeyword = Math.min(Math.max(1, rawMaxPages), 2);
 
     if (!regionId) {
-      return res.status(400).json({ error: "regionId 為必填" });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, 'regionId 為必填'));
     }
 
     const regionData = await storage.getRegionById(regionId);
     if (!regionData) {
-      return res.status(400).json({ error: "無效的 regionId" });
+      return res.status(400).json(createErrorResponse(ErrorCode.REGION_NOT_FOUND, '無效的 regionId'));
     }
 
     let districtName = '';
@@ -839,7 +840,7 @@ router.post("/places/batch-preview", isAuthenticated, async (req: any, res) => {
     });
   } catch (error: any) {
     console.error("Admin batch preview error:", error);
-    res.status(500).json({ error: "預覽失敗", details: error.message });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '預覽失敗', error.message));
   }
 });
 
@@ -847,20 +848,20 @@ router.post("/places/reclassify", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     const userEmail = req.user?.claims?.email;
-    
+
     let user = userId ? await storage.getUser(userId) : null;
     if (!user && userEmail) {
       user = await storage.getUserByEmail(userEmail);
     }
-    
+
     if (!user) {
       console.log('[Reclassify] User not found - userId:', userId, 'email:', userEmail);
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
-    
+
     if (user.role !== 'admin') {
       console.log('[Reclassify] Not admin - user:', user.email, 'role:', user.role);
-      return res.status(403).json({ error: "Admin access required" });
+      return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
     }
 
     const { target = 'cache', limit = 100 } = req.body;
@@ -985,7 +986,7 @@ router.post("/places/reclassify", isAuthenticated, async (req: any, res) => {
     });
   } catch (error: any) {
     console.error("Reclassify error:", error);
-    res.status(500).json({ error: "重新分類失敗", details: error.message });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '重新分類失敗', error.message));
   }
 });
 
@@ -993,9 +994,9 @@ router.get("/export-places", async (req, res) => {
   try {
     const key = req.query.key as string;
     const expectedKey = process.env.ADMIN_MIGRATION_KEY;
-    
+
     if (!key || key !== expectedKey) {
-      return res.status(401).json({ error: "Invalid migration key" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_TOKEN_INVALID, '無效的遷移金鑰'));
     }
     
     const result = await db.execute(sql`
@@ -1018,7 +1019,7 @@ router.get("/export-places", async (req, res) => {
     });
   } catch (error: any) {
     console.error("Export places error:", error);
-    res.status(500).json({ error: "匯出失敗", details: error.message });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '匯出失敗', error.message));
   }
 });
 
@@ -1026,13 +1027,13 @@ router.post("/seed-places", async (req, res) => {
   try {
     const { key, data } = req.body;
     const expectedKey = process.env.ADMIN_MIGRATION_KEY;
-    
+
     if (!key || key !== expectedKey) {
-      return res.status(401).json({ error: "Invalid migration key" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_TOKEN_INVALID, '無效的遷移金鑰'));
     }
-    
+
     if (!Array.isArray(data) || data.length === 0) {
-      return res.status(400).json({ error: "No data provided" });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, '未提供資料'));
     }
     
     let inserted = 0;
@@ -1104,7 +1105,7 @@ router.post("/seed-places", async (req, res) => {
     });
   } catch (error: any) {
     console.error("Seed places error:", error);
-    res.status(500).json({ error: "匯入失敗", details: error.message });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '匯入失敗', error.message));
   }
 });
 

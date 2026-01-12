@@ -2,6 +2,7 @@ import { Router } from "express";
 import { isAuthenticated } from "../replitAuth";
 import { storage } from "../storage";
 import twilio from "twilio";
+import { ErrorCode, createErrorResponse } from "@shared/errors";
 
 const { AccessToken } = twilio.jwt;
 const ChatGrant = AccessToken.ChatGrant;
@@ -13,7 +14,7 @@ router.get("/chat/token", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -23,7 +24,7 @@ router.get("/chat/token", isAuthenticated, async (req: any, res) => {
 
     if (!accountSid || !apiKeySid || !apiKeySecret || !conversationsServiceSid) {
       console.error("Missing Twilio credentials");
-      return res.status(500).json({ error: "Chat service not configured" });
+      return res.status(500).json(createErrorResponse(ErrorCode.CHAT_NOT_CONFIGURED));
     }
 
     const token = new AccessToken(accountSid, apiKeySid, apiKeySecret, {
@@ -42,7 +43,7 @@ router.get("/chat/token", isAuthenticated, async (req: any, res) => {
     });
   } catch (error) {
     console.error("Twilio token error:", error);
-    res.status(500).json({ error: "Failed to generate chat token" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法產生聊天 Token'));
   }
 });
 
@@ -50,7 +51,7 @@ router.post("/chat/conversations", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const { friendlyName, uniqueName } = req.body;
@@ -61,7 +62,7 @@ router.post("/chat/conversations", isAuthenticated, async (req: any, res) => {
     const conversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
 
     if (!accountSid || !apiKeySid || !apiKeySecret || !conversationsServiceSid) {
-      return res.status(500).json({ error: "Chat service not configured" });
+      return res.status(500).json(createErrorResponse(ErrorCode.CHAT_NOT_CONFIGURED));
     }
 
     const client = twilio(apiKeySid, apiKeySecret, { accountSid });
@@ -87,9 +88,9 @@ router.post("/chat/conversations", isAuthenticated, async (req: any, res) => {
   } catch (error: any) {
     console.error("Create conversation error:", error);
     if (error.code === 50433) {
-      return res.status(409).json({ error: "Conversation already exists" });
+      return res.status(409).json(createErrorResponse(ErrorCode.ALREADY_ACTIVE, '對話已存在'));
     }
-    res.status(500).json({ error: "Failed to create conversation" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法建立對話'));
   }
 });
 
@@ -97,7 +98,7 @@ router.get("/chat/conversations", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -106,7 +107,7 @@ router.get("/chat/conversations", isAuthenticated, async (req: any, res) => {
     const conversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
 
     if (!accountSid || !apiKeySid || !apiKeySecret || !conversationsServiceSid) {
-      return res.status(500).json({ error: "Chat service not configured" });
+      return res.status(500).json(createErrorResponse(ErrorCode.CHAT_NOT_CONFIGURED));
     }
 
     const client = twilio(apiKeySid, apiKeySecret, { accountSid });
@@ -126,7 +127,7 @@ router.get("/chat/conversations", isAuthenticated, async (req: any, res) => {
     res.json({ conversations });
   } catch (error) {
     console.error("List conversations error:", error);
-    res.status(500).json({ error: "Failed to list conversations" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得對話列表'));
   }
 });
 
@@ -134,7 +135,7 @@ router.post("/chat/conversations/:conversationSid/join", isAuthenticated, async 
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const { conversationSid } = req.params;
@@ -145,7 +146,7 @@ router.post("/chat/conversations/:conversationSid/join", isAuthenticated, async 
     const conversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
 
     if (!accountSid || !apiKeySid || !apiKeySecret || !conversationsServiceSid) {
-      return res.status(500).json({ error: "Chat service not configured" });
+      return res.status(500).json(createErrorResponse(ErrorCode.CHAT_NOT_CONFIGURED));
     }
 
     const client = twilio(apiKeySid, apiKeySecret, { accountSid });
@@ -162,7 +163,7 @@ router.post("/chat/conversations/:conversationSid/join", isAuthenticated, async 
     if (error.code === 50433) {
       return res.json({ success: true, message: "Already a participant" });
     }
-    res.status(500).json({ error: "Failed to join conversation" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法加入對話'));
   }
 });
 
@@ -170,7 +171,7 @@ router.delete("/chat/conversations/:conversationSid", isAuthenticated, async (re
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const { conversationSid } = req.params;
@@ -180,7 +181,7 @@ router.delete("/chat/conversations/:conversationSid", isAuthenticated, async (re
     const conversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
 
     if (!accountSid || !apiKeySid || !apiKeySecret || !conversationsServiceSid) {
-      return res.status(500).json({ error: "Chat service not configured" });
+      return res.status(500).json(createErrorResponse(ErrorCode.CHAT_NOT_CONFIGURED));
     }
 
     const client = twilio(apiKeySid, apiKeySecret, { accountSid });
@@ -193,7 +194,7 @@ router.delete("/chat/conversations/:conversationSid", isAuthenticated, async (re
     res.json({ success: true });
   } catch (error: any) {
     console.error("Delete conversation error:", error);
-    res.status(500).json({ error: error.message || "Failed to delete conversation" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, error.message || '無法刪除對話'));
   }
 });
 
@@ -201,7 +202,7 @@ router.post("/chat/conversations/:conversationSid/call", isAuthenticated, async 
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const { conversationSid } = req.params;
@@ -216,7 +217,7 @@ router.post("/chat/conversations/:conversationSid/call", isAuthenticated, async 
     });
   } catch (error: any) {
     console.error("Start call error:", error);
-    res.status(500).json({ error: error.message || "Failed to start call" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, error.message || '無法開始通話'));
   }
 });
 
@@ -224,7 +225,7 @@ router.get("/token", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -235,7 +236,7 @@ router.get("/token", isAuthenticated, async (req: any, res) => {
 
     if (!accountSid || !apiKeySid || !apiKeySecret) {
       console.error("Missing Twilio credentials");
-      return res.status(500).json({ error: "Twilio not configured" });
+      return res.status(500).json(createErrorResponse(ErrorCode.TWILIO_NOT_CONFIGURED));
     }
 
     const identity = userId;
@@ -266,7 +267,7 @@ router.get("/token", isAuthenticated, async (req: any, res) => {
     });
   } catch (error) {
     console.error("Twilio unified token error:", error);
-    res.status(500).json({ error: "Failed to generate token" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法產生 Token'));
   }
 });
 
@@ -290,7 +291,7 @@ router.post("/chat/conversations/:conversationSid/invite-link", isAuthenticated,
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const { conversationSid } = req.params;
@@ -318,7 +319,7 @@ router.post("/chat/conversations/:conversationSid/invite-link", isAuthenticated,
     });
   } catch (error) {
     console.error("Generate invite link error:", error);
-    res.status(500).json({ error: "Failed to generate invite link" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法產生邀請連結'));
   }
 });
 
@@ -326,22 +327,22 @@ router.post("/chat/invites/:inviteCode/accept", isAuthenticated, async (req: any
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const { inviteCode } = req.params;
     
     const invite = await storage.getChatInviteByCode(inviteCode);
     if (!invite) {
-      return res.status(404).json({ error: "Invite not found" });
+      return res.status(404).json(createErrorResponse(ErrorCode.INVITE_NOT_FOUND));
     }
 
     if (invite.status !== 'pending') {
-      return res.status(400).json({ error: "Invite already used or expired" });
+      return res.status(400).json(createErrorResponse(ErrorCode.INVITE_ALREADY_USED));
     }
 
     if (new Date(invite.expiresAt) < new Date()) {
-      return res.status(400).json({ error: "Invite has expired" });
+      return res.status(400).json(createErrorResponse(ErrorCode.INVITE_EXPIRED));
     }
 
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -350,7 +351,7 @@ router.post("/chat/invites/:inviteCode/accept", isAuthenticated, async (req: any
     const conversationsServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
 
     if (!accountSid || !apiKeySid || !apiKeySecret || !conversationsServiceSid) {
-      return res.status(500).json({ error: "Chat service not configured" });
+      return res.status(500).json(createErrorResponse(ErrorCode.CHAT_NOT_CONFIGURED));
     }
 
     const client = twilio(apiKeySid, apiKeySecret, { accountSid });
@@ -378,7 +379,7 @@ router.post("/chat/invites/:inviteCode/accept", isAuthenticated, async (req: any
     });
   } catch (error) {
     console.error("Accept invite error:", error);
-    res.status(500).json({ error: "Failed to accept invite" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法接受邀請'));
   }
 });
 
@@ -387,9 +388,7 @@ router.post("/klook/detect", isAuthenticated, async (req: any, res) => {
     const { messageText, conversationSid, messageSid } = req.body;
     
     if (!messageText || !conversationSid || !messageSid) {
-      return res.status(400).json({ 
-        error: "Missing required fields: messageText, conversationSid, messageSid" 
-      });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, '缺少必要欄位: messageText, conversationSid, messageSid'));
     }
 
     const { detectKlookProducts } = await import("../klookService");
@@ -401,7 +400,7 @@ router.post("/klook/detect", isAuthenticated, async (req: any, res) => {
     });
   } catch (error) {
     console.error("Klook detection error:", error);
-    res.status(500).json({ error: "Failed to detect products" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法偵測產品'));
   }
 });
 
@@ -415,7 +414,7 @@ router.get("/klook/highlights/:conversationSid/:messageSid", isAuthenticated, as
     res.json({ highlights });
   } catch (error) {
     console.error("Get highlights error:", error);
-    res.status(500).json({ error: "Failed to get highlights" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得重點資訊'));
   }
 });
 
@@ -429,7 +428,7 @@ router.get("/klook/highlights/:conversationSid", isAuthenticated, async (req: an
     res.json({ highlights });
   } catch (error) {
     console.error("Get conversation highlights error:", error);
-    res.status(500).json({ error: "Failed to get highlights" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得重點資訊'));
   }
 });
 
@@ -437,15 +436,13 @@ router.post("/feedback/exclude", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
     const { placeName, district, city, placeCacheId } = req.body;
     
     if (!placeName || !district || !city) {
-      return res.status(400).json({ 
-        error: "Missing required fields: placeName, district, city" 
-      });
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, '缺少必要欄位: placeName, district, city'));
     }
 
     const feedback = await storage.incrementPlacePenalty(
@@ -467,7 +464,7 @@ router.post("/feedback/exclude", isAuthenticated, async (req: any, res) => {
     });
   } catch (error) {
     console.error("Feedback exclusion error:", error);
-    res.status(500).json({ error: "Failed to exclude place" });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法排除景點'));
   }
 });
 

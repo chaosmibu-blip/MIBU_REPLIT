@@ -13,6 +13,7 @@ import seoRouter from './seo';
 import { subscriptionPlansPublicRouter } from './admin/admin-subscription-plans';
 import { storage } from '../storage';
 import { AnnouncementType } from '@shared/schema';
+import { ErrorCode, createErrorResponse } from '@shared/errors';
 
 const router = Router();
 
@@ -26,7 +27,7 @@ router.get('/announcements', async (req, res) => {
     res.json({ announcements });
   } catch (error) {
     console.error('Get active announcements error:', error);
-    res.status(500).json({ error: 'Failed to get announcements' });
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得公告'));
   }
 });
 
