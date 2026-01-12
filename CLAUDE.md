@@ -100,7 +100,7 @@ server/                   # ⭐ 後端 API
 ├── routes/               # 路由層（模組化）
 │   ├── index.ts          # 路由註冊中心
 │   ├── auth.ts           # 認證路由
-│   ├── gacha/            # 扭蛋模組 (V1/V2/V3)
+│   ├── gacha/            # 扭蛋模組 (僅 V3)
 │   ├── admin/            # 管理後台 API
 │   ├── merchant.ts       # 商家路由
 │   ├── specialist.ts     # 專員路由
@@ -154,7 +154,7 @@ docs/
 | 路由檔案 | API 前綴 | 職責 |
 |----------|----------|------|
 | `routes/auth.ts` | `/api/auth/*` | Apple/Google Sign In, JWT |
-| `routes/gacha/` | `/api/gacha/*` | 扭蛋抽取 (V3 為主) |
+| `routes/gacha/` | `/api/gacha/*` | 扭蛋抽取（僅 V3）、Recur 金流 |
 | `routes/merchant.ts` | `/api/merchant/*` | 商家管理、訂閱 |
 | `routes/specialist.ts` | `/api/specialist/*` | 專員服務 |
 | `routes/admin/` | `/api/admin/*` | 後台管理 API |
