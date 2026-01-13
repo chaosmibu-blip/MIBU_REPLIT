@@ -123,6 +123,37 @@ export const locationStorage = {
       .orderBy(categories.sortOrder);
   },
 
+  async getCategoryByCode(code: string): Promise<Category | undefined> {
+    const [category] = await db
+      .select()
+      .from(categories)
+      .where(and(eq(categories.code, code), eq(categories.isActive, true)))
+      .limit(1);
+    return category;
+  },
+
+  async getCategoryByNameZh(nameZh: string): Promise<Category | undefined> {
+    const [category] = await db
+      .select()
+      .from(categories)
+      .where(and(eq(categories.nameZh, nameZh), eq(categories.isActive, true)))
+      .limit(1);
+    return category;
+  },
+
+  async getSubcategoryByNameZh(nameZh: string, categoryId?: number): Promise<Subcategory | undefined> {
+    const conditions = [eq(subcategories.nameZh, nameZh), eq(subcategories.isActive, true)];
+    if (categoryId) {
+      conditions.push(eq(subcategories.categoryId, categoryId));
+    }
+    const [subcategory] = await db
+      .select()
+      .from(subcategories)
+      .where(and(...conditions))
+      .limit(1);
+    return subcategory;
+  },
+
   async getSubcategoriesByCategory(categoryId: number): Promise<Subcategory[]> {
     return await db
       .select()

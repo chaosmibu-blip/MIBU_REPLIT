@@ -12,7 +12,12 @@ import { storage } from "./storage";
 import { registerUserSchema } from "@shared/schema";
 import { z } from "zod";
 
-const JWT_SECRET = process.env.JWT_SECRET || 'mibu_secret_key_fixed_12345';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('⛔ FATAL: JWT_SECRET environment variable is not set!');
+  console.error('   Please set JWT_SECRET in your environment to secure your application.');
+  process.exit(1);
+}
 
 // Password hashing using PBKDF2 (Node.js built-in)
 const SALT_LENGTH = 16;

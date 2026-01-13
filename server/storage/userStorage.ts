@@ -391,4 +391,68 @@ export const userStorage = {
       );
     return true;
   },
+
+  // ============ Notifications ============
+
+  async getUnreadNotificationCount(userId: string, notificationType: string): Promise<number> {
+    const [notification] = await db.select()
+      .from(userNotifications)
+      .where(and(
+        eq(userNotifications.userId, userId),
+        eq(userNotifications.notificationType, notificationType)
+      ));
+    return notification?.unreadCount || 0;
+  },
+
+  async markNotificationsRead(userId: string, notificationType: string): Promise<void> {
+    await db.update(userNotifications)
+      .set({ unreadCount: 0, lastSeenAt: new Date() })
+      .where(and(
+        eq(userNotifications.userId, userId),
+        eq(userNotifications.notificationType, notificationType)
+      ));
+  },
+
+  async incrementNotificationCount(userId: string, notificationType: string): Promise<void> {
+    const [existing] = await db.select()
+      .from(userNotifications)
+      .where(and(
+        eq(userNotifications.userId, userId),
+        eq(userNotifications.notificationType, notificationType)
+      ));
+
+    if (existing) {
+      await db.update(userNotifications)
+        .set({
+          unreadCount: existing.unreadCount + 1,
+          lastUpdatedAt: new Date(),
+        })
+        .where(eq(userNotifications.id, existing.id));
+    } else {
+      await db.insert(userNotifications).values({
+        userId,
+        notificationType,
+        unreadCount: 1,
+      });
+    }
+  },
+
+  /**
+   * 通知擁有特定景點圖鑑的所有用戶
+   * 當商家更新優惠時調用
+   */
+  async notifyCollectionHolders(officialPlaceId: number): Promise<number> {
+    // 找出所有擁有該景點圖鑑的用戶
+    const holders = await db.select({ userId: collections.userId })
+      .from(collections)
+      .where(eq(collections.officialPlaceId, officialPlaceId))
+      .groupBy(collections.userId);
+
+    // 為每個用戶增加通知計數
+    for (const holder of holders) {
+      await userStorage.incrementNotificationCount(holder.userId, 'collection');
+    }
+
+    return holders.length;
+  },
 };
