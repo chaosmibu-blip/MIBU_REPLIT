@@ -1157,4 +1157,48 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
   }
 });
 
+// ============ Prize Pool - 稀有優惠券獎池預覽 ============
+router.get("/gacha/prize-pool/:regionId", async (req, res) => {
+  try {
+    const regionId = parseInt(req.params.regionId);
+
+    if (isNaN(regionId) || regionId <= 0) {
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的區域 ID'));
+    }
+
+    const region = await storage.getRegionById(regionId);
+    if (!region) {
+      return res.status(404).json(createErrorResponse(ErrorCode.REGION_NOT_FOUND, '找不到該區域'));
+    }
+
+    const coupons = await storage.getRegionPrizePoolCoupons(regionId);
+
+    // 按稀有度分組
+    const grouped = {
+      SP: coupons.filter(c => c.rarity === 'SP'),
+      SSR: coupons.filter(c => c.rarity === 'SSR'),
+    };
+
+    res.json({
+      success: true,
+      region: {
+        id: region.id,
+        name: region.nameZh || region.nameEn,
+      },
+      prizePool: {
+        total: coupons.length,
+        coupons: coupons,
+        byRarity: {
+          SP: grouped.SP.length,
+          SSR: grouped.SSR.length,
+        },
+      },
+      message: coupons.length === 0 ? '此區域目前沒有稀有優惠券' : undefined,
+    });
+  } catch (error) {
+    console.error("Get prize pool error:", error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得獎池資訊'));
+  }
+});
+
 export default router;

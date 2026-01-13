@@ -3,7 +3,7 @@ import * as crypto from "crypto";
 import { z } from "zod";
 import appleSignin from "apple-signin-auth";
 import { OAuth2Client } from "google-auth-library";
-import { hashPassword, verifyPassword, generateToken } from "../lib/utils/auth";
+import { generateToken } from "../lib/utils/auth";
 import { isAuthenticated, generateJwtToken } from "../replitAuth";
 import { storage } from "../storage";
 import { updateProfileSchema } from "@shared/schema";
@@ -72,315 +72,102 @@ function validateOAuthUserRole(
   return { valid: true, userRole: 'traveler' };
 }
 
-// Email/Password Registration (Traveler only)
-router.post('/register', async (req, res) => {
-  try {
-    const travelerRegisterSchema = z.object({
-      email: z.string().email('請輸入有效的電子郵件'),
-      password: z.string().min(6, '密碼至少6個字'),
-      firstName: z.string().optional(),
-      lastName: z.string().optional(),
-    });
-    
-    const validated = travelerRegisterSchema.parse(req.body);
-    
-    const existingUser = await storage.getUserByEmail(validated.email);
-    if (existingUser) {
-      return res.status(400).json(createErrorResponse(ErrorCode.EMAIL_ALREADY_EXISTS));
-    }
-    
-    const hashedPassword = hashPassword(validated.password);
-    const userId = `email_${crypto.randomBytes(16).toString('hex')}`;
-    
-    const user = await storage.createUser({
-      id: userId,
-      email: validated.email,
-      password: hashedPassword,
-      firstName: validated.firstName || null,
-      lastName: validated.lastName || null,
-      role: 'traveler',
-      isApproved: true,
-      provider: 'email',
-    });
-    
-    const token = generateToken(user.id, 'traveler');
-    
-    res.status(201).json({ 
-      user: { 
-        id: user.id, 
-        email: user.email, 
-        firstName: user.firstName, 
-        lastName: user.lastName,
-        role: user.role,
-        isApproved: user.isApproved,
-      }, 
-      token 
-    });
-  } catch (error: any) {
-    console.error("Registration error:", error);
-    if (error.name === 'ZodError') {
-      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', error.errors));
-    }
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '註冊失敗，請稍後再試'));
-  }
-});
+// ============ 統一 Mobile OAuth 端點 ============
 
-// Merchant Registration (商家註冊)
-router.post('/register/merchant', async (req, res) => {
-  try {
-    const merchantRegisterSchema = z.object({
-      email: z.string().email('請輸入有效的電子郵件'),
-      password: z.string().min(6, '密碼至少6個字'),
-      businessName: z.string().min(1, '請輸入商家名稱'),
-      contactName: z.string().min(1, '請輸入聯絡人名稱'),
-      taxId: z.string().optional(),
-      businessCategory: z.string().min(1, '請選擇產業類別'),
-      address: z.string().min(1, '請輸入營業地址'),
-      otherContact: z.string().optional(),
-    });
-    
-    const validated = merchantRegisterSchema.parse(req.body);
-    
-    const existingUser = await storage.getUserByEmail(validated.email);
-    if (existingUser) {
-      return res.status(400).json(createErrorResponse(ErrorCode.EMAIL_ALREADY_EXISTS));
-    }
-    
-    const hashedPassword = hashPassword(validated.password);
-    const userId = `email_${crypto.randomBytes(16).toString('hex')}`;
-    
-    const user = await storage.createUser({
-      id: userId,
-      email: validated.email,
-      password: hashedPassword,
-      firstName: validated.contactName,
-      lastName: null,
-      role: 'merchant',
-      isApproved: false,
-      provider: 'email',
-    });
-    
-    await storage.createMerchant({
-      userId: user.id,
-      email: validated.email,
-      businessName: validated.businessName,
-      ownerName: validated.contactName,
-      taxId: validated.taxId || null,
-      businessCategory: validated.businessCategory,
-      address: validated.address,
-      phone: validated.otherContact || null,
-      name: validated.businessName,
-      subscriptionPlan: 'free',
-      creditBalance: 0,
-    });
-    
-    console.log(`[Merchant Register] New merchant application: ${validated.email}, business: ${validated.businessName}`);
-    
-    res.status(201).json({
-      success: true,
-      message: '已收到您的申請，立馬為您處理',
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        isApproved: user.isApproved,
-      },
-    });
-  } catch (error: any) {
-    console.error("Merchant registration error:", error);
-    if (error.name === 'ZodError') {
-      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', error.errors));
-    }
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '註冊失敗，請稍後再試'));
-  }
-});
+// Apple Token 驗證
+async function verifyAppleToken(idToken: string, fullName?: { givenName?: string | null; familyName?: string | null } | null, email?: string | null, appleUser?: string) {
+  const validAudiences = [
+    process.env.APPLE_CLIENT_ID,
+    'com.chaos.mibu.travel',
+    'host.exp.Exponent',
+  ].filter(Boolean) as string[];
 
-// Specialist Registration (專員註冊)
-router.post('/register/specialist', async (req, res) => {
-  try {
-    const specialistRegisterSchema = z.object({
-      email: z.string().email('請輸入有效的電子郵件'),
-      password: z.string().min(6, '密碼至少6個字'),
-      name: z.string().min(1, '請輸入名稱'),
-      otherContact: z.string().optional(),
-      serviceRegion: z.string().optional(),
-    });
-    
-    const validated = specialistRegisterSchema.parse(req.body);
-    
-    const existingUser = await storage.getUserByEmail(validated.email);
-    if (existingUser) {
-      return res.status(400).json(createErrorResponse(ErrorCode.EMAIL_ALREADY_EXISTS));
-    }
-    
-    const hashedPassword = hashPassword(validated.password);
-    const userId = `email_${crypto.randomBytes(16).toString('hex')}`;
-    
-    const user = await storage.createUser({
-      id: userId,
-      email: validated.email,
-      password: hashedPassword,
-      firstName: validated.name,
-      lastName: null,
-      role: 'specialist',
-      isApproved: false,
-      provider: 'email',
-    });
-    
-    await storage.createSpecialist({
-      userId: user.id,
-      name: validated.name,
-      serviceRegion: validated.serviceRegion || 'taipei',
-      isAvailable: false,
-      maxTravelers: 5,
-      currentTravelers: 0,
-    });
-    
-    console.log(`[Specialist Register] New specialist application: ${validated.email}, name: ${validated.name}`);
-    
-    res.status(201).json({
-      success: true,
-      message: '已收到您的申請，立馬為您處理',
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        isApproved: user.isApproved,
-      },
-    });
-  } catch (error: any) {
-    console.error("Specialist registration error:", error);
-    if (error.name === 'ZodError') {
-      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', error.errors));
-    }
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '註冊失敗，請稍後再試'));
-  }
-});
-
-// Email/Password Login with God Mode support
-router.post('/login', async (req, res) => {
-  try {
-    const loginSchema = z.object({
-      email: z.string().email('請輸入有效的電子郵件'),
-      password: z.string().min(1, '請輸入密碼'),
-      target_role: z.enum(VALID_ROLES).optional(),
-    });
-    
-    const validated = loginSchema.parse(req.body);
-    const targetRole = validated.target_role || 'traveler';
-    
-    const user = await storage.getUserByEmail(validated.email);
-    if (!user || !user.password) {
-      return res.status(401).json(createErrorResponse(ErrorCode.INVALID_CREDENTIALS));
-    }
-    
-    if (!verifyPassword(validated.password, user.password)) {
-      return res.status(401).json(createErrorResponse(ErrorCode.INVALID_CREDENTIALS));
-    }
-    
-    const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
-    
-    if (isSuperAdmin) {
-      console.log(`[GOD MODE] Super admin ${user.email} logging in as ${targetRole}`);
-      
-      if (targetRole === 'merchant') {
-        let merchant = await storage.getMerchantByUserId(user.id);
-        if (!merchant) {
-          merchant = await storage.createMerchant({
-            userId: user.id,
-            name: `${user.firstName || 'Admin'}'s Test Store`,
-            email: user.email!,
-            subscriptionPlan: 'premium',
-            dailySeedCode: crypto.randomBytes(4).toString('hex').toUpperCase(),
-            creditBalance: 10000,
-          });
-          console.log(`[GOD MODE] Auto-created merchant for super admin: ${merchant.id}`);
-        }
-      } else if (targetRole === 'specialist') {
-        let specialist = await storage.getSpecialistByUserId(user.id);
-        if (!specialist) {
-          specialist = await storage.createSpecialist({
-            userId: user.id,
-            name: `${user.firstName || 'Admin'} Specialist`,
-            serviceRegion: 'taipei',
-            isAvailable: true,
-            maxTravelers: 10,
-            currentTravelers: 0,
-          });
-          console.log(`[GOD MODE] Auto-created specialist for super admin: ${specialist.id}`);
-        }
-      }
-      
-      const token = generateToken(user.id, targetRole);
-      
-      return res.json({ 
-        user: { 
-          id: user.id, 
-          email: user.email, 
-          firstName: user.firstName, 
-          lastName: user.lastName,
-          role: targetRole,
-          actualRole: user.role,
-          isApproved: true,
-          isSuperAdmin: true,
-        }, 
-        token 
+  let tokenPayload: any;
+  for (const audience of validAudiences) {
+    try {
+      tokenPayload = await appleSignin.verifyIdToken(idToken, {
+        audience: audience,
+        ignoreExpiration: false,
       });
+      console.log(`[Apple Auth] Token verified with audience: ${audience}`);
+      break;
+    } catch (verifyError: any) {
+      console.log(`[Apple Auth] Token verification failed for audience ${audience}: ${verifyError.message}`);
+      continue;
     }
-    
-    if (user.role !== targetRole) {
-      return res.status(403).json(createErrorResponse(
-        ErrorCode.ROLE_MISMATCH,
-        `您的帳號角色為 ${user.role}，無法從 ${targetRole} 入口登入。請使用正確的入口或註冊新帳號。`,
-        { currentRole: user.role, targetRole: targetRole }
-      ));
-    }
-    
-    if (user.role !== 'traveler' && !user.isApproved) {
-      return res.status(403).json(createErrorResponse(
-        ErrorCode.PENDING_APPROVAL,
-        '帳號審核中，請等待管理員核准',
-        { isApproved: user.isApproved }
-      ));
-    }
-    
-    const token = generateToken(user.id, user.role || 'traveler');
-    
-    res.json({ 
-      user: { 
-        id: user.id, 
-        email: user.email, 
-        firstName: user.firstName, 
-        lastName: user.lastName,
-        role: user.role,
-        isApproved: user.isApproved,
-      }, 
-      token 
-    });
-  } catch (error: any) {
-    console.error("Login error:", error);
-    if (error.name === 'ZodError') {
-      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR));
-    }
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '登入失敗，請稍後再試'));
   }
-});
 
-// Apple Sign In
-router.post('/apple', async (req, res) => {
-  console.log('[Apple Auth] Request received:', JSON.stringify({
-    hasIdentityToken: !!req.body?.identityToken,
+  if (!tokenPayload) {
+    throw new Error('Apple token verification failed');
+  }
+
+  return {
+    providerSub: tokenPayload.sub,
+    userId: `apple_${appleUser || tokenPayload.sub}`,
+    email: tokenPayload.email || email || null,
+    emailVerified: tokenPayload.email_verified || false,
+    firstName: fullName?.givenName || null,
+    lastName: fullName?.familyName || null,
+    profileImageUrl: null,
+  };
+}
+
+// Google Token 驗證
+async function verifyGoogleToken(idToken: string) {
+  const validAudiences = [
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_IOS_CLIENT_ID,
+    process.env.GOOGLE_ANDROID_CLIENT_ID,
+    'host.exp.Exponent',
+  ].filter(Boolean) as string[];
+
+  let tokenPayload: any;
+  for (const audience of validAudiences) {
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: idToken,
+        audience: audience,
+      });
+      tokenPayload = ticket.getPayload();
+      console.log(`[Google Auth] Token verified with audience: ${audience}`);
+      break;
+    } catch (verifyError: any) {
+      console.log(`[Google Auth] Token verification failed for audience ${audience}: ${verifyError.message}`);
+      continue;
+    }
+  }
+
+  if (!tokenPayload) {
+    throw new Error('Google token verification failed');
+  }
+
+  return {
+    providerSub: tokenPayload.sub,
+    userId: `google_${tokenPayload.sub}`,
+    email: tokenPayload.email || null,
+    emailVerified: tokenPayload.email_verified || false,
+    firstName: tokenPayload.given_name || tokenPayload.name?.split(' ')[0] || null,
+    lastName: tokenPayload.family_name || null,
+    profileImageUrl: tokenPayload.picture || null,
+  };
+}
+
+// 統一 Mobile OAuth (Apple/Google)
+router.post('/mobile', async (req, res) => {
+  const provider = req.body?.provider;
+  console.log(`[Mobile Auth] Request received: provider=${provider}`, JSON.stringify({
     hasIdToken: !!req.body?.idToken,
-    hasUser: !!req.body?.user,
+    hasIdentityToken: !!req.body?.identityToken,
     portal: req.body?.portal,
     targetPortal: req.body?.targetPortal,
     keys: Object.keys(req.body || {}),
   }));
-  
+
   try {
-    const appleAuthSchema = z.object({
-      identityToken: z.string().min(1).optional(),
+    const mobileAuthSchema = z.object({
+      provider: z.enum(['apple', 'google']),
       idToken: z.string().min(1).optional(),
+      identityToken: z.string().min(1).optional(),
       fullName: z.object({
         givenName: z.string().nullable().optional(),
         familyName: z.string().nullable().optional(),
@@ -389,101 +176,82 @@ router.post('/apple', async (req, res) => {
       user: z.string().optional(),
       targetPortal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).nullable().optional(),
       portal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).nullable().optional(),
-    }).refine(data => data.identityToken || data.idToken, {
-      message: 'Either identityToken or idToken is required',
+    }).refine(data => data.idToken || data.identityToken, {
+      message: 'idToken or identityToken is required',
     });
-    
-    const validated = appleAuthSchema.parse(req.body);
-    const identityToken = validated.identityToken || validated.idToken!;
-    const { fullName, email } = validated;
+
+    const validated = mobileAuthSchema.parse(req.body);
+    const idToken = validated.idToken || validated.identityToken!;
     const targetPortal = validated.targetPortal || validated.portal || 'traveler';
-    
-    console.log(`[Apple Auth] Verifying token...`);
-    
-    const validAudiences = [
-      process.env.APPLE_CLIENT_ID,
-      'com.chaos.mibu.travel',
-      'host.exp.Exponent',
-    ].filter(Boolean) as string[];
-    
-    let appleTokenPayload: any;
-    let verificationSucceeded = false;
-    
-    for (const audience of validAudiences) {
-      try {
-        appleTokenPayload = await appleSignin.verifyIdToken(identityToken, {
-          audience: audience,
-          ignoreExpiration: false,
-        });
-        verificationSucceeded = true;
-        console.log(`[Apple Auth] Token verified with audience: ${audience}`);
-        break;
-      } catch (verifyError: any) {
-        console.log(`[Apple Auth] Token verification failed for audience ${audience}: ${verifyError.message}`);
-        continue;
-      }
+
+    // 根據 provider 驗證 token
+    let verifiedData: {
+      providerSub: string;
+      userId: string;
+      email: string | null;
+      emailVerified: boolean;
+      firstName: string | null;
+      lastName: string | null;
+      profileImageUrl: string | null;
+    };
+
+    if (validated.provider === 'apple') {
+      verifiedData = await verifyAppleToken(idToken, validated.fullName, validated.email, validated.user);
+    } else {
+      verifiedData = await verifyGoogleToken(idToken);
     }
-    
-    if (!verificationSucceeded) {
-      console.error('[Apple Auth] Token verification failed for all audiences');
-      return res.status(401).json(createErrorResponse(ErrorCode.INVALID_CREDENTIALS, 'Apple token verification failed'));
-    }
-    
-    const userEmail = appleTokenPayload.email || email;
-    const firstName = fullName?.givenName || null;
-    const lastName = fullName?.familyName || null;
-    
-    console.log(`[Apple Auth] Verified. Email: ${userEmail}, Apple sub: ${appleTokenPayload.sub}`);
-    
-    const appleUserId = validated.user || appleTokenPayload.sub;
-    const userId = `apple_${appleUserId}`;
-    
-    let existingUser = await storage.getUser(userId);
-    
-    if (!existingUser && userEmail) {
-      const existingUserByEmail = await storage.getUserByEmail(userEmail);
-      if (existingUserByEmail && existingUserByEmail.id !== userId) {
-        console.log(`[Apple Auth] Found existing user with same email. Will merge: ${existingUserByEmail.id} -> ${userId}`);
+
+    console.log(`[Mobile Auth] Verified (${validated.provider}). Email: ${verifiedData.email}, sub: ${verifiedData.providerSub}`);
+
+    // 查找現有用戶
+    let existingUser = await storage.getUser(verifiedData.userId);
+    if (!existingUser && verifiedData.email) {
+      const existingUserByEmail = await storage.getUserByEmail(verifiedData.email);
+      if (existingUserByEmail && existingUserByEmail.id !== verifiedData.userId) {
+        console.log(`[Mobile Auth] Found existing user with same email. Will merge: ${existingUserByEmail.id} -> ${verifiedData.userId}`);
         existingUser = existingUserByEmail;
       }
     }
-    
+
     // 驗證角色
-    const roleValidation = validateOAuthUserRole(existingUser, targetPortal, 'apple');
+    const roleValidation = validateOAuthUserRole(existingUser, targetPortal, validated.provider);
     if (!roleValidation.valid) {
       return res.status(roleValidation.status).json(roleValidation.response);
     }
     const userRole = roleValidation.userRole;
 
+    // 建立或更新用戶
     const user = await storage.upsertUser({
-      id: userId,
-      email: userEmail,
-      firstName: firstName,
-      lastName: lastName,
+      id: verifiedData.userId,
+      email: verifiedData.email,
+      firstName: verifiedData.firstName,
+      lastName: verifiedData.lastName,
+      profileImageUrl: verifiedData.profileImageUrl,
       role: userRole,
-      provider: 'apple',
+      provider: validated.provider,
       isApproved: userRole === 'traveler' ? true : (existingUser?.isApproved || false),
     });
-    
-    console.log(`[Apple Auth] User upserted: ${user.id}, role: ${user.role}`);
-    
-    // Sync to auth_identities for multi-provider linking
+
+    console.log(`[Mobile Auth] User upserted: ${user.id}, role: ${user.role}`);
+
+    // 同步到 auth_identities
     await storage.upsertAuthIdentity({
       userId: user.id,
-      provider: 'apple',
-      providerUserId: appleTokenPayload.sub,
-      email: userEmail,
-      emailVerified: appleTokenPayload.email_verified || false,
+      provider: validated.provider,
+      providerUserId: verifiedData.providerSub,
+      email: verifiedData.email,
+      emailVerified: verifiedData.emailVerified,
     });
-    console.log(`[Apple Auth] Auth identity synced for provider=apple, sub=${appleTokenPayload.sub}`);
-    
+    console.log(`[Mobile Auth] Auth identity synced for provider=${validated.provider}, sub=${verifiedData.providerSub}`);
+
     const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
-    
+
     if (!isSuperAdmin && user.role !== 'traveler' && !user.isApproved) {
       return res.status(403).json(createErrorResponse(ErrorCode.PENDING_APPROVAL, '帳號審核中，請等待管理員核准'));
     }
 
     const token = generateToken(user.id, user.role || 'traveler');
+    const providerName = validated.provider === 'apple' ? 'Apple' : 'Google';
 
     res.json({
       success: true,
@@ -491,205 +259,67 @@ router.post('/apple', async (req, res) => {
       user: {
         id: user.id,
         email: user.email || '',
-        name: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Apple User',
+        name: [user.firstName, user.lastName].filter(Boolean).join(' ') || `${providerName} User`,
         role: user.role,
         isApproved: user.isApproved,
         isSuperAdmin,
       },
     });
   } catch (error: any) {
-    console.error('[Apple Auth] Error:', error);
+    console.error(`[Mobile Auth] Error:`, error);
     if (error.name === 'ZodError') {
       const zodError = error as z.ZodError;
       const issues = zodError.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ');
-      console.error(`[Apple Auth] Zod validation failed: ${issues}`);
-      console.error(`[Apple Auth] Received body keys: ${Object.keys(req.body || {}).join(', ')}`);
-      console.error(`[Apple Auth] Received body (masked):`, JSON.stringify({
-        identityToken: req.body?.identityToken ? `[${String(req.body.identityToken).length} chars]` : undefined,
-        user: req.body?.user,
-        portal: req.body?.portal,
-        targetPortal: req.body?.targetPortal,
-        email: req.body?.email,
-        fullName: req.body?.fullName,
-      }));
       return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, `Invalid request data: ${issues}`));
     }
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, 'Apple authentication failed'));
+    if (error.message?.includes('token verification failed')) {
+      return res.status(401).json(createErrorResponse(ErrorCode.INVALID_CREDENTIALS, error.message));
+    }
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, 'Mobile authentication failed'));
   }
 });
 
-// Google Sign In
+// 向後兼容：保留舊的 /apple 和 /google 端點作為轉發
+router.post('/apple', async (req, res) => {
+  req.body.provider = 'apple';
+  req.url = '/mobile';
+  router.handle(req, res, () => {});
+});
+
 router.post('/google', async (req, res) => {
-  console.log('[Google Auth] Request received:', JSON.stringify({
-    hasIdToken: !!req.body?.idToken,
-    hasUser: !!req.body?.user,
-    portal: req.body?.portal,
-    targetPortal: req.body?.targetPortal,
-    keys: Object.keys(req.body || {}),
-  }));
-  
-  try {
-    const googleAuthSchema = z.object({
-      idToken: z.string().min(1, 'ID token is required'),
-      user: z.object({
-        id: z.string().min(1, 'Google user ID is required'),
-        email: z.string().email().nullable().optional(),
-        name: z.string().nullable().optional(),
-        givenName: z.string().nullable().optional(),
-        familyName: z.string().nullable().optional(),
-        photo: z.string().nullable().optional(),
-      }).optional(),
-      targetPortal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).nullable().optional(),
-      portal: z.enum(['traveler', 'merchant', 'specialist', 'admin']).nullable().optional(),
-    });
-    
-    const validated = googleAuthSchema.parse(req.body);
-    const { idToken } = validated;
-    const targetPortal = validated.targetPortal || validated.portal || 'traveler';
-    
-    // ⚠️ CRITICAL: Verify ID token with Google
-    // This ensures the token is authentic and not forged
-    const validAudiences = [
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_IOS_CLIENT_ID,
-      process.env.GOOGLE_ANDROID_CLIENT_ID,
-      'host.exp.Exponent', // Expo development
-    ].filter(Boolean) as string[];
-    
-    let googleTokenPayload: any;
-    let verificationSucceeded = false;
-    
-    for (const audience of validAudiences) {
-      try {
-        const ticket = await googleClient.verifyIdToken({
-          idToken: idToken,
-          audience: audience,
-        });
-        googleTokenPayload = ticket.getPayload();
-        verificationSucceeded = true;
-        console.log(`[Google Auth] Token verified with audience: ${audience}`);
-        break;
-      } catch (verifyError: any) {
-        console.log(`[Google Auth] Token verification failed for audience ${audience}: ${verifyError.message}`);
-        continue;
-      }
-    }
-    
-    if (!verificationSucceeded || !googleTokenPayload) {
-      console.error('[Google Auth] Token verification failed for all audiences');
-      return res.status(401).json(createErrorResponse(ErrorCode.INVALID_CREDENTIALS, 'Google token verification failed'));
-    }
-    
-    // Extract verified user info from Google's payload (not from client)
-    const googleSub = googleTokenPayload.sub;
-    const userEmail = googleTokenPayload.email || null;
-    const emailVerified = googleTokenPayload.email_verified || false;
-    const firstName = googleTokenPayload.given_name || googleTokenPayload.name?.split(' ')[0] || null;
-    const lastName = googleTokenPayload.family_name || null;
-    const profileImageUrl = googleTokenPayload.picture || null;
-    
-    console.log(`[Google Auth] Verified. Email: ${userEmail}, Google sub: ${googleSub}`);
-    
-    const userId = `google_${googleSub}`;
-    
-    let existingUser = await storage.getUser(userId);
-    
-    if (!existingUser && userEmail) {
-      const existingUserByEmail = await storage.getUserByEmail(userEmail);
-      if (existingUserByEmail && existingUserByEmail.id !== userId) {
-        console.log(`[Google Auth] Found existing user with same email. Will merge: ${existingUserByEmail.id} -> ${userId}`);
-        existingUser = existingUserByEmail;
-      }
-    }
-    
-    // 驗證角色
-    const roleValidation = validateOAuthUserRole(existingUser, targetPortal, 'google');
-    if (!roleValidation.valid) {
-      return res.status(roleValidation.status).json(roleValidation.response);
-    }
-    const userRole = roleValidation.userRole;
-
-    const user = await storage.upsertUser({
-      id: userId,
-      email: userEmail,
-      firstName: firstName,
-      lastName: lastName,
-      profileImageUrl: profileImageUrl,
-      role: userRole,
-      provider: 'google',
-      isApproved: userRole === 'traveler' ? true : (existingUser?.isApproved || false),
-    });
-    
-    console.log(`[Google Auth] User upserted: ${user.id}, role: ${user.role}`);
-    
-    // Sync to auth_identities for multi-provider linking
-    await storage.upsertAuthIdentity({
-      userId: user.id,
-      provider: 'google',
-      providerUserId: googleSub,
-      email: userEmail,
-      emailVerified: emailVerified,
-    });
-    console.log(`[Google Auth] Auth identity synced for provider=google, sub=${googleSub}`);
-    
-    const isSuperAdmin = user.email === SUPER_ADMIN_EMAIL;
-    
-    if (!isSuperAdmin && user.role !== 'traveler' && !user.isApproved) {
-      return res.status(403).json(createErrorResponse(ErrorCode.PENDING_APPROVAL, '帳號審核中，請等待管理員核准'));
-    }
-
-    const token = generateToken(user.id, user.role || 'traveler');
-
-    res.json({
-      success: true,
-      token,
-      user: {
-        id: user.id,
-        email: user.email || '',
-        name: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Google User',
-        role: user.role,
-        isApproved: user.isApproved,
-        isSuperAdmin,
-      },
-    });
-  } catch (error: any) {
-    console.error('[Google Auth] Error:', error);
-    if (error.name === 'ZodError') {
-      const zodError = error as z.ZodError;
-      const issues = zodError.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ');
-      console.error(`[Google Auth] Zod validation failed: ${issues}`);
-      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, `Invalid request data: ${issues}`));
-    }
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, 'Google authentication failed'));
-  }
+  req.body.provider = 'google';
+  req.url = '/mobile';
+  router.handle(req, res, () => {});
 });
 
-// Get current authenticated user
+// Get current authenticated user (包含 privileges)
 router.get('/user', isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user.claims.sub;
     const user = await storage.getUser(userId);
-    
+
     const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL;
-    
-    const accessibleRoles = isSuperAdmin 
-      ? ['traveler', 'merchant', 'specialist', 'admin'] 
+    const hasUnlimitedGeneration = user?.email && UNLIMITED_GENERATION_EMAILS.includes(user.email);
+
+    const accessibleRoles = isSuperAdmin
+      ? ['traveler', 'merchant', 'specialist', 'admin']
       : [user?.role || 'traveler'];
-    
+
     const jwtActiveRole = req.jwtUser?.activeRole;
     const sessionActiveRole = req.session?.activeRole;
     const activeRole = jwtActiveRole || sessionActiveRole || user?.role || 'traveler';
-    
+
     console.log(`[/api/auth/user] userId: ${userId}, jwtActiveRole: ${jwtActiveRole}, sessionActiveRole: ${sessionActiveRole}, finalActiveRole: ${activeRole}`);
-    
+
     const responseRole = isSuperAdmin ? activeRole : (user?.role || 'traveler');
-    
+
     res.json({
       ...user,
       isSuperAdmin,
       accessibleRoles,
       activeRole: accessibleRoles.includes(activeRole) ? activeRole : (user?.role || 'traveler'),
       role: responseRole,
+      privileges: { hasUnlimitedGeneration },
     });
   } catch (error) {
     console.error("Error fetching user:", error);
@@ -780,18 +410,6 @@ router.post('/switch-role', isAuthenticated, async (req: any, res) => {
   }
 });
 
-// Check if user has unlimited generation privilege
-router.get('/privileges', isAuthenticated, async (req: any, res) => {
-  try {
-    const userId = req.user.claims.sub;
-    const user = await storage.getUser(userId);
-    const hasUnlimitedGeneration = user?.email && UNLIMITED_GENERATION_EMAILS.includes(user.email);
-    res.json({ hasUnlimitedGeneration });
-  } catch (error) {
-    res.json({ hasUnlimitedGeneration: false });
-  }
-});
-
 // Logout
 router.post('/logout', async (req: any, res) => {
   try {
@@ -842,13 +460,14 @@ profileRouter.get('/profile', isAuthenticated, async (req: any, res) => {
   }
 });
 
-profileRouter.patch('/profile', isAuthenticated, async (req: any, res) => {
+// 共用的 profile 更新邏輯
+async function handleProfileUpdate(req: any, res: any) {
   try {
     const userId = req.user?.claims?.sub || req.jwtUser?.userId;
     if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const validated = updateProfileSchema.parse(req.body);
-    
+
     const updateData: any = { ...validated };
     if (validated.birthDate) {
       let dateStr = validated.birthDate.replace(/[\/\.\-\s]/g, '');
@@ -867,7 +486,7 @@ profileRouter.patch('/profile', isAuthenticated, async (req: any, res) => {
     res.json({
       success: true,
       message: '個人資料已更新',
-      token: newToken, // 前端需要更新儲存的 token
+      token: newToken,
       profile: {
         firstName: updatedUser.firstName,
         lastName: updatedUser.lastName,
@@ -889,101 +508,19 @@ profileRouter.patch('/profile', isAuthenticated, async (req: any, res) => {
     }
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法更新用戶資料'));
   }
+}
+
+// PATCH 和 PUT 都支援更新 profile
+profileRouter.patch('/profile', isAuthenticated, handleProfileUpdate);
+profileRouter.put('/profile', isAuthenticated, handleProfileUpdate);
+
+// 向後兼容：/user/profile 轉發到 /profile
+profileRouter.get('/user/profile', isAuthenticated, (req: any, res: any, next: any) => {
+  req.url = '/profile';
+  profileRouter.handle(req, res, next);
 });
-
-// ============ /user/profile 兼容路由 (前端使用) ============
-// 前端 App 呼叫 /api/user/profile，這裡提供別名支援
-
-profileRouter.get('/user/profile', isAuthenticated, async (req: any, res) => {
-  try {
-    const userId = req.user?.claims?.sub || req.jwtUser?.userId;
-    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
-
-    const user = await storage.getUser(userId);
-    if (!user) return res.status(404).json(createErrorResponse(ErrorCode.USER_NOT_FOUND));
-
-    res.json({
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      profileImageUrl: user.profileImageUrl,
-      role: user.role,
-      gender: user.gender,
-      birthDate: user.birthDate,
-      phone: user.phone,
-      dietaryRestrictions: user.dietaryRestrictions || [],
-      medicalHistory: user.medicalHistory || [],
-      emergencyContactName: user.emergencyContactName,
-      emergencyContactPhone: user.emergencyContactPhone,
-      emergencyContactRelation: user.emergencyContactRelation,
-      preferredLanguage: user.preferredLanguage || 'zh-TW',
-    });
-  } catch (error) {
-    console.error('Get user profile error:', error);
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得用戶資料'));
-  }
-});
-
-// PUT /api/user/profile - 前端使用 PUT 方法
-profileRouter.put('/user/profile', isAuthenticated, async (req: any, res) => {
-  try {
-    const userId = req.user?.claims?.sub || req.jwtUser?.userId;
-    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
-
-    console.log('[PUT /api/user/profile] Request body:', JSON.stringify(req.body, null, 2));
-
-    const validated = updateProfileSchema.parse(req.body);
-    console.log('[PUT /api/user/profile] Validated data:', JSON.stringify(validated, null, 2));
-
-    const updateData: any = { ...validated };
-    if (validated.birthDate) {
-      let dateStr = validated.birthDate.replace(/[\/\.\-\s]/g, '');
-      if (/^\d{8}$/.test(dateStr)) {
-        dateStr = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
-      }
-      updateData.birthDate = new Date(dateStr);
-    }
-
-    console.log('[PUT /api/user/profile] Update data to DB:', JSON.stringify(updateData, null, 2));
-
-    const updatedUser = await storage.updateUser(userId, updateData);
-    if (!updatedUser) return res.status(404).json(createErrorResponse(ErrorCode.USER_NOT_FOUND));
-
-    console.log('[PUT /api/user/profile] Updated user from DB:', JSON.stringify({
-      firstName: updatedUser.firstName,
-      lastName: updatedUser.lastName,
-    }, null, 2));
-
-    // 產生新的 JWT token 以包含更新後的 firstName/lastName
-    const newToken = generateJwtToken(updatedUser, updatedUser.role || 'traveler');
-
-    res.json({
-      success: true,
-      message: '個人資料已更新',
-      token: newToken, // 前端需要更新儲存的 token
-      profile: {
-        firstName: updatedUser.firstName,
-        lastName: updatedUser.lastName,
-        gender: updatedUser.gender,
-        birthDate: updatedUser.birthDate,
-        phone: updatedUser.phone,
-        dietaryRestrictions: updatedUser.dietaryRestrictions || [],
-        medicalHistory: updatedUser.medicalHistory || [],
-        emergencyContactName: updatedUser.emergencyContactName,
-        emergencyContactPhone: updatedUser.emergencyContactPhone,
-        emergencyContactRelation: updatedUser.emergencyContactRelation,
-        preferredLanguage: updatedUser.preferredLanguage,
-      }
-    });
-  } catch (error: any) {
-    console.error('Update user profile error:', error);
-    if (error.name === 'ZodError') {
-      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '資料格式錯誤', error.errors));
-    }
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法更新用戶資料'));
-  }
-});
+profileRouter.put('/user/profile', isAuthenticated, handleProfileUpdate);
+profileRouter.patch('/user/profile', isAuthenticated, handleProfileUpdate);
 
 export { profileRouter };
 export default router;
