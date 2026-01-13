@@ -383,55 +383,6 @@ router.post("/chat/invites/:inviteCode/accept", isAuthenticated, async (req: any
   }
 });
 
-router.post("/klook/detect", isAuthenticated, async (req: any, res) => {
-  try {
-    const { messageText, conversationSid, messageSid } = req.body;
-    
-    if (!messageText || !conversationSid || !messageSid) {
-      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, '缺少必要欄位: messageText, conversationSid, messageSid'));
-    }
-
-    const { detectKlookProducts } = await import("../klookService");
-    const result = await detectKlookProducts(messageText, conversationSid, messageSid);
-    
-    res.json({ 
-      success: true,
-      products: result.products
-    });
-  } catch (error) {
-    console.error("Klook detection error:", error);
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法偵測產品'));
-  }
-});
-
-router.get("/klook/highlights/:conversationSid/:messageSid", isAuthenticated, async (req: any, res) => {
-  try {
-    const { conversationSid, messageSid } = req.params;
-    
-    const { getMessageHighlights } = await import("../klookService");
-    const highlights = await getMessageHighlights(conversationSid, messageSid);
-    
-    res.json({ highlights });
-  } catch (error) {
-    console.error("Get highlights error:", error);
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得重點資訊'));
-  }
-});
-
-router.get("/klook/highlights/:conversationSid", isAuthenticated, async (req: any, res) => {
-  try {
-    const { conversationSid } = req.params;
-    
-    const { getConversationHighlights } = await import("../klookService");
-    const highlights = await getConversationHighlights(conversationSid);
-    
-    res.json({ highlights });
-  } catch (error) {
-    console.error("Get conversation highlights error:", error);
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得重點資訊'));
-  }
-});
-
 router.post("/feedback/exclude", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;
