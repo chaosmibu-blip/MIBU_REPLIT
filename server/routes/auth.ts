@@ -861,9 +861,13 @@ profileRouter.patch('/profile', isAuthenticated, async (req: any, res) => {
     const updatedUser = await storage.updateUser(userId, updateData);
     if (!updatedUser) return res.status(404).json(createErrorResponse(ErrorCode.USER_NOT_FOUND));
 
+    // 產生新的 JWT token 以包含更新後的 firstName/lastName
+    const newToken = generateJwtToken(updatedUser, updatedUser.role || 'traveler');
+
     res.json({
       success: true,
       message: '個人資料已更新',
+      token: newToken, // 前端需要更新儲存的 token
       profile: {
         firstName: updatedUser.firstName,
         lastName: updatedUser.lastName,
@@ -927,7 +931,10 @@ profileRouter.put('/user/profile', isAuthenticated, async (req: any, res) => {
     const userId = req.user?.claims?.sub || req.jwtUser?.userId;
     if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
+    console.log('[PUT /api/user/profile] Request body:', JSON.stringify(req.body, null, 2));
+
     const validated = updateProfileSchema.parse(req.body);
+    console.log('[PUT /api/user/profile] Validated data:', JSON.stringify(validated, null, 2));
 
     const updateData: any = { ...validated };
     if (validated.birthDate) {
@@ -938,12 +945,23 @@ profileRouter.put('/user/profile', isAuthenticated, async (req: any, res) => {
       updateData.birthDate = new Date(dateStr);
     }
 
+    console.log('[PUT /api/user/profile] Update data to DB:', JSON.stringify(updateData, null, 2));
+
     const updatedUser = await storage.updateUser(userId, updateData);
     if (!updatedUser) return res.status(404).json(createErrorResponse(ErrorCode.USER_NOT_FOUND));
+
+    console.log('[PUT /api/user/profile] Updated user from DB:', JSON.stringify({
+      firstName: updatedUser.firstName,
+      lastName: updatedUser.lastName,
+    }, null, 2));
+
+    // 產生新的 JWT token 以包含更新後的 firstName/lastName
+    const newToken = generateJwtToken(updatedUser, updatedUser.role || 'traveler');
 
     res.json({
       success: true,
       message: '個人資料已更新',
+      token: newToken, // 前端需要更新儲存的 token
       profile: {
         firstName: updatedUser.firstName,
         lastName: updatedUser.lastName,

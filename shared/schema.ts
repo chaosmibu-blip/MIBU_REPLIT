@@ -1916,39 +1916,6 @@ export const insertTripServicePurchaseSchema = createInsertSchema(tripServicePur
 export type TripServicePurchase = typeof tripServicePurchases.$inferSelect;
 export type InsertTripServicePurchase = z.infer<typeof insertTripServicePurchaseSchema>;
 
-// ============ Ad Placements (廣告設定) ============
-
-export type AdPlatform = 'ios' | 'android' | 'web' | 'all';
-export type AdPlacement = 'gacha_start' | 'gacha_result' | 'collection_view' | 'item_use' | 'splash' | 'banner';
-
-export const adPlacements = pgTable("ad_placements", {
-  id: serial("id").primaryKey(),
-  placementKey: varchar("placement_key", { length: 50 }).notNull().unique(), // e.g., 'gacha_start', 'gacha_result'
-  platform: varchar("platform", { length: 20 }).default('all').notNull(), // ios, android, web, all
-  adUnitIdIos: text("ad_unit_id_ios"), // AdMob unit ID for iOS
-  adUnitIdAndroid: text("ad_unit_id_android"), // AdMob unit ID for Android
-  adType: varchar("ad_type", { length: 20 }).default('interstitial').notNull(), // interstitial, rewarded, banner
-  fallbackImageUrl: text("fallback_image_url"), // Fallback if no ad
-  fallbackLinkUrl: text("fallback_link_url"),
-  isActive: boolean("is_active").default(true).notNull(),
-  showFrequency: integer("show_frequency").default(1).notNull(), // Show every N times
-  metadata: jsonb("metadata"), // Additional config
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => [
-  index("IDX_ad_placements_key").on(table.placementKey),
-  index("IDX_ad_placements_platform").on(table.platform),
-]);
-
-export const insertAdPlacementSchema = createInsertSchema(adPlacements).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export type AdPlacementRecord = typeof adPlacements.$inferSelect;
-export type InsertAdPlacement = z.infer<typeof insertAdPlacementSchema>;
-
 // ============ User Notification Badges (未讀通知) ============
 
 export const userNotifications = pgTable("user_notifications", {

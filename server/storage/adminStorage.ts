@@ -2,13 +2,10 @@ import { db } from "../db";
 import { eq, and, desc, or, isNull, lt, lte, gte } from "drizzle-orm";
 import {
   announcements,
-  adPlacements,
   userNotifications,
   type Announcement,
   type InsertAnnouncement,
   type AnnouncementType,
-  type AdPlacementRecord,
-  type InsertAdPlacement,
   type UserNotification,
 } from "@shared/schema";
 
@@ -76,33 +73,6 @@ export const adminStorage = {
       )
       .returning();
     return result.length;
-  },
-
-  async getAllAdPlacements(): Promise<AdPlacementRecord[]> {
-    return db.select().from(adPlacements).orderBy(adPlacements.placementKey);
-  },
-
-  async getAdPlacement(placementKey: string, platform?: string): Promise<AdPlacementRecord | undefined> {
-    const conditions = [eq(adPlacements.placementKey, placementKey), eq(adPlacements.isActive, true)];
-    if (platform && platform !== 'all') {
-      conditions.push(or(eq(adPlacements.platform, platform), eq(adPlacements.platform, 'all'))!);
-    }
-    const [placement] = await db.select().from(adPlacements).where(and(...conditions));
-    return placement || undefined;
-  },
-
-  async createAdPlacement(placement: InsertAdPlacement): Promise<AdPlacementRecord> {
-    const [created] = await db.insert(adPlacements).values(placement).returning();
-    return created;
-  },
-
-  async updateAdPlacement(id: number, data: Partial<AdPlacementRecord>): Promise<AdPlacementRecord | undefined> {
-    const [updated] = await db.update(adPlacements).set({ ...data, updatedAt: new Date() }).where(eq(adPlacements.id, id)).returning();
-    return updated || undefined;
-  },
-
-  async deleteAdPlacement(id: number): Promise<void> {
-    await db.delete(adPlacements).where(eq(adPlacements.id, id));
   },
 
   async getUserNotifications(userId: string): Promise<UserNotification[]> {

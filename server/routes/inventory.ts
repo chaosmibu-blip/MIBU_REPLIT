@@ -120,6 +120,7 @@ router.get("/:id", isAuthenticated, async (req: any, res: Response) => {
 /**
  * POST /api/inventory/:id/redeem
  * 核銷優惠券道具
+ * 參數: { dailyCode: "ABC123" }
  */
 router.post("/:id/redeem", isAuthenticated, async (req: any, res: Response) => {
   try {
@@ -129,14 +130,14 @@ router.post("/:id/redeem", isAuthenticated, async (req: any, res: Response) => {
     }
 
     const itemId = parseInt(req.params.id);
-    const { code, merchantId } = req.body;
+    const { dailyCode } = req.body;
 
     if (isNaN(itemId)) {
       return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的道具 ID'));
     }
 
-    if (!code || !merchantId) {
-      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, '需要提供核銷碼和商家 ID'));
+    if (!dailyCode) {
+      return res.status(400).json(createErrorResponse(ErrorCode.MISSING_REQUIRED_FIELD, '需要提供核銷碼'));
     }
 
     // 1. 驗證道具屬於用戶且未核銷
@@ -153,7 +154,13 @@ router.post("/:id/redeem", isAuthenticated, async (req: any, res: Response) => {
       return res.status(400).json(createErrorResponse(ErrorCode.COUPON_EXPIRED, '此優惠券已過期'));
     }
 
-    // 2. 驗證商家核銷碼
+    // 2. 從 item 自動取得 merchantId
+    const merchantId = item.merchantId;
+    if (!merchantId) {
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '此優惠券無關聯商家'));
+    }
+
+    // 3. 驗證商家核銷碼
     const codeData = await storage.getMerchantDailySeedCode(merchantId);
     if (!codeData) {
       return res.status(404).json(createErrorResponse(ErrorCode.NO_CODE_SET, '商家尚未設定核銷碼'));
@@ -165,13 +172,8 @@ router.post("/:id/redeem", isAuthenticated, async (req: any, res: Response) => {
       return res.status(400).json(createErrorResponse(ErrorCode.CODE_EXPIRED, '核銷碼已過期'));
     }
 
-    if (codeData.seedCode.toUpperCase() !== code.toUpperCase()) {
+    if (codeData.seedCode.toUpperCase() !== dailyCode.toUpperCase()) {
       return res.status(400).json(createErrorResponse(ErrorCode.INVALID_CODE, '核銷碼錯誤'));
-    }
-
-    // 3. 驗證優惠券屬於該商家
-    if (item.merchantId !== merchantId) {
-      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '此優惠券不屬於該商家'));
     }
 
     // 4. 執行核銷

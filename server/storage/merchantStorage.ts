@@ -59,20 +59,9 @@ export const merchantStorage = {
   async updateMerchantDailySeedCode(merchantId: number, seedCode: string): Promise<Merchant | undefined> {
     const [updated] = await db
       .update(merchants)
-      .set({ 
-        dailySeedCode: seedCode, 
-        codeUpdatedAt: new Date() 
-      })
-      .where(eq(merchants.id, merchantId))
-      .returning();
-    return updated || undefined;
-  },
-
-  async updateMerchantCreditBalance(merchantId: number, amount: number): Promise<Merchant | undefined> {
-    const [updated] = await db
-      .update(merchants)
-      .set({ 
-        creditBalance: sql`${merchants.creditBalance} + ${amount}` 
+      .set({
+        dailySeedCode: seedCode,
+        codeUpdatedAt: new Date()
       })
       .where(eq(merchants.id, merchantId))
       .returning();

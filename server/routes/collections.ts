@@ -44,8 +44,8 @@ router.get("/unread-count", isAuthenticated, async (req: any, res) => {
       return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     }
 
-    const unreadCount = await storage.getUnreadNotificationCount(userId, 'collection');
-    res.json({ unreadCount });
+    const count = await storage.getUnreadNotificationCount(userId, 'collection');
+    res.json({ count });
   } catch (error) {
     console.error("Get collections unread count error:", error);
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得未讀數量'));
