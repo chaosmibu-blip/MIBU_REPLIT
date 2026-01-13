@@ -5,6 +5,7 @@ import dailyCodeRouter from "./daily-code";
 import placesRouter from "./places";
 import productsRouter from "./products";
 import subscriptionRouter, { permissionsRouter } from "./subscription";
+import analyticsRouter from "./analytics";
 
 const router = Router();
 
@@ -28,5 +29,8 @@ router.use("/api/merchant/subscription", subscriptionRouter);
 
 // Permissions route: /api/merchant/permissions
 router.use("/api/merchant", permissionsRouter);
+
+// Analytics routes: /api/merchant/analytics, /api/merchant/analytics/summary
+router.use("/api/merchant/analytics", analyticsRouter);
 
 export default router;

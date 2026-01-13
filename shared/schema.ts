@@ -2085,3 +2085,47 @@ export const insertSubscriptionPlanSchema = createInsertSchema(subscriptionPlans
 
 export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
 export type InsertSubscriptionPlan = z.infer<typeof insertSubscriptionPlanSchema>;
+
+// ============ Ad Placements (廣告版位配置 - AdMob) ============
+
+export const adPlacements = pgTable("ad_placements", {
+  id: serial("id").primaryKey(),
+
+  // 版位識別
+  placement: varchar("placement", { length: 50 }).notNull(), // 'gacha_loading', 'gacha_result', 'collection_detail', 'itembox_open'
+  platform: varchar("platform", { length: 20 }).notNull(), // 'ios', 'android', 'web'
+
+  // AdMob 設定
+  adUnitId: varchar("ad_unit_id", { length: 255 }), // AdMob Unit ID (如: ca-app-pub-xxx/xxx)
+  adType: varchar("ad_type", { length: 30 }).notNull(), // 'banner', 'interstitial', 'rewarded', 'native'
+
+  // 備用/自有廣告 (AdMob 無法載入時顯示)
+  fallbackImageUrl: text("fallback_image_url"),
+  fallbackLinkUrl: text("fallback_link_url"),
+  fallbackTitle: text("fallback_title"),
+
+  // 控制
+  isActive: boolean("is_active").default(true).notNull(),
+  priority: integer("priority").default(0).notNull(), // 優先級，數字越大越優先
+  showProbability: integer("show_probability").default(100).notNull(), // 顯示機率 0-100
+
+  // 時間控制
+  startAt: timestamp("start_at"),
+  endAt: timestamp("end_at"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_ad_placements_placement").on(table.placement),
+  index("IDX_ad_placements_platform").on(table.platform),
+  uniqueIndex("UQ_ad_placements_placement_platform").on(table.placement, table.platform),
+]);
+
+export const insertAdPlacementSchema = createInsertSchema(adPlacements).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type AdPlacement = typeof adPlacements.$inferSelect;
+export type InsertAdPlacement = z.infer<typeof insertAdPlacementSchema>;
