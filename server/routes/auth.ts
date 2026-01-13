@@ -887,5 +887,85 @@ profileRouter.patch('/profile', isAuthenticated, async (req: any, res) => {
   }
 });
 
+// ============ /user/profile 兼容路由 (前端使用) ============
+// 前端 App 呼叫 /api/user/profile，這裡提供別名支援
+
+profileRouter.get('/user/profile', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(404).json(createErrorResponse(ErrorCode.USER_NOT_FOUND));
+
+    res.json({
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      profileImageUrl: user.profileImageUrl,
+      role: user.role,
+      gender: user.gender,
+      birthDate: user.birthDate,
+      phone: user.phone,
+      dietaryRestrictions: user.dietaryRestrictions || [],
+      medicalHistory: user.medicalHistory || [],
+      emergencyContactName: user.emergencyContactName,
+      emergencyContactPhone: user.emergencyContactPhone,
+      emergencyContactRelation: user.emergencyContactRelation,
+      preferredLanguage: user.preferredLanguage || 'zh-TW',
+    });
+  } catch (error) {
+    console.error('Get user profile error:', error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得用戶資料'));
+  }
+});
+
+// PUT /api/user/profile - 前端使用 PUT 方法
+profileRouter.put('/user/profile', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+
+    const validated = updateProfileSchema.parse(req.body);
+
+    const updateData: any = { ...validated };
+    if (validated.birthDate) {
+      let dateStr = validated.birthDate.replace(/[\/\.\-\s]/g, '');
+      if (/^\d{8}$/.test(dateStr)) {
+        dateStr = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+      }
+      updateData.birthDate = new Date(dateStr);
+    }
+
+    const updatedUser = await storage.updateUser(userId, updateData);
+    if (!updatedUser) return res.status(404).json(createErrorResponse(ErrorCode.USER_NOT_FOUND));
+
+    res.json({
+      success: true,
+      message: '個人資料已更新',
+      profile: {
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        gender: updatedUser.gender,
+        birthDate: updatedUser.birthDate,
+        phone: updatedUser.phone,
+        dietaryRestrictions: updatedUser.dietaryRestrictions || [],
+        medicalHistory: updatedUser.medicalHistory || [],
+        emergencyContactName: updatedUser.emergencyContactName,
+        emergencyContactPhone: updatedUser.emergencyContactPhone,
+        emergencyContactRelation: updatedUser.emergencyContactRelation,
+        preferredLanguage: updatedUser.preferredLanguage,
+      }
+    });
+  } catch (error: any) {
+    console.error('Update user profile error:', error);
+    if (error.name === 'ZodError') {
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '資料格式錯誤', error.errors));
+    }
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法更新用戶資料'));
+  }
+});
+
 export { profileRouter };
 export default router;
