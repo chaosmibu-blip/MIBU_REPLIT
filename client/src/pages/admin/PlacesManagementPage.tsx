@@ -244,11 +244,17 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
       const result = await res.json();
       setData(result);
     } catch (err: any) {
-      if (err.name === 'AbortError') return; // 忽略取消的請求
+      // 忽略被取消的請求，不更新任何狀態
+      if (err.name === 'AbortError') {
+        return;
+      }
+      // 只有在非取消錯誤時才設置錯誤狀態
+      console.error('[PlacesManagement] Fetch error:', err.message);
       setError(err.message);
-    } finally {
       setLoading(false);
+      return;
     }
+    setLoading(false);
   }, [page, debouncedSearch, categoryFilter, cityFilter, statusFilter]);
 
   useEffect(() => {
