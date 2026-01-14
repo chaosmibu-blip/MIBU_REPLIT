@@ -1150,7 +1150,7 @@ router.get("/places", isAuthenticated, async (req: any, res) => {
       SELECT
         id, place_name, country, city, district, address,
         location_lat, location_lng, category, subcategory,
-        rating, is_active, claim_status, place_card_tier,
+        description, rating, is_active, claim_status, place_card_tier,
         merchant_id, created_at
       FROM places
       WHERE 1=1
