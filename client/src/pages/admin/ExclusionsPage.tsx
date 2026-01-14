@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Language } from '../../types';
+import { formatTWDate } from '../../lib/utils';
 
 interface ExclusionsPageProps {
   language: Language;
@@ -267,7 +268,7 @@ export const ExclusionsPage: React.FC<ExclusionsPageProps> = ({ language, t }) =
                     </div>
                   )}
                   <div className="text-xs text-slate-400 mt-1">
-                    排除時間: {new Date(item.excludedAt).toLocaleString()}
+                    排除時間: {formatTWDate(item.excludedAt)}
                   </div>
                 </div>
                 <button

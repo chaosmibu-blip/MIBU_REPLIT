@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Language } from '../../types';
+import { formatTWDate } from '../../lib/utils';
 
 interface PendingUser {
   id: string;
@@ -306,7 +307,7 @@ export const UsersReviewPage: React.FC<UsersReviewPageProps> = ({ language, t })
                         </span>
                       </td>
                       <td className="py-3 px-4 text-sm text-slate-500">
-                        {new Date(user.createdAt).toLocaleDateString('zh-TW')}
+                        {formatTWDate(user.createdAt)}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <button
@@ -441,7 +442,7 @@ export const UsersReviewPage: React.FC<UsersReviewPageProps> = ({ language, t })
                         </span>
                       </td>
                       <td className="py-3 px-4 text-sm text-slate-500">
-                        {new Date(user.createdAt).toLocaleDateString('zh-TW')}
+                        {formatTWDate(user.createdAt)}
                       </td>
                       <td className="py-3 px-4 text-right">
                         {!user.isApproved && (

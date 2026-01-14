@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Language } from '../../types';
+import { formatTWDate } from '../../lib/utils';
 
 interface AnnouncementsPageProps {
   language: Language;
@@ -361,8 +362,8 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ language, 
                       <h3 className="font-medium text-slate-800">{item.title}</h3>
                       <p className="text-sm text-slate-600 mt-1 line-clamp-2">{item.content}</p>
                       <div className="text-xs text-slate-400 mt-2">
-                        {item.startDate && `開始: ${new Date(item.startDate).toLocaleDateString()}`}
-                        {item.endDate && ` | 結束: ${new Date(item.endDate).toLocaleDateString()}`}
+                        {item.startDate && `開始: ${formatTWDate(item.startDate, { showTime: false })}`}
+                        {item.endDate && ` | 結束: ${formatTWDate(item.endDate, { showTime: false })}`}
                       </div>
                     </div>
                     <div className="flex gap-2 flex-shrink-0">
