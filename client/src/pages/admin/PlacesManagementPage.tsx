@@ -195,6 +195,8 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
   const [statusFilter, setStatusFilter] = useState('');
   const [editingPlace, setEditingPlace] = useState<Place | null>(null);
   const [filters, setFilters] = useState<{ cities: string[]; categories: string[] } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   // Debounce 搜尋
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -284,6 +286,71 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
     } catch (err: any) {
       alert(err.message);
     }
+  };
+
+  const handleDelete = async (placeId: number, hardDelete = false) => {
+    const confirmMsg = hardDelete
+      ? '確定要永久刪除此景點嗎？此操作無法復原！'
+      : '確定要停用此景點嗎？';
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch(`/api/admin/places/${placeId}${hardDelete ? '?hard=true' : ''}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('刪除失敗');
+      fetchPlaces();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleBatchDelete = async (hardDelete = false) => {
+    if (selectedIds.size === 0) return;
+
+    const confirmMsg = hardDelete
+      ? `確定要永久刪除 ${selectedIds.size} 個景點嗎？此操作無法復原！`
+      : `確定要停用 ${selectedIds.size} 個景點嗎？`;
+    if (!confirm(confirmMsg)) return;
+
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/admin/places/batch-delete', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedIds), hardDelete }),
+      });
+      if (!res.ok) throw new Error('批次刪除失敗');
+      const result = await res.json();
+      alert(result.message);
+      setSelectedIds(new Set());
+      fetchPlaces();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (!data) return;
+    if (selectedIds.size === data.places.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(data.places.map(p => p.id)));
+    }
+  };
+
+  const toggleSelect = (id: number) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedIds(newSet);
   };
 
   const getCategoryLabel = (category: string) => {
@@ -414,10 +481,37 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
         </div>
       )}
 
-      {/* 統計 */}
+      {/* 統計與批次操作 */}
       {data && (
-        <div className="text-sm text-slate-500">
-          共 {data.pagination.total} 個景點 {loading && <span className="text-indigo-500">（載入中...）</span>}
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-slate-500">
+            共 {data.pagination.total} 個景點 {loading && <span className="text-indigo-500">（載入中...）</span>}
+          </div>
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-600">已選擇 {selectedIds.size} 項</span>
+              <button
+                onClick={() => handleBatchDelete(false)}
+                disabled={deleting}
+                className="px-3 py-1.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
+              >
+                批次停用
+              </button>
+              <button
+                onClick={() => handleBatchDelete(true)}
+                disabled={deleting}
+                className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50"
+              >
+                批次刪除
+              </button>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="px-3 py-1.5 text-sm bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300"
+              >
+                取消選擇
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -427,6 +521,14 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
           <table className="w-full">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
+                <th className="w-12 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={data ? selectedIds.size === data.places.length && data.places.length > 0 : false}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                </th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-slate-600">景點名稱</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-slate-600">地點</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-slate-600">分類</th>
@@ -439,7 +541,15 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
             </thead>
             <tbody className="divide-y divide-slate-100">
               {data?.places.map((place) => (
-                <tr key={place.id} className="hover:bg-slate-50">
+                <tr key={place.id} className={`hover:bg-slate-50 ${selectedIds.has(place.id) ? 'bg-indigo-50' : ''}`}>
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(place.id)}
+                      onChange={() => toggleSelect(place.id)}
+                      className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-800">{place.place_name}</div>
                     <div className="text-xs text-slate-400">ID: {place.id}</div>
@@ -475,22 +585,31 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
                     {formatTWDate(place.created_at)}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <div className="flex items-center justify-center gap-2">
+                    <div className="flex items-center justify-center gap-1">
                       <button
                         onClick={() => setEditingPlace(place)}
-                        className="px-3 py-1 text-xs bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100"
+                        className="px-2 py-1 text-xs bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100"
+                        title="編輯"
                       >
                         編輯
                       </button>
                       <button
                         onClick={() => handleToggleStatus(place.id)}
-                        className={`px-3 py-1 text-xs rounded transition-colors ${
+                        className={`px-2 py-1 text-xs rounded transition-colors ${
                           place.is_active
-                            ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                            ? 'bg-amber-50 text-amber-600 hover:bg-amber-100'
                             : 'bg-green-50 text-green-600 hover:bg-green-100'
                         }`}
+                        title={place.is_active ? '停用' : '啟用'}
                       >
                         {place.is_active ? '停用' : '啟用'}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(place.id, true)}
+                        className="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100"
+                        title="永久刪除"
+                      >
+                        刪除
                       </button>
                     </div>
                   </td>

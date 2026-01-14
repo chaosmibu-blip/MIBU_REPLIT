@@ -1271,4 +1271,111 @@ router.patch("/places/:id/toggle-status", isAuthenticated, async (req: any, res)
   }
 });
 
+/**
+ * DELETE /api/admin/places/:id
+ * 刪除單一景點（軟刪除 - 設為停用）
+ */
+router.delete("/places/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
+
+    const placeId = parseInt(req.params.id);
+    const hardDelete = req.query.hard === 'true';
+
+    if (hardDelete) {
+      // 硬刪除 - 從資料庫移除
+      const result = await db.execute(sql`
+        DELETE FROM places WHERE id = ${placeId}
+        RETURNING id, place_name
+      `);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json(createErrorResponse(ErrorCode.PLACE_NOT_FOUND));
+      }
+
+      const place = result.rows[0] as any;
+      res.json({
+        success: true,
+        message: `景點「${place.place_name}」已永久刪除`
+      });
+    } else {
+      // 軟刪除 - 設為停用
+      const result = await db.execute(sql`
+        UPDATE places SET is_active = false
+        WHERE id = ${placeId}
+        RETURNING id, place_name
+      `);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json(createErrorResponse(ErrorCode.PLACE_NOT_FOUND));
+      }
+
+      const place = result.rows[0] as any;
+      res.json({
+        success: true,
+        message: `景點「${place.place_name}」已停用`
+      });
+    }
+  } catch (error: any) {
+    console.error("Admin delete place error:", error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '刪除景點失敗'));
+  }
+});
+
+/**
+ * POST /api/admin/places/batch-delete
+ * 批次刪除景點
+ */
+router.post("/places/batch-delete", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
+
+    const { ids, hardDelete = false } = req.body as { ids: number[]; hardDelete?: boolean };
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '請提供要刪除的景點 ID'));
+    }
+
+    if (ids.length > 100) {
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '單次最多刪除 100 筆'));
+    }
+
+    let deletedCount = 0;
+
+    if (hardDelete) {
+      // 硬刪除
+      const result = await db.execute(sql`
+        DELETE FROM places WHERE id = ANY(${ids})
+        RETURNING id
+      `);
+      deletedCount = result.rows.length;
+    } else {
+      // 軟刪除
+      const result = await db.execute(sql`
+        UPDATE places SET is_active = false
+        WHERE id = ANY(${ids})
+        RETURNING id
+      `);
+      deletedCount = result.rows.length;
+    }
+
+    res.json({
+      success: true,
+      deletedCount,
+      message: `已${hardDelete ? '永久刪除' : '停用'} ${deletedCount} 筆景點`
+    });
+  } catch (error: any) {
+    console.error("Admin batch delete places error:", error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '批次刪除失敗'));
+  }
+});
+
 export default router;
