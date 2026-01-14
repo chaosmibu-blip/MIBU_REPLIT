@@ -28,7 +28,7 @@ const router = Router();
  * {
  *   overview: {
  *     totalExposures: number,      // 總曝光次數（景點被抽到次數）
- *     totalCollectors: number,     // 收藏人數（有圖鑑卡的人）
+ *     totalCollectors: number,     // 圖鑑收錄人數
  *     couponIssued: number,        // 優惠券發放數
  *     couponRedeemed: number,      // 優惠券核銷數
  *     redemptionRate: number,      // 核銷率 (%)
@@ -103,7 +103,7 @@ router.get("/", isAuthenticated, async (req: any, res) => {
       });
     }
 
-    // 2. 統計曝光次數（collections 表中該景點被收藏的次數）
+    // 2. 統計曝光次數（collections 表中該景點被收錄到圖鑑的次數）
     let exposureConditions: any[] = [sql`${collections.placeId} = ANY(${placeIds})`];
     if (startDate) {
       exposureConditions.push(gte(collections.createdAt, startDate));

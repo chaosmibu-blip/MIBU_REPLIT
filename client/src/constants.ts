@@ -105,7 +105,7 @@ export const TRANSLATIONS = {
     spotsCount: '{count} 個景點',
     couponUnlocked: '獲得優惠券',
     specialPromo: '特惠活動',
-    noCollection: '尚未有收藏',
+    noCollection: '尚未有圖鑑',
     startToCollect: '開始扭蛋來收集景點！',
     noCoupons: '尚未有優惠券',
     lucky: '太幸運了！',
