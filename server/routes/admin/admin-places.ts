@@ -1109,4 +1109,215 @@ router.post("/seed-places", async (req, res) => {
   }
 });
 
+// ============ 景點管理 API ============
+
+/**
+ * GET /api/admin/places
+ * 取得所有景點列表（分頁、搜尋、篩選）
+ */
+router.get("/places", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
+
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+    const search = (req.query.search as string) || '';
+    const category = (req.query.category as string) || '';
+    const city = (req.query.city as string) || '';
+    const status = (req.query.status as string) || ''; // 'active', 'inactive', 'all'
+    const claimStatus = (req.query.claimStatus as string) || ''; // 'unclaimed', 'pending', 'claimed'
+
+    const offset = (page - 1) * limit;
+
+    // Build dynamic WHERE clause
+    let whereConditions = [];
+    let params: any[] = [];
+    let paramIndex = 1;
+
+    if (search) {
+      whereConditions.push(`(place_name ILIKE $${paramIndex} OR address ILIKE $${paramIndex})`);
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+    if (category) {
+      whereConditions.push(`category = $${paramIndex}`);
+      params.push(category);
+      paramIndex++;
+    }
+    if (city) {
+      whereConditions.push(`city = $${paramIndex}`);
+      params.push(city);
+      paramIndex++;
+    }
+    if (status === 'active') {
+      whereConditions.push(`is_active = true`);
+    } else if (status === 'inactive') {
+      whereConditions.push(`is_active = false`);
+    }
+    if (claimStatus) {
+      whereConditions.push(`claim_status = $${paramIndex}`);
+      params.push(claimStatus);
+      paramIndex++;
+    }
+
+    const whereClause = whereConditions.length > 0
+      ? `WHERE ${whereConditions.join(' AND ')}`
+      : '';
+
+    // Get total count
+    const countResult = await db.execute(sql.raw(`
+      SELECT COUNT(*) as total FROM places ${whereClause}
+    `, ...params));
+    const total = parseInt(countResult.rows[0]?.total as string) || 0;
+
+    // Get paginated results
+    const dataResult = await db.execute(sql.raw(`
+      SELECT
+        id, place_name, country, city, district, address,
+        location_lat, location_lng, category, subcategory,
+        rating, is_active, claim_status, place_card_tier,
+        merchant_id, created_at, updated_at
+      FROM places
+      ${whereClause}
+      ORDER BY updated_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `, ...params));
+
+    // Get unique cities and categories for filters
+    const citiesResult = await db.execute(sql`
+      SELECT DISTINCT city FROM places WHERE city IS NOT NULL ORDER BY city
+    `);
+    const categoriesResult = await db.execute(sql`
+      SELECT DISTINCT category FROM places WHERE category IS NOT NULL ORDER BY category
+    `);
+
+    res.json({
+      places: dataResult.rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      },
+      filters: {
+        cities: citiesResult.rows.map(r => r.city).filter(Boolean),
+        categories: categoriesResult.rows.map(r => r.category).filter(Boolean)
+      }
+    });
+  } catch (error: any) {
+    console.error("Admin get places error:", error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '取得景點列表失敗'));
+  }
+});
+
+/**
+ * PATCH /api/admin/places/:id
+ * 更新景點資訊
+ */
+router.patch("/places/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
+
+    const placeId = parseInt(req.params.id);
+    const { placeName, category, subcategory, description, isActive, placeCardTier } = req.body;
+
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    if (placeName !== undefined) {
+      updates.push(`place_name = $${paramIndex++}`);
+      values.push(placeName);
+    }
+    if (category !== undefined) {
+      updates.push(`category = $${paramIndex++}`);
+      values.push(category);
+    }
+    if (subcategory !== undefined) {
+      updates.push(`subcategory = $${paramIndex++}`);
+      values.push(subcategory);
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${paramIndex++}`);
+      values.push(description);
+    }
+    if (isActive !== undefined) {
+      updates.push(`is_active = $${paramIndex++}`);
+      values.push(isActive);
+    }
+    if (placeCardTier !== undefined) {
+      updates.push(`place_card_tier = $${paramIndex++}`);
+      values.push(placeCardTier);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '未提供更新欄位'));
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(placeId);
+
+    const result = await db.execute(sql.raw(`
+      UPDATE places
+      SET ${updates.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `, ...values));
+
+    if (result.rows.length === 0) {
+      return res.status(404).json(createErrorResponse(ErrorCode.PLACE_NOT_FOUND));
+    }
+
+    res.json({ place: result.rows[0], success: true });
+  } catch (error: any) {
+    console.error("Admin update place error:", error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '更新景點失敗'));
+  }
+});
+
+/**
+ * PATCH /api/admin/places/:id/toggle-status
+ * 切換景點啟用狀態
+ */
+router.patch("/places/:id/toggle-status", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
+
+    const placeId = parseInt(req.params.id);
+
+    const result = await db.execute(sql`
+      UPDATE places
+      SET is_active = NOT is_active, updated_at = NOW()
+      WHERE id = ${placeId}
+      RETURNING id, place_name, is_active
+    `);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json(createErrorResponse(ErrorCode.PLACE_NOT_FOUND));
+    }
+
+    const place = result.rows[0];
+    res.json({
+      success: true,
+      place,
+      message: `景點「${place.place_name}」已${place.is_active ? '啟用' : '停用'}`
+    });
+  } catch (error: any) {
+    console.error("Admin toggle place status error:", error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '切換狀態失敗'));
+  }
+});
+
 export default router;

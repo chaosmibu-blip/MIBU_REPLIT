@@ -160,7 +160,7 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   // Resource
   [ErrorCode.RESOURCE_NOT_FOUND]: '找不到資源',
   [ErrorCode.USER_NOT_FOUND]: '找不到用戶資料',
-  [ErrorCode.COLLECTION_NOT_FOUND]: '找不到收藏',
+  [ErrorCode.COLLECTION_NOT_FOUND]: '找不到圖鑑',
   [ErrorCode.INVENTORY_ITEM_NOT_FOUND]: '找不到道具',
   [ErrorCode.PLACE_NOT_FOUND]: '找不到景點',
   [ErrorCode.ANNOUNCEMENT_NOT_FOUND]: '找不到公告',

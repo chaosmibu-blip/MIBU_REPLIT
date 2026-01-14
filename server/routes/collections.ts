@@ -14,7 +14,7 @@ router.get("/", isAuthenticated, async (req: any, res) => {
     res.json({ collections: items });
   } catch (error) {
     console.error("Fetch collections error:", error);
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得收藏'));
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法取得圖鑑'));
   }
 });
 
@@ -29,7 +29,7 @@ router.post("/", isAuthenticated, async (req: any, res) => {
       return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '輸入資料格式錯誤', error.errors));
     }
     console.error("Add collection error:", error);
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法新增收藏'));
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '無法新增圖鑑'));
   }
 });
 

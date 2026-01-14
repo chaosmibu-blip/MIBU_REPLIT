@@ -11,6 +11,8 @@ import gachaRouter from './gacha/index';
 import adminRouter from './admin/index';
 import seoRouter from './seo';
 import inventoryRouter from './inventory';
+import notificationsRouter from './notifications';
+import adsRouter from './ads';
 import { subscriptionPlansPublicRouter } from './admin/admin-subscription-plans';
 import { storage } from '../storage';
 import { AnnouncementType } from '@shared/schema';
@@ -45,6 +47,8 @@ router.use('/', gachaRouter);
 router.use('/admin', adminRouter);
 router.use('/seo', seoRouter); // SEO API: /api/seo/cities, /api/seo/places
 router.use('/inventory', inventoryRouter); // Inventory API: /api/inventory, /api/inventory/capacity
+router.use('/notifications', notificationsRouter); // 通知 API: /api/notifications
+router.use('/ads', adsRouter); // 廣告 API: /api/ads/placements
 router.use('/', subscriptionPlansPublicRouter); // 公開 API: /api/subscription-plans
 
 export default router;
