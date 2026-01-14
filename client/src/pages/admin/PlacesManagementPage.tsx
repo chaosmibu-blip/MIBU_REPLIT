@@ -28,7 +28,7 @@ interface PlacesResponse {
     total: number;
     totalPages: number;
   };
-  filters: {
+  filters?: {
     cities: string[];
     categories: string[];
   };
@@ -194,6 +194,7 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
   const [cityFilter, setCityFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [editingPlace, setEditingPlace] = useState<Place | null>(null);
+  const [filters, setFilters] = useState<{ cities: string[]; categories: string[] } | null>(null);
 
   // Debounce 搜尋
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -229,6 +230,8 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
         ...(categoryFilter && { category: categoryFilter }),
         ...(cityFilter && { city: cityFilter }),
         ...(statusFilter && { status: statusFilter }),
+        // 如果已有篩選器，跳過重新查詢以提升效能
+        ...(filters && { skipFilters: 'true' }),
       });
 
       const res = await fetch(`/api/admin/places?${params}`, {
@@ -243,6 +246,10 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
 
       const result = await res.json();
       setData(result);
+      // 只在首次載入時更新篩選器
+      if (result.filters && !filters) {
+        setFilters(result.filters);
+      }
     } catch (err: any) {
       // 忽略被取消的請求，不更新任何狀態
       if (err.name === 'AbortError') {
@@ -255,7 +262,7 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
       return;
     }
     setLoading(false);
-  }, [page, debouncedSearch, categoryFilter, cityFilter, statusFilter]);
+  }, [page, debouncedSearch, categoryFilter, cityFilter, statusFilter, filters]);
 
   useEffect(() => {
     fetchPlaces();
@@ -374,7 +381,7 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
             className="px-4 py-2 border border-slate-200 rounded-lg"
           >
             <option value="">所有分類</option>
-            {data?.filters.categories.map(cat => (
+            {filters?.categories.map(cat => (
               <option key={cat} value={cat}>{getCategoryLabel(cat)}</option>
             ))}
           </select>
@@ -384,7 +391,7 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
             className="px-4 py-2 border border-slate-200 rounded-lg"
           >
             <option value="">所有城市</option>
-            {data?.filters.cities.map(city => (
+            {filters?.cities.map(city => (
               <option key={city} value={city}>{city}</option>
             ))}
           </select>
