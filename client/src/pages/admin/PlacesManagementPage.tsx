@@ -288,19 +288,32 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
     }
   };
 
-  const handleDelete = async (placeId: number, hardDelete = false) => {
-    const confirmMsg = hardDelete
-      ? '確定要永久刪除此景點嗎？此操作無法復原！'
-      : '確定要停用此景點嗎？';
+  const handleDelete = async (placeId: number, hardDelete = false, cascade = false) => {
+    const confirmMsg = cascade
+      ? '⚠️ 強制刪除將會清除所有相關資料（收藏、認領、優惠券等），確定嗎？'
+      : hardDelete
+        ? '確定要永久刪除此景點嗎？此操作無法復原！'
+        : '確定要停用此景點嗎？';
     if (!confirm(confirmMsg)) return;
 
     try {
-      const res = await fetch(`/api/admin/places/${placeId}${hardDelete ? '?hard=true' : ''}`, {
+      const params = new URLSearchParams();
+      if (hardDelete) params.append('hard', 'true');
+      if (cascade) params.append('cascade', 'true');
+      const queryString = params.toString();
+
+      const res = await fetch(`/api/admin/places/${placeId}${queryString ? '?' + queryString : ''}`, {
         method: 'DELETE',
         credentials: 'include',
       });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
+        // 如果是外鍵錯誤，詢問是否要強制刪除
+        if (errorData.message?.includes('已被用戶收藏') && !cascade) {
+          if (confirm('此景點有關聯資料，是否要強制刪除（會清除所有相關收藏和認領）？')) {
+            return handleDelete(placeId, true, true);
+          }
+        }
         throw new Error(errorData.message || '刪除失敗');
       }
       // 從選取列表中移除已刪除的 ID
@@ -315,12 +328,14 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
     }
   };
 
-  const handleBatchDelete = async (hardDelete = false) => {
+  const handleBatchDelete = async (hardDelete = false, cascade = false) => {
     if (selectedIds.size === 0) return;
 
-    const confirmMsg = hardDelete
-      ? `確定要永久刪除 ${selectedIds.size} 個景點嗎？此操作無法復原！`
-      : `確定要停用 ${selectedIds.size} 個景點嗎？`;
+    const confirmMsg = cascade
+      ? `⚠️ 強制刪除將會清除 ${selectedIds.size} 個景點的所有相關資料，確定嗎？`
+      : hardDelete
+        ? `確定要永久刪除 ${selectedIds.size} 個景點嗎？此操作無法復原！`
+        : `確定要停用 ${selectedIds.size} 個景點嗎？`;
     if (!confirm(confirmMsg)) return;
 
     setDeleting(true);
@@ -329,10 +344,17 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: Array.from(selectedIds), hardDelete }),
+        body: JSON.stringify({ ids: Array.from(selectedIds), hardDelete, cascade }),
       });
       const result = await res.json();
       if (!res.ok) {
+        // 如果是外鍵錯誤，詢問是否要強制刪除
+        if (result.message?.includes('已被用戶收藏') && !cascade) {
+          if (confirm('部分景點有關聯資料，是否要強制刪除（會清除所有相關收藏和認領）？')) {
+            setDeleting(false);
+            return handleBatchDelete(true, true);
+          }
+        }
         throw new Error(result.message || '批次刪除失敗');
       }
       alert(result.message);

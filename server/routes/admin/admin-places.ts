@@ -1288,9 +1288,30 @@ router.delete("/places/:id", isAuthenticated, async (req: any, res) => {
       return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的景點 ID'));
     }
     const hardDelete = req.query.hard === 'true';
+    const cascade = req.query.cascade === 'true'; // 是否級聯刪除相關資料
 
     if (hardDelete) {
       // 硬刪除 - 從資料庫移除
+      let cleanedRecords = { collections: 0, merchantLinks: 0, coupons: 0, subscriptions: 0, drafts: 0 };
+
+      if (cascade) {
+        // 級聯刪除：先清除所有關聯資料
+        const [col, links, coup, subs, drafts] = await Promise.all([
+          db.execute(sql`DELETE FROM collections WHERE official_place_id = ${placeId} RETURNING id`),
+          db.execute(sql`DELETE FROM merchant_place_links WHERE official_place_id = ${placeId} RETURNING id`),
+          db.execute(sql`DELETE FROM coupons WHERE place_id = ${placeId} RETURNING id`),
+          db.execute(sql`DELETE FROM merchant_subscriptions WHERE place_id = ${placeId} RETURNING id`),
+          db.execute(sql`UPDATE place_drafts SET approved_place_id = NULL WHERE approved_place_id = ${placeId} RETURNING id`),
+        ]);
+        cleanedRecords = {
+          collections: col.rows.length,
+          merchantLinks: links.rows.length,
+          coupons: coup.rows.length,
+          subscriptions: subs.rows.length,
+          drafts: drafts.rows.length,
+        };
+      }
+
       const result = await db.execute(sql`
         DELETE FROM places WHERE id = ${placeId}
         RETURNING id, place_name
@@ -1303,7 +1324,8 @@ router.delete("/places/:id", isAuthenticated, async (req: any, res) => {
       const place = result.rows[0] as any;
       res.json({
         success: true,
-        message: `景點「${place.place_name}」已永久刪除`
+        message: `景點「${place.place_name}」已永久刪除`,
+        ...(cascade && { cleanedRecords })
       });
     } else {
       // 軟刪除 - 設為停用
@@ -1348,7 +1370,7 @@ router.post("/places/batch-delete", isAuthenticated, async (req: any, res) => {
     const user = await storage.getUser(userId);
     if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
-    const { ids, hardDelete = false } = req.body as { ids: number[]; hardDelete?: boolean };
+    const { ids, hardDelete = false, cascade = false } = req.body as { ids: number[]; hardDelete?: boolean; cascade?: boolean };
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '請提供要刪除的景點 ID'));
@@ -1365,8 +1387,27 @@ router.post("/places/batch-delete", isAuthenticated, async (req: any, res) => {
     }
 
     let deletedCount = 0;
+    let cleanedRecords = { collections: 0, merchantLinks: 0, coupons: 0, subscriptions: 0, drafts: 0 };
 
     if (hardDelete) {
+      if (cascade) {
+        // 級聯刪除：先清除所有關聯資料
+        const [col, links, coup, subs, drafts] = await Promise.all([
+          db.execute(sql`DELETE FROM collections WHERE official_place_id = ANY(${ids}) RETURNING id`),
+          db.execute(sql`DELETE FROM merchant_place_links WHERE official_place_id = ANY(${ids}) RETURNING id`),
+          db.execute(sql`DELETE FROM coupons WHERE place_id = ANY(${ids}) RETURNING id`),
+          db.execute(sql`DELETE FROM merchant_subscriptions WHERE place_id = ANY(${ids}) RETURNING id`),
+          db.execute(sql`UPDATE place_drafts SET approved_place_id = NULL WHERE approved_place_id = ANY(${ids}) RETURNING id`),
+        ]);
+        cleanedRecords = {
+          collections: col.rows.length,
+          merchantLinks: links.rows.length,
+          coupons: coup.rows.length,
+          subscriptions: subs.rows.length,
+          drafts: drafts.rows.length,
+        };
+      }
+
       // 硬刪除
       const result = await db.execute(sql`
         DELETE FROM places WHERE id = ANY(${ids})
@@ -1386,7 +1427,8 @@ router.post("/places/batch-delete", isAuthenticated, async (req: any, res) => {
     res.json({
       success: true,
       deletedCount,
-      message: `已${hardDelete ? '永久刪除' : '停用'} ${deletedCount} 筆景點`
+      message: `已${hardDelete ? '永久刪除' : '停用'} ${deletedCount} 筆景點`,
+      ...(cascade && { cleanedRecords })
     });
   } catch (error: any) {
     console.error("Admin batch delete places error:", error);
