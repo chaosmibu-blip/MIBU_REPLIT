@@ -319,6 +319,11 @@ async function startServer() {
     res.status(status).json({ message });
   });
 
+  // app-ads.txt for AdMob verification
+  app.get('/app-ads.txt', (_req, res) => {
+    res.type('text/plain').send('google.com, pub-2399075804691684, DIRECT, f08c47fec0942fa0\n');
+  });
+
   // API 404 fallback - 防止未知 API 路由回傳 HTML
   app.use('/api/*', (req, res) => {
     res.status(404).json({ error: 'API endpoint not found', path: req.originalUrl });

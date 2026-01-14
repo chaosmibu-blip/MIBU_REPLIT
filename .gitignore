@@ -8,3 +8,6 @@ vite.config.ts.*
 # Cloned reference repositories
 Mibu-Pages/
 Mibu-Replit-APP-/
+
+# MCP config (contains database credentials)
+.mcp.json
