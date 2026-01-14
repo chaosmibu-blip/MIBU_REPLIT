@@ -1151,7 +1151,7 @@ router.get("/places", isAuthenticated, async (req: any, res) => {
         id, place_name, country, city, district, address,
         location_lat, location_lng, category, subcategory,
         rating, is_active, claim_status, place_card_tier,
-        merchant_id, created_at, updated_at
+        merchant_id, created_at
       FROM places
       WHERE 1=1
         ${search ? sql`AND (place_name ILIKE ${'%' + search + '%'} OR address ILIKE ${'%' + search + '%'})` : sql``}
@@ -1160,7 +1160,7 @@ router.get("/places", isAuthenticated, async (req: any, res) => {
         ${status === 'active' ? sql`AND is_active = true` : sql``}
         ${status === 'inactive' ? sql`AND is_active = false` : sql``}
         ${claimStatus ? sql`AND claim_status = ${claimStatus}` : sql``}
-      ORDER BY updated_at DESC NULLS LAST
+      ORDER BY created_at DESC NULLS LAST
       LIMIT ${limit} OFFSET ${offset}
     `);
 
@@ -1214,8 +1214,7 @@ router.patch("/places/:id", isAuthenticated, async (req: any, res) => {
         subcategory = COALESCE(${subcategory}, subcategory),
         description = COALESCE(${description}, description),
         is_active = COALESCE(${isActive}, is_active),
-        place_card_tier = COALESCE(${placeCardTier}, place_card_tier),
-        updated_at = NOW()
+        place_card_tier = COALESCE(${placeCardTier}, place_card_tier)
       WHERE id = ${placeId}
       RETURNING *
     `);
@@ -1247,7 +1246,7 @@ router.patch("/places/:id/toggle-status", isAuthenticated, async (req: any, res)
 
     const result = await db.execute(sql`
       UPDATE places
-      SET is_active = NOT is_active, updated_at = NOW()
+      SET is_active = NOT is_active
       WHERE id = ${placeId}
       RETURNING id, place_name, is_active
     `);

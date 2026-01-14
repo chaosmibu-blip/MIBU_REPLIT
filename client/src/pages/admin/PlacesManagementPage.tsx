@@ -17,7 +17,6 @@ interface Place {
   place_card_tier: string;
   merchant_id: number | null;
   created_at: string;
-  updated_at: string;
 }
 
 interface PlacesResponse {
@@ -219,7 +218,7 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
                 <th className="text-center px-4 py-3 text-sm font-medium text-slate-600">評分</th>
                 <th className="text-center px-4 py-3 text-sm font-medium text-slate-600">認領狀態</th>
                 <th className="text-center px-4 py-3 text-sm font-medium text-slate-600">狀態</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-slate-600">更新時間</th>
+                <th className="text-left px-4 py-3 text-sm font-medium text-slate-600">建立時間</th>
                 <th className="text-center px-4 py-3 text-sm font-medium text-slate-600">操作</th>
               </tr>
             </thead>
@@ -258,7 +257,7 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-500">
-                    {formatTWDate(place.updated_at)}
+                    {formatTWDate(place.created_at)}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <button
