@@ -8,6 +8,7 @@ import { AnnouncementsPage } from '../pages/admin/AnnouncementsPage';
 import { ExclusionsPage } from '../pages/admin/ExclusionsPage';
 import { SubscriptionPlansPage } from '../pages/admin/SubscriptionPlansPage';
 import { SystemConfigsPage } from '../pages/admin/SystemConfigsPage';
+import { SystemServicesPage } from '../pages/admin/SystemServicesPage';
 
 interface PlaceDraft {
   id: number;
@@ -21,7 +22,7 @@ interface AdminDashboardProps {
   t: Record<string, string>;
 }
 
-type AdminView = 'home' | 'users_review' | 'drafts_review' | 'batch_generate' | 'announcements' | 'exclusions' | 'subscription_plans' | 'system_configs';
+type AdminView = 'home' | 'users_review' | 'drafts_review' | 'batch_generate' | 'announcements' | 'exclusions' | 'subscription_plans' | 'system_configs' | 'system_services';
 
 const BackButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
   <button
@@ -140,6 +141,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
             <SystemConfigsPage language={language} t={t} />
           </div>
         );
+      case 'system_services':
+        return (
+          <div className="pb-24">
+            <BackButton onClick={() => setCurrentView('home')} />
+            <SystemServicesPage language={language} t={t} />
+          </div>
+        );
       default:
         return null;
     }
@@ -241,10 +249,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
                 title="訂閱方案管理"
                 testId="card-subscription-plans"
               />
-              <MenuItem 
+              <MenuItem
                 onClick={() => setCurrentView('system_configs')}
                 title="系統設定"
                 testId="card-system-configs"
+              />
+              <MenuItem
+                onClick={() => setCurrentView('system_services')}
+                title="系統服務狀態"
+                testId="card-system-services"
               />
             </div>
           </section>
