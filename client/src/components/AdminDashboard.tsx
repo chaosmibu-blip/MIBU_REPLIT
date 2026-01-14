@@ -9,6 +9,11 @@ import { ExclusionsPage } from '../pages/admin/ExclusionsPage';
 import { SubscriptionPlansPage } from '../pages/admin/SubscriptionPlansPage';
 import { SystemConfigsPage } from '../pages/admin/SystemConfigsPage';
 import { SystemServicesPage } from '../pages/admin/SystemServicesPage';
+import { OperationsDashboardPage } from '../pages/admin/OperationsDashboardPage';
+import { PlacesManagementPage } from '../pages/admin/PlacesManagementPage';
+import { MerchantsManagementPage } from '../pages/admin/MerchantsManagementPage';
+import { RefundsManagementPage } from '../pages/admin/RefundsManagementPage';
+import { FinanceReportPage } from '../pages/admin/FinanceReportPage';
 
 interface PlaceDraft {
   id: number;
@@ -22,7 +27,7 @@ interface AdminDashboardProps {
   t: Record<string, string>;
 }
 
-type AdminView = 'home' | 'users_review' | 'drafts_review' | 'batch_generate' | 'announcements' | 'exclusions' | 'subscription_plans' | 'system_configs' | 'system_services';
+type AdminView = 'home' | 'operations_dashboard' | 'users_review' | 'drafts_review' | 'batch_generate' | 'announcements' | 'exclusions' | 'subscription_plans' | 'system_configs' | 'system_services' | 'places' | 'merchants' | 'refunds' | 'finance';
 
 const BackButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
   <button
@@ -148,6 +153,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
             <SystemServicesPage language={language} t={t} />
           </div>
         );
+      case 'operations_dashboard':
+        return (
+          <div className="pb-24">
+            <BackButton onClick={() => setCurrentView('home')} />
+            <OperationsDashboardPage
+              language={language}
+              t={t}
+              onNavigate={(view) => setCurrentView(view as AdminView)}
+            />
+          </div>
+        );
+      case 'places':
+        return (
+          <div className="pb-24">
+            <BackButton onClick={() => setCurrentView('home')} />
+            <PlacesManagementPage language={language} t={t} />
+          </div>
+        );
+      case 'merchants':
+        return (
+          <div className="pb-24">
+            <BackButton onClick={() => setCurrentView('home')} />
+            <MerchantsManagementPage language={language} t={t} />
+          </div>
+        );
+      case 'refunds':
+        return (
+          <div className="pb-24">
+            <BackButton onClick={() => setCurrentView('home')} />
+            <RefundsManagementPage language={language} t={t} />
+          </div>
+        );
+      case 'finance':
+        return (
+          <div className="pb-24">
+            <BackButton onClick={() => setCurrentView('home')} />
+            <FinanceReportPage language={language} t={t} />
+          </div>
+        );
       default:
         return null;
     }
@@ -217,14 +261,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
           </section>
 
           <section>
+            <h2 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">商業營運</h2>
+            <div className="space-y-2">
+              <MenuItem
+                onClick={() => setCurrentView('operations_dashboard')}
+                title="營運儀表板"
+                testId="card-operations-dashboard"
+              />
+              <MenuItem
+                onClick={() => setCurrentView('merchants')}
+                title="商家管理"
+                testId="card-merchants"
+              />
+              <MenuItem
+                onClick={() => setCurrentView('refunds')}
+                title="退款管理"
+                testId="card-refunds"
+              />
+              <MenuItem
+                onClick={() => setCurrentView('finance')}
+                title="財務報表"
+                testId="card-finance"
+              />
+            </div>
+          </section>
+
+          <section>
             <h2 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">資料管理</h2>
             <div className="space-y-2">
-              <MenuItem 
+              <MenuItem
+                onClick={() => setCurrentView('places')}
+                title="景點管理"
+                testId="card-places"
+              />
+              <MenuItem
                 onClick={() => setCurrentView('batch_generate')}
                 title="批次採集地點"
                 testId="card-batch-generate"
               />
-              <MenuItem 
+              <MenuItem
                 onClick={() => setCurrentView('exclusions')}
                 title="全域排除管理"
                 badge={stats.exclusionsCount > 0 ? stats.exclusionsCount : undefined}
@@ -235,16 +310,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
           </section>
 
           <section>
-            <h2 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">營運管理</h2>
+            <h2 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">系統設定</h2>
             <div className="space-y-2">
-              <MenuItem 
+              <MenuItem
                 onClick={() => setCurrentView('announcements')}
                 title="公告管理"
                 badge={stats.announcementsCount > 0 ? stats.announcementsCount : undefined}
                 badgeColor="indigo"
                 testId="card-announcements"
               />
-              <MenuItem 
+              <MenuItem
                 onClick={() => setCurrentView('subscription_plans')}
                 title="訂閱方案管理"
                 testId="card-subscription-plans"
