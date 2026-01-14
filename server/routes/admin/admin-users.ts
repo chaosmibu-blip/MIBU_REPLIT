@@ -201,6 +201,135 @@ router.get("/users", isAuthenticated, async (req: any, res) => {
   }
 });
 
+// ============ 角色申請審核 (新版多角色系統) ============
+
+/**
+ * GET /api/admin/role-applications
+ * 取得所有待審核的角色申請
+ */
+router.get("/role-applications", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
+
+    const roleFilter = req.query.role as string;
+
+    let applications;
+    if (roleFilter) {
+      applications = await storage.getPendingRolesByType(roleFilter as any);
+    } else {
+      applications = await storage.getPendingRoleApplications();
+    }
+
+    res.json({
+      applications: applications.map(app => ({
+        id: app.id,
+        userId: app.userId,
+        role: app.role,
+        status: app.status,
+        appliedAt: app.appliedAt,
+        user: {
+          id: app.user.id,
+          email: app.user.email,
+          firstName: app.user.firstName,
+          lastName: app.user.lastName,
+          provider: app.user.provider,
+        }
+      }))
+    });
+  } catch (error) {
+    console.error("Get role applications error:", error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '取得角色申請失敗'));
+  }
+});
+
+/**
+ * PATCH /api/admin/role-applications/:id/approve
+ * 核准角色申請
+ */
+router.patch("/role-applications/:id/approve", isAuthenticated, async (req: any, res) => {
+  try {
+    const adminId = req.user?.claims?.sub;
+    if (!adminId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+
+    const admin = await storage.getUser(adminId);
+    if (admin?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
+
+    const roleId = parseInt(req.params.id);
+    const role = await storage.approveRole(roleId, adminId);
+
+    if (!role) {
+      return res.status(404).json(createErrorResponse(ErrorCode.NOT_FOUND, '找不到該角色申請'));
+    }
+
+    res.json({
+      success: true,
+      role,
+      message: `已核准 ${role.role} 角色申請`
+    });
+  } catch (error) {
+    console.error("Approve role error:", error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '核准角色失敗'));
+  }
+});
+
+/**
+ * PATCH /api/admin/role-applications/:id/reject
+ * 拒絕角色申請
+ */
+router.patch("/role-applications/:id/reject", isAuthenticated, async (req: any, res) => {
+  try {
+    const adminId = req.user?.claims?.sub;
+    if (!adminId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+
+    const admin = await storage.getUser(adminId);
+    if (admin?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
+
+    const roleId = parseInt(req.params.id);
+    const { reason } = req.body;
+
+    const role = await storage.rejectRole(roleId, adminId, reason);
+
+    if (!role) {
+      return res.status(404).json(createErrorResponse(ErrorCode.NOT_FOUND, '找不到該角色申請'));
+    }
+
+    res.json({
+      success: true,
+      role,
+      message: `已拒絕 ${role.role} 角色申請`
+    });
+  } catch (error) {
+    console.error("Reject role error:", error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '拒絕角色失敗'));
+  }
+});
+
+/**
+ * GET /api/admin/user/:id/roles
+ * 取得特定用戶的所有角色
+ */
+router.get("/user/:id/roles", isAuthenticated, async (req: any, res) => {
+  try {
+    const adminId = req.user?.claims?.sub;
+    if (!adminId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+
+    const admin = await storage.getUser(adminId);
+    if (admin?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
+
+    const targetUserId = req.params.id;
+    const roles = await storage.getUserRoles(targetUserId);
+
+    res.json({ roles });
+  } catch (error) {
+    console.error("Get user roles error:", error);
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '取得用戶角色失敗'));
+  }
+});
+
 router.get("/global-exclusions", isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user?.claims?.sub;

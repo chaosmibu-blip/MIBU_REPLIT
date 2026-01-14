@@ -27,11 +27,16 @@ import {
   travelCompanions,
   chatInvites,
   authIdentities,
+  userRoles,
   gachaAiLogs,
   type User,
   type UpsertUser,
   type InsertAuthIdentity,
   type AuthIdentity,
+  type InsertUserRole,
+  type UserRole,
+  type UserRoleType,
+  type UserRoleStatus,
 } from "@shared/schema";
 
 export const userStorage = {
@@ -454,5 +459,157 @@ export const userStorage = {
     }
 
     return holders.length;
+  },
+
+  // ============ User Roles (多角色系統) ============
+
+  /**
+   * 取得用戶所有角色
+   */
+  async getUserRoles(userId: string): Promise<UserRole[]> {
+    return await db.select()
+      .from(userRoles)
+      .where(eq(userRoles.userId, userId))
+      .orderBy(desc(userRoles.createdAt));
+  },
+
+  /**
+   * 取得用戶的有效角色列表
+   */
+  async getActiveRoles(userId: string): Promise<UserRoleType[]> {
+    const roles = await db.select({ role: userRoles.role })
+      .from(userRoles)
+      .where(and(
+        eq(userRoles.userId, userId),
+        eq(userRoles.status, 'active')
+      ));
+    return roles.map(r => r.role as UserRoleType);
+  },
+
+  /**
+   * 檢查用戶是否有某個角色
+   */
+  async hasRole(userId: string, role: UserRoleType): Promise<boolean> {
+    const [existing] = await db.select()
+      .from(userRoles)
+      .where(and(
+        eq(userRoles.userId, userId),
+        eq(userRoles.role, role),
+        eq(userRoles.status, 'active')
+      ));
+    return !!existing;
+  },
+
+  /**
+   * 新增角色（申請）
+   * traveler 角色會自動啟用，其他角色需要審核
+   */
+  async addRole(userId: string, role: UserRoleType): Promise<UserRole> {
+    const status: UserRoleStatus = role === 'traveler' ? 'active' : 'pending';
+    const approvedAt = role === 'traveler' ? new Date() : null;
+
+    const [newRole] = await db.insert(userRoles).values({
+      userId,
+      role,
+      status,
+      appliedAt: new Date(),
+      approvedAt,
+    }).returning();
+
+    return newRole;
+  },
+
+  /**
+   * 確保用戶有 traveler 角色（登入時調用）
+   */
+  async ensureTravelerRole(userId: string): Promise<UserRole> {
+    const [existing] = await db.select()
+      .from(userRoles)
+      .where(and(
+        eq(userRoles.userId, userId),
+        eq(userRoles.role, 'traveler')
+      ));
+
+    if (existing) {
+      // 確保是 active 狀態
+      if (existing.status !== 'active') {
+        const [updated] = await db.update(userRoles)
+          .set({ status: 'active', approvedAt: new Date(), updatedAt: new Date() })
+          .where(eq(userRoles.id, existing.id))
+          .returning();
+        return updated;
+      }
+      return existing;
+    }
+
+    return await userStorage.addRole(userId, 'traveler');
+  },
+
+  /**
+   * 核准角色申請
+   */
+  async approveRole(roleId: number, approvedBy: string): Promise<UserRole | undefined> {
+    const [role] = await db.update(userRoles)
+      .set({
+        status: 'active',
+        approvedAt: new Date(),
+        approvedBy,
+        updatedAt: new Date(),
+      })
+      .where(eq(userRoles.id, roleId))
+      .returning();
+    return role;
+  },
+
+  /**
+   * 拒絕角色申請
+   */
+  async rejectRole(roleId: number, rejectedBy: string, reason?: string): Promise<UserRole | undefined> {
+    const [role] = await db.update(userRoles)
+      .set({
+        status: 'rejected',
+        rejectedAt: new Date(),
+        rejectedBy,
+        rejectionReason: reason || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(userRoles.id, roleId))
+      .returning();
+    return role;
+  },
+
+  /**
+   * 取得待審核的角色申請
+   */
+  async getPendingRoleApplications(): Promise<(UserRole & { user: User })[]> {
+    const applications = await db.select()
+      .from(userRoles)
+      .innerJoin(users, eq(userRoles.userId, users.id))
+      .where(eq(userRoles.status, 'pending'))
+      .orderBy(desc(userRoles.appliedAt));
+
+    return applications.map(row => ({
+      ...row.user_roles,
+      user: row.users,
+    }));
+  },
+
+  /**
+   * 取得特定角色類型的待審核申請
+   */
+  async getPendingRolesByType(role: UserRoleType): Promise<(UserRole & { user: User })[]> {
+    const applications = await db.select()
+      .from(userRoles)
+      .innerJoin(users, eq(userRoles.userId, users.id))
+      .where(and(
+        eq(userRoles.role, role),
+        eq(userRoles.status, 'pending')
+      ))
+      .orderBy(desc(userRoles.appliedAt));
+
+    return applications.map(row => ({
+      ...row.user_roles,
+      user: row.users,
+    }));
   },
 };
