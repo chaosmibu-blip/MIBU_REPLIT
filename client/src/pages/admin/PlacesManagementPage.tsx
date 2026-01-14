@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Language } from '../../types';
 import { formatTWDate } from '../../lib/utils';
 
@@ -11,6 +11,7 @@ interface Place {
   address: string;
   category: string;
   subcategory: string;
+  description?: string;
   rating: number;
   is_active: boolean;
   claim_status: string;
@@ -38,23 +39,193 @@ interface PlacesManagementPageProps {
   t: Record<string, string>;
 }
 
+// 編輯 Modal 組件
+const EditPlaceModal: React.FC<{
+  place: Place;
+  onClose: () => void;
+  onSave: () => void;
+}> = ({ place, onClose, onSave }) => {
+  const [formData, setFormData] = useState({
+    placeName: place.place_name,
+    category: place.category,
+    subcategory: place.subcategory || '',
+    description: place.description || '',
+    placeCardTier: place.place_card_tier || 'free',
+    isActive: place.is_active,
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/places/${place.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(formData),
+      });
+      if (!res.ok) throw new Error('更新失敗');
+      onSave();
+      onClose();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold text-slate-800">編輯景點</h3>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">景點名稱</label>
+            <input
+              type="text"
+              value={formData.placeName}
+              onChange={(e) => setFormData({ ...formData, placeName: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">分類</label>
+              <select
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg"
+              >
+                <option value="美食">美食</option>
+                <option value="住宿">住宿</option>
+                <option value="景點">景點</option>
+                <option value="購物">購物</option>
+                <option value="娛樂設施">娛樂設施</option>
+                <option value="生態文化教育">生態文化教育</option>
+                <option value="遊程體驗">遊程體驗</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">子分類</label>
+              <input
+                type="text"
+                value={formData.subcategory}
+                onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">描述</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={3}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">行程卡等級</label>
+            <select
+              value={formData.placeCardTier}
+              onChange={(e) => setFormData({ ...formData, placeCardTier: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg"
+            >
+              <option value="free">免費</option>
+              <option value="pro">專業</option>
+              <option value="premium">高級</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="isActive"
+              checked={formData.isActive}
+              onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+              className="w-4 h-4 text-indigo-600 rounded"
+            />
+            <label htmlFor="isActive" className="text-sm text-slate-700">啟用此景點</label>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50"
+            >
+              取消
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {saving ? '儲存中...' : '儲存'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ language }) => {
   const [data, setData] = useState<PlacesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [editingPlace, setEditingPlace] = useState<Place | null>(null);
+
+  // Debounce 搜尋
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 500);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [search]);
+
+  // AbortController for fetch cancellation
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchPlaces = useCallback(async () => {
+    // Cancel previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
     try {
       setLoading(true);
+      setError(null);
+
       const params = new URLSearchParams({
         page: page.toString(),
         limit: '30',
-        ...(search && { search }),
+        ...(debouncedSearch && { search: debouncedSearch }),
         ...(categoryFilter && { category: categoryFilter }),
         ...(cityFilter && { city: cityFilter }),
         ...(statusFilter && { status: statusFilter }),
@@ -62,19 +233,31 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
 
       const res = await fetch(`/api/admin/places?${params}`, {
         credentials: 'include',
+        signal: abortControllerRef.current.signal,
       });
-      if (!res.ok) throw new Error('無法載入景點');
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || '無法載入景點');
+      }
+
       const result = await res.json();
       setData(result);
     } catch (err: any) {
+      if (err.name === 'AbortError') return; // 忽略取消的請求
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [page, search, categoryFilter, cityFilter, statusFilter]);
+  }, [page, debouncedSearch, categoryFilter, cityFilter, statusFilter]);
 
   useEffect(() => {
     fetchPlaces();
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [fetchPlaces]);
 
   const handleToggleStatus = async (placeId: number) => {
@@ -90,12 +273,6 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
     }
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPage(1);
-    fetchPlaces();
-  };
-
   const getCategoryLabel = (category: string) => {
     const labels: Record<string, string> = {
       dining: '美食',
@@ -105,6 +282,13 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
       entertainment: '娛樂設施',
       education: '生態文化教育',
       experience: '遊程體驗',
+      '美食': '美食',
+      '住宿': '住宿',
+      '景點': '景點',
+      '購物': '購物',
+      '娛樂設施': '娛樂設施',
+      '生態文化教育': '生態文化教育',
+      '遊程體驗': '遊程體驗',
     };
     return labels[category] || category;
   };
@@ -127,16 +311,32 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
     );
   }
 
-  if (error) {
+  if (error && !data) {
     return (
       <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
-        {error}
+        <p className="font-medium">載入失敗</p>
+        <p className="text-sm">{error}</p>
+        <button
+          onClick={fetchPlaces}
+          className="mt-3 px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
+        >
+          重試
+        </button>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
+      {/* 編輯 Modal */}
+      {editingPlace && (
+        <EditPlaceModal
+          place={editingPlace}
+          onClose={() => setEditingPlace(null)}
+          onSave={fetchPlaces}
+        />
+      )}
+
       {/* 標題 */}
       <div className="flex items-center justify-between">
         <div>
@@ -145,20 +345,21 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
         </div>
         <button
           onClick={fetchPlaces}
-          className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-medium hover:bg-slate-200 transition-colors"
+          disabled={loading}
+          className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-medium hover:bg-slate-200 transition-colors disabled:opacity-50"
         >
-          重新整理
+          {loading ? '載入中...' : '重新整理'}
         </button>
       </div>
 
       {/* 搜尋與篩選 */}
       <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-        <form onSubmit={handleSearch} className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜尋景點名稱或地址..."
+            placeholder="搜尋景點名稱或地址...（自動搜尋）"
             className="flex-1 min-w-[200px] px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
           <select
@@ -190,19 +391,20 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
             <option value="active">啟用中</option>
             <option value="inactive">已停用</option>
           </select>
-          <button
-            type="submit"
-            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            搜尋
-          </button>
-        </form>
+        </div>
       </div>
+
+      {/* 錯誤提示（非阻塞） */}
+      {error && data && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-2 rounded-lg text-sm">
+          更新時發生錯誤：{error}
+        </div>
+      )}
 
       {/* 統計 */}
       {data && (
         <div className="text-sm text-slate-500">
-          共 {data.pagination.total} 個景點
+          共 {data.pagination.total} 個景點 {loading && <span className="text-indigo-500">（載入中...）</span>}
         </div>
       )}
 
@@ -238,7 +440,7 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center text-sm">
-                    {place.rating ? `${place.rating.toFixed(1)}` : '-'}
+                    {place.rating ? `${Number(place.rating).toFixed(1)}` : '-'}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className={`px-2 py-1 text-xs rounded ${
@@ -260,22 +462,37 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
                     {formatTWDate(place.created_at)}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => handleToggleStatus(place.id)}
-                      className={`px-3 py-1 text-xs rounded transition-colors ${
-                        place.is_active
-                          ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                          : 'bg-green-50 text-green-600 hover:bg-green-100'
-                      }`}
-                    >
-                      {place.is_active ? '停用' : '啟用'}
-                    </button>
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => setEditingPlace(place)}
+                        className="px-3 py-1 text-xs bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100"
+                      >
+                        編輯
+                      </button>
+                      <button
+                        onClick={() => handleToggleStatus(place.id)}
+                        className={`px-3 py-1 text-xs rounded transition-colors ${
+                          place.is_active
+                            ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                            : 'bg-green-50 text-green-600 hover:bg-green-100'
+                        }`}
+                      >
+                        {place.is_active ? '停用' : '啟用'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {/* 空狀態 */}
+        {data?.places.length === 0 && (
+          <div className="py-12 text-center text-slate-500">
+            沒有符合條件的景點
+          </div>
+        )}
 
         {/* 分頁 */}
         {data && data.pagination.totalPages > 1 && (
@@ -286,14 +503,14 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
             <div className="flex gap-2">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
+                disabled={page === 1 || loading}
                 className="px-3 py-1 border border-slate-200 rounded text-sm disabled:opacity-50"
               >
                 上一頁
               </button>
               <button
                 onClick={() => setPage(p => Math.min(data.pagination.totalPages, p + 1))}
-                disabled={page >= data.pagination.totalPages}
+                disabled={page >= data.pagination.totalPages || loading}
                 className="px-3 py-1 border border-slate-200 rounded text-sm disabled:opacity-50"
               >
                 下一頁

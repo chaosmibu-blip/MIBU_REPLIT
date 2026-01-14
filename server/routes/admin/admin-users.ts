@@ -262,7 +262,7 @@ router.patch("/role-applications/:id/approve", isAuthenticated, async (req: any,
     const role = await storage.approveRole(roleId, adminId);
 
     if (!role) {
-      return res.status(404).json(createErrorResponse(ErrorCode.NOT_FOUND, '找不到該角色申請'));
+      return res.status(404).json(createErrorResponse(ErrorCode.ROLE_APPLICATION_NOT_FOUND, '找不到該角色申請'));
     }
 
     res.json({
@@ -294,7 +294,7 @@ router.patch("/role-applications/:id/reject", isAuthenticated, async (req: any, 
     const role = await storage.rejectRole(roleId, adminId, reason);
 
     if (!role) {
-      return res.status(404).json(createErrorResponse(ErrorCode.NOT_FOUND, '找不到該角色申請'));
+      return res.status(404).json(createErrorResponse(ErrorCode.ROLE_APPLICATION_NOT_FOUND, '找不到該角色申請'));
     }
 
     res.json({

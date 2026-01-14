@@ -84,7 +84,9 @@ export enum ErrorCode {
   CONVERSATION_NOT_FOUND = 'E6017',
   AD_NOT_FOUND = 'E6018',
   TRANSACTION_NOT_FOUND = 'E6019',
-  
+  REFUND_NOT_FOUND = 'E6020',
+  ROLE_APPLICATION_NOT_FOUND = 'E6021',
+
   // Payment 支付相關 (E7xxx)
   PAYMENT_FAILED = 'E7001',
   SUBSCRIPTION_EXPIRED = 'E7002',
@@ -177,7 +179,9 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   [ErrorCode.CONVERSATION_NOT_FOUND]: '找不到對話',
   [ErrorCode.AD_NOT_FOUND]: '找不到廣告',
   [ErrorCode.TRANSACTION_NOT_FOUND]: '找不到交易',
-  
+  [ErrorCode.REFUND_NOT_FOUND]: '找不到退款請求',
+  [ErrorCode.ROLE_APPLICATION_NOT_FOUND]: '找不到角色申請',
+
   // Payment
   [ErrorCode.PAYMENT_FAILED]: '付款失敗',
   [ErrorCode.SUBSCRIPTION_EXPIRED]: '訂閱已過期',

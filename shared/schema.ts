@@ -201,7 +201,7 @@ export const insertUserRoleSchema = createInsertSchema(userRoles).omit({
   updatedAt: true,
 });
 export type InsertUserRole = z.infer<typeof insertUserRoleSchema>;
-export type UserRole = typeof userRoles.$inferSelect;
+export type UserRoleRecord = typeof userRoles.$inferSelect; // 重命名避免與 UserRole 字串類型衝突
 
 // Merchants (商家)
 export type MerchantStatus = 'pending' | 'approved' | 'rejected';

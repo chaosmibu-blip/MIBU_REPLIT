@@ -34,7 +34,7 @@ import {
   type InsertAuthIdentity,
   type AuthIdentity,
   type InsertUserRole,
-  type UserRole,
+  type UserRoleRecord,
   type UserRoleType,
   type UserRoleStatus,
 } from "@shared/schema";
@@ -466,7 +466,7 @@ export const userStorage = {
   /**
    * 取得用戶所有角色
    */
-  async getUserRoles(userId: string): Promise<UserRole[]> {
+  async getUserRoles(userId: string): Promise<UserRoleRecord[]> {
     return await db.select()
       .from(userRoles)
       .where(eq(userRoles.userId, userId))
@@ -476,7 +476,7 @@ export const userStorage = {
   /**
    * 取得用戶的有效角色列表
    */
-  async getActiveRoles(userId: string): Promise<UserRoleType[]> {
+  async getActiveRoles(userId: string): Promise<UserRoleRecordType[]> {
     const roles = await db.select({ role: userRoles.role })
       .from(userRoles)
       .where(and(
@@ -504,7 +504,7 @@ export const userStorage = {
    * 新增角色（申請）
    * traveler 角色會自動啟用，其他角色需要審核
    */
-  async addRole(userId: string, role: UserRoleType): Promise<UserRole> {
+  async addRole(userId: string, role: UserRoleType): Promise<UserRoleRecord> {
     const status: UserRoleStatus = role === 'traveler' ? 'active' : 'pending';
     const approvedAt = role === 'traveler' ? new Date() : null;
 
@@ -522,7 +522,7 @@ export const userStorage = {
   /**
    * 確保用戶有 traveler 角色（登入時調用）
    */
-  async ensureTravelerRole(userId: string): Promise<UserRole> {
+  async ensureTravelerRole(userId: string): Promise<UserRoleRecord> {
     const [existing] = await db.select()
       .from(userRoles)
       .where(and(
@@ -548,7 +548,7 @@ export const userStorage = {
   /**
    * 核准角色申請
    */
-  async approveRole(roleId: number, approvedBy: string): Promise<UserRole | undefined> {
+  async approveRole(roleId: number, approvedBy: string): Promise<UserRoleRecord | undefined> {
     const [role] = await db.update(userRoles)
       .set({
         status: 'active',
@@ -564,7 +564,7 @@ export const userStorage = {
   /**
    * 拒絕角色申請
    */
-  async rejectRole(roleId: number, rejectedBy: string, reason?: string): Promise<UserRole | undefined> {
+  async rejectRole(roleId: number, rejectedBy: string, reason?: string): Promise<UserRoleRecord | undefined> {
     const [role] = await db.update(userRoles)
       .set({
         status: 'rejected',
