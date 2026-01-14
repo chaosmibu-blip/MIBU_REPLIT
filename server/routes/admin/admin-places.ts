@@ -1284,6 +1284,9 @@ router.delete("/places/:id", isAuthenticated, async (req: any, res) => {
     if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
 
     const placeId = parseInt(req.params.id);
+    if (isNaN(placeId)) {
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的景點 ID'));
+    }
     const hardDelete = req.query.hard === 'true';
 
     if (hardDelete) {
@@ -1322,6 +1325,13 @@ router.delete("/places/:id", isAuthenticated, async (req: any, res) => {
     }
   } catch (error: any) {
     console.error("Admin delete place error:", error);
+    // 檢查是否為外鍵約束錯誤
+    if (error.code === '23503') {
+      return res.status(409).json(createErrorResponse(
+        ErrorCode.INVALID_PARAMS,
+        '無法刪除：此景點已被用戶收藏或商家認領，請先移除相關資料'
+      ));
+    }
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '刪除景點失敗'));
   }
 });
@@ -1346,6 +1356,12 @@ router.post("/places/batch-delete", isAuthenticated, async (req: any, res) => {
 
     if (ids.length > 100) {
       return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '單次最多刪除 100 筆'));
+    }
+
+    // 驗證所有 ID 都是有效數字
+    const validIds = ids.filter(id => typeof id === 'number' && !isNaN(id) && Number.isInteger(id));
+    if (validIds.length !== ids.length) {
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '包含無效的景點 ID'));
     }
 
     let deletedCount = 0;
@@ -1374,6 +1390,13 @@ router.post("/places/batch-delete", isAuthenticated, async (req: any, res) => {
     });
   } catch (error: any) {
     console.error("Admin batch delete places error:", error);
+    // 檢查是否為外鍵約束錯誤
+    if (error.code === '23503') {
+      return res.status(409).json(createErrorResponse(
+        ErrorCode.INVALID_PARAMS,
+        '無法刪除：部分景點已被用戶收藏或商家認領，請先移除相關資料'
+      ));
+    }
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '批次刪除失敗'));
   }
 });

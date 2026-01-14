@@ -299,7 +299,16 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
         method: 'DELETE',
         credentials: 'include',
       });
-      if (!res.ok) throw new Error('刪除失敗');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || '刪除失敗');
+      }
+      // 從選取列表中移除已刪除的 ID
+      setSelectedIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(placeId);
+        return newSet;
+      });
       fetchPlaces();
     } catch (err: any) {
       alert(err.message);
@@ -322,8 +331,10 @@ export const PlacesManagementPage: React.FC<PlacesManagementPageProps> = ({ lang
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: Array.from(selectedIds), hardDelete }),
       });
-      if (!res.ok) throw new Error('批次刪除失敗');
       const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.message || '批次刪除失敗');
+      }
       alert(result.message);
       setSelectedIds(new Set());
       fetchPlaces();
