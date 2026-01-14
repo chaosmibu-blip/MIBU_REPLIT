@@ -14,6 +14,7 @@ import { PlacesManagementPage } from '../pages/admin/PlacesManagementPage';
 import { MerchantsManagementPage } from '../pages/admin/MerchantsManagementPage';
 import { RefundsManagementPage } from '../pages/admin/RefundsManagementPage';
 import { FinanceReportPage } from '../pages/admin/FinanceReportPage';
+import { RoleApplicationsPage } from '../pages/admin/RoleApplicationsPage';
 
 interface PlaceDraft {
   id: number;
@@ -27,7 +28,7 @@ interface AdminDashboardProps {
   t: Record<string, string>;
 }
 
-type AdminView = 'home' | 'operations_dashboard' | 'users_review' | 'drafts_review' | 'batch_generate' | 'announcements' | 'exclusions' | 'subscription_plans' | 'system_configs' | 'system_services' | 'places' | 'merchants' | 'refunds' | 'finance';
+type AdminView = 'home' | 'operations_dashboard' | 'users_review' | 'role_applications' | 'drafts_review' | 'batch_generate' | 'announcements' | 'exclusions' | 'subscription_plans' | 'system_configs' | 'system_services' | 'places' | 'merchants' | 'refunds' | 'finance';
 
 const BackButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
   <button
@@ -102,6 +103,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
           <div className="pb-24">
             <BackButton onClick={() => setCurrentView('home')} />
             <UsersReviewPage language={language} t={t} />
+          </div>
+        );
+      case 'role_applications':
+        return (
+          <div className="pb-24">
+            <BackButton onClick={() => setCurrentView('home')} />
+            <RoleApplicationsPage language={language} t={t} />
           </div>
         );
       case 'drafts_review':
@@ -243,14 +251,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ language, onBack
           <section>
             <h2 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">審核管理</h2>
             <div className="space-y-2">
-              <MenuItem 
-                onClick={() => setCurrentView('users_review')}
-                title="用戶與商家審核"
-                badge={stats.pendingUsers + stats.pendingApps > 0 ? stats.pendingUsers + stats.pendingApps : undefined}
+              <MenuItem
+                onClick={() => setCurrentView('role_applications')}
+                title="角色申請審核"
                 badgeColor="amber"
-                testId="card-users-review"
+                testId="card-role-applications"
               />
-              <MenuItem 
+              <MenuItem
                 onClick={() => setCurrentView('drafts_review')}
                 title="草稿行程卡審核"
                 badge={stats.pendingDrafts > 0 ? stats.pendingDrafts : undefined}
