@@ -13,6 +13,7 @@ import seoRouter from './seo';
 import inventoryRouter from './inventory';
 import notificationsRouter from './notifications';
 import adsRouter from './ads';
+import monitoringRouter from './monitoring';
 import { subscriptionPlansPublicRouter } from './admin/admin-subscription-plans';
 import { storage } from '../storage';
 import { AnnouncementType } from '@shared/schema';
@@ -50,6 +51,7 @@ router.use('/inventory', inventoryRouter); // Inventory API: /api/inventory, /ap
 router.use('/notifications', notificationsRouter); // 通知 API: /api/notifications
 router.use('/ads', adsRouter); // 廣告 API: /api/ads/placements
 router.use('/', subscriptionPlansPublicRouter); // 公開 API: /api/subscription-plans
+router.use('/', monitoringRouter); // 監控 API: /api/health, /api/health/detailed, /api/metrics
 
 export default router;
 
@@ -66,4 +68,5 @@ export {
   gachaRouter,
   adminRouter,
   inventoryRouter,
+  monitoringRouter,
 };

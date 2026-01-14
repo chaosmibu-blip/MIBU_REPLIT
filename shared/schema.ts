@@ -447,6 +447,7 @@ export const places = pgTable("places", {
 }, (table) => [
   index("IDX_places_google_place_id").on(table.googlePlaceId),
   index("IDX_places_city_district").on(table.city, table.district),
+  index("IDX_places_city_district_active").on(table.city, table.district, table.isActive), // Composite index for gacha queries
   index("IDX_places_category").on(table.category),
   index("IDX_places_merchant").on(table.merchantId),
   index("IDX_places_is_active").on(table.isActive),
@@ -576,6 +577,7 @@ export const collections = pgTable("collections", {
   index("IDX_collections_user_place").on(table.userId, table.placeName, table.district),
   index("IDX_collections_official_place").on(table.officialPlaceId),
   index("IDX_collections_gacha_session").on(table.gachaSessionId),
+  index("IDX_collections_user_time").on(table.userId, table.collectedAt), // For recent collections query
 ]);
 
 // ============ Relations ============
