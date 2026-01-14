@@ -17,40 +17,23 @@ router.get("/merchants", requireAdmin, async (req, res) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
     const search = (req.query.search as string) || '';
-    const status = (req.query.status as string) || ''; // 'approved', 'pending', 'rejected'
+    const status = (req.query.status as string) || '';
 
     const offset = (page - 1) * limit;
 
-    let whereConditions = [];
-    let params: any[] = [];
-    let paramIndex = 1;
-
-    if (search) {
-      whereConditions.push(`(m.business_name ILIKE $${paramIndex} OR m.contact_name ILIKE $${paramIndex} OR u.email ILIKE $${paramIndex})`);
-      params.push(`%${search}%`);
-      paramIndex++;
-    }
-    if (status) {
-      whereConditions.push(`m.status = $${paramIndex}`);
-      params.push(status);
-      paramIndex++;
-    }
-
-    const whereClause = whereConditions.length > 0
-      ? `WHERE ${whereConditions.join(' AND ')}`
-      : '';
-
     // Get total count
-    const countResult = await db.execute(sql.raw(`
+    const countResult = await db.execute(sql`
       SELECT COUNT(*) as total
       FROM merchants m
       LEFT JOIN users u ON m.user_id = u.id
-      ${whereClause}
-    `, ...params));
+      WHERE 1=1
+        ${search ? sql`AND (m.business_name ILIKE ${'%' + search + '%'} OR m.contact_name ILIKE ${'%' + search + '%'} OR u.email ILIKE ${'%' + search + '%'})` : sql``}
+        ${status ? sql`AND m.status = ${status}` : sql``}
+    `);
     const total = parseInt(countResult.rows[0]?.total as string) || 0;
 
     // Get paginated results with subscription info
-    const dataResult = await db.execute(sql.raw(`
+    const dataResult = await db.execute(sql`
       SELECT
         m.id, m.user_id, m.business_name, m.contact_name, m.contact_phone,
         m.status, m.subscription_tier, m.created_at, m.updated_at,
@@ -61,10 +44,12 @@ router.get("/merchants", requireAdmin, async (req, res) => {
       FROM merchants m
       LEFT JOIN users u ON m.user_id = u.id
       LEFT JOIN merchant_subscriptions ms ON ms.merchant_id = m.id AND ms.status = 'active'
-      ${whereClause}
+      WHERE 1=1
+        ${search ? sql`AND (m.business_name ILIKE ${'%' + search + '%'} OR m.contact_name ILIKE ${'%' + search + '%'} OR u.email ILIKE ${'%' + search + '%'})` : sql``}
+        ${status ? sql`AND m.status = ${status}` : sql``}
       ORDER BY m.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
-    `, ...params));
+    `);
 
     res.json({
       merchants: dataResult.rows,
@@ -157,23 +142,20 @@ router.get("/refunds", requireAdmin, async (req, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
-    const status = (req.query.status as string) || ''; // 'pending', 'approved', 'rejected', 'processed'
+    const status = (req.query.status as string) || '';
 
     const offset = (page - 1) * limit;
 
-    let whereClause = '';
-    if (status) {
-      whereClause = `WHERE r.status = '${status}'`;
-    }
-
     // Get total count
-    const countResult = await db.execute(sql.raw(`
-      SELECT COUNT(*) as total FROM refund_requests r ${whereClause}
-    `));
+    const countResult = await db.execute(sql`
+      SELECT COUNT(*) as total FROM refund_requests r
+      WHERE 1=1
+        ${status ? sql`AND r.status = ${status}` : sql``}
+    `);
     const total = parseInt(countResult.rows[0]?.total as string) || 0;
 
     // Get paginated results
-    const dataResult = await db.execute(sql.raw(`
+    const dataResult = await db.execute(sql`
       SELECT
         r.*,
         m.business_name as merchant_name,
@@ -184,18 +166,17 @@ router.get("/refunds", requireAdmin, async (req, res) => {
       LEFT JOIN merchants m ON r.merchant_id = m.id
       LEFT JOIN users u ON m.user_id = u.id
       LEFT JOIN merchant_subscriptions ms ON r.subscription_id = ms.id
-      ${whereClause}
+      WHERE 1=1
+        ${status ? sql`AND r.status = ${status}` : sql``}
       ORDER BY
         CASE r.status WHEN 'pending' THEN 0 ELSE 1 END,
         r.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
-    `));
+    `);
 
     // Get status summary
     const summaryResult = await db.execute(sql`
-      SELECT
-        status,
-        COUNT(*) as count
+      SELECT status, COUNT(*) as count
       FROM refund_requests
       GROUP BY status
     `);
@@ -239,29 +220,28 @@ router.patch("/refunds/:id", requireAdmin, async (req, res) => {
       return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, '無效的狀態值'));
     }
 
-    const updates: any = {
-      status,
-      admin_note: adminNote || null,
-      updated_at: 'NOW()'
-    };
-
+    let result;
     if (status === 'processed') {
-      updates.processed_at = 'NOW()';
-      if (refundAmount !== undefined) {
-        updates.refund_amount = refundAmount;
-      }
+      result = await db.execute(sql`
+        UPDATE refund_requests
+        SET status = ${status},
+            admin_note = ${adminNote || null},
+            refund_amount = COALESCE(${refundAmount}, refund_amount),
+            processed_at = NOW(),
+            updated_at = NOW()
+        WHERE id = ${refundId}
+        RETURNING *
+      `);
+    } else {
+      result = await db.execute(sql`
+        UPDATE refund_requests
+        SET status = ${status},
+            admin_note = ${adminNote || null},
+            updated_at = NOW()
+        WHERE id = ${refundId}
+        RETURNING *
+      `);
     }
-
-    const setClause = Object.entries(updates)
-      .map(([key, value]) => `${key} = ${value === 'NOW()' ? 'NOW()' : `'${value}'`}`)
-      .join(', ');
-
-    const result = await db.execute(sql.raw(`
-      UPDATE refund_requests
-      SET ${setClause}
-      WHERE id = ${refundId}
-      RETURNING *
-    `));
 
     if (result.rows.length === 0) {
       return res.status(404).json(createErrorResponse(ErrorCode.REFUND_NOT_FOUND, '找不到退款請求'));
