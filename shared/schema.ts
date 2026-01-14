@@ -159,6 +159,50 @@ export const insertAuthIdentitySchema = createInsertSchema(authIdentities).omit(
 export type InsertAuthIdentity = z.infer<typeof insertAuthIdentitySchema>;
 export type AuthIdentity = typeof authIdentities.$inferSelect;
 
+// User Roles - 用戶角色（支援一個用戶多種身份）
+export type UserRoleType = 'traveler' | 'merchant' | 'specialist' | 'admin';
+export type UserRoleStatus = 'active' | 'pending' | 'rejected';
+
+export const userRoles = pgTable("user_roles", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  role: varchar("role", { length: 20 }).$type<UserRoleType>().notNull(),
+  status: varchar("status", { length: 20 }).$type<UserRoleStatus>().default('pending').notNull(),
+  appliedAt: timestamp("applied_at").defaultNow().notNull(),
+  approvedAt: timestamp("approved_at"),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  rejectedAt: timestamp("rejected_at"),
+  rejectedBy: varchar("rejected_by").references(() => users.id),
+  rejectionReason: text("rejection_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("IDX_user_roles_user").on(table.userId),
+  index("IDX_user_roles_role").on(table.role),
+  index("IDX_user_roles_status").on(table.status),
+  // 確保同一用戶同一角色只有一筆記錄
+  sql`CREATE UNIQUE INDEX IF NOT EXISTS "UQ_user_roles_user_role" ON "user_roles" ("user_id", "role")`,
+]);
+
+export const userRolesRelations = relations(userRoles, ({ one }) => ({
+  user: one(users, {
+    fields: [userRoles.userId],
+    references: [users.id],
+  }),
+  approver: one(users, {
+    fields: [userRoles.approvedBy],
+    references: [users.id],
+  }),
+}));
+
+export const insertUserRoleSchema = createInsertSchema(userRoles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertUserRole = z.infer<typeof insertUserRoleSchema>;
+export type UserRole = typeof userRoles.$inferSelect;
+
 // Merchants (商家)
 export type MerchantStatus = 'pending' | 'approved' | 'rejected';
 export type MerchantLevel = 'free' | 'pro' | 'premium';
@@ -573,6 +617,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   collections: many(collections),
   merchants: many(merchants),
   authIdentities: many(authIdentities),
+  roles: many(userRoles),
 }));
 
 // Auth identities relations
