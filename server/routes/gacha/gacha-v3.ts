@@ -10,6 +10,81 @@ import { ErrorCode, createErrorResponse } from "@shared/errors";
 
 const router = Router();
 
+// ============ Gemini API Helper with Timeout & Retry ============
+interface GeminiResponse {
+  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  error?: { code?: string; message?: string };
+}
+
+async function callGeminiWithTimeout(
+  baseUrl: string | undefined,
+  apiKey: string | undefined,
+  prompt: string,
+  options: {
+    timeoutMs?: number;
+    maxRetries?: number;
+    retryDelayMs?: number;
+  } = {}
+): Promise<{ success: boolean; text: string; error?: string }> {
+  const { timeoutMs = 30000, maxRetries = 2, retryDelayMs = 1000 } = options;
+  const url = baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
+  const key = apiKey || '';
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(`${url}/models/gemini-3-flash-preview:generateContent`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': key
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 8192, temperature: 0.2 }
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      const data = await response.json() as GeminiResponse;
+
+      if (data.error) {
+        console.log('[Gemini] API Error:', data.error);
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, retryDelayMs * (attempt + 1)));
+          continue;
+        }
+        return { success: false, text: '', error: data.error.message };
+      }
+
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      return { success: true, text };
+
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+
+      if (err.name === 'AbortError') {
+        console.log(`[Gemini] Timeout after ${timeoutMs}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
+      } else {
+        console.log(`[Gemini] Fetch error (attempt ${attempt + 1}/${maxRetries + 1}):`, err.message);
+      }
+
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, retryDelayMs * (attempt + 1)));
+        continue;
+      }
+
+      return { success: false, text: '', error: err.name === 'AbortError' ? 'Timeout' : err.message };
+    }
+  }
+
+  return { success: false, text: '', error: 'Max retries exceeded' };
+}
+
 // ============ Gacha V3 - Pull Single ============
 router.post("/gacha/pull/v3", isAuthenticated, async (req: any, res) => {
   try {
@@ -71,11 +146,15 @@ router.post("/gacha/pull/v3", isAuthenticated, async (req: any, res) => {
       terms?: string | null;
     }> = [];
 
+    // Batch fetch all claims to avoid N+1 queries
+    const placeIds = pulledPlaces.map(p => p.id);
+    const claimsMap = await storage.getClaimsByOfficialPlaceIds(placeIds);
+
     for (const place of pulledPlaces) {
       let couponWon: typeof couponsWon[0] | null = null;
       let hasMerchantClaim = false;
 
-      const claimInfo = await storage.getClaimByOfficialPlaceId(place.id);
+      const claimInfo = claimsMap.get(place.id);
       
       if (claimInfo) {
         hasMerchantClaim = true;
@@ -511,28 +590,13 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
 {"order":[排序後的編號陣列],"reason":"<說明排序理由>","reject":[要排除的編號陣列]}`;
         
-        const reorderResponse = await fetch(`${baseUrl}/models/gemini-3-flash-preview:generateContent`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey || ''
-          },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: reorderPrompt }] }],
-            generationConfig: { 
-              maxOutputTokens: 8192, 
-              temperature: 0.2
-            }
-          })
+        const geminiResult = await callGeminiWithTimeout(baseUrl, apiKey, reorderPrompt, {
+          timeoutMs: 30000,
+          maxRetries: 2,
+          retryDelayMs: 1000
         });
-        
-        const reorderData = await reorderResponse.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>, error?: { code?: string; message?: string } };
-        
-        if (reorderData.error) {
-          console.log('[Gacha V3] AI API Error:', reorderData.error);
-        }
-        
-        const reorderText = reorderData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+
+        const reorderText = geminiResult.text;
         console.log('[Gacha V3] AI Reorder response:', reorderText);
         
         if (reorderText) {
@@ -693,20 +757,13 @@ ${round2PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
 {"order":[排序後的編號陣列],"reason":"<說明排序理由>","reject":[要排除的編號陣列]}`;
           
-          const round2Response = await fetch(`${baseUrl}/models/gemini-3-flash-preview:generateContent`, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey || ''
-            },
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ text: round2Prompt }] }],
-              generationConfig: { maxOutputTokens: 8192, temperature: 0.2 }
-            })
+          const round2GeminiResult = await callGeminiWithTimeout(baseUrl, apiKey, round2Prompt, {
+            timeoutMs: 30000,
+            maxRetries: 2,
+            retryDelayMs: 1000
           });
-          
-          const round2Data = await round2Response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-          const round2Text = round2Data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+
+          const round2Text = round2GeminiResult.text;
           console.log('[Gacha V3] Round 2 AI response:', round2Text);
           
           if (round2Text) {
@@ -827,20 +884,13 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
 【輸出格式】只輸出一行 JSON（不要換行、不要 markdown）：
 {"order":[排序後的編號陣列],"reason":"<說明排序理由>"}`;
                     
-                    const round3Response = await fetch(`${baseUrl}/models/gemini-3-flash-preview:generateContent`, {
-                      method: 'POST',
-                      headers: { 
-                        'Content-Type': 'application/json',
-                        'x-goog-api-key': apiKey || ''
-                      },
-                      body: JSON.stringify({
-                        contents: [{ role: 'user', parts: [{ text: round3Prompt }] }],
-                        generationConfig: { maxOutputTokens: 8192, temperature: 0.2 }
-                      })
+                    const round3GeminiResult = await callGeminiWithTimeout(baseUrl, apiKey, round3Prompt, {
+                      timeoutMs: 30000,
+                      maxRetries: 2,
+                      retryDelayMs: 1000
                     });
-                    
-                    const round3Data = await round3Response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-                    const round3Text = round3Data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+
+                    const round3Text = round3GeminiResult.text;
                     console.log('[Gacha V3] Round 3 AI response:', round3Text);
                     
                     if (round3Text) {
@@ -987,14 +1037,18 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
       night: 'evening',
       flexible: 'afternoon'
     };
-    
+
+    // Batch fetch all claims to avoid N+1 queries
+    const finalPlaceIds = finalPlaces.map(p => p.id);
+    const finalClaimsMap = await storage.getClaimsByOfficialPlaceIds(finalPlaceIds);
+
     for (let i = 0; i < finalPlaces.length; i++) {
       const place = finalPlaces[i];
       const inferredSlot = inferTimeSlot(place);
       const timeSlot = timeSlotLabelMap[inferredSlot.slot];
-      
+
       let couponWon = null;
-      const claimInfo = await storage.getClaimByOfficialPlaceId(place.id);
+      const claimInfo = finalClaimsMap.get(place.id);
       
       if (claimInfo) {
         const dropRate = claimInfo.claim.couponDropRate ?? 0.1;

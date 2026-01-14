@@ -1,5 +1,5 @@
 import { db, withRetry } from "../db";
-import { eq, and, desc, sql, isNotNull } from "drizzle-orm";
+import { eq, and, desc, sql, isNotNull, inArray } from "drizzle-orm";
 import {
   collections,
   userInventory,
@@ -440,7 +440,7 @@ export const gachaStorage = {
           eq(merchantPlaceLinks.status, 'approved')
         )
       );
-    
+
     if (!claim) {
       return undefined;
     }
@@ -458,6 +458,68 @@ export const gachaStorage = {
       );
 
     return { claim, coupons: placeCoupons };
+  },
+
+  // Batch version to avoid N+1 queries
+  async getClaimsByOfficialPlaceIds(officialPlaceIds: number[]): Promise<Map<number, { claim: MerchantPlaceLink; coupons: Coupon[] }>> {
+    const result = new Map<number, { claim: MerchantPlaceLink; coupons: Coupon[] }>();
+
+    if (officialPlaceIds.length === 0) {
+      return result;
+    }
+
+    // Single query for all claims
+    const claims = await db
+      .select()
+      .from(merchantPlaceLinks)
+      .where(
+        and(
+          inArray(merchantPlaceLinks.officialPlaceId, officialPlaceIds),
+          eq(merchantPlaceLinks.status, 'approved')
+        )
+      );
+
+    if (claims.length === 0) {
+      return result;
+    }
+
+    const claimedPlaceIds = claims.map(c => c.officialPlaceId).filter((id): id is number => id !== null);
+
+    // Single query for all coupons
+    const allCoupons = claimedPlaceIds.length > 0 ? await db
+      .select()
+      .from(coupons)
+      .where(
+        and(
+          inArray(coupons.placeId, claimedPlaceIds),
+          eq(coupons.isActive, true),
+          eq(coupons.archived, false),
+          sql`${coupons.remainingQuantity} > 0`
+        )
+      ) : [];
+
+    // Group coupons by placeId
+    const couponsByPlaceId = new Map<number, Coupon[]>();
+    for (const coupon of allCoupons) {
+      if (coupon.placeId) {
+        if (!couponsByPlaceId.has(coupon.placeId)) {
+          couponsByPlaceId.set(coupon.placeId, []);
+        }
+        couponsByPlaceId.get(coupon.placeId)!.push(coupon);
+      }
+    }
+
+    // Build result map
+    for (const claim of claims) {
+      if (claim.officialPlaceId) {
+        result.set(claim.officialPlaceId, {
+          claim,
+          coupons: couponsByPlaceId.get(claim.officialPlaceId) || []
+        });
+      }
+    }
+
+    return result;
   },
 
   async getOfficialPlacesByDistrict(city: string, district: string, limit?: number): Promise<Place[]> {
