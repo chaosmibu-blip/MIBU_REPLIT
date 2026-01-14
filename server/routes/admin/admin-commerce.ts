@@ -27,7 +27,7 @@ router.get("/merchants", requireAdmin, async (req, res) => {
       FROM merchants m
       LEFT JOIN users u ON m.user_id = u.id
       WHERE 1=1
-        ${search ? sql`AND (m.business_name ILIKE ${'%' + search + '%'} OR m.contact_name ILIKE ${'%' + search + '%'} OR u.email ILIKE ${'%' + search + '%'})` : sql``}
+        ${search ? sql`AND (m.business_name ILIKE ${'%' + search + '%'} OR m.owner_name ILIKE ${'%' + search + '%'} OR u.email ILIKE ${'%' + search + '%'})` : sql``}
         ${status ? sql`AND m.status = ${status}` : sql``}
     `);
     const total = parseInt(countResult.rows[0]?.total as string) || 0;
@@ -35,9 +35,9 @@ router.get("/merchants", requireAdmin, async (req, res) => {
     // Get paginated results with subscription info
     const dataResult = await db.execute(sql`
       SELECT
-        m.id, m.user_id, m.business_name, m.contact_name, m.contact_phone,
-        m.status, m.subscription_tier, m.created_at, m.updated_at,
-        u.email as user_email, u.display_name as user_display_name,
+        m.id, m.user_id, m.business_name, m.owner_name, m.phone,
+        m.status, m.merchant_level, m.created_at, m.updated_at,
+        u.email as user_email, CONCAT(u.first_name, ' ', u.last_name) as user_display_name,
         (SELECT COUNT(*) FROM merchant_place_links WHERE merchant_id = m.id) as places_count,
         (SELECT COUNT(*) FROM coupons WHERE merchant_id = m.id AND is_active = true) as active_coupons,
         ms.id as subscription_id, ms.status as subscription_status, ms.current_period_end
@@ -45,7 +45,7 @@ router.get("/merchants", requireAdmin, async (req, res) => {
       LEFT JOIN users u ON m.user_id = u.id
       LEFT JOIN merchant_subscriptions ms ON ms.merchant_id = m.id AND ms.status = 'active'
       WHERE 1=1
-        ${search ? sql`AND (m.business_name ILIKE ${'%' + search + '%'} OR m.contact_name ILIKE ${'%' + search + '%'} OR u.email ILIKE ${'%' + search + '%'})` : sql``}
+        ${search ? sql`AND (m.business_name ILIKE ${'%' + search + '%'} OR m.owner_name ILIKE ${'%' + search + '%'} OR u.email ILIKE ${'%' + search + '%'})` : sql``}
         ${status ? sql`AND m.status = ${status}` : sql``}
       ORDER BY m.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
@@ -77,7 +77,7 @@ router.get("/merchants/:id", requireAdmin, async (req, res) => {
     const result = await db.execute(sql`
       SELECT
         m.*,
-        u.email as user_email, u.display_name as user_display_name,
+        u.email as user_email, CONCAT(u.first_name, ' ', u.last_name) as user_display_name,
         (SELECT json_agg(mpl.*) FROM merchant_place_links mpl WHERE mpl.merchant_id = m.id) as places,
         (SELECT json_agg(c.*) FROM coupons c WHERE c.merchant_id = m.id) as coupons,
         (SELECT json_agg(ms.*) FROM merchant_subscriptions ms WHERE ms.merchant_id = m.id ORDER BY ms.created_at DESC) as subscriptions
@@ -112,7 +112,7 @@ router.patch("/merchants/:id/status", requireAdmin, async (req, res) => {
 
     const result = await db.execute(sql`
       UPDATE merchants
-      SET status = ${status}, admin_note = ${adminNote || null}, updated_at = NOW()
+      SET status = ${status}, rejection_reason = ${adminNote || null}, updated_at = NOW()
       WHERE id = ${merchantId}
       RETURNING id, business_name, status
     `);
@@ -159,9 +159,9 @@ router.get("/refunds", requireAdmin, async (req, res) => {
       SELECT
         r.*,
         m.business_name as merchant_name,
-        m.contact_name as merchant_contact,
+        m.owner_name as merchant_contact,
         u.email as user_email,
-        ms.subscription_tier, ms.amount as subscription_amount
+        ms.tier as subscription_tier, ms.amount as subscription_amount
       FROM refund_requests r
       LEFT JOIN merchants m ON r.merchant_id = m.id
       LEFT JOIN users u ON m.user_id = u.id
@@ -281,12 +281,12 @@ router.get("/finance/report", requireAdmin, async (req, res) => {
         DATE_TRUNC('day', created_at) as date,
         SUM(amount) as revenue,
         COUNT(*) as count,
-        subscription_tier as tier
+        tier
       FROM merchant_subscriptions
       WHERE created_at >= ${startDate}::timestamp
         AND created_at <= (${endDate}::timestamp + INTERVAL '1 day')
         AND status IN ('active', 'cancelled')
-      GROUP BY DATE_TRUNC('day', created_at), subscription_tier
+      GROUP BY DATE_TRUNC('day', created_at), tier
       ORDER BY date
     `);
 
@@ -307,12 +307,12 @@ router.get("/finance/report", requireAdmin, async (req, res) => {
     // 商家訂閱概況
     const subscriptionSummary = await db.execute(sql`
       SELECT
-        subscription_tier as tier,
+        tier,
         COUNT(*) as count,
         SUM(amount) as total_revenue
       FROM merchant_subscriptions
       WHERE status = 'active'
-      GROUP BY subscription_tier
+      GROUP BY tier
     `);
 
     // 月度收入對比
