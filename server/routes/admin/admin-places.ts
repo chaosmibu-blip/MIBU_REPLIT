@@ -1130,6 +1130,7 @@ router.get("/places", isAuthenticated, async (req: any, res) => {
     const city = (req.query.city as string) || '';
     const status = (req.query.status as string) || '';
     const claimStatus = (req.query.claimStatus as string) || '';
+    const skipFilters = req.query.skipFilters === 'true';
 
     const offset = (page - 1) * limit;
 
@@ -1150,7 +1151,7 @@ router.get("/places", isAuthenticated, async (req: any, res) => {
       SELECT
         id, place_name, country, city, district, address,
         location_lat, location_lng, category, subcategory,
-        rating, is_active, claim_status, place_card_tier,
+        description, rating, is_active, claim_status, place_card_tier,
         merchant_id, created_at
       FROM places
       WHERE 1=1
@@ -1164,12 +1165,18 @@ router.get("/places", isAuthenticated, async (req: any, res) => {
       LIMIT ${limit} OFFSET ${offset}
     `);
 
-    const citiesResult = await db.execute(sql`
-      SELECT DISTINCT city FROM places WHERE city IS NOT NULL ORDER BY city
-    `);
-    const categoriesResult = await db.execute(sql`
-      SELECT DISTINCT category FROM places WHERE category IS NOT NULL ORDER BY category
-    `);
+    // 只在需要時查詢篩選器列表（首次載入）
+    let filters = undefined;
+    if (!skipFilters) {
+      const [citiesResult, categoriesResult] = await Promise.all([
+        db.execute(sql`SELECT DISTINCT city FROM places WHERE city IS NOT NULL ORDER BY city`),
+        db.execute(sql`SELECT DISTINCT category FROM places WHERE category IS NOT NULL ORDER BY category`)
+      ]);
+      filters = {
+        cities: citiesResult.rows.map((r: any) => r.city).filter(Boolean),
+        categories: categoriesResult.rows.map((r: any) => r.category).filter(Boolean)
+      };
+    }
 
     res.json({
       places: dataResult.rows,
@@ -1179,10 +1186,7 @@ router.get("/places", isAuthenticated, async (req: any, res) => {
         total,
         totalPages: Math.ceil(total / limit)
       },
-      filters: {
-        cities: citiesResult.rows.map((r: any) => r.city).filter(Boolean),
-        categories: categoriesResult.rows.map((r: any) => r.category).filter(Boolean)
-      }
+      ...(filters && { filters })
     });
   } catch (error: any) {
     console.error("Admin get places error:", error);
