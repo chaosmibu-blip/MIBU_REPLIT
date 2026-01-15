@@ -471,6 +471,7 @@ export const merchantPlaceLinks = pgTable("merchant_place_links", {
   description: text("description"), // 基本介紹
   categoryId: integer("category_id"), // 八大種類 (參照 categories 表)
   googleMapUrl: text("google_map_url"), // Google 地圖連結
+  openingHours: jsonb("opening_hours").$type<{ weekdayText?: string[]; periods?: any[] }>(), // 營業時間
   // 審核狀態
   status: varchar("status", { length: 50 }).default('pending').notNull(), // 'pending' | 'approved' | 'rejected'
   rejectionReason: text("rejection_reason"),

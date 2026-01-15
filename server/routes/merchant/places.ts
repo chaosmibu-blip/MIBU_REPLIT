@@ -255,10 +255,10 @@ router.put("/:linkId", isAuthenticated, async (req: any, res) => {
       // 基本資訊
       description,
       googleMapUrl,
+      openingHours,
       // 優惠推廣
       promoTitle,
       promoDescription,
-      promoImageUrl,
       isPromoActive
     } = req.body;
 
@@ -266,10 +266,10 @@ router.put("/:linkId", isAuthenticated, async (req: any, res) => {
       // 基本資訊
       description,
       googleMapUrl,
+      openingHours,
       // 優惠推廣
       promoTitle,
       promoDescription,
-      promoImageUrl,
       isPromoActive
     });
 
