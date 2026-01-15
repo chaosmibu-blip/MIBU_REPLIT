@@ -132,7 +132,13 @@ server/                   # ⭐ 後端 API
 │   ├── timeSlotInferrer.ts
 │   └── ...
 ├── services/             # 業務邏輯層
-│   └── configService.ts
+│   ├── configService.ts  # 系統配置服務
+│   └── stripe/           # Stripe 支付模組
+│       ├── client.ts     # SDK 初始化
+│       ├── service.ts    # 業務邏輯
+│       ├── storage.ts    # 資料存取
+│       ├── routes.ts     # API 路由
+│       └── index.ts      # 統一導出
 ├── scripts/              # CLI 腳本
 └── replitAuth.ts         # 認證邏輯
 

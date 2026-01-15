@@ -1,5 +1,5 @@
-import { stripeStorage } from './stripeStorage';
-import { getUncachableStripeClient } from './stripeClient';
+import { stripeStorage } from './storage';
+import { getUncachableStripeClient } from './client';
 
 export class StripeService {
   async createCustomer(email: string, userId: string, name?: string) {
@@ -12,9 +12,9 @@ export class StripeService {
   }
 
   async createCheckoutSession(
-    customerId: string, 
-    priceId: string, 
-    successUrl: string, 
+    customerId: string,
+    priceId: string,
+    successUrl: string,
     cancelUrl: string,
     metadata?: Record<string, string>
   ) {

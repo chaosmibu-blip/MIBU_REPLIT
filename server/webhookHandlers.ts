@@ -1,4 +1,4 @@
-import { getStripeSync } from './stripeClient';
+import { getStripeSync } from './services/stripe';
 
 export class WebhookHandlers {
   static async processWebhook(payload: Buffer, signature: string, uuid: string): Promise<void> {
