@@ -928,3 +928,55 @@ export const isMerchant = requireRole('merchant', 'admin');
 
 // Middleware for admin-only routes
 export const isAdmin = requireRole('admin');
+
+// Optional authentication middleware - allows guests but validates if token/session present
+export const optionalAuth: RequestHandler = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  // Try JWT authentication first
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    const decoded = verifyJwtToken(token);
+    if (decoded) {
+      (req as any).jwtUser = decoded;
+      (req as any).user = {
+        claims: {
+          sub: decoded.sub,
+          email: decoded.email,
+          first_name: decoded.firstName,
+          last_name: decoded.lastName,
+          profile_image_url: decoded.profileImageUrl,
+        }
+      };
+    }
+    // Invalid JWT - continue as guest instead of blocking
+  }
+
+  // Try session authentication if no JWT
+  if (!(req as any).jwtUser) {
+    const user = req.user as any;
+    if (req.isAuthenticated?.() && user?.expires_at) {
+      const now = Math.floor(Date.now() / 1000);
+      if (now <= user.expires_at) {
+        // Session is valid
+        return next();
+      }
+
+      // Try to refresh token
+      const refreshToken = user.refresh_token;
+      if (refreshToken) {
+        try {
+          const config = await getOidcConfig();
+          const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
+          updateUserSession(user, tokenResponse);
+        } catch (error) {
+          // Refresh failed - continue as guest
+          console.log('[OptionalAuth] Session refresh failed, continuing as guest');
+        }
+      }
+    }
+  }
+
+  // Continue regardless of auth status (guests are allowed)
+  return next();
+};
