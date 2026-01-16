@@ -140,6 +140,13 @@ router.post("/new", isAuthenticated, async (req: any, res) => {
       googlePlaceId: z.string().optional(),
       locationLat: z.string().optional(),
       locationLng: z.string().optional(),
+      // 新增營業時間相關欄位
+      openingHours: z.object({
+        weekdayText: z.array(z.string()).optional(),
+        periods: z.array(z.any()).optional(),
+      }).optional(),
+      phone: z.string().max(50).optional(),
+      website: z.string().url().optional(),
     });
 
     const validated = newPlaceSchema.parse(req.body);
@@ -202,6 +209,10 @@ router.post("/new", isAuthenticated, async (req: any, res) => {
       locationLng: validated.locationLng || null,
       status: 'pending', // 待審核
       source: 'merchant',
+      // 營業時間相關欄位
+      openingHours: validated.openingHours || null,
+      phone: validated.phone || null,
+      website: validated.website || null,
     });
 
     res.json({

@@ -1387,6 +1387,9 @@ export const placeDrafts = pgTable("place_drafts", {
   googleReviewCount: integer("google_review_count"), // 評論數
   locationLat: text("location_lat"),
   locationLng: text("location_lng"),
+  openingHours: jsonb("opening_hours").$type<{ weekdayText?: string[]; periods?: any[] }>(), // 營業時間
+  phone: varchar("phone", { length: 50 }), // 聯絡電話
+  website: text("website"), // 官方網站
   status: varchar("status", { length: 20 }).default('pending').notNull(),
   approvedPlaceId: integer("approved_place_id").references(() => places.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
