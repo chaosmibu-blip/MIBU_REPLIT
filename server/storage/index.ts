@@ -10,6 +10,7 @@ import { adminStorage } from './adminStorage';
 import { subscriptionStorage } from './subscriptionStorage';
 import * as economyStorage from './economyStorage';
 import * as crowdfundStorage from './crowdfundStorage';
+import * as referralStorage from './referralStorage';
 
 export const storage = {
   ...userStorage,
@@ -37,4 +38,5 @@ export {
   subscriptionStorage,
   economyStorage,
   crowdfundStorage,
+  referralStorage,
 };

@@ -2410,3 +2410,111 @@ export const crowdfundContributions = pgTable("crowdfund_contributions", {
 ]);
 
 export type CrowdfundContribution = typeof crowdfundContributions.$inferSelect;
+
+// ============ 推薦系統 (Referral System) ============
+
+// 推薦碼
+export const referralCodes = pgTable("referral_codes", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id).unique(),
+  code: varchar("code", { length: 20 }).notNull().unique(), // 'AB1234'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_referral_codes_user").on(table.userId),
+]);
+
+export type ReferralCode = typeof referralCodes.$inferSelect;
+
+// 用戶推薦關係
+export const userReferrals = pgTable("user_referrals", {
+  id: serial("id").primaryKey(),
+  referrerId: text("referrer_id").notNull().references(() => users.id), // 推薦人
+  refereeId: text("referee_id").notNull().references(() => users.id).unique(), // 被推薦人（每人只能被推薦一次）
+  status: varchar("status", { length: 20 }).default("registered").notNull(), // 'registered', 'activated'
+  registeredAt: timestamp("registered_at").defaultNow().notNull(),
+  activatedAt: timestamp("activated_at"), // 完成首次扭蛋的時間
+  referrerRewardPaid: boolean("referrer_reward_paid").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_referrals_referrer").on(table.referrerId),
+  index("IDX_user_referrals_referee").on(table.refereeId),
+]);
+
+export type UserReferral = typeof userReferrals.$inferSelect;
+
+// 商家推薦
+export const merchantReferrals = pgTable("merchant_referrals", {
+  id: serial("id").primaryKey(),
+  referrerId: text("referrer_id").notNull().references(() => users.id), // 推薦人
+  merchantName: varchar("merchant_name", { length: 255 }).notNull(),
+  address: text("address").notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }).default("台灣").notNull(),
+  category: varchar("category", { length: 50 }).notNull(),
+  contactInfo: text("contact_info"), // 聯絡方式
+  googlePlaceId: varchar("google_place_id", { length: 100 }),
+  notes: text("notes"), // 備註
+  status: varchar("status", { length: 30 }).default("pending").notNull(), // 'pending', 'approved', 'rejected', 'merchant_registered'
+  reviewedBy: text("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  linkedMerchantId: integer("linked_merchant_id").references(() => merchants.id), // 關聯的商家 ID
+  linkedPlaceId: integer("linked_place_id").references(() => places.id), // 關聯的景點 ID
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_merchant_referrals_referrer").on(table.referrerId),
+  index("IDX_merchant_referrals_status").on(table.status),
+]);
+
+export type MerchantReferral = typeof merchantReferrals.$inferSelect;
+
+// 用戶餘額
+export const userBalances = pgTable("user_balances", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  availableBalance: integer("available_balance").default(0).notNull(), // 可提現金額（NT$）
+  pendingBalance: integer("pending_balance").default(0).notNull(), // 待確認金額
+  lifetimeEarned: integer("lifetime_earned").default(0).notNull(), // 累計獲得
+  lifetimeWithdrawn: integer("lifetime_withdrawn").default(0).notNull(), // 累計提現
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type UserBalance = typeof userBalances.$inferSelect;
+
+// 餘額交易記錄
+export const balanceTransactions = pgTable("balance_transactions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  amount: integer("amount").notNull(), // 正=收入，負=支出
+  type: varchar("type", { length: 30 }).notNull(), // 'referral_user', 'referral_merchant', 'withdraw', 'adjustment'
+  referenceType: varchar("reference_type", { length: 30 }), // 'user_referral', 'merchant_referral', 'withdrawal'
+  referenceId: integer("reference_id"),
+  description: text("description").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_balance_transactions_user").on(table.userId),
+  index("IDX_balance_transactions_type").on(table.type),
+]);
+
+export type BalanceTransaction = typeof balanceTransactions.$inferSelect;
+
+// 提現申請
+export const withdrawalRequests = pgTable("withdrawal_requests", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  amount: integer("amount").notNull(), // 申請金額
+  fee: integer("fee").default(0).notNull(), // 手續費
+  netAmount: integer("net_amount").notNull(), // 實際匯款金額
+  bankCode: varchar("bank_code", { length: 10 }).notNull(),
+  bankAccount: varchar("bank_account", { length: 30 }).notNull(),
+  accountName: varchar("account_name", { length: 100 }).notNull(),
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // 'pending', 'processing', 'completed', 'rejected'
+  processedBy: text("processed_by").references(() => users.id),
+  processedAt: timestamp("processed_at"),
+  rejectionReason: text("rejection_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_withdrawal_requests_user").on(table.userId),
+  index("IDX_withdrawal_requests_status").on(table.status),
+]);
+
+export type WithdrawalRequest = typeof withdrawalRequests.$inferSelect;

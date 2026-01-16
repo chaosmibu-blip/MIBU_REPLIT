@@ -358,13 +358,33 @@ withdrawalRequests {
 
 ---
 
-## 待開發功能
+## 開發狀態
 
-- [ ] 推薦碼生成與驗證
-- [ ] 用戶推薦流程
-- [ ] 商家推薦流程
-- [ ] 餘額系統
-- [ ] 提現申請 API
-- [ ] 提現後台管理
-- [ ] 防作弊檢測
-- [ ] 獎勵自動發放
+### 已完成
+- [x] 推薦碼資料表（`referral_codes`）
+- [x] 用戶推薦資料表（`user_referrals`）
+- [x] 商家推薦資料表（`merchant_referrals`）
+- [x] 用戶餘額資料表（`user_balances`）
+- [x] 餘額交易記錄資料表（`balance_transactions`）
+- [x] 提現申請資料表（`withdrawal_requests`）
+- [x] Storage 層（`referralStorage.ts`）
+- [x] API: `GET /api/referral/my-code` 取得推薦碼
+- [x] API: `GET /api/referral/validate/:code` 驗證推薦碼
+- [x] API: `POST /api/referral/apply` 使用推薦碼
+- [x] API: `GET /api/referral/my-referrals` 我推薦的人
+- [x] API: `GET /api/referral/my-referrer` 誰推薦了我
+- [x] API: `POST /api/referral/merchant` 推薦商家
+- [x] API: `GET /api/referral/my-merchant-referrals` 我推薦的商家
+- [x] API: `GET /api/referral/balance` 我的餘額
+- [x] API: `GET /api/referral/transactions` 交易記錄
+- [x] API: `POST /api/referral/withdraw` 申請提現
+- [x] API: `GET /api/referral/withdraw/history` 提現歷史
+- [x] 經驗獎勵自動發放（與 economyStorage 整合）
+- [x] 成就連動（口碑傳播）
+
+### 待開發
+- [ ] Admin API: 提現審核
+- [ ] Admin API: 商家推薦審核
+- [ ] 防作弊檢測（IP、裝置指紋）
+- [ ] 首次扭蛋激活獎勵（在扭蛋模組整合）
+- [ ] 商家完成註冊獎勵（在商家模組整合）
