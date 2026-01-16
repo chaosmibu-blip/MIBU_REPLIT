@@ -35,6 +35,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 金流/商品邏輯 | `docs/memory-payment-commerce.md` |
 | 部署/環境變數 | `docs/memory-deployment.md` |
 | 等級/經驗/成就 | `docs/memory-economy-system.md` |
+| 募資系統 | `docs/memory-crowdfund.md` |
+| 推薦系統 | `docs/memory-referral.md` |
+| 用戶貢獻 | `docs/memory-contribution.md` |
 
 ---
 
