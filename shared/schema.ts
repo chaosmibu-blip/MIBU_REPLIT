@@ -2348,3 +2348,65 @@ export const userPlaceBlacklists = pgTable("user_place_blacklists", {
 ]);
 
 export type UserPlaceBlacklist = typeof userPlaceBlacklists.$inferSelect;
+
+// ============ 募資系統 (Crowdfund System) ============
+
+// 募資活動表
+export const crowdfundCampaigns = pgTable("crowdfund_campaigns", {
+  id: serial("id").primaryKey(),
+  countryCode: varchar("country_code", { length: 10 }).notNull(), // 'JP', 'TH', 'SG'
+  countryNameZh: varchar("country_name_zh", { length: 100 }).notNull(),
+  countryNameEn: varchar("country_name_en", { length: 100 }).notNull(),
+  goalAmount: integer("goal_amount").notNull(),     // 目標金額（NT$）
+  currentAmount: integer("current_amount").default(0).notNull(),
+  contributorCount: integer("contributor_count").default(0).notNull(),
+  estimatedPlaces: integer("estimated_places"),     // 預估景點數
+  status: varchar("status", { length: 20 }).default("upcoming").notNull(), // 'upcoming', 'active', 'completed', 'collecting', 'launched', 'failed'
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),                   // null = 無期限
+  launchedAt: timestamp("launched_at"),
+  description: text("description"),
+  descriptionEn: text("description_en"),
+  imageUrl: text("image_url"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_crowdfund_campaigns_status").on(table.status),
+  uniqueIndex("UQ_crowdfund_campaigns_country").on(table.countryCode),
+]);
+
+export const insertCrowdfundCampaignSchema = createInsertSchema(crowdfundCampaigns).omit({
+  id: true,
+  currentAmount: true,
+  contributorCount: true,
+  launchedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type CrowdfundCampaign = typeof crowdfundCampaigns.$inferSelect;
+export type InsertCrowdfundCampaign = z.infer<typeof insertCrowdfundCampaignSchema>;
+
+// 募資貢獻表
+export const crowdfundContributions = pgTable("crowdfund_contributions", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => crowdfundCampaigns.id),
+  userId: text("user_id").references(() => users.id), // null = 匿名贊助
+  email: varchar("email", { length: 255 }),         // 匿名贊助時的 email
+  displayName: varchar("display_name", { length: 100 }), // 顯示名稱
+  amount: integer("amount").notNull(),
+  paymentMethod: varchar("payment_method", { length: 20 }).notNull(), // 'iap_apple', 'iap_google', 'stripe'
+  transactionId: varchar("transaction_id", { length: 255 }).unique(),
+  receiptData: text("receipt_data"),                // IAP 收據（驗證用）
+  stripeSessionId: varchar("stripe_session_id", { length: 255 }),
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // 'pending', 'verified', 'failed'
+  priorityAccessUsed: boolean("priority_access_used").default(false).notNull(),
+  priorityAccessExpiresAt: timestamp("priority_access_expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_crowdfund_contributions_campaign").on(table.campaignId),
+  index("IDX_crowdfund_contributions_user").on(table.userId),
+  index("IDX_crowdfund_contributions_status").on(table.status),
+]);
+
+export type CrowdfundContribution = typeof crowdfundContributions.$inferSelect;

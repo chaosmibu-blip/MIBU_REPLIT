@@ -291,12 +291,25 @@ crowdfundContributions {
 
 ---
 
-## 待開發功能
+## 開發狀態
 
-- [ ] 募資活動 CRUD API
-- [ ] IAP 收據驗證
-- [ ] Stripe Webhook 處理
-- [ ] 進度即時同步
-- [ ] 優先抽取權邏輯
-- [ ] 達標自動觸發採集
+### 已完成
+- [x] 募資活動資料表（`crowdfund_campaigns`）
+- [x] 募資貢獻資料表（`crowdfund_contributions`）
+- [x] Storage 層（`crowdfundStorage.ts`）
+- [x] 公開 API: `GET /api/crowdfund/campaigns`
+- [x] 公開 API: `GET /api/crowdfund/campaigns/:id`
+- [x] APP API: `POST /api/crowdfund/contribute`（IAP 流程）
+- [x] APP API: `GET /api/crowdfund/my-contributions`
+- [x] 官網 API: `POST /api/crowdfund/checkout`（Stripe 流程）
+- [x] 經驗獎勵發放（與 economyStorage 整合）
+- [x] 成就連動（首次參與 + 達標）
+- [x] 進度自動計算（currentAmount / contributorCount）
+
+### 待開發
+- [ ] IAP 收據驗證（Apple/Google 實際驗證）
+- [ ] Stripe Webhook 處理（checkout.session.completed）
+- [ ] 進度即時同步（WebSocket）
+- [ ] 達標自動觸發採集腳本
 - [ ] Admin 後台管理頁面
+- [ ] 種子資料腳本（初始募資活動）
