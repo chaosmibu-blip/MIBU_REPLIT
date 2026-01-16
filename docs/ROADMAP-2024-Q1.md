@@ -86,27 +86,20 @@
 ## ✅ 已建立記憶庫
 
 - [x] `docs/memory-economy-system.md` - 遊戲經濟系統
-
----
-
-## 📝 待建立記憶庫
-
-| # | 記憶庫 | 內容 |
-|---|--------|------|
-| 1 | `memory-crowdfund.md` | 全球地圖募資系統 |
-| 2 | `memory-referral.md` | 推薦系統（用戶/商家/獎勵/提現）|
-| 3 | `memory-contribution.md` | 用戶貢獻（回報/建議/排除/審核）|
-| 4 | 更新 `memory-auth.md` | 帳號重構（移除訪客/多身份）|
+- [x] `docs/memory-crowdfund.md` - 全球地圖募資系統
+- [x] `docs/memory-referral.md` - 推薦系統（用戶/商家/獎勵/提現）
+- [x] `docs/memory-contribution.md` - 用戶貢獻（回報/建議/排除/審核）
+- [x] `docs/memory-auth.md` - 帳號重構（移除訪客/多身份）✅ 已更新
 
 ---
 
 ## 🔧 開發階段
 
-### Phase 0: 記憶庫與契約
-- [ ] 建立 `memory-crowdfund.md`
-- [ ] 建立 `memory-referral.md`
-- [ ] 建立 `memory-contribution.md`
-- [ ] 更新 `memory-auth.md`
+### Phase 0: 記憶庫與契約 ✅ 記憶庫已完成
+- [x] 建立 `memory-crowdfund.md`
+- [x] 建立 `memory-referral.md`
+- [x] 建立 `memory-contribution.md`
+- [x] 更新 `memory-auth.md`
 - [ ] 更新 API 契約
 
 ### Phase 1: 遊戲經濟基礎
