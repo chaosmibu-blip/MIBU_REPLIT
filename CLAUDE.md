@@ -34,6 +34,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | 第三方 API 調用 | `docs/memory-integrations.md` |
 | 金流/商品邏輯 | `docs/memory-payment-commerce.md` |
 | 部署/環境變數 | `docs/memory-deployment.md` |
+| 等級/經驗/成就 | `docs/memory-economy-system.md` |
 
 ---
 
