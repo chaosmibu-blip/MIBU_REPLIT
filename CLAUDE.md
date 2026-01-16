@@ -36,6 +36,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## API 契約規則
+
+> **後端是契約的唯一制定者，官網和 APP 只能依照契約實作**
+
+### 契約文件結構
+```
+docs/
+├── API_CONTRACT.md           ← 總覽 + 變更日誌
+└── contracts/
+    ├── COMMON.md             ← 認證、錯誤碼、共用型別
+    ├── WEB.md                ← 官網專用 API
+    └── APP.md                ← APP 專用 API
+```
+
+### 強制規則
+| 動作 | 必讀文件 |
+|------|----------|
+| 改任何 API | `docs/contracts/` 對應的契約文件 |
+| 新增 API | **先更新契約，再寫程式碼** |
+| Breaking Change | 必須在 `API_CONTRACT.md` 變更日誌註明 |
+
+### 維護原則
+1. **後端是唯一真相來源** - 官網/APP 發現不一致，回報後端修正
+2. **先契約後程式碼** - 不可先改程式碼再補文件
+3. **版本號規則**：
+   - 大版本（X.0.0）：Breaking Change
+   - 小版本（0.X.0）：新增 API
+   - 修訂版（0.0.X）：修正錯誤
+
+---
+
 ## 技術棧
 
 | 層級 | 技術 |
