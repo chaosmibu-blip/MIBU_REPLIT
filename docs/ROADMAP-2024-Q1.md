@@ -95,12 +95,12 @@
 
 ## 🔧 開發階段
 
-### Phase 0: 記憶庫與契約 ✅ 記憶庫已完成
+### Phase 0: 記憶庫與契約 ✅ 已完成
 - [x] 建立 `memory-crowdfund.md`
 - [x] 建立 `memory-referral.md`
 - [x] 建立 `memory-contribution.md`
 - [x] 更新 `memory-auth.md`
-- [ ] 更新 API 契約
+- [x] 更新 API 契約（COMMON/APP/WEB v1.1.0）
 
 ### Phase 1: 遊戲經濟基礎
 - [ ] 等級定義資料表 + 初始資料

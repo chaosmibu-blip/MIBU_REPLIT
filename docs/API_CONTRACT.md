@@ -61,6 +61,7 @@
 
 | 日期 | 版本 | 變更內容 | 影響範圍 |
 |------|------|----------|----------|
+| 2026-01-16 | 2.1.0 | 新增經濟系統/募資/推薦/貢獻/帳號系統 API | APP, WEB |
 | 2026-01-16 | 2.0.0 | 重組契約結構，拆分為 COMMON/WEB/APP | ALL |
 | 2026-01-09 | 1.5.0 | 新增商家訂閱退款 API | WEB |
 | 2026-01-06 | 1.4.0 | 新增 SEO trips API | WEB |
@@ -80,11 +81,17 @@
 ### 官網相關
 - SEO API → [WEB.md#seo-api](./contracts/WEB.md#seo-api公開無需認證)
 - 商家訂閱 → [WEB.md#訂閱管理-api](./contracts/WEB.md#訂閱管理-api需認證)
+- 募資系統 → [WEB.md#募資系統](./contracts/WEB.md#募資系統公開--認證混合)
 
 ### APP 相關
 - 扭蛋系統 → [APP.md#扭蛋系統](./contracts/APP.md#扭蛋系統)
 - 收藏系統 → [APP.md#收藏系統](./contracts/APP.md#收藏系統圖鑑)
 - SOS 安全 → [APP.md#sos-安全中心](./contracts/APP.md#sos-安全中心)
+- 經濟系統 → [APP.md#經濟系統](./contracts/APP.md#經濟系統等級經驗成就)
+- 募資系統 → [APP.md#募資系統](./contracts/APP.md#募資系統)
+- 推薦系統 → [APP.md#推薦系統](./contracts/APP.md#推薦系統)
+- 用戶貢獻 → [APP.md#用戶貢獻系統](./contracts/APP.md#用戶貢獻系統)
+- 帳號系統 → [APP.md#帳號系統](./contracts/APP.md#帳號系統)
 
 ---
 

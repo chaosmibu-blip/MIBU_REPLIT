@@ -1,8 +1,11 @@
 # MIBU API 官網契約 (WEB)
 
-## 版本: 1.0.0
+## 版本: 1.1.0
 ## 最後更新: 2026-01-16
 ## 適用專案: Mibu-Pages (官網)
+
+### 變更日誌
+- **1.1.0**: 新增募資系統 API（Stripe 金流）
 
 ---
 
@@ -557,9 +560,128 @@ const CATEGORIES = [
 
 ---
 
+## 募資系統（公開 + 認證混合）
+
+### GET /api/crowdfund/campaigns
+取得募資活動列表（公開）
+
+**Query Parameters:**
+```
+status?: 'upcoming' | 'active' | 'completed' | 'launched'
+```
+
+**Response:**
+```typescript
+interface CampaignsResponse {
+  campaigns: CrowdfundCampaign[];
+  total: number;
+}
+
+interface CrowdfundCampaign {
+  id: number;
+  countryCode: string;
+  countryNameZh: string;
+  countryNameEn: string;
+  goalAmount: number;
+  currentAmount: number;
+  contributorCount: number;
+  progressPercent: number;
+  estimatedPlaces: number;
+  status: 'upcoming' | 'active' | 'completed' | 'collecting' | 'launched' | 'failed';
+  startDate: string;
+  endDate?: string;
+  launchedAt?: string;
+}
+```
+
+---
+
+### GET /api/crowdfund/campaigns/:id
+取得募資活動詳情（公開）
+
+**Response:**
+```typescript
+interface CampaignDetailResponse {
+  campaign: CrowdfundCampaign;
+  recentContributors: {
+    name: string;          // 部分遮蔽
+    amount: number;
+    createdAt: string;
+  }[];
+  topContributors: {
+    name: string;
+    totalAmount: number;
+  }[];
+}
+```
+
+---
+
+### POST /api/crowdfund/checkout
+建立募資結帳（Stripe）
+
+**Headers:** `Authorization: Bearer {token}`（可選，未登入可匿名贊助）
+
+**Request:**
+```typescript
+{
+  campaignId: number;
+  amount: number;           // NT$
+  email?: string;           // 未登入時必填
+  name?: string;            // 顯示名稱（選填）
+  successUrl: string;
+  cancelUrl: string;
+}
+```
+
+**Response:**
+```typescript
+{
+  checkoutUrl: string;      // Stripe Checkout URL
+  sessionId: string;
+}
+```
+
+---
+
+### POST /api/crowdfund/webhook
+Stripe Webhook（內部使用）
+
+**Headers:** `stripe-signature`
+
+**Note:** 此端點由 Stripe 呼叫，處理 `checkout.session.completed` 事件
+
+---
+
+### GET /api/crowdfund/my-contributions
+取得我的募資記錄
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+interface MyContributionsResponse {
+  contributions: {
+    id: number;
+    campaign: CrowdfundCampaign;
+    amount: number;
+    paymentMethod: 'stripe';
+    createdAt: string;
+  }[];
+  summary: {
+    totalAmount: number;
+    campaignsSupported: number;
+  };
+}
+```
+
+---
+
 ## 備註
 
 - SEO API 全部公開，無需認證
 - 商家 API 需要 JWT Token
+- 募資可匿名贊助（不登入），但無法獲得成就獎勵
 - 所有時間欄位為 ISO 8601 格式
 - 訂閱服務支援 Stripe 和 Recur 雙軌
+- 募資系統官網僅支援 Stripe（APP 使用 IAP）
