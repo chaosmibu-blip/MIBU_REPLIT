@@ -7,7 +7,15 @@
 
 ## 待處理 (Pending)
 
-### [2026-01-16] API 契約結構重組
+（目前沒有待處理的同步任務）
+
+---
+
+## 已完成 (Completed)
+
+### [2026-01-16] API 契約結構重組 ✅
+
+**完成時間**: 2026-01-16
 
 **影響範圍**: WEB + APP
 
@@ -17,32 +25,10 @@
 - 新增 `docs/contracts/APP.md` - APP 專用 API（扭蛋、收藏、庫存）
 - 更新 `docs/API_CONTRACT.md` - 改為索引 + 變更日誌
 
-**官網同步指令**:
-```
-讀取後端的 docs/contracts/COMMON.md 和 docs/contracts/WEB.md，
-同步官網的 TypeScript 型別定義，確保與後端契約一致。
-完成後更新官網的 CLAUDE.md 記錄此次同步。
-```
-
-**APP 同步指令**:
-```
-讀取後端的 docs/contracts/COMMON.md 和 docs/contracts/APP.md，
-同步 APP 的 TypeScript 型別定義，確保與後端契約一致。
-完成後更新 APP 的 CLAUDE.md 記錄此次同步。
-```
-
-**狀態**: ⏳ pending
-
-**需更新的記憶庫**:
-- 後端：`docs/API_CONTRACT.md` ✅ 已完成
-- 官網：待官網更新其 CLAUDE.md
-- APP：待 APP 更新其 CLAUDE.md
-
----
-
-## 已完成 (Completed)
-
-（完成後移到這裡，格式：日期 + 摘要 + 完成時間）
+**同步結果**:
+- 後端：`docs/API_CONTRACT.md` ✅
+- 官網：CLAUDE.md 已更新契約參照 ✅
+- APP：CLAUDE.md 已更新契約參照 ✅
 
 ---
 
