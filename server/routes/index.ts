@@ -17,6 +17,7 @@ import monitoringRouter from './monitoring';
 import economyRouter from './economy';
 import crowdfundRouter from './crowdfund';
 import referralRouter from './referral';
+import contributionRouter from './contribution';
 import { subscriptionPlansPublicRouter } from './admin/admin-subscription-plans';
 import { storage } from '../storage';
 import { AnnouncementType } from '@shared/schema';
@@ -58,6 +59,7 @@ router.use('/', monitoringRouter); // 監控 API: /api/health, /api/health/detai
 router.use('/', economyRouter); // 經濟系統 API: /api/user/level, /api/user/achievements, /api/levels
 router.use('/', crowdfundRouter); // 募資系統 API: /api/crowdfund/campaigns, /api/crowdfund/contribute
 router.use('/', referralRouter); // 推薦系統 API: /api/referral/*
+router.use('/', contributionRouter); // 用戶貢獻 API: /api/contribution/*, /api/collection/blacklist
 
 export default router;
 
@@ -78,4 +80,5 @@ export {
   economyRouter,
   crowdfundRouter,
   referralRouter,
+  contributionRouter,
 };

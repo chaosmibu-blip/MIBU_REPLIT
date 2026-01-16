@@ -437,14 +437,34 @@ async function getPlaceWeight(placeId: number, userId: string): Promise<number> 
 
 ---
 
-## 待開發功能
+## 開發狀態
 
-- [ ] 回報歇業 API
-- [ ] 建議景點 API
-- [ ] 黑名單標記 API
-- [ ] AI 預審整合
-- [ ] 社群投票機制
-- [ ] 排除投票機制
-- [ ] 每月統計重置
-- [ ] 抽卡權重調整
-- [ ] Admin 審核後台
+### 已完成
+- [x] 歇業回報資料表（`place_reports`）
+- [x] 景點建議資料表（`place_suggestions`）
+- [x] 建議投票資料表（`suggestion_votes`）
+- [x] 排除投票資料表（`place_exclusion_votes`）
+- [x] 每日貢獻統計資料表（`user_daily_contributions`）
+- [x] Storage 層（`contributionStorage.ts`）
+- [x] API: `POST /api/contribution/report-closed` 回報歇業
+- [x] API: `GET /api/contribution/my-reports` 我的回報記錄
+- [x] API: `POST /api/contribution/suggest-place` 建議景點
+- [x] API: `GET /api/contribution/my-suggestions` 我的建議記錄
+- [x] API: `POST /api/collection/:placeId/blacklist` 加入黑名單
+- [x] API: `DELETE /api/collection/:placeId/blacklist` 移除黑名單
+- [x] API: `GET /api/collection/blacklist` 我的黑名單
+- [x] API: `GET /api/contribution/pending-votes` 待投票景點列表
+- [x] API: `POST /api/contribution/vote/:placeId` 排除投票
+- [x] API: `GET /api/contribution/pending-suggestions` 待投票建議列表
+- [x] API: `POST /api/contribution/vote-suggestion/:id` 建議投票
+- [x] API: `GET /api/contribution/stats` 我的貢獻統計
+- [x] 每日上限檢查
+- [x] 經驗獎勵發放（與 economyStorage 整合）
+
+### 待開發
+- [ ] AI 預審整合（Gemini 審核）
+- [ ] 每月統計重置（定時任務）
+- [ ] 抽卡權重調整（在扭蛋模組整合）
+- [ ] Admin API: 回報審核
+- [ ] Admin API: 建議審核
+- [ ] Admin API: 恢復軟刪除景點

@@ -2518,3 +2518,101 @@ export const withdrawalRequests = pgTable("withdrawal_requests", {
 ]);
 
 export type WithdrawalRequest = typeof withdrawalRequests.$inferSelect;
+
+// ============ 用戶貢獻系統 (Contribution System) ============
+
+// 歇業回報
+export const placeReports = pgTable("place_reports", {
+  id: serial("id").primaryKey(),
+  placeId: integer("place_id").notNull().references(() => places.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  reason: varchar("reason", { length: 30 }).notNull(), // 'permanently_closed', 'temporarily_closed', 'relocated', 'info_error'
+  description: text("description"), // 補充說明
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // 'pending', 'approved', 'rejected'
+  aiScore: doublePrecision("ai_score"), // AI 可信度分數 0-1
+  reviewedBy: text("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  rewardPaid: boolean("reward_paid").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_place_reports_place").on(table.placeId),
+  index("IDX_place_reports_user").on(table.userId),
+  index("IDX_place_reports_status").on(table.status),
+]);
+
+export type PlaceReport = typeof placeReports.$inferSelect;
+
+// 景點建議
+export const placeSuggestions = pgTable("place_suggestions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  placeName: varchar("place_name", { length: 255 }).notNull(),
+  address: text("address").notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }).default("台灣").notNull(),
+  category: varchar("category", { length: 50 }).notNull(),
+  description: text("description"),
+  googleMapsUrl: text("google_maps_url"),
+  googlePlaceId: varchar("google_place_id", { length: 100 }),
+  status: varchar("status", { length: 20 }).default("pending_ai").notNull(), // 'pending_ai', 'pending_vote', 'pending_review', 'approved', 'rejected'
+  aiScore: doublePrecision("ai_score"), // AI 品質分數 0-1
+  voteApprove: integer("vote_approve").default(0).notNull(),
+  voteReject: integer("vote_reject").default(0).notNull(),
+  voteDeadline: timestamp("vote_deadline"),
+  reviewedBy: text("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  linkedPlaceId: integer("linked_place_id").references(() => places.id), // 採納後關聯的 place ID
+  rewardPaid: boolean("reward_paid").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_place_suggestions_user").on(table.userId),
+  index("IDX_place_suggestions_status").on(table.status),
+]);
+
+export type PlaceSuggestion = typeof placeSuggestions.$inferSelect;
+
+// 建議投票記錄
+export const suggestionVotes = pgTable("suggestion_votes", {
+  id: serial("id").primaryKey(),
+  suggestionId: integer("suggestion_id").notNull().references(() => placeSuggestions.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  vote: varchar("vote", { length: 10 }).notNull(), // 'approve', 'reject'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_suggestion_votes_suggestion").on(table.suggestionId),
+  uniqueIndex("IDX_suggestion_votes_unique").on(table.suggestionId, table.userId),
+]);
+
+export type SuggestionVote = typeof suggestionVotes.$inferSelect;
+
+// 排除投票記錄（景點黑名單投票）
+export const placeExclusionVotes = pgTable("place_exclusion_votes", {
+  id: serial("id").primaryKey(),
+  placeId: integer("place_id").notNull().references(() => places.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  vote: varchar("vote", { length: 10 }).notNull(), // 'exclude', 'keep'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_place_exclusion_votes_place").on(table.placeId),
+  uniqueIndex("IDX_place_exclusion_votes_unique").on(table.placeId, table.userId),
+]);
+
+export type PlaceExclusionVote = typeof placeExclusionVotes.$inferSelect;
+
+// 用戶每日貢獻統計（用於限額）
+export const userDailyContributions = pgTable("user_daily_contributions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  date: date("date").notNull(),
+  reportCount: integer("report_count").default(0).notNull(),
+  suggestionCount: integer("suggestion_count").default(0).notNull(),
+  voteCount: integer("vote_count").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_daily_contributions_user").on(table.userId),
+  uniqueIndex("IDX_user_daily_contributions_unique").on(table.userId, table.date),
+]);
+
+export type UserDailyContribution = typeof userDailyContributions.$inferSelect;
