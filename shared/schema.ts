@@ -2176,3 +2176,175 @@ export const insertAdPlacementSchema = createInsertSchema(adPlacements).omit({
 
 export type AdPlacement = typeof adPlacements.$inferSelect;
 export type InsertAdPlacement = z.infer<typeof insertAdPlacementSchema>;
+
+// ============ 遊戲經濟系統 (Economy System) ============
+
+// 等級定義表
+export const levelDefinitions = pgTable("level_definitions", {
+  level: integer("level").primaryKey(),           // 等級 1-99
+  requiredExp: integer("required_exp").notNull(), // 累計經驗需求
+  title: varchar("title", { length: 50 }).notNull(), // 稱號 "新手旅人"
+  titleEn: varchar("title_en", { length: 50 }),   // 英文稱號
+  isMilestone: boolean("is_milestone").default(false).notNull(), // 是否為里程碑等級
+  isUnlocked: boolean("is_unlocked").default(true).notNull(), // 是否開放 (30以上為false)
+  perks: jsonb("perks").$type<{
+    dailyPulls?: number;      // 每日抽卡上限
+    inventorySlots?: number;  // 背包格數
+    frame?: string;           // 頭框
+    badge?: string;           // 徽章
+  }>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type LevelDefinition = typeof levelDefinitions.$inferSelect;
+
+// 用戶等級表
+export const userLevels = pgTable("user_levels", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  currentExp: integer("current_exp").default(0).notNull(),
+  currentLevel: integer("current_level").default(1).notNull(),
+  specialistInvitedAt: timestamp("specialist_invited_at"), // 收到策劃師邀請時間
+  specialistAppliedAt: timestamp("specialist_applied_at"), // 申請策劃師時間
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_levels_level").on(table.currentLevel),
+]);
+
+export const insertUserLevelSchema = createInsertSchema(userLevels).omit({
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type UserLevel = typeof userLevels.$inferSelect;
+export type InsertUserLevel = z.infer<typeof insertUserLevelSchema>;
+
+// 經驗值交易記錄表
+export const userExpTransactions = pgTable("user_exp_transactions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  amount: integer("amount").notNull(),            // 正數=獲得, 負數=扣除
+  eventType: varchar("event_type", { length: 50 }).notNull(), // 'daily_login', 'gacha_complete', 'achievement', etc.
+  referenceType: varchar("reference_type", { length: 50 }), // 關聯類型 'achievement', 'referral', etc.
+  referenceId: varchar("reference_id", { length: 100 }),    // 關聯ID
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_exp_transactions_user").on(table.userId),
+  index("IDX_user_exp_transactions_event").on(table.eventType),
+  index("IDX_user_exp_transactions_date").on(table.createdAt),
+]);
+
+export type UserExpTransaction = typeof userExpTransactions.$inferSelect;
+
+// 成就定義表
+export const achievements = pgTable("achievements", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 50 }).notNull().unique(), // 唯一識別碼
+  category: varchar("category", { length: 30 }).notNull(), // 'collector', 'investor', 'promoter', 'business', 'specialist'
+  nameZh: varchar("name_zh", { length: 100 }).notNull(),
+  nameEn: varchar("name_en", { length: 100 }),
+  description: text("description").notNull(),
+  descriptionEn: text("description_en"),
+  rarity: integer("rarity").default(1).notNull(), // 1-4 星
+  triggerCondition: jsonb("trigger_condition").$type<{
+    type: string;             // 'count', 'threshold', 'milestone'
+    target: string;           // 'collections', 'referrals', 'contributions', etc.
+    value: number;            // 目標數值
+    filters?: Record<string, any>; // 額外篩選條件
+  }>().notNull(),
+  expReward: integer("exp_reward").default(0).notNull(),
+  otherRewards: jsonb("other_rewards").$type<{
+    title?: string;
+    frame?: string;
+    badge?: string;
+    couponId?: number;
+  }>(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_achievements_category").on(table.category),
+  index("IDX_achievements_active").on(table.isActive),
+]);
+
+export const insertAchievementSchema = createInsertSchema(achievements).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type Achievement = typeof achievements.$inferSelect;
+export type InsertAchievement = z.infer<typeof insertAchievementSchema>;
+
+// 用戶成就表
+export const userAchievements = pgTable("user_achievements", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  achievementId: integer("achievement_id").notNull().references(() => achievements.id),
+  unlockedAt: timestamp("unlocked_at").defaultNow().notNull(),
+  rewardClaimed: boolean("reward_claimed").default(false).notNull(),
+  claimedAt: timestamp("claimed_at"),
+}, (table) => [
+  uniqueIndex("UQ_user_achievements").on(table.userId, table.achievementId),
+  index("IDX_user_achievements_user").on(table.userId),
+]);
+
+export type UserAchievement = typeof userAchievements.$inferSelect;
+
+// 用戶傾向追蹤表
+export const userTendencies = pgTable("user_tendencies", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  consumerScore: integer("consumer_score").default(0).notNull(),   // 參與者傾向
+  investorScore: integer("investor_score").default(0).notNull(),   // 投資者傾向
+  promoterScore: integer("promoter_score").default(0).notNull(),   // 推廣者傾向
+  businessScore: integer("business_score").default(0).notNull(),   // 業務傾向
+  specialistScore: integer("specialist_score").default(0).notNull(), // 策劃師傾向
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type UserTendency = typeof userTendencies.$inferSelect;
+
+// 用戶每日經驗統計（用於限額）
+export const userDailyExpStats = pgTable("user_daily_exp_stats", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  date: date("date").notNull(),
+  loginExp: integer("login_exp").default(0).notNull(),
+  gachaExp: integer("gacha_exp").default(0).notNull(),
+  voteExp: integer("vote_exp").default(0).notNull(),
+  shareExp: integer("share_exp").default(0).notNull(),
+  totalExp: integer("total_exp").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("UQ_user_daily_exp_stats").on(table.userId, table.date),
+  index("IDX_user_daily_exp_stats_date").on(table.date),
+]);
+
+export type UserDailyExpStat = typeof userDailyExpStats.$inferSelect;
+
+// 景點黑名單統計（全域）
+export const placeDislikeStats = pgTable("place_dislike_stats", {
+  placeId: integer("place_id").primaryKey().references(() => places.id),
+  monthlyDislikeCount: integer("monthly_dislike_count").default(0).notNull(),
+  totalDislikeCount: integer("total_dislike_count").default(0).notNull(),
+  lastResetAt: timestamp("last_reset_at").defaultNow().notNull(),
+  status: varchar("status", { length: 20 }).default("normal").notNull(), // 'normal', 'reduced', 'pending_vote', 'excluded'
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_place_dislike_stats_status").on(table.status),
+]);
+
+export type PlaceDislikeStat = typeof placeDislikeStats.$inferSelect;
+
+// 用戶景點黑名單（個人）
+export const userPlaceBlacklists = pgTable("user_place_blacklists", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  placeId: integer("place_id").notNull().references(() => places.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("UQ_user_place_blacklists").on(table.userId, table.placeId),
+  index("IDX_user_place_blacklists_user").on(table.userId),
+]);
+
+export type UserPlaceBlacklist = typeof userPlaceBlacklists.$inferSelect;

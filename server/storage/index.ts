@@ -8,6 +8,7 @@ import { sosStorage } from './sosStorage';
 import { commerceStorage } from './commerceStorage';
 import { adminStorage } from './adminStorage';
 import { subscriptionStorage } from './subscriptionStorage';
+import * as economyStorage from './economyStorage';
 
 export const storage = {
   ...userStorage,
@@ -33,4 +34,5 @@ export {
   commerceStorage,
   adminStorage,
   subscriptionStorage,
+  economyStorage,
 };
