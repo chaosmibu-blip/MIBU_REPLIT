@@ -73,7 +73,7 @@ docs/
 |------|------|
 | **後端** | Node.js + Express + Drizzle ORM |
 | **管理後台** | React 19 + Vite + TypeScript + Tailwind CSS + Radix UI |
-| **資料庫** | PostgreSQL (Neon-backed)，47 張表 |
+| **資料庫** | PostgreSQL (Neon-backed)，57 張表 |
 | **認證** | JWT + Session (Replit Auth) |
 | **支付** | Stripe + Recur (台灣本地) |
 | **AI** | Google Gemini (行程智慧排序、描述生成) |
@@ -176,7 +176,7 @@ server/                   # ⭐ 後端 API
 client/                   # ⭐ 管理後台 UI
 ├── src/
 │   ├── App.tsx           # 主應用組件
-│   ├── components/       # UI 組件 (50+)
+│   ├── components/       # UI 組件 (70+)
 │   │   ├── ui/           # Radix UI 基礎組件
 │   │   ├── AdminDashboard.tsx
 │   │   └── ...
@@ -187,7 +187,7 @@ client/                   # ⭐ 管理後台 UI
 └── index.html
 
 shared/
-└── schema.ts             # Drizzle ORM schema (47 張表)
+└── schema.ts             # Drizzle ORM schema (57 張表)
 
 docs/
 └── memory-*.md           # 記憶庫文檔 (15 個)
@@ -288,7 +288,7 @@ const userId = req.user?.claims?.sub || req.jwtUser?.userId || 'guest';
 ### 基礎設施
 | 檔案 | 職權 |
 |------|------|
-| `memory-data-schema.md` | 47 張表定義 |
+| `memory-data-schema.md` | 57 張表定義 |
 | `memory-api-dictionary.md` | API 端點規範 |
 | `memory-auth.md` | JWT/Session/OAuth |
 | `memory-payment-commerce.md` | Stripe/Recur 整合 |
