@@ -26,7 +26,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | 動作類型 | 必讀記憶庫 |
 |---------|-----------|
-| 採集/審核/升級景點 | `docs/memory-travel-gacha.md` |
+| 修改扭蛋邏輯 | `docs/memory-gacha-core.md` |
+| 採集/審核/升級景點 | `docs/memory-gacha-collection.md` |
 | 修改資料表結構 | `docs/memory-data-schema.md` |
 | 新增/修改 API | `docs/memory-api-dictionary.md` |
 | 認證相關修改 | `docs/memory-auth.md` |
