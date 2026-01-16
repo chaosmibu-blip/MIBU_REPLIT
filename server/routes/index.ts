@@ -18,6 +18,7 @@ import economyRouter from './economy';
 import crowdfundRouter from './crowdfund';
 import referralRouter from './referral';
 import contributionRouter from './contribution';
+import accountRouter from './account';
 import { subscriptionPlansPublicRouter } from './admin/admin-subscription-plans';
 import { storage } from '../storage';
 import { AnnouncementType } from '@shared/schema';
@@ -60,6 +61,7 @@ router.use('/', economyRouter); // 經濟系統 API: /api/user/level, /api/user/
 router.use('/', crowdfundRouter); // 募資系統 API: /api/crowdfund/campaigns, /api/crowdfund/contribute
 router.use('/', referralRouter); // 推薦系統 API: /api/referral/*
 router.use('/', contributionRouter); // 用戶貢獻 API: /api/contribution/*, /api/collection/blacklist
+router.use('/', accountRouter); // 帳號系統 API: /api/account/*, /api/auth/migrate-guest, /api/specialist/apply
 
 export default router;
 
@@ -81,4 +83,5 @@ export {
   crowdfundRouter,
   referralRouter,
   contributionRouter,
+  accountRouter,
 };

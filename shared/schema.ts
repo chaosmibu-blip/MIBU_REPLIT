@@ -2616,3 +2616,41 @@ export const userDailyContributions = pgTable("user_daily_contributions", {
 ]);
 
 export type UserDailyContribution = typeof userDailyContributions.$inferSelect;
+
+// ============ 帳號系統 (Account System) ============
+
+// 策劃師申請
+export const specialistApplications = pgTable("specialist_applications", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  realName: varchar("real_name", { length: 100 }).notNull(),
+  regions: jsonb("regions").notNull(), // 擅長地區
+  introduction: text("introduction").notNull(),
+  contactInfo: text("contact_info").notNull(),
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // 'pending', 'approved', 'rejected'
+  reviewedBy: text("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_specialist_applications_user").on(table.userId),
+  index("IDX_specialist_applications_status").on(table.status),
+]);
+
+export type SpecialistApplication = typeof specialistApplications.$inferSelect;
+
+// 訪客帳號遷移記錄
+export const guestMigrations = pgTable("guest_migrations", {
+  id: serial("id").primaryKey(),
+  guestUserId: text("guest_user_id").notNull(), // 原訪客 ID
+  newUserId: text("new_user_id").notNull().references(() => users.id), // 新帳號 ID
+  migratedCollections: integer("migrated_collections").default(0).notNull(),
+  migratedInventory: integer("migrated_inventory").default(0).notNull(),
+  migratedNotifications: integer("migrated_notifications").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_guest_migrations_guest").on(table.guestUserId),
+  uniqueIndex("IDX_guest_migrations_unique").on(table.guestUserId),
+]);
+
+export type GuestMigration = typeof guestMigrations.$inferSelect;

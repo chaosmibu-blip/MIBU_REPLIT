@@ -512,19 +512,32 @@ specialistApplications {
 
 ---
 
-## 待開發功能
+## 開發狀態
 
 ### 已完成
 - [x] Google Sign In ✅ 2026-01-06
 - [x] auth_identities 同步 ✅ 2026-01-06
+- [x] 策劃師申請資料表（`specialist_applications`）
+- [x] 訪客遷移資料表（`guest_migrations`）
+- [x] Storage 層（`accountStorage.ts`）
+- [x] API: `GET /api/specialist/eligibility` 檢查申請資格
+- [x] API: `POST /api/specialist/apply` 申請策劃師
+- [x] API: `GET /api/specialist/application-status` 查詢申請狀態
+- [x] API: `POST /api/specialist/mark-invited` 標記已邀請
+- [x] API: `POST /api/auth/migrate-guest` 遷移訪客帳號
+- [x] API: `GET /api/auth/linked-accounts` 取得已連結帳號
+- [x] API: `POST /api/auth/link` 連結新登入方式
+- [x] API: `DELETE /api/auth/unlink/:provider` 解除連結
+- [x] API: `GET /api/account/profile` 取得帳號資訊
 
-### 帳號重構（規劃中）
+### 待開發（前端）
 - [ ] 移除訪客登入選項（APP）
 - [ ] 舊訪客綁定提示彈窗（APP）
-- [ ] 訪客資料遷移 API（後端）
-- [ ] 帳號連結 API
-- [ ] 策劃師申請 API
-- [ ] 策劃師申請審核後台
+- [ ] 策劃師申請 UI
+
+### 待開發（後端）
+- [ ] 策劃師申請 Admin 審核後台
+- [ ] idToken 驗證（Google/Apple）
 
 ### 未來規劃
 - [ ] Refresh Token 機制
