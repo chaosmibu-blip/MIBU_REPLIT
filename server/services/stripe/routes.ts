@@ -1,8 +1,8 @@
 import type { Express, Request, Response } from 'express';
-import { stripeService } from './stripeService';
-import { stripeStorage } from './stripeStorage';
-import { getUncachableStripeClient, getStripePublishableKey } from './stripeClient';
-import { storage } from './storage';
+import { stripeService } from './service';
+import { stripeStorage } from './storage';
+import { getUncachableStripeClient, getStripePublishableKey } from './client';
+import { storage } from '../../storage';
 
 export function registerStripeRoutes(app: Express) {
   app.get('/api/stripe/publishable-key', async (req: Request, res: Response) => {

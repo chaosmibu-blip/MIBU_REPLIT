@@ -5,7 +5,7 @@ import { createServer } from "http";
 import { runMigrations } from 'stripe-replit-sync';
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
-import { getStripeSync } from "./stripeClient";
+import { getStripeSync } from "./services/stripe";
 import { WebhookHandlers } from "./webhookHandlers";
 import { storage } from "./storage";
 import { verifyJwtToken, initializeSuperAdmin } from "./replitAuth";

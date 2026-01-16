@@ -5,7 +5,7 @@ import { adminRateLimiter } from "./middleware/rateLimit";
 import { queryLogger } from "./middleware/queryLogger";
 import { createTripPlannerRoutes } from "../modules/trip-planner/server/routes";
 import { createPlannerServiceRoutes } from "../modules/trip-planner/server/planner-routes";
-import { registerStripeRoutes } from "./stripeRoutes";
+import { registerStripeRoutes } from "./services/stripe";
 import modularRouter from "./routes/index";
 import webhooksRouter from "./routes/webhooks";
 import merchantRouter from "./routes/merchant";

@@ -9,17 +9,48 @@
 
 ### 程式碼目錄
 ```
-├── server/          # Node.js API (Express, TypeScript, Drizzle ORM)
-│   ├── routes.ts    # API 端點定義
-│   ├── storage.ts   # 資料存取層
-│   ├── db.ts        # 資料庫連線
-│   └── index.ts     # 伺服器入口
-├── client/          # Web Admin (React 18, Vite, Tailwind CSS)
+├── server/                    # Node.js API (Express, TypeScript, Drizzle ORM)
+│   ├── index.ts               # 伺服器入口
+│   ├── routes.ts              # 路由聚合中心
+│   ├── db.ts                  # 資料庫連線
+│   ├── routes/                # 路由模組 (38 個檔案)
+│   │   ├── index.ts           # 模組化路由中心
+│   │   ├── admin/             # 管理後台 API (10 個)
+│   │   ├── merchant/          # 商家 API (8 個)
+│   │   ├── gacha/             # 扭蛋 API (5 個)
+│   │   └── ...                # 其他路由
+│   ├── storage/               # 資料存取層 (12 個模組)
+│   │   ├── index.ts           # Storage 匯出中心
+│   │   ├── userStorage.ts     # 用戶 CRUD
+│   │   ├── placeStorage.ts    # 景點 CRUD
+│   │   └── ...                # 其他 Storage
+│   ├── services/              # 業務服務層
+│   │   ├── configService.ts   # 系統配置服務
+│   │   └── stripe/            # Stripe 支付模組
+│   │       ├── client.ts      # Stripe SDK 初始化
+│   │       ├── service.ts     # 支付業務邏輯
+│   │       ├── storage.ts     # Stripe 資料存取
+│   │       ├── routes.ts      # Stripe API 路由
+│   │       └── index.ts       # 統一導出
+│   ├── lib/                   # 工具函式庫 (18 個)
+│   │   ├── placeGenerator/    # 景點生成引擎 (AI)
+│   │   ├── utils/             # 通用工具
+│   │   └── ...                # 其他工具
+│   ├── middleware/            # 中間件
+│   └── scripts/               # CLI 腳本 (13 個)
+├── client/                    # Web Admin (React 19, Vite, Tailwind CSS)
 │   └── src/
-├── shared/          # 共用型別定義
-│   ├── schema.ts    # Drizzle ORM Schema (47 張表)
-│   └── errors.ts    # 標準錯誤格式
-└── docs/memory/     # 模組記憶庫
+│       ├── components/        # UI 組件 (70+)
+│       ├── pages/             # 頁面組件 (17 個)
+│       ├── hooks/             # React Hooks
+│       └── services/          # API 服務層
+├── shared/                    # 共用型別定義
+│   ├── schema.ts              # Drizzle ORM Schema (57 張表)
+│   └── errors.ts              # 標準錯誤格式
+├── modules/                   # 功能模組
+│   ├── trip-planner/          # 行程規劃模組
+│   └── travel-gacha/          # 扭蛋模組
+└── docs/                      # 記憶庫文檔 (15 個)
 ```
 
 ### 外部專案
@@ -333,6 +364,21 @@ export const pool = new Pool({
 ---
 
 ## Changelog
+
+### 2026-01-15 - 架構審計與重構
+- **Stripe 模組化**：將根目錄散落的 4 個 Stripe 檔案整合到 `server/services/stripe/`
+  - client.ts (SDK 初始化)
+  - service.ts (業務邏輯)
+  - storage.ts (資料存取)
+  - routes.ts (API 路由)
+  - index.ts (統一導出)
+- **架構審計結果**：
+  - Routes 模組化：9/10 ✓
+  - Storage 層：9/10 ✓
+  - Schema 設計：8.5/10 ✓
+  - Services 層：從 3/10 提升到 7/10
+  - 整體健康度：7.5/10
+- **文檔更新**：同步專案結構到 memory-deployment.md
 
 ### 2026-01-11 - Neon 資料庫穩定性優化
 - 擴充連線池設定（max: 15→25, timeout: 5s→10s）

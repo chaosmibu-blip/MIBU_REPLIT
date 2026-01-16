@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { db } from './db';
+import { db } from '../../db';
 
 export class StripeStorage {
   async getProduct(productId: string) {
@@ -26,7 +26,7 @@ export class StripeStorage {
           ORDER BY id
           LIMIT ${limit} OFFSET ${offset}
         )
-        SELECT 
+        SELECT
           p.id as product_id,
           p.name as product_name,
           p.description as product_description,

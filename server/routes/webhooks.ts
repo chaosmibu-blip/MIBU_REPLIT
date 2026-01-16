@@ -1,5 +1,5 @@
 import { Router, raw } from "express";
-import { getUncachableStripeClient } from "../stripeClient";
+import { getUncachableStripeClient } from "../services/stripe";
 import { subscriptionStorage } from "../storage/subscriptionStorage";
 import { merchantStorage } from "../storage/merchantStorage";
 import { db } from "../db";
