@@ -267,7 +267,16 @@ router.post("/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
     const userEmail = req.user?.claims?.email || req.jwtUser?.email;
     const isExempt = userEmail && GACHA_EXEMPT_EMAILS.includes(userEmail);
     
-    if (userId !== 'guest' && !isExempt) {
+    // 訪客必須登入才能扭蛋（防禦性檢查，正常情況 isAuthenticated 已阻擋）
+    if (userId === 'guest') {
+      return res.status(401).json({
+        success: false,
+        error: "請先登入才能使用扭蛋功能",
+        code: "LOGIN_REQUIRED"
+      });
+    }
+
+    if (!isExempt) {
       const currentDailyCount = await storage.getUserDailyGachaCount(userId);
       const remainingQuota = DAILY_PULL_LIMIT - currentDailyCount;
       
