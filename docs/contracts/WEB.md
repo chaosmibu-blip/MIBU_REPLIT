@@ -1,10 +1,11 @@
 # MIBU API 官網契約 (WEB)
 
-## 版本: 1.1.0
-## 最後更新: 2026-01-16
+## 版本: 1.2.0
+## 最後更新: 2026-01-17
 ## 適用專案: Mibu-Pages (官網)
 
 ### 變更日誌
+- **1.2.0**: Phase 6 商家新增店家支援營業時間欄位
 - **1.1.0**: 新增募資系統 API（Stripe 金流）
 
 ---
@@ -541,6 +542,55 @@ interface RefundEligibilityResponse {
   requestId: number;
 }
 ```
+
+---
+
+## 商家景點管理 API（需認證）
+
+### POST /api/merchant/places/new
+商家新增店家（支援營業時間）
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request:**
+```typescript
+interface CreatePlaceRequest {
+  placeName: string;
+  address: string;
+  city: string;
+  district?: string;
+  category: string;           // 八大分類
+  subcategory?: string;
+  description?: string;
+  openingHours?: {
+    weekdayText?: string[];   // ["星期一: 09:00–21:00", ...]
+    periods?: any[];          // Google Places API 格式
+  };
+  phone?: string;
+  website?: string;
+  locationLat?: number;
+  locationLng?: number;
+}
+```
+
+**Response:**
+```typescript
+{
+  success: true;
+  draft: {
+    id: number;
+    placeName: string;
+    status: 'pending';
+    openingHours?: object;
+    phone?: string;
+    website?: string;
+    createdAt: string;
+  };
+  message: string;
+}
+```
+
+**Note:** 商家新增的店家會進入 place_drafts 待審核，審核通過後才會進入正式 places 表。
 
 ---
 

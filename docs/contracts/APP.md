@@ -1,10 +1,11 @@
 # MIBU API APP 契約 (APP)
 
-## 版本: 1.1.0
-## 最後更新: 2026-01-16
+## 版本: 1.2.0
+## 最後更新: 2026-01-17
 ## 適用專案: MIBU App (React Native + Expo)
 
 ### 變更日誌
+- **1.2.0**: Phase 6 商家營業時間欄位（place_drafts 新增 openingHours, phone, website）
 - **1.1.0**: 新增經濟系統、募資、推薦、貢獻、帳號系統 API
 
 ---
