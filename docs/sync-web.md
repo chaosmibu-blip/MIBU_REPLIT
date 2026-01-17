@@ -6,6 +6,166 @@
 
 ## 最新更新
 
+### 2026-01-17 #003：🚀 Phase 2 & 6 API 實作完成
+
+**變更類型**: 🔴 重大更新（新功能 API）
+
+**背景說明**:
+後端已完成 Phase 2 募資系統和 Phase 6 商家營業時間 API，契約已更新至 v1.2.0。官網需要實作對應功能頁面。
+
+**API 契約版本**: `contracts/WEB.md` v1.2.0
+
+---
+
+#### 官網需要做的事
+
+##### Phase 2 募資系統（4 個 API）
+
+| API | 功能 | 頁面建議 |
+|-----|------|----------|
+| `GET /api/crowdfund/campaigns` | 募資活動列表 | `/crowdfund` 募資首頁 |
+| `GET /api/crowdfund/campaigns/:id` | 活動詳情 | `/crowdfund/[id]` 活動詳情頁 |
+| `POST /api/crowdfund/checkout` | Stripe 結帳 | 詳情頁「贊助」按鈕，跳轉 Stripe Checkout |
+| `GET /api/crowdfund/my-contributions` | 我的贊助（登入後） | 個人頁面「我的贊助記錄」 |
+
+**募資頁面 UI 建議**:
+
+```
+/crowdfund 首頁
+├── 進行中活動（status: active）- 卡片列表
+│   └── 進度條、贊助人數、目標金額
+├── 即將開始（status: upcoming）- 預告區
+└── 已完成/已上線（status: completed/launched）- 歷史區
+
+/crowdfund/[id] 詳情頁
+├── 國家名稱、旗幟圖示
+├── 進度資訊（currentAmount / goalAmount）
+├── 贊助按鈕 → 呼叫 POST /api/crowdfund/checkout
+├── 最近贊助者列表（recentContributors）
+└── 贊助排行榜（topContributors）
+```
+
+##### Phase 6 商家新增店家（1 個 API 更新）
+
+| API | 功能 | 表單更新 |
+|-----|------|----------|
+| `POST /api/merchant/places/new` | 商家新增店家 | 新增營業時間欄位 |
+
+**表單新增欄位**:
+
+```typescript
+interface CreatePlaceRequest {
+  // 既有欄位
+  placeName: string;
+  address: string;
+  city: string;
+  district?: string;
+  category: string;
+  subcategory?: string;
+  description?: string;
+  locationLat?: number;
+  locationLng?: number;
+
+  // 新增欄位（Phase 6）
+  openingHours?: {
+    weekdayText?: string[];   // ["星期一: 09:00–21:00", ...]
+    periods?: any[];          // Google Places API 格式
+  };
+  phone?: string;
+  website?: string;
+}
+```
+
+**UI 建議**:
+
+```
+商家新增店家表單
+├── 基本資訊（既有）
+│   ├── 店名、地址、城市、區域
+│   ├── 分類、子分類
+│   └── 描述、座標
+└── 新增欄位（Phase 6）
+    ├── 營業時間選擇器
+    │   └── 週一到週日時間區段
+    ├── 電話輸入框
+    └── 網站 URL 輸入框
+```
+
+---
+
+#### 實作優先順序建議
+
+1. **高優先級**：Phase 6 商家表單更新（影響商家新增流程）
+2. **中優先級**：Phase 2 募資首頁、詳情頁
+3. **低優先級**：募資登入後功能（我的贊助記錄）
+
+---
+
+#### 驗證方式
+
+1. 商家新增店家表單可填寫營業時間、電話、網站
+2. 募資活動列表頁正常顯示
+3. Stripe 結帳流程可正常跳轉
+4. 錯誤處理符合 `contracts/COMMON.md` 規範
+
+---
+
+#### 完成後
+
+1. Commit + Push
+2. 在 `docs/sync-backend.md` 記錄完成狀態（#003）
+3. 再次 Commit + Push
+
+---
+
+### 2026-01-17 #004：📝 後端 CLAUDE.md v2.0 更新
+
+**變更類型**: 🟡 文件更新（低優先級）
+
+**背景說明**:
+後端 CLAUDE.md 更新至 v2.0，資料表數量、記憶庫數量有變更。
+
+**變更內容**:
+- 資料表數量：57 → 82 張表/列舉
+- 記憶庫數量：15 → 22 個
+- 新增 Phase 1-6 開發階段記錄
+- 更新路由、Storage 模組清單
+
+---
+
+#### 官網需要做的事
+
+##### 檢查 CLAUDE.md 引用
+
+如果官網的 CLAUDE.md 有引用後端資料：
+
+```markdown
+# 檢查並更新以下數據（如有引用）：
+- 後端資料表數量：82 張表/列舉
+- 後端記憶庫數量：22 個
+- API 契約版本：v1.2.0
+```
+
+##### 確認契約參照路徑
+
+```markdown
+# 確認以下路徑正確：
+- memory-data-schema.md（現為 82 張表）
+- memory-api-dictionary.md
+- memory-auth.md
+- memory-payment-commerce.md
+- contracts/WEB.md（v1.2.0）
+```
+
+---
+
+#### 完成後
+
+1. 如有更新：Commit + Push
+2. 在 `docs/sync-backend.md` 記錄完成狀態（#004）
+
+---
+
 ### 2026-01-16 #002：🧹 文件清理 - 歸檔舊文件
 
 **變更類型**: 🟡 文件整理（非 API 變更）

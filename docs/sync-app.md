@@ -6,6 +6,140 @@
 
 ## 最新更新
 
+### 2026-01-17 #003：🚀 Phase 1-6 API 實作完成
+
+**變更類型**: 🔴 重大更新（多個新 API）
+
+**背景說明**:
+後端已完成 Phase 1-6 全部 API 實作，契約已更新至 v1.2.0。APP 需要實作對應功能頁面。
+
+**API 契約版本**: `contracts/APP.md` v1.2.0
+
+---
+
+#### APP 需要做的事
+
+##### Phase 1 經濟系統（4 個 API）
+
+| API | 功能 | UI 建議 |
+|-----|------|---------|
+| `GET /api/user/level` | 等級資訊 | 個人頁面顯示等級、經驗值進度條 |
+| `GET /api/user/experience/history` | 經驗值記錄 | 經驗值歷史列表頁 |
+| `GET /api/user/achievements` | 成就列表 | 成就徽章牆 |
+| `POST /api/user/achievements/:id/claim` | 領取成就獎勵 | 成就卡片「領取」按鈕 |
+
+##### Phase 2 募資系統（4 個 API）
+
+| API | 功能 | UI 建議 |
+|-----|------|---------|
+| `GET /api/crowdfund/campaigns` | 募資活動列表 | 募資首頁 |
+| `GET /api/crowdfund/campaigns/:id` | 活動詳情 | 活動詳情頁 |
+| `POST /api/crowdfund/contribute` | IAP 贊助 | 贊助按鈕（串接 iOS/Android IAP） |
+| `GET /api/crowdfund/my-contributions` | 我的贊助記錄 | 個人頁面「我的贊助」 |
+
+##### Phase 3 推薦系統（6 個 API）
+
+| API | 功能 | UI 建議 |
+|-----|------|---------|
+| `GET /api/referral/my-code` | 我的推薦碼 | 分享頁面顯示推薦碼 + 複製/分享按鈕 |
+| `POST /api/referral/apply` | 使用推薦碼 | 註冊流程或設定頁輸入推薦碼 |
+| `GET /api/referral/my-referrals` | 推薦清單 | 我的推薦人列表 |
+| `POST /api/referral/merchant` | 推薦商家 | 商家推薦功能（進階） |
+| `GET /api/referral/balance` | 餘額查詢 | 推薦獎勵餘額顯示 |
+| `POST /api/referral/withdraw` | 申請提現 | 提現申請表單 |
+
+##### Phase 4 用戶貢獻系統（5 個 API）
+
+| API | 功能 | UI 建議 |
+|-----|------|---------|
+| `POST /api/contribution/report-closed` | 回報歇業 | 景點詳情頁「回報問題」按鈕 |
+| `POST /api/contribution/suggest-place` | 建議景點 | 「建議新景點」表單 |
+| `POST /api/collection/:placeId/blacklist` | 加入黑名單 | 景點卡片「不想再看到」選項 |
+| `GET /api/contribution/pending-votes` | 待投票列表 | 社群投票頁面 |
+| `POST /api/contribution/vote/:placeId` | 投票 | 投票按鈕（贊成/反對） |
+
+##### Phase 5 帳號系統（4 個 API）
+
+| API | 功能 | UI 建議 |
+|-----|------|---------|
+| `POST /api/auth/link` | 綁定新身份 | 設定頁「連結帳號」 |
+| `GET /api/auth/linked-accounts` | 已綁定帳號 | 顯示已綁定的 Apple/Google/Line |
+| `DELETE /api/auth/unlink/:provider` | 解除綁定 | 各帳號旁「解除綁定」按鈕 |
+| `POST /api/specialist/apply` | 申請策劃師 | 「成為策劃師」申請表單 |
+
+---
+
+#### 實作優先順序建議
+
+1. **高優先級**：Phase 1 經濟系統（用戶留存核心）
+2. **中優先級**：Phase 3 推薦系統、Phase 5 帳號綁定
+3. **低優先級**：Phase 2 募資、Phase 4 用戶貢獻（可後續迭代）
+
+---
+
+#### 驗證方式
+
+1. 各 API 端點呼叫正常（參考 `contracts/APP.md` 的 Request/Response schema）
+2. UI 頁面正常顯示資料
+3. 錯誤處理符合 `contracts/COMMON.md` 規範
+
+---
+
+#### 完成後
+
+1. Commit + Push
+2. 在 `docs/sync-backend.md` 記錄完成狀態（#003）
+3. 再次 Commit + Push
+
+---
+
+### 2026-01-17 #004：📝 後端 CLAUDE.md v2.0 更新
+
+**變更類型**: 🟡 文件更新（低優先級）
+
+**背景說明**:
+後端 CLAUDE.md 更新至 v2.0，資料表數量、記憶庫數量有變更。
+
+**變更內容**:
+- 資料表數量：57 → 82 張表/列舉
+- 記憶庫數量：15 → 22 個
+- 新增 Phase 1-6 開發階段記錄
+- 更新路由、Storage 模組清單
+
+---
+
+#### APP 需要做的事
+
+##### 檢查 CLAUDE.md 引用
+
+如果 APP 的 CLAUDE.md 有引用後端資料：
+
+```markdown
+# 檢查並更新以下數據（如有引用）：
+- 後端資料表數量：82 張表/列舉
+- 後端記憶庫數量：22 個
+- API 契約版本：v1.2.0
+```
+
+##### 確認契約參照路徑
+
+```markdown
+# 確認以下路徑正確：
+- memory-data-schema.md（現為 82 張表）
+- memory-api-dictionary.md
+- memory-auth.md
+- contracts/APP.md（v1.2.0）
+```
+
+---
+
+#### 完成後
+
+1. 如有更新：Commit + Push
+2. 在 `docs/sync-backend.md` 記錄完成狀態（#004）
+
+---
+
 ### 2026-01-16 #002：🧹 文件清理 - 歸檔舊文件
 
 **變更類型**: 🟡 文件整理（非 API 變更）
