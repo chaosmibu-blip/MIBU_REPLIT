@@ -12,7 +12,7 @@ import {
   users,
   collections,
   userInventory,
-  notifications,
+  userNotifications,
   userLevels,
   type SpecialistApplication,
   type GuestMigration,
@@ -83,7 +83,7 @@ export async function updateSpecialistApplicationStatus(
   // 如果審核通過，更新用戶角色
   if (status === "approved" && result) {
     await db.update(users)
-      .set({ roles: sql`array_append(${users.roles}, 'specialist')` })
+      .set({ role: 'specialist' })
       .where(eq(users.id, result.userId));
   }
 
@@ -131,10 +131,10 @@ export async function migrateGuestAccount(guestUserId: string, newUserId: string
   const migratedInventory = inventoryResult.length;
 
   // 遷移 notifications
-  const notificationsResult = await db.update(notifications)
+  const notificationsResult = await db.update(userNotifications)
     .set({ userId: newUserId })
-    .where(eq(notifications.userId, guestUserId))
-    .returning({ id: notifications.id });
+    .where(eq(userNotifications.userId, guestUserId))
+    .returning({ id: userNotifications.id });
   const migratedNotifications = notificationsResult.length;
 
   // 記錄遷移
@@ -247,12 +247,12 @@ export async function updateUserRole(userId: string, role: string): Promise<void
 }
 
 export async function isUserSpecialist(userId: string): Promise<boolean> {
-  const [result] = await db.select({ roles: users.roles })
+  const [result] = await db.select({ role: users.role })
     .from(users)
     .where(eq(users.id, userId));
 
-  if (!result?.roles) return false;
-  return Array.isArray(result.roles) && result.roles.includes("specialist");
+  if (!result?.role) return false;
+  return result.role === "specialist";
 }
 
 // ============ 策劃師邀請 ============

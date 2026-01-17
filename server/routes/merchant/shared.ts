@@ -9,7 +9,7 @@ export type { InsertRefundRequest } from "@shared/schema";
 export { ErrorCode, createErrorResponse } from "@shared/errors";
 export { z } from "zod";
 export { default as crypto } from "crypto";
-export { getUncachableStripeClient } from "../../stripeClient";
+export { getUncachableStripeClient } from "../../services/stripe";
 export { getMerchantTier, getPlaceCardTier, MERCHANT_TIER_LIMITS, PLACE_CARD_TIER_LIMITS, hasAnalyticsAccess } from "../../lib/merchantPermissions";
 
 // Subscription price configuration
