@@ -221,11 +221,13 @@ router.post('/mobile', async (req, res) => {
     const userRole = roleValidation.userRole;
 
     // 建立或更新用戶
+    // 如果用戶已存在且有手動設定姓名，保留用戶設定的姓名，不用 OAuth 覆蓋
+    const shouldPreserveName = existingUser && (existingUser.firstName || existingUser.lastName);
     const user = await storage.upsertUser({
       id: verifiedData.userId,
       email: verifiedData.email,
-      firstName: verifiedData.firstName,
-      lastName: verifiedData.lastName,
+      firstName: shouldPreserveName ? existingUser.firstName : verifiedData.firstName,
+      lastName: shouldPreserveName ? existingUser.lastName : verifiedData.lastName,
       profileImageUrl: verifiedData.profileImageUrl,
       role: userRole,
       provider: validated.provider,
