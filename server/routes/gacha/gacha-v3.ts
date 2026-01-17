@@ -1222,10 +1222,9 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
       return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, firstError?.message || "請求參數格式錯誤", error.errors));
     }
 
-    // 提供更具體的錯誤訊息給用戶端（開發階段）
-    const isDev = process.env.NODE_ENV !== 'production';
-    const errorMessage = isDev && error?.message
-      ? `扭蛋系統錯誤: ${error.message.slice(0, 100)}`
+    // 暫時返回詳細錯誤訊息以便診斷（診斷完成後應改回）
+    const errorMessage = error?.message
+      ? `扭蛋系統錯誤: ${error.message.slice(0, 200)}`
       : "扭蛋系統暫時無法使用，請稍後再試";
 
     res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, errorMessage));
