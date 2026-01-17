@@ -6,6 +6,131 @@
 
 ## 最新更新
 
+### 2026-01-17 #005：🚨 商家新增店家頁面（審計發現缺失）
+
+**變更類型**: 🔴 重大缺失（頁面未實作）
+
+**背景說明**:
+經三端審計發現，官網 `app/merchant/places/` 只有 `page.tsx`（列表頁），**缺少 new 頁面**（新增店家表單）。
+
+**審計結果**:
+- ✅ `src/features/crowdfund/` - 募資模組完整
+- ✅ `app/crowdfund/` - 募資頁面完整
+- ❌ `app/merchant/places/new/` - **缺失**
+
+**審計來源**: 後端 SYNC_QUEUE.md #006
+
+---
+
+#### 官網需要做的事
+
+##### 建立商家新增店家頁面
+
+**新增檔案**:
+- `app/merchant/places/new/page.tsx`
+
+**API 端點**:
+```
+POST /api/merchant/places/new
+```
+
+**表單欄位**（參考 contracts/WEB.md）:
+
+```typescript
+interface CreatePlaceRequest {
+  // 基本資訊
+  placeName: string;           // 店名（必填）
+  address: string;             // 地址（必填）
+  city: string;                // 城市（必填）
+  district?: string;           // 區域
+  category: string;            // 分類（必填）
+  subcategory?: string;        // 子分類
+  description?: string;        // 描述
+  locationLat?: number;        // 緯度
+  locationLng?: number;        // 經度
+
+  // Phase 6 新增欄位
+  openingHours?: {
+    weekdayText?: string[];    // ["星期一: 09:00–21:00", ...]
+    periods?: any[];           // Google Places API 格式
+  };
+  phone?: string;              // 電話
+  website?: string;            // 網站
+}
+```
+
+**UI 結構建議**:
+
+```
+商家新增店家頁面
+├── 頁面標題：新增店家
+├── 基本資訊區塊
+│   ├── 店名輸入框（必填）
+│   ├── 地址輸入框（必填）+ 地圖選點
+│   ├── 城市選擇器（必填）
+│   ├── 區域輸入框
+│   ├── 分類選擇器（必填）- 八大分類
+│   ├── 子分類選擇器
+│   └── 描述文字區
+├── 聯絡資訊區塊（Phase 6）
+│   ├── 電話輸入框
+│   └── 網站 URL 輸入框
+├── 營業時間區塊（Phase 6）
+│   └── 週一至週日時間選擇器
+│       ├── 休息 checkbox
+│       ├── 開始時間
+│       └── 結束時間
+└── 送出按鈕
+```
+
+**營業時間選擇器元件**:
+
+```tsx
+// 建議建立 components/BusinessHoursSelector.tsx
+interface BusinessHoursProps {
+  value: OpeningHours;
+  onChange: (hours: OpeningHours) => void;
+}
+
+// 輸出格式
+{
+  weekdayText: [
+    "星期一: 09:00–21:00",
+    "星期二: 09:00–21:00",
+    // ...
+    "星期日: 休息"
+  ]
+}
+```
+
+---
+
+#### 導航整合
+
+確保商家可從以下路徑進入：
+1. 商家儀表板 → 「新增店家」按鈕 → `/merchant/places/new`
+2. 店家列表頁 → 「新增」按鈕 → `/merchant/places/new`
+
+---
+
+#### 驗證方式
+
+1. 頁面 `/merchant/places/new` 可正常訪問
+2. 表單驗證正確（必填欄位檢查）
+3. 營業時間選擇器正常運作
+4. 送出後正確呼叫 `POST /api/merchant/places/new`
+5. 成功後導向店家列表頁
+
+---
+
+#### 完成後
+
+1. Commit + Push
+2. 在 `docs/sync-backend.md` 記錄完成狀態（#005）
+3. 再次 Commit + Push
+
+---
+
 ### 2026-01-17 #003：🚀 Phase 2 & 6 API 實作完成
 
 **變更類型**: 🔴 重大更新（新功能 API）
