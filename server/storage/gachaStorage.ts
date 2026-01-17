@@ -524,38 +524,100 @@ export const gachaStorage = {
 
   async getOfficialPlacesByDistrict(city: string, district: string, limit?: number): Promise<Place[]> {
     return withRetry(async () => {
+      // 明確指定欄位，避免查詢不存在的 opening_hours 欄位
       const query = db
-        .select()
+        .select({
+          id: places.id,
+          placeName: places.placeName,
+          placeNameI18n: places.placeNameI18n,
+          country: places.country,
+          city: places.city,
+          district: places.district,
+          address: places.address,
+          addressI18n: places.addressI18n,
+          locationLat: places.locationLat,
+          locationLng: places.locationLng,
+          googlePlaceId: places.googlePlaceId,
+          googleTypes: places.googleTypes,
+          primaryType: places.primaryType,
+          rating: places.rating,
+          photoReference: places.photoReference,
+          category: places.category,
+          subcategory: places.subcategory,
+          description: places.description,
+          descriptionI18n: places.descriptionI18n,
+          merchantId: places.merchantId,
+          isPromoActive: places.isPromoActive,
+          promoTitle: places.promoTitle,
+          promoDescription: places.promoDescription,
+          claimStatus: places.claimStatus,
+          placeCardTier: places.placeCardTier,
+          placeCardTierExpiresAt: places.placeCardTierExpiresAt,
+          businessStatus: places.businessStatus,
+          isActive: places.isActive,
+          createdAt: places.createdAt,
+        })
         .from(places)
         .where(and(
-          eq(places.city, city), 
+          eq(places.city, city),
           eq(places.district, district),
           eq(places.isActive, true)
         ))
         .orderBy(sql`RANDOM()`);
-      
+
       if (limit) {
-        return await query.limit(limit);
+        return await query.limit(limit) as Place[];
       }
-      return await query;
+      return await query as Place[];
     });
   },
 
   async getOfficialPlacesByCity(city: string, limit?: number): Promise<Place[]> {
     return withRetry(async () => {
+      // 明確指定欄位，避免查詢不存在的 opening_hours 欄位
       const query = db
-        .select()
+        .select({
+          id: places.id,
+          placeName: places.placeName,
+          placeNameI18n: places.placeNameI18n,
+          country: places.country,
+          city: places.city,
+          district: places.district,
+          address: places.address,
+          addressI18n: places.addressI18n,
+          locationLat: places.locationLat,
+          locationLng: places.locationLng,
+          googlePlaceId: places.googlePlaceId,
+          googleTypes: places.googleTypes,
+          primaryType: places.primaryType,
+          rating: places.rating,
+          photoReference: places.photoReference,
+          category: places.category,
+          subcategory: places.subcategory,
+          description: places.description,
+          descriptionI18n: places.descriptionI18n,
+          merchantId: places.merchantId,
+          isPromoActive: places.isPromoActive,
+          promoTitle: places.promoTitle,
+          promoDescription: places.promoDescription,
+          claimStatus: places.claimStatus,
+          placeCardTier: places.placeCardTier,
+          placeCardTierExpiresAt: places.placeCardTierExpiresAt,
+          businessStatus: places.businessStatus,
+          isActive: places.isActive,
+          createdAt: places.createdAt,
+        })
         .from(places)
         .where(and(
           eq(places.city, city),
           eq(places.isActive, true)
         ))
         .orderBy(sql`RANDOM()`);
-      
+
       if (limit) {
-        return await query.limit(limit);
+        return await query.limit(limit) as Place[];
       }
-      return await query;
+      return await query as Place[];
     });
   },
 
