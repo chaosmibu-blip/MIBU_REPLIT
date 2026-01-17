@@ -13,7 +13,6 @@ import {
   userLocations,
   placeFeedback,
   collectionReadStatus,
-  userProfiles,
   cartItems,
   serviceOrders,
   commerceOrders,
@@ -139,11 +138,9 @@ export const userStorage = {
     await tx.update(collectionReadStatus)
       .set({ userId: newUserId })
       .where(eq(collectionReadStatus.userId, oldUserId));
-    
-    await tx.update(userProfiles)
-      .set({ userId: newUserId })
-      .where(eq(userProfiles.userId, oldUserId));
-    
+
+    // NOTE: userProfiles 已刪除，個人資料存儲在 users 表中
+
     await tx.update(cartItems)
       .set({ userId: newUserId })
       .where(eq(cartItems.userId, oldUserId));
@@ -321,8 +318,8 @@ export const userStorage = {
         await db.delete(tripDays).where(eq(tripDays.tripPlanId, plan.id));
       }
       await db.delete(tripPlans).where(eq(tripPlans.userId, userId));
-      
-      await db.delete(userProfiles).where(eq(userProfiles.userId, userId));
+
+      // NOTE: userProfiles 已刪除，個人資料存儲在 users 表中
       await db.delete(collectionReadStatus).where(eq(collectionReadStatus.userId, userId));
       
       await db.update(tripServicePurchases)
