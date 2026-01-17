@@ -2113,9 +2113,316 @@ export type AdPlacement = typeof adPlacements.$inferSelect;
 export type InsertAdPlacement = z.infer<typeof insertAdPlacementSchema>;
 
 // ============ 遊戲經濟系統 (Economy System) ============
+// NOTE: 以下表格暫時移除，待發布問題解決後再重新啟用
+// 包含：levelDefinitions, userLevels, userExpTransactions, achievements, userAchievements,
+// userTendencies, userDailyExpStats, placeDislikeStats, userPlaceBlacklists,
+// crowdfundCampaigns, crowdfundContributions, referralCodes, userReferrals, merchantReferrals,
+// userBalances, balanceTransactions, withdrawalRequests, placeReports, placeSuggestions,
+// suggestionVotes, placeExclusionVotes, userDailyContributions, specialistApplications, guestMigrations
 
-// 等級定義表
-export const levelDefinitions = pgTable("level_definitions", {
+// 暫時定義空的類型以避免編譯錯誤
+export type LevelDefinition = {
+  level: number;
+  requiredExp: number;
+  title: string;
+  titleEn?: string;
+  isMilestone: boolean;
+  isUnlocked: boolean;
+  perks?: any;
+  createdAt: Date;
+};
+
+export type UserLevel = {
+  userId: string;
+  currentExp: number;
+  currentLevel: number;
+  specialistInvitedAt?: Date;
+  specialistAppliedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type UserExpTransaction = {
+  id: number;
+  userId: string;
+  amount: number;
+  eventType: string;
+  referenceType?: string;
+  referenceId?: string;
+  description?: string;
+  createdAt: Date;
+};
+
+export type Achievement = {
+  id: number;
+  code: string;
+  category: string;
+  nameZh: string;
+  nameEn?: string;
+  description: string;
+  descriptionEn?: string;
+  rarity: number;
+  triggerCondition: any;
+  expReward: number;
+  otherRewards?: any;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: Date;
+};
+
+export type UserAchievement = {
+  id: number;
+  userId: string;
+  achievementId: number;
+  unlockedAt: Date;
+  rewardClaimed: boolean;
+  claimedAt?: Date;
+};
+
+export type UserTendency = {
+  userId: string;
+  consumerScore: number;
+  investorScore: number;
+  promoterScore: number;
+  businessScore: number;
+  specialistScore: number;
+  updatedAt: Date;
+};
+
+export type UserDailyExpStat = {
+  id: number;
+  userId: string;
+  date: string;
+  loginExp: number;
+  gachaExp: number;
+  voteExp: number;
+  shareExp: number;
+  totalExp: number;
+  createdAt: Date;
+};
+
+export type PlaceDislikeStat = {
+  placeId: number;
+  monthlyDislikeCount: number;
+  totalDislikeCount: number;
+  lastResetAt: Date;
+  status: string;
+  updatedAt: Date;
+};
+
+export type UserPlaceBlacklist = {
+  id: number;
+  userId: string;
+  placeId: number;
+  createdAt: Date;
+};
+
+export type CrowdfundCampaign = {
+  id: number;
+  countryCode: string;
+  countryNameZh: string;
+  countryNameEn: string;
+  goalAmount: number;
+  currentAmount: number;
+  contributorCount: number;
+  estimatedPlaces?: number;
+  status: string;
+  startDate: Date;
+  endDate?: Date;
+  launchedAt?: Date;
+  description?: string;
+  descriptionEn?: string;
+  imageUrl?: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type CrowdfundContribution = {
+  id: number;
+  campaignId: number;
+  userId?: string;
+  email?: string;
+  displayName?: string;
+  amount: number;
+  paymentMethod: string;
+  transactionId?: string;
+  receiptData?: string;
+  stripeSessionId?: string;
+  status: string;
+  priorityAccessUsed: boolean;
+  priorityAccessExpiresAt?: Date;
+  createdAt: Date;
+};
+
+export type ReferralCode = {
+  id: number;
+  userId: string;
+  code: string;
+  createdAt: Date;
+};
+
+export type UserReferral = {
+  id: number;
+  referrerId: string;
+  refereeId: string;
+  status: string;
+  registeredAt: Date;
+  activatedAt?: Date;
+  referrerRewardPaid: boolean;
+  createdAt: Date;
+};
+
+export type MerchantReferral = {
+  id: number;
+  referrerId: string;
+  merchantName: string;
+  address: string;
+  city: string;
+  country: string;
+  category: string;
+  contactInfo?: string;
+  googlePlaceId?: string;
+  notes?: string;
+  status: string;
+  reviewedBy?: string;
+  reviewedAt?: Date;
+  rejectionReason?: string;
+  linkedMerchantId?: number;
+  linkedPlaceId?: number;
+  createdAt: Date;
+};
+
+export type UserBalance = {
+  userId: string;
+  availableBalance: number;
+  pendingBalance: number;
+  lifetimeEarned: number;
+  lifetimeWithdrawn: number;
+  updatedAt: Date;
+};
+
+export type BalanceTransaction = {
+  id: number;
+  userId: string;
+  amount: number;
+  type: string;
+  referenceType?: string;
+  referenceId?: number;
+  description: string;
+  createdAt: Date;
+};
+
+export type WithdrawalRequest = {
+  id: number;
+  userId: string;
+  amount: number;
+  fee: number;
+  netAmount: number;
+  bankCode: string;
+  bankAccount: string;
+  accountName: string;
+  status: string;
+  processedBy?: string;
+  processedAt?: Date;
+  rejectionReason?: string;
+  createdAt: Date;
+};
+
+export type PlaceReport = {
+  id: number;
+  placeId: number;
+  userId: string;
+  reason: string;
+  description?: string;
+  status: string;
+  aiScore?: number;
+  reviewedBy?: string;
+  reviewedAt?: Date;
+  rejectionReason?: string;
+  rewardPaid: boolean;
+  createdAt: Date;
+};
+
+export type PlaceSuggestion = {
+  id: number;
+  userId: string;
+  placeName: string;
+  address: string;
+  city: string;
+  country: string;
+  category: string;
+  description?: string;
+  googleMapsUrl?: string;
+  googlePlaceId?: string;
+  status: string;
+  aiScore?: number;
+  voteApprove: number;
+  voteReject: number;
+  voteDeadline?: Date;
+  reviewedBy?: string;
+  reviewedAt?: Date;
+  rejectionReason?: string;
+  linkedPlaceId?: number;
+  rewardPaid: boolean;
+  createdAt: Date;
+};
+
+export type SuggestionVote = {
+  id: number;
+  suggestionId: number;
+  userId: string;
+  vote: string;
+  createdAt: Date;
+};
+
+export type PlaceExclusionVote = {
+  id: number;
+  placeId: number;
+  userId: string;
+  vote: string;
+  createdAt: Date;
+};
+
+export type UserDailyContribution = {
+  id: number;
+  userId: string;
+  date: string;
+  reportCount: number;
+  suggestionCount: number;
+  voteCount: number;
+  createdAt: Date;
+};
+
+export type SpecialistApplication = {
+  id: number;
+  userId: string;
+  realName: string;
+  regions: any;
+  introduction: string;
+  contactInfo: string;
+  status: string;
+  reviewedBy?: string;
+  reviewedAt?: Date;
+  rejectionReason?: string;
+  createdAt: Date;
+};
+
+export type GuestMigration = {
+  id: number;
+  guestUserId: string;
+  newUserId: string;
+  migratedCollections: number;
+  migratedInventory: number;
+  migratedNotifications: number;
+  createdAt: Date;
+};
+
+export type InsertCrowdfundCampaign = Partial<CrowdfundCampaign>;
+export type InsertAchievement = Partial<Achievement>;
+export type InsertUserLevel = Partial<UserLevel>;
+export type InsertAdPlacement = z.infer<typeof insertAdPlacementSchema>;
+
+// === 表格定義已暫時移除 ===
   level: integer("level").primaryKey(),           // 等級 1-99
   requiredExp: integer("required_exp").notNull(), // 累計經驗需求
   title: varchar("title", { length: 50 }).notNull(), // 稱號 "新手旅人"
