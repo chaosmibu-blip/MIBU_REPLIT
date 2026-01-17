@@ -1,8 +1,11 @@
 # MIBU API APP 契約 (APP)
 
-## 版本: 1.0.0
+## 版本: 1.1.0
 ## 最後更新: 2026-01-16
 ## 適用專案: MIBU App (React Native + Expo)
+
+### 變更日誌
+- **1.1.0**: 新增經濟系統、募資、推薦、貢獻、帳號系統 API
 
 ---
 
@@ -612,10 +615,731 @@ Mapbox Token
 
 ---
 
+## 經濟系統（等級/經驗/成就）
+
+### GET /api/user/level
+取得用戶等級資訊
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+interface UserLevelResponse {
+  level: UserLevel;
+  recentExp: ExpTransaction[];   // 最近 10 筆經驗記錄
+}
+
+interface ExpTransaction {
+  id: number;
+  amount: number;
+  eventType: string;
+  description: string;
+  createdAt: string;
+}
+```
+
+---
+
+### GET /api/user/experience/history
+取得經驗值記錄
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Query Parameters:**
+```
+page?: number    // 預設 1
+limit?: number   // 預設 20
+```
+
+**Response:**
+```typescript
+interface ExpHistoryResponse {
+  transactions: ExpTransaction[];
+  pagination: Pagination;
+  summary: {
+    totalEarned: number;
+    todayEarned: number;
+    dailyLimit: number;
+  };
+}
+```
+
+---
+
+### GET /api/user/achievements
+取得成就列表
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Query Parameters:**
+```
+category?: 'collector' | 'investor' | 'promoter' | 'business' | 'specialist'
+unlockedOnly?: boolean  // 預設 false
+```
+
+**Response:**
+```typescript
+interface AchievementsResponse {
+  achievements: Achievement[];
+  summary: {
+    total: number;
+    unlocked: number;
+    byCategory: Record<string, { total: number; unlocked: number }>;
+  };
+}
+```
+
+---
+
+### POST /api/user/achievements/:id/claim
+領取成就獎勵
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response (成功):**
+```typescript
+{
+  success: true;
+  achievement: Achievement;
+  rewards: {
+    exp: number;
+    title?: string;
+    frame?: string;
+    badge?: string;
+  };
+  newLevel?: UserLevel;  // 若升級則返回
+}
+```
+
+**Response (失敗):**
+```typescript
+{
+  success: false;
+  errorCode: 'E10003' | 'E10004';  // 未解鎖 | 已領取
+  message: string;
+}
+```
+
+---
+
+### POST /api/user/specialist/apply
+申請成為策劃師
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request:**
+```typescript
+{
+  introduction: string;     // 自我介紹（至少 50 字）
+  expertiseRegions: string[]; // 擅長地區
+  languages: string[];      // 可服務語言
+}
+```
+
+**Response:**
+```typescript
+{
+  success: true;
+  message: string;
+  applicationId: number;
+  status: 'pending';
+}
+```
+
+---
+
+## 募資系統
+
+### GET /api/crowdfund/campaigns
+取得募資活動列表
+
+**Query Parameters:**
+```
+status?: 'upcoming' | 'active' | 'completed' | 'launched'
+```
+
+**Response:**
+```typescript
+interface CampaignsResponse {
+  campaigns: CrowdfundCampaign[];
+  total: number;
+}
+```
+
+---
+
+### GET /api/crowdfund/campaigns/:id
+取得募資活動詳情
+
+**Response:**
+```typescript
+interface CampaignDetailResponse {
+  campaign: CrowdfundCampaign;
+  myContribution?: {
+    totalAmount: number;
+    contributionCount: number;
+    priorityAccessUsed: boolean;
+  };
+  recentContributors: {
+    userId: string;
+    name: string;
+    amount: number;
+    createdAt: string;
+  }[];
+}
+```
+
+---
+
+### POST /api/crowdfund/contribute
+參與募資（IAP 驗證後）
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request:**
+```typescript
+{
+  campaignId: number;
+  amount: number;
+  paymentMethod: 'iap_apple' | 'iap_google';
+  transactionId: string;
+  receiptData: string;       // Base64 encoded receipt
+}
+```
+
+**Response (成功):**
+```typescript
+{
+  success: true;
+  contribution: CrowdfundContribution;
+  campaign: CrowdfundCampaign;  // 更新後的進度
+  rewards?: {
+    exp: number;
+    achievement?: Achievement;
+  };
+}
+```
+
+---
+
+### GET /api/crowdfund/my-contributions
+取得我的募資記錄
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+interface MyContributionsResponse {
+  contributions: CrowdfundContribution[];
+  summary: {
+    totalAmount: number;
+    campaignsSupported: number;
+    campaignsLaunched: number;
+  };
+}
+```
+
+---
+
+## 推薦系統
+
+### GET /api/referral/my-code
+取得我的推薦碼
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+{
+  referralCode: ReferralCode;
+  stats: {
+    totalReferrals: number;
+    activatedReferrals: number;
+    pendingRewards: number;
+  };
+}
+```
+
+---
+
+### POST /api/referral/generate-code
+生成推薦碼（首次）
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+{
+  success: true;
+  referralCode: ReferralCode;
+}
+```
+
+---
+
+### GET /api/referral/validate/:code
+驗證推薦碼
+
+**Response:**
+```typescript
+{
+  valid: boolean;
+  referrerName?: string;     // 部分遮蔽
+  message?: string;
+}
+```
+
+---
+
+### POST /api/referral/apply
+使用推薦碼（註冊時）
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request:**
+```typescript
+{
+  code: string;
+}
+```
+
+**Response:**
+```typescript
+{
+  success: true;
+  message: string;
+  rewards: {
+    exp: number;
+  };
+}
+```
+
+---
+
+### GET /api/referral/my-referrals
+我推薦的人列表
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+{
+  referrals: UserReferral[];
+  pagination: Pagination;
+}
+```
+
+---
+
+### POST /api/referral/merchant
+提交商家推薦
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request:**
+```typescript
+{
+  merchantName: string;
+  address: string;
+  city: string;
+  country: string;
+  category: string;           // 七大分類
+  contactInfo?: string;
+  googlePlaceId?: string;
+  notes?: string;
+}
+```
+
+**Response:**
+```typescript
+{
+  success: true;
+  referralId: number;
+  status: 'pending';
+  message: string;
+}
+```
+
+---
+
+### GET /api/referral/balance
+取得我的餘額
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+{
+  balance: UserBalance;
+  canWithdraw: boolean;
+  minWithdrawAmount: number;
+  withdrawFee: number;
+}
+```
+
+---
+
+### GET /api/referral/transactions
+獎勵/提現記錄
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Query Parameters:**
+```
+page?: number
+limit?: number
+type?: 'referral_user' | 'referral_merchant' | 'withdraw'
+```
+
+**Response:**
+```typescript
+{
+  transactions: BalanceTransaction[];
+  pagination: Pagination;
+}
+```
+
+---
+
+### POST /api/referral/withdraw
+申請提現
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request:**
+```typescript
+{
+  amount: number;
+  bankCode: string;
+  bankAccount: string;
+  accountName: string;
+}
+```
+
+**Response (成功):**
+```typescript
+{
+  success: true;
+  withdrawal: WithdrawalRequest;
+  newBalance: UserBalance;
+}
+```
+
+**Response (失敗):**
+```typescript
+{
+  success: false;
+  errorCode: 'E12005' | 'E12006' | 'E12007';
+  message: string;
+}
+```
+
+---
+
+## 用戶貢獻系統
+
+### POST /api/contribution/report-closed
+回報歇業
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request:**
+```typescript
+{
+  placeId: number;
+  reason: 'permanently_closed' | 'temporarily_closed' | 'relocated' | 'info_error';
+  description?: string;
+}
+```
+
+**Response:**
+```typescript
+{
+  success: true;
+  report: PlaceReport;
+  message: string;
+}
+```
+
+---
+
+### GET /api/contribution/my-reports
+我的回報記錄
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+{
+  reports: PlaceReport[];
+  pagination: Pagination;
+  summary: {
+    total: number;
+    approved: number;
+    pending: number;
+  };
+}
+```
+
+---
+
+### POST /api/contribution/suggest-place
+建議景點
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request:**
+```typescript
+{
+  placeName: string;
+  address: string;
+  city: string;
+  country: string;
+  category: string;           // 七大分類
+  description?: string;
+  googleMapsUrl?: string;
+}
+```
+
+**Response:**
+```typescript
+{
+  success: true;
+  suggestion: PlaceSuggestion;
+  message: string;
+}
+```
+
+---
+
+### GET /api/contribution/my-suggestions
+我的建議記錄
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+{
+  suggestions: PlaceSuggestion[];
+  pagination: Pagination;
+}
+```
+
+---
+
+### POST /api/collection/:placeId/blacklist
+加入黑名單
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+{
+  success: true;
+  message: string;
+  rewards?: {
+    exp: number;
+  };
+}
+```
+
+---
+
+### DELETE /api/collection/:placeId/blacklist
+移除黑名單
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+{
+  success: true;
+  message: string;
+}
+```
+
+---
+
+### GET /api/collection/blacklist
+我的黑名單
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+{
+  places: {
+    id: number;
+    placeName: string;
+    city: string;
+    category: string;
+    addedAt: string;
+  }[];
+  total: number;
+}
+```
+
+---
+
+### GET /api/contribution/pending-votes
+待投票景點列表（排除投票）
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+{
+  places: {
+    id: number;
+    placeName: string;
+    city: string;
+    monthlyDislikeCount: number;
+    voteDeadline: string;
+    excludeVotes: number;
+    keepVotes: number;
+  }[];
+}
+```
+
+---
+
+### POST /api/contribution/vote/:placeId
+投票（排除/不排除）
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request:**
+```typescript
+{
+  vote: 'exclude' | 'keep';
+}
+```
+
+**Response:**
+```typescript
+{
+  success: true;
+  message: string;
+  rewards?: {
+    exp: number;
+  };
+}
+```
+
+---
+
+### GET /api/contribution/pending-suggestions
+待投票建議列表
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+{
+  suggestions: PlaceSuggestion[];
+}
+```
+
+---
+
+### POST /api/contribution/vote-suggestion/:id
+建議景點投票
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request:**
+```typescript
+{
+  vote: 'approve' | 'reject';
+}
+```
+
+**Response:**
+```typescript
+{
+  success: true;
+  message: string;
+  rewards?: {
+    exp: number;
+  };
+}
+```
+
+---
+
+## 帳號系統
+
+### POST /api/auth/bind
+綁定新身份
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request:**
+```typescript
+{
+  provider: 'apple' | 'google';
+  idToken?: string;           // Google
+  identityToken?: string;     // Apple
+}
+```
+
+**Response:**
+```typescript
+{
+  success: true;
+  identity: {
+    provider: string;
+    email: string;
+    linkedAt: string;
+  };
+  message: string;
+}
+```
+
+---
+
+### GET /api/auth/identities
+取得綁定身份列表
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+{
+  identities: {
+    id: number;
+    provider: 'apple' | 'google';
+    email: string;
+    isPrimary: boolean;
+    linkedAt: string;
+  }[];
+}
+```
+
+---
+
+### DELETE /api/auth/identities/:id
+解除綁定
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```typescript
+{
+  success: true;
+  message: string;
+}
+```
+
+**Note:** 不能解除唯一的身份綁定
+
+---
+
 ## 備註
 
 - 所有 APP API 需要 JWT Token 認證
-- 扭蛋每日限額 36 張（管理員無限制）
+- 扭蛋每日限額依等級而定（Lv.1=24, Lv.30=36），管理員無限制
 - 優惠券核銷需要商家每日核銷碼
 - SOS 功能會通知緊急聯絡人並記錄位置
 - 時間欄位均為 ISO 8601 格式
+- 投票資格：Lv.7 以上用戶

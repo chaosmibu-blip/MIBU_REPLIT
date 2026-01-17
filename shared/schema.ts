@@ -1387,6 +1387,9 @@ export const placeDrafts = pgTable("place_drafts", {
   googleReviewCount: integer("google_review_count"), // 評論數
   locationLat: text("location_lat"),
   locationLng: text("location_lng"),
+  openingHours: jsonb("opening_hours").$type<{ weekdayText?: string[]; periods?: any[] }>(), // 營業時間
+  phone: varchar("phone", { length: 50 }), // 聯絡電話
+  website: text("website"), // 官方網站
   status: varchar("status", { length: 20 }).default('pending').notNull(),
   approvedPlaceId: integer("approved_place_id").references(() => places.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -2176,3 +2179,481 @@ export const insertAdPlacementSchema = createInsertSchema(adPlacements).omit({
 
 export type AdPlacement = typeof adPlacements.$inferSelect;
 export type InsertAdPlacement = z.infer<typeof insertAdPlacementSchema>;
+
+// ============ 遊戲經濟系統 (Economy System) ============
+
+// 等級定義表
+export const levelDefinitions = pgTable("level_definitions", {
+  level: integer("level").primaryKey(),           // 等級 1-99
+  requiredExp: integer("required_exp").notNull(), // 累計經驗需求
+  title: varchar("title", { length: 50 }).notNull(), // 稱號 "新手旅人"
+  titleEn: varchar("title_en", { length: 50 }),   // 英文稱號
+  isMilestone: boolean("is_milestone").default(false).notNull(), // 是否為里程碑等級
+  isUnlocked: boolean("is_unlocked").default(true).notNull(), // 是否開放 (30以上為false)
+  perks: jsonb("perks").$type<{
+    dailyPulls?: number;      // 每日抽卡上限
+    inventorySlots?: number;  // 背包格數
+    frame?: string;           // 頭框
+    badge?: string;           // 徽章
+  }>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type LevelDefinition = typeof levelDefinitions.$inferSelect;
+
+// 用戶等級表
+export const userLevels = pgTable("user_levels", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  currentExp: integer("current_exp").default(0).notNull(),
+  currentLevel: integer("current_level").default(1).notNull(),
+  specialistInvitedAt: timestamp("specialist_invited_at"), // 收到策劃師邀請時間
+  specialistAppliedAt: timestamp("specialist_applied_at"), // 申請策劃師時間
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_levels_level").on(table.currentLevel),
+]);
+
+export const insertUserLevelSchema = createInsertSchema(userLevels).omit({
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type UserLevel = typeof userLevels.$inferSelect;
+export type InsertUserLevel = z.infer<typeof insertUserLevelSchema>;
+
+// 經驗值交易記錄表
+export const userExpTransactions = pgTable("user_exp_transactions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  amount: integer("amount").notNull(),            // 正數=獲得, 負數=扣除
+  eventType: varchar("event_type", { length: 50 }).notNull(), // 'daily_login', 'gacha_complete', 'achievement', etc.
+  referenceType: varchar("reference_type", { length: 50 }), // 關聯類型 'achievement', 'referral', etc.
+  referenceId: varchar("reference_id", { length: 100 }),    // 關聯ID
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_exp_transactions_user").on(table.userId),
+  index("IDX_user_exp_transactions_event").on(table.eventType),
+  index("IDX_user_exp_transactions_date").on(table.createdAt),
+]);
+
+export type UserExpTransaction = typeof userExpTransactions.$inferSelect;
+
+// 成就定義表
+export const achievements = pgTable("achievements", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 50 }).notNull().unique(), // 唯一識別碼
+  category: varchar("category", { length: 30 }).notNull(), // 'collector', 'investor', 'promoter', 'business', 'specialist'
+  nameZh: varchar("name_zh", { length: 100 }).notNull(),
+  nameEn: varchar("name_en", { length: 100 }),
+  description: text("description").notNull(),
+  descriptionEn: text("description_en"),
+  rarity: integer("rarity").default(1).notNull(), // 1-4 星
+  triggerCondition: jsonb("trigger_condition").$type<{
+    type: string;             // 'count', 'threshold', 'milestone'
+    target: string;           // 'collections', 'referrals', 'contributions', etc.
+    value: number;            // 目標數值
+    filters?: Record<string, any>; // 額外篩選條件
+  }>().notNull(),
+  expReward: integer("exp_reward").default(0).notNull(),
+  otherRewards: jsonb("other_rewards").$type<{
+    title?: string;
+    frame?: string;
+    badge?: string;
+    couponId?: number;
+  }>(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_achievements_category").on(table.category),
+  index("IDX_achievements_active").on(table.isActive),
+]);
+
+export const insertAchievementSchema = createInsertSchema(achievements).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type Achievement = typeof achievements.$inferSelect;
+export type InsertAchievement = z.infer<typeof insertAchievementSchema>;
+
+// 用戶成就表
+export const userAchievements = pgTable("user_achievements", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  achievementId: integer("achievement_id").notNull().references(() => achievements.id),
+  unlockedAt: timestamp("unlocked_at").defaultNow().notNull(),
+  rewardClaimed: boolean("reward_claimed").default(false).notNull(),
+  claimedAt: timestamp("claimed_at"),
+}, (table) => [
+  uniqueIndex("UQ_user_achievements").on(table.userId, table.achievementId),
+  index("IDX_user_achievements_user").on(table.userId),
+]);
+
+export type UserAchievement = typeof userAchievements.$inferSelect;
+
+// 用戶傾向追蹤表
+export const userTendencies = pgTable("user_tendencies", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  consumerScore: integer("consumer_score").default(0).notNull(),   // 參與者傾向
+  investorScore: integer("investor_score").default(0).notNull(),   // 投資者傾向
+  promoterScore: integer("promoter_score").default(0).notNull(),   // 推廣者傾向
+  businessScore: integer("business_score").default(0).notNull(),   // 業務傾向
+  specialistScore: integer("specialist_score").default(0).notNull(), // 策劃師傾向
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type UserTendency = typeof userTendencies.$inferSelect;
+
+// 用戶每日經驗統計（用於限額）
+export const userDailyExpStats = pgTable("user_daily_exp_stats", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  date: date("date").notNull(),
+  loginExp: integer("login_exp").default(0).notNull(),
+  gachaExp: integer("gacha_exp").default(0).notNull(),
+  voteExp: integer("vote_exp").default(0).notNull(),
+  shareExp: integer("share_exp").default(0).notNull(),
+  totalExp: integer("total_exp").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("UQ_user_daily_exp_stats").on(table.userId, table.date),
+  index("IDX_user_daily_exp_stats_date").on(table.date),
+]);
+
+export type UserDailyExpStat = typeof userDailyExpStats.$inferSelect;
+
+// 景點黑名單統計（全域）
+export const placeDislikeStats = pgTable("place_dislike_stats", {
+  placeId: integer("place_id").primaryKey().references(() => places.id),
+  monthlyDislikeCount: integer("monthly_dislike_count").default(0).notNull(),
+  totalDislikeCount: integer("total_dislike_count").default(0).notNull(),
+  lastResetAt: timestamp("last_reset_at").defaultNow().notNull(),
+  status: varchar("status", { length: 20 }).default("normal").notNull(), // 'normal', 'reduced', 'pending_vote', 'excluded'
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_place_dislike_stats_status").on(table.status),
+]);
+
+export type PlaceDislikeStat = typeof placeDislikeStats.$inferSelect;
+
+// 用戶景點黑名單（個人）
+export const userPlaceBlacklists = pgTable("user_place_blacklists", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  placeId: integer("place_id").notNull().references(() => places.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("UQ_user_place_blacklists").on(table.userId, table.placeId),
+  index("IDX_user_place_blacklists_user").on(table.userId),
+]);
+
+export type UserPlaceBlacklist = typeof userPlaceBlacklists.$inferSelect;
+
+// ============ 募資系統 (Crowdfund System) ============
+
+// 募資活動表
+export const crowdfundCampaigns = pgTable("crowdfund_campaigns", {
+  id: serial("id").primaryKey(),
+  countryCode: varchar("country_code", { length: 10 }).notNull(), // 'JP', 'TH', 'SG'
+  countryNameZh: varchar("country_name_zh", { length: 100 }).notNull(),
+  countryNameEn: varchar("country_name_en", { length: 100 }).notNull(),
+  goalAmount: integer("goal_amount").notNull(),     // 目標金額（NT$）
+  currentAmount: integer("current_amount").default(0).notNull(),
+  contributorCount: integer("contributor_count").default(0).notNull(),
+  estimatedPlaces: integer("estimated_places"),     // 預估景點數
+  status: varchar("status", { length: 20 }).default("upcoming").notNull(), // 'upcoming', 'active', 'completed', 'collecting', 'launched', 'failed'
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),                   // null = 無期限
+  launchedAt: timestamp("launched_at"),
+  description: text("description"),
+  descriptionEn: text("description_en"),
+  imageUrl: text("image_url"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_crowdfund_campaigns_status").on(table.status),
+  uniqueIndex("UQ_crowdfund_campaigns_country").on(table.countryCode),
+]);
+
+export const insertCrowdfundCampaignSchema = createInsertSchema(crowdfundCampaigns).omit({
+  id: true,
+  currentAmount: true,
+  contributorCount: true,
+  launchedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type CrowdfundCampaign = typeof crowdfundCampaigns.$inferSelect;
+export type InsertCrowdfundCampaign = z.infer<typeof insertCrowdfundCampaignSchema>;
+
+// 募資貢獻表
+export const crowdfundContributions = pgTable("crowdfund_contributions", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => crowdfundCampaigns.id),
+  userId: text("user_id").references(() => users.id), // null = 匿名贊助
+  email: varchar("email", { length: 255 }),         // 匿名贊助時的 email
+  displayName: varchar("display_name", { length: 100 }), // 顯示名稱
+  amount: integer("amount").notNull(),
+  paymentMethod: varchar("payment_method", { length: 20 }).notNull(), // 'iap_apple', 'iap_google', 'stripe'
+  transactionId: varchar("transaction_id", { length: 255 }).unique(),
+  receiptData: text("receipt_data"),                // IAP 收據（驗證用）
+  stripeSessionId: varchar("stripe_session_id", { length: 255 }),
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // 'pending', 'verified', 'failed'
+  priorityAccessUsed: boolean("priority_access_used").default(false).notNull(),
+  priorityAccessExpiresAt: timestamp("priority_access_expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_crowdfund_contributions_campaign").on(table.campaignId),
+  index("IDX_crowdfund_contributions_user").on(table.userId),
+  index("IDX_crowdfund_contributions_status").on(table.status),
+]);
+
+export type CrowdfundContribution = typeof crowdfundContributions.$inferSelect;
+
+// ============ 推薦系統 (Referral System) ============
+
+// 推薦碼
+export const referralCodes = pgTable("referral_codes", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id).unique(),
+  code: varchar("code", { length: 20 }).notNull().unique(), // 'AB1234'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_referral_codes_user").on(table.userId),
+]);
+
+export type ReferralCode = typeof referralCodes.$inferSelect;
+
+// 用戶推薦關係
+export const userReferrals = pgTable("user_referrals", {
+  id: serial("id").primaryKey(),
+  referrerId: text("referrer_id").notNull().references(() => users.id), // 推薦人
+  refereeId: text("referee_id").notNull().references(() => users.id).unique(), // 被推薦人（每人只能被推薦一次）
+  status: varchar("status", { length: 20 }).default("registered").notNull(), // 'registered', 'activated'
+  registeredAt: timestamp("registered_at").defaultNow().notNull(),
+  activatedAt: timestamp("activated_at"), // 完成首次扭蛋的時間
+  referrerRewardPaid: boolean("referrer_reward_paid").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_referrals_referrer").on(table.referrerId),
+  index("IDX_user_referrals_referee").on(table.refereeId),
+]);
+
+export type UserReferral = typeof userReferrals.$inferSelect;
+
+// 商家推薦
+export const merchantReferrals = pgTable("merchant_referrals", {
+  id: serial("id").primaryKey(),
+  referrerId: text("referrer_id").notNull().references(() => users.id), // 推薦人
+  merchantName: varchar("merchant_name", { length: 255 }).notNull(),
+  address: text("address").notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }).default("台灣").notNull(),
+  category: varchar("category", { length: 50 }).notNull(),
+  contactInfo: text("contact_info"), // 聯絡方式
+  googlePlaceId: varchar("google_place_id", { length: 100 }),
+  notes: text("notes"), // 備註
+  status: varchar("status", { length: 30 }).default("pending").notNull(), // 'pending', 'approved', 'rejected', 'merchant_registered'
+  reviewedBy: text("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  linkedMerchantId: integer("linked_merchant_id").references(() => merchants.id), // 關聯的商家 ID
+  linkedPlaceId: integer("linked_place_id").references(() => places.id), // 關聯的景點 ID
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_merchant_referrals_referrer").on(table.referrerId),
+  index("IDX_merchant_referrals_status").on(table.status),
+]);
+
+export type MerchantReferral = typeof merchantReferrals.$inferSelect;
+
+// 用戶餘額
+export const userBalances = pgTable("user_balances", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  availableBalance: integer("available_balance").default(0).notNull(), // 可提現金額（NT$）
+  pendingBalance: integer("pending_balance").default(0).notNull(), // 待確認金額
+  lifetimeEarned: integer("lifetime_earned").default(0).notNull(), // 累計獲得
+  lifetimeWithdrawn: integer("lifetime_withdrawn").default(0).notNull(), // 累計提現
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type UserBalance = typeof userBalances.$inferSelect;
+
+// 餘額交易記錄
+export const balanceTransactions = pgTable("balance_transactions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  amount: integer("amount").notNull(), // 正=收入，負=支出
+  type: varchar("type", { length: 30 }).notNull(), // 'referral_user', 'referral_merchant', 'withdraw', 'adjustment'
+  referenceType: varchar("reference_type", { length: 30 }), // 'user_referral', 'merchant_referral', 'withdrawal'
+  referenceId: integer("reference_id"),
+  description: text("description").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_balance_transactions_user").on(table.userId),
+  index("IDX_balance_transactions_type").on(table.type),
+]);
+
+export type BalanceTransaction = typeof balanceTransactions.$inferSelect;
+
+// 提現申請
+export const withdrawalRequests = pgTable("withdrawal_requests", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  amount: integer("amount").notNull(), // 申請金額
+  fee: integer("fee").default(0).notNull(), // 手續費
+  netAmount: integer("net_amount").notNull(), // 實際匯款金額
+  bankCode: varchar("bank_code", { length: 10 }).notNull(),
+  bankAccount: varchar("bank_account", { length: 30 }).notNull(),
+  accountName: varchar("account_name", { length: 100 }).notNull(),
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // 'pending', 'processing', 'completed', 'rejected'
+  processedBy: text("processed_by").references(() => users.id),
+  processedAt: timestamp("processed_at"),
+  rejectionReason: text("rejection_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_withdrawal_requests_user").on(table.userId),
+  index("IDX_withdrawal_requests_status").on(table.status),
+]);
+
+export type WithdrawalRequest = typeof withdrawalRequests.$inferSelect;
+
+// ============ 用戶貢獻系統 (Contribution System) ============
+
+// 歇業回報
+export const placeReports = pgTable("place_reports", {
+  id: serial("id").primaryKey(),
+  placeId: integer("place_id").notNull().references(() => places.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  reason: varchar("reason", { length: 30 }).notNull(), // 'permanently_closed', 'temporarily_closed', 'relocated', 'info_error'
+  description: text("description"), // 補充說明
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // 'pending', 'approved', 'rejected'
+  aiScore: doublePrecision("ai_score"), // AI 可信度分數 0-1
+  reviewedBy: text("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  rewardPaid: boolean("reward_paid").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_place_reports_place").on(table.placeId),
+  index("IDX_place_reports_user").on(table.userId),
+  index("IDX_place_reports_status").on(table.status),
+]);
+
+export type PlaceReport = typeof placeReports.$inferSelect;
+
+// 景點建議
+export const placeSuggestions = pgTable("place_suggestions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  placeName: varchar("place_name", { length: 255 }).notNull(),
+  address: text("address").notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }).default("台灣").notNull(),
+  category: varchar("category", { length: 50 }).notNull(),
+  description: text("description"),
+  googleMapsUrl: text("google_maps_url"),
+  googlePlaceId: varchar("google_place_id", { length: 100 }),
+  status: varchar("status", { length: 20 }).default("pending_ai").notNull(), // 'pending_ai', 'pending_vote', 'pending_review', 'approved', 'rejected'
+  aiScore: doublePrecision("ai_score"), // AI 品質分數 0-1
+  voteApprove: integer("vote_approve").default(0).notNull(),
+  voteReject: integer("vote_reject").default(0).notNull(),
+  voteDeadline: timestamp("vote_deadline"),
+  reviewedBy: text("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  linkedPlaceId: integer("linked_place_id").references(() => places.id), // 採納後關聯的 place ID
+  rewardPaid: boolean("reward_paid").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_place_suggestions_user").on(table.userId),
+  index("IDX_place_suggestions_status").on(table.status),
+]);
+
+export type PlaceSuggestion = typeof placeSuggestions.$inferSelect;
+
+// 建議投票記錄
+export const suggestionVotes = pgTable("suggestion_votes", {
+  id: serial("id").primaryKey(),
+  suggestionId: integer("suggestion_id").notNull().references(() => placeSuggestions.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  vote: varchar("vote", { length: 10 }).notNull(), // 'approve', 'reject'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_suggestion_votes_suggestion").on(table.suggestionId),
+  uniqueIndex("IDX_suggestion_votes_unique").on(table.suggestionId, table.userId),
+]);
+
+export type SuggestionVote = typeof suggestionVotes.$inferSelect;
+
+// 排除投票記錄（景點黑名單投票）
+export const placeExclusionVotes = pgTable("place_exclusion_votes", {
+  id: serial("id").primaryKey(),
+  placeId: integer("place_id").notNull().references(() => places.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  vote: varchar("vote", { length: 10 }).notNull(), // 'exclude', 'keep'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_place_exclusion_votes_place").on(table.placeId),
+  uniqueIndex("IDX_place_exclusion_votes_unique").on(table.placeId, table.userId),
+]);
+
+export type PlaceExclusionVote = typeof placeExclusionVotes.$inferSelect;
+
+// 用戶每日貢獻統計（用於限額）
+export const userDailyContributions = pgTable("user_daily_contributions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  date: date("date").notNull(),
+  reportCount: integer("report_count").default(0).notNull(),
+  suggestionCount: integer("suggestion_count").default(0).notNull(),
+  voteCount: integer("vote_count").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_user_daily_contributions_user").on(table.userId),
+  uniqueIndex("IDX_user_daily_contributions_unique").on(table.userId, table.date),
+]);
+
+export type UserDailyContribution = typeof userDailyContributions.$inferSelect;
+
+// ============ 帳號系統 (Account System) ============
+
+// 策劃師申請
+export const specialistApplications = pgTable("specialist_applications", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  realName: varchar("real_name", { length: 100 }).notNull(),
+  regions: jsonb("regions").notNull(), // 擅長地區
+  introduction: text("introduction").notNull(),
+  contactInfo: text("contact_info").notNull(),
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // 'pending', 'approved', 'rejected'
+  reviewedBy: text("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_specialist_applications_user").on(table.userId),
+  index("IDX_specialist_applications_status").on(table.status),
+]);
+
+export type SpecialistApplication = typeof specialistApplications.$inferSelect;
+
+// 訪客帳號遷移記錄
+export const guestMigrations = pgTable("guest_migrations", {
+  id: serial("id").primaryKey(),
+  guestUserId: text("guest_user_id").notNull(), // 原訪客 ID
+  newUserId: text("new_user_id").notNull().references(() => users.id), // 新帳號 ID
+  migratedCollections: integer("migrated_collections").default(0).notNull(),
+  migratedInventory: integer("migrated_inventory").default(0).notNull(),
+  migratedNotifications: integer("migrated_notifications").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_guest_migrations_guest").on(table.guestUserId),
+  uniqueIndex("IDX_guest_migrations_unique").on(table.guestUserId),
+]);
+
+export type GuestMigration = typeof guestMigrations.$inferSelect;

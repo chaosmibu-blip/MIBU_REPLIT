@@ -447,6 +447,13 @@ const checkPlaceCardPermission = (tier: string, feature: string) => {
 
 ## Changelog
 
+### 2026-01-16 - 商家新增店家：營業時間欄位
+- **place_drafts 表新增欄位**：
+  - `openingHours: jsonb` - 營業時間（Google Places 格式 `{ weekdayText: string[], periods: any[] }`）
+  - `phone: varchar(50)` - 聯絡電話
+  - `website: text` - 官方網站
+- **API 更新**：`POST /api/merchant/places/new` 支援新增營業時間欄位
+
 ### 2026-01-12 - 權限檢查實作與商家自建景點
 - **權限檢查實作**：`server/lib/merchantPermissions.ts`
   - `canAddPlaceCard()` - 檢查商家可否新增景點

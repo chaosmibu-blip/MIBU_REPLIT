@@ -1,0 +1,381 @@
+/**
+ * 遊戲經濟系統初始資料
+ * 執行: npx tsx server/scripts/seed-economy-data.ts
+ */
+
+import { db } from "../db";
+import { levelDefinitions, achievements } from "../../shared/schema";
+
+// 等級定義資料 (Lv.1-30)
+const levelData = [
+  { level: 1, requiredExp: 0, title: "新手旅人", titleEn: "Novice Traveler", isMilestone: true, isUnlocked: true, perks: { dailyPulls: 24, inventorySlots: 20 } },
+  { level: 2, requiredExp: 50, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 3, requiredExp: 120, title: "初心者", titleEn: "Beginner", isMilestone: true, isUnlocked: true, perks: { title: "初心者" } },
+  { level: 4, requiredExp: 210, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 5, requiredExp: 330, title: "探索者", titleEn: "Explorer", isMilestone: true, isUnlocked: true, perks: { dailyPulls: 26, inventorySlots: 22, frame: "explorer" } },
+  { level: 6, requiredExp: 480, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 7, requiredExp: 670, title: "貢獻者", titleEn: "Contributor", isMilestone: true, isUnlocked: true, perks: { badge: "contributor" } },
+  { level: 8, requiredExp: 900, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 9, requiredExp: 1180, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 10, requiredExp: 1500, title: "資深旅人", titleEn: "Senior Traveler", isMilestone: true, isUnlocked: true, perks: { dailyPulls: 28, frame: "senior" } },
+  { level: 11, requiredExp: 1900, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 12, requiredExp: 2400, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 13, requiredExp: 3000, title: "守護者", titleEn: "Guardian", isMilestone: true, isUnlocked: true, perks: { inventorySlots: 24, badge: "guardian" } },
+  { level: 14, requiredExp: 3700, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 15, requiredExp: 4500, title: "冒險家", titleEn: "Adventurer", isMilestone: true, isUnlocked: true, perks: { dailyPulls: 30, frame: "adventurer" } },
+  { level: 16, requiredExp: 5400, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 17, requiredExp: 6400, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 18, requiredExp: 7500, title: "開拓者", titleEn: "Pioneer", isMilestone: true, isUnlocked: true, perks: { inventorySlots: 26, title: "開拓者" } },
+  { level: 19, requiredExp: 8700, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 20, requiredExp: 10000, title: "行者", titleEn: "Wayfarer", isMilestone: true, isUnlocked: true, perks: { dailyPulls: 32, inventorySlots: 28, frame: "wayfarer" } },
+  { level: 21, requiredExp: 11500, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 22, requiredExp: 13200, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 23, requiredExp: 15100, title: "導航者", titleEn: "Navigator", isMilestone: true, isUnlocked: true, perks: { dailyPulls: 34, badge: "navigator" } },
+  { level: 24, requiredExp: 17200, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 25, requiredExp: 19500, title: "領路人", titleEn: "Pathfinder", isMilestone: true, isUnlocked: true, perks: { inventorySlots: 29, frame: "pathfinder" } },
+  { level: 26, requiredExp: 22000, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 27, requiredExp: 24700, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 28, requiredExp: 27600, title: "先驅者", titleEn: "Trailblazer", isMilestone: true, isUnlocked: true, perks: { dailyPulls: 35, title: "先驅者" } },
+  { level: 29, requiredExp: 30700, title: "旅人", titleEn: "Traveler", isMilestone: false, isUnlocked: true, perks: null },
+  { level: 30, requiredExp: 34000, title: "旅途大師", titleEn: "Journey Master", isMilestone: true, isUnlocked: true, perks: { dailyPulls: 36, inventorySlots: 30, frame: "legend" } },
+];
+
+// 成就定義資料
+const achievementData = [
+  // 參與者線（收藏家/探索家）
+  {
+    code: "COLLECTOR_STARTER",
+    category: "collector",
+    nameZh: "初心收藏家",
+    nameEn: "Beginner Collector",
+    description: "收集 30 個圖鑑景點",
+    descriptionEn: "Collect 30 places in your collection",
+    rarity: 1,
+    triggerCondition: { type: "count", target: "collections", value: 30 },
+    expReward: 30,
+    otherRewards: { title: "收藏家" },
+    sortOrder: 1,
+  },
+  {
+    code: "CITY_EXPLORER_5",
+    category: "collector",
+    nameZh: "城市探索者",
+    nameEn: "City Explorer",
+    description: "探索 5 個不同城市",
+    descriptionEn: "Explore 5 different cities",
+    rarity: 1,
+    triggerCondition: { type: "count", target: "cities_explored", value: 5 },
+    expReward: 30,
+    otherRewards: { frame: "explorer" },
+    sortOrder: 2,
+  },
+  {
+    code: "FOOD_HUNTER_30",
+    category: "collector",
+    nameZh: "美食獵人",
+    nameEn: "Food Hunter",
+    description: "收集 30 個美食類景點",
+    descriptionEn: "Collect 30 food places",
+    rarity: 2,
+    triggerCondition: { type: "count", target: "collections", value: 30, filters: { category: "美食" } },
+    expReward: 80,
+    otherRewards: { frame: "food_hunter" },
+    sortOrder: 3,
+  },
+  {
+    code: "CITY_CONQUEROR",
+    category: "collector",
+    nameZh: "城市征服者",
+    nameEn: "City Conqueror",
+    description: "完成一個城市的 100% 圖鑑",
+    descriptionEn: "Complete 100% collection of a city",
+    rarity: 3,
+    triggerCondition: { type: "milestone", target: "city_completion", value: 100 },
+    expReward: 200,
+    otherRewards: { frame: "conqueror" },
+    sortOrder: 4,
+  },
+  {
+    code: "RAINBOW_MASTER",
+    category: "collector",
+    nameZh: "七彩大師",
+    nameEn: "Rainbow Master",
+    description: "七大分類各收集 20 個景點",
+    descriptionEn: "Collect 20 places in each of 7 categories",
+    rarity: 4,
+    triggerCondition: { type: "milestone", target: "category_completion", value: 20 },
+    expReward: 500,
+    otherRewards: { frame: "legend_collector" },
+    sortOrder: 5,
+  },
+  {
+    code: "WORLD_TRAVELER",
+    category: "collector",
+    nameZh: "世界旅人",
+    nameEn: "World Traveler",
+    description: "探索 15 個不同城市",
+    descriptionEn: "Explore 15 different cities",
+    rarity: 4,
+    triggerCondition: { type: "count", target: "cities_explored", value: 15 },
+    expReward: 500,
+    otherRewards: { title: "世界旅人" },
+    sortOrder: 6,
+  },
+
+  // 投資者線（開拓者）
+  {
+    code: "PIONEER_FIRST",
+    category: "investor",
+    nameZh: "開拓先鋒",
+    nameEn: "Pioneer",
+    description: "首次參與募資",
+    descriptionEn: "Participate in crowdfunding for the first time",
+    rarity: 2,
+    triggerCondition: { type: "milestone", target: "crowdfund_first", value: 1 },
+    expReward: 80,
+    otherRewards: { badge: "pioneer" },
+    sortOrder: 10,
+  },
+  {
+    code: "MAP_UNLOCKER",
+    category: "investor",
+    nameZh: "地圖解鎖者",
+    nameEn: "Map Unlocker",
+    description: "參與的募資活動達標",
+    descriptionEn: "Crowdfunding campaign you supported reached goal",
+    rarity: 2,
+    triggerCondition: { type: "milestone", target: "crowdfund_success", value: 1 },
+    expReward: 80,
+    otherRewards: null,
+    sortOrder: 11,
+  },
+  {
+    code: "DUAL_PIONEER",
+    category: "investor",
+    nameZh: "雙國開拓",
+    nameEn: "Dual Pioneer",
+    description: "2 個國家募資達標",
+    descriptionEn: "Supported campaigns reached goal in 2 countries",
+    rarity: 3,
+    triggerCondition: { type: "count", target: "crowdfund_countries_success", value: 2 },
+    expReward: 200,
+    otherRewards: { frame: "pioneer" },
+    sortOrder: 12,
+  },
+  {
+    code: "WORLD_PIONEER",
+    category: "investor",
+    nameZh: "世界開拓者",
+    nameEn: "World Pioneer",
+    description: "5 個國家募資達標",
+    descriptionEn: "Supported campaigns reached goal in 5 countries",
+    rarity: 4,
+    triggerCondition: { type: "count", target: "crowdfund_countries_success", value: 5 },
+    expReward: 500,
+    otherRewards: { title: "開拓者" },
+    sortOrder: 13,
+  },
+  {
+    code: "GENESIS_SPONSOR",
+    category: "investor",
+    nameZh: "創世贊助者",
+    nameEn: "Genesis Sponsor",
+    description: "累計募資金額前 10%",
+    descriptionEn: "Be in top 10% of total crowdfunding contributions",
+    rarity: 4,
+    triggerCondition: { type: "threshold", target: "crowdfund_total_percentile", value: 10 },
+    expReward: 500,
+    otherRewards: { frame: "genesis", badge: "genesis" },
+    sortOrder: 14,
+  },
+
+  // 推廣者線（社群領袖）
+  {
+    code: "WORD_OF_MOUTH_3",
+    category: "promoter",
+    nameZh: "口碑傳播",
+    nameEn: "Word of Mouth",
+    description: "推薦 3 位用戶",
+    descriptionEn: "Refer 3 users",
+    rarity: 1,
+    triggerCondition: { type: "count", target: "user_referrals", value: 3 },
+    expReward: 30,
+    otherRewards: { title: "傳播者" },
+    sortOrder: 20,
+  },
+  {
+    code: "NETWORKER_10",
+    category: "promoter",
+    nameZh: "人脈達人",
+    nameEn: "Networker",
+    description: "推薦 10 位用戶",
+    descriptionEn: "Refer 10 users",
+    rarity: 2,
+    triggerCondition: { type: "count", target: "user_referrals", value: 10 },
+    expReward: 80,
+    otherRewards: { frame: "networker" },
+    sortOrder: 21,
+  },
+  {
+    code: "COMMUNITY_LEADER_30",
+    category: "promoter",
+    nameZh: "社群領袖",
+    nameEn: "Community Leader",
+    description: "推薦 30 位用戶",
+    descriptionEn: "Refer 30 users",
+    rarity: 3,
+    triggerCondition: { type: "count", target: "user_referrals", value: 30 },
+    expReward: 200,
+    otherRewards: { title: "領袖" },
+    sortOrder: 22,
+  },
+  {
+    code: "INFLUENCE_MASTER_100",
+    category: "promoter",
+    nameZh: "影響力大師",
+    nameEn: "Influence Master",
+    description: "推薦 100 位用戶",
+    descriptionEn: "Refer 100 users",
+    rarity: 4,
+    triggerCondition: { type: "count", target: "user_referrals", value: 100 },
+    expReward: 500,
+    otherRewards: { frame: "legend_promoter" },
+    sortOrder: 23,
+  },
+
+  // 業務線（商業大使）
+  {
+    code: "BUSINESS_PARTNER_1",
+    category: "business",
+    nameZh: "商業夥伴",
+    nameEn: "Business Partner",
+    description: "推薦 1 家商家",
+    descriptionEn: "Refer 1 merchant",
+    rarity: 2,
+    triggerCondition: { type: "count", target: "merchant_referrals", value: 1 },
+    expReward: 80,
+    otherRewards: { badge: "partner" },
+    sortOrder: 30,
+  },
+  {
+    code: "BUSINESS_PRO_5",
+    category: "business",
+    nameZh: "業務達人",
+    nameEn: "Business Pro",
+    description: "推薦 5 家商家",
+    descriptionEn: "Refer 5 merchants",
+    rarity: 3,
+    triggerCondition: { type: "count", target: "merchant_referrals", value: 5 },
+    expReward: 200,
+    otherRewards: { frame: "business" },
+    sortOrder: 31,
+  },
+  {
+    code: "BUSINESS_AMBASSADOR_10",
+    category: "business",
+    nameZh: "商業大使",
+    nameEn: "Business Ambassador",
+    description: "推薦 10 家商家",
+    descriptionEn: "Refer 10 merchants",
+    rarity: 4,
+    triggerCondition: { type: "count", target: "merchant_referrals", value: 10 },
+    expReward: 500,
+    otherRewards: { title: "大使" },
+    sortOrder: 32,
+  },
+  {
+    code: "BUSINESS_MOGUL_30",
+    category: "business",
+    nameZh: "商業巨擘",
+    nameEn: "Business Mogul",
+    description: "推薦 30 家商家",
+    descriptionEn: "Refer 30 merchants",
+    rarity: 4,
+    triggerCondition: { type: "count", target: "merchant_referrals", value: 30 },
+    expReward: 500,
+    otherRewards: { frame: "legend_business" },
+    sortOrder: 33,
+  },
+
+  // 策劃師線（旅途大師）
+  {
+    code: "SPECIALIST_FIRST",
+    category: "specialist",
+    nameZh: "新手策劃師",
+    nameEn: "Novice Specialist",
+    description: "完成首單服務",
+    descriptionEn: "Complete first service order",
+    rarity: 2,
+    triggerCondition: { type: "milestone", target: "specialist_first_order", value: 1 },
+    expReward: 80,
+    otherRewards: { badge: "specialist" },
+    sortOrder: 40,
+  },
+  {
+    code: "SPECIALIST_PRO_10",
+    category: "specialist",
+    nameZh: "專業策劃師",
+    nameEn: "Professional Specialist",
+    description: "完成 10 單服務",
+    descriptionEn: "Complete 10 service orders",
+    rarity: 3,
+    triggerCondition: { type: "count", target: "specialist_orders", value: 10 },
+    expReward: 200,
+    otherRewards: { frame: "specialist" },
+    sortOrder: 41,
+  },
+  {
+    code: "FIVE_STAR_SPECIALIST",
+    category: "specialist",
+    nameZh: "五星策劃師",
+    nameEn: "Five Star Specialist",
+    description: "累計 50 個好評",
+    descriptionEn: "Receive 50 positive reviews",
+    rarity: 4,
+    triggerCondition: { type: "count", target: "specialist_good_reviews", value: 50 },
+    expReward: 500,
+    otherRewards: { title: "五星" },
+    sortOrder: 42,
+  },
+  {
+    code: "JOURNEY_MASTER_100",
+    category: "specialist",
+    nameZh: "旅途大師",
+    nameEn: "Journey Master",
+    description: "完成 100 單服務",
+    descriptionEn: "Complete 100 service orders",
+    rarity: 4,
+    triggerCondition: { type: "count", target: "specialist_orders", value: 100 },
+    expReward: 500,
+    otherRewards: { frame: "legend_specialist" },
+    sortOrder: 43,
+  },
+];
+
+async function seed() {
+  console.log("🌱 開始植入遊戲經濟系統初始資料...");
+
+  try {
+    // 植入等級定義
+    console.log("📊 植入等級定義...");
+    for (const level of levelData) {
+      await db.insert(levelDefinitions).values(level).onConflictDoNothing();
+    }
+    console.log(`✅ 已植入 ${levelData.length} 個等級定義`);
+
+    // 植入成就定義
+    console.log("🏆 植入成就定義...");
+    for (const achievement of achievementData) {
+      await db.insert(achievements).values(achievement as any).onConflictDoNothing();
+    }
+    console.log(`✅ 已植入 ${achievementData.length} 個成就定義`);
+
+    console.log("🎉 遊戲經濟系統初始資料植入完成!");
+  } catch (error) {
+    console.error("❌ 植入失敗:", error);
+    process.exit(1);
+  }
+}
+
+// 執行
+seed();

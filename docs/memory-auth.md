@@ -334,10 +334,212 @@ await SecureStore.setItemAsync('userToken', token);
 
 ---
 
-## 待開發功能
-- [x] Google Sign In ✅ 2026-01-06 已完成
-- [x] auth_identities 同步（登入時自動寫入）✅ 2026-01-06 已完成
-- [ ] 帳號連結 API（讓用戶綁定多種登入方式）
+## 帳號系統重構（規劃中）
+
+### 1. 移除訪客登入
+
+**現況**：AuthProvider 包含 'guest' 類型
+**目標**：新用戶必須使用 Apple/Google 登入
+
+```typescript
+// 修改前
+export type AuthProvider = 'google' | 'apple' | 'email' | 'replit' | 'guest';
+
+// 修改後
+export type AuthProvider = 'google' | 'apple' | 'email' | 'replit';
+// 移除 'guest'，APP 端移除訪客登入選項
+```
+
+**實作步驟**：
+1. APP 端移除「訪客登入」按鈕
+2. 後端仍保留 guest 資料相容性（不刪除舊資料）
+3. 新用戶強制 Apple/Google 登入
+
+---
+
+### 2. 舊訪客帳號綁定
+
+**場景**：舊用戶以訪客身份使用過，有 collections 資料
+
+**流程**：
+```
+舊訪客開啟更新後的 APP
+         │
+         ▼
+偵測到本機有 guest token
+         │
+         ▼
+顯示綁定提示彈窗：
+「您之前的旅遊紀錄需要綁定帳號才能保留
+ 請選擇登入方式：」
+├── [Apple 登入]
+└── [Google 登入]
+         │
+         ▼
+登入成功後
+         │
+         ▼
+後端：將 guest_xxx 的資料遷移到新帳號
+├── collections
+├── user_inventory
+├── notifications
+└── 其他關聯資料
+         │
+         ▼
+綁定完成，清除本機 guest token
+```
+
+**API**：
+```typescript
+POST /api/auth/migrate-guest
+Body: {
+  guestToken: string,  // 舊的 guest JWT
+  newToken: string     // 新登入的 JWT
+}
+
+// 後端邏輯
+1. 驗證 guestToken，取得 guestUserId
+2. 驗證 newToken，取得 newUserId
+3. 遷移所有 guestUserId 的資料到 newUserId
+4. 標記 guest 帳號為已遷移
+```
+
+---
+
+### 3. 多身份支援
+
+**現況**：auth_identities 表已支援一個 userId 綁定多個 provider
+
+**用途**：
+- 同一帳號可用 Apple + Google 登入
+- 角色切換不需要 UI，直接從不同端登入
+
+**角色與登入端**：
+| 角色 | 登入端 |
+|------|--------|
+| user | APP 旅客端 |
+| merchant | APP 商家端（隱藏中）|
+| specialist | APP 專員端（隱藏中）|
+| admin | Web 後台 |
+
+**帳號連結 API（待開發）**：
+```typescript
+POST /api/auth/link
+Body: {
+  provider: 'google' | 'apple',
+  idToken: string
+}
+
+// 將新的登入方式綁定到當前帳號
+```
+
+---
+
+### 4. 策劃師申請流程
+
+**觸發條件**：用戶達到 Lv.10
+
+**流程**：
+```
+用戶達到 Lv.10
+         │
+         ▼
+觸發策劃師邀請彈窗（儀式感）
+「恭喜成為資深旅人！
+ 邀請你成為旅程策劃師...」
+├── [立即申請]
+└── [稍後再說]
+         │
+         ▼ (選擇申請)
+填寫申請表單：
+├── 真實姓名
+├── 擅長地區
+├── 自我介紹
+└── 聯絡方式
+         │
+         ▼
+提交申請
+         │
+         ▼
+後台審核（或自動通過）
+         │
+         ▼
+審核通過
+├── user.roles 加入 'specialist'
+├── 發送通知
+└── 解鎖專員端登入
+         │
+         ▼
+用戶可從專員端登入
+```
+
+**API**：
+```typescript
+// 申請
+POST /api/specialist/apply
+Body: {
+  realName: string,
+  regions: string[],     // 擅長地區
+  introduction: string,
+  contactInfo: string
+}
+
+// 查詢狀態
+GET /api/specialist/application-status
+Response: {
+  status: 'none' | 'pending' | 'approved' | 'rejected',
+  appliedAt?: timestamp,
+  reviewedAt?: timestamp
+}
+```
+
+**資料表**：
+```typescript
+specialistApplications {
+  id: serial PK,
+  userId: string FK,
+  realName: string,
+  regions: jsonb,
+  introduction: string,
+  contactInfo: string,
+  status: 'pending' | 'approved' | 'rejected',
+  reviewedBy: string | null,
+  reviewedAt: timestamp | null,
+  rejectionReason: string | null,
+  createdAt: timestamp
+}
+```
+
+---
+
+## 開發狀態
+
+### 已完成
+- [x] Google Sign In ✅ 2026-01-06
+- [x] auth_identities 同步 ✅ 2026-01-06
+- [x] 策劃師申請資料表（`specialist_applications`）
+- [x] 訪客遷移資料表（`guest_migrations`）
+- [x] Storage 層（`accountStorage.ts`）
+- [x] API: `GET /api/specialist/eligibility` 檢查申請資格
+- [x] API: `POST /api/specialist/apply` 申請策劃師
+- [x] API: `GET /api/specialist/application-status` 查詢申請狀態
+- [x] API: `POST /api/specialist/mark-invited` 標記已邀請
+- [x] API: `POST /api/auth/migrate-guest` 遷移訪客帳號
+- [x] API: `GET /api/auth/linked-accounts` 取得已連結帳號
+- [x] API: `POST /api/auth/link` 連結新登入方式
+- [x] API: `DELETE /api/auth/unlink/:provider` 解除連結
+- [x] API: `GET /api/account/profile` 取得帳號資訊
+
+### 待開發（前端）
+- [ ] 移除訪客登入選項（APP）
+- [ ] 舊訪客綁定提示彈窗（APP）
+- [ ] 策劃師申請 UI
+
+### 待開發（後端）
+- [ ] 策劃師申請 Admin 審核後台
+- [ ] idToken 驗證（Google/Apple）
+
+### 未來規劃
 - [ ] Refresh Token 機制
 - [ ] 雙因素認證 (2FA)
 - [ ] 登入記錄 / 異常登入通知

@@ -14,6 +14,11 @@ import inventoryRouter from './inventory';
 import notificationsRouter from './notifications';
 import adsRouter from './ads';
 import monitoringRouter from './monitoring';
+import economyRouter from './economy';
+import crowdfundRouter from './crowdfund';
+import referralRouter from './referral';
+import contributionRouter from './contribution';
+import accountRouter from './account';
 import { subscriptionPlansPublicRouter } from './admin/admin-subscription-plans';
 import { storage } from '../storage';
 import { AnnouncementType } from '@shared/schema';
@@ -52,6 +57,11 @@ router.use('/notifications', notificationsRouter); // 通知 API: /api/notificat
 router.use('/ads', adsRouter); // 廣告 API: /api/ads/placements
 router.use('/', subscriptionPlansPublicRouter); // 公開 API: /api/subscription-plans
 router.use('/', monitoringRouter); // 監控 API: /api/health, /api/health/detailed, /api/metrics
+router.use('/', economyRouter); // 經濟系統 API: /api/user/level, /api/user/achievements, /api/levels
+router.use('/', crowdfundRouter); // 募資系統 API: /api/crowdfund/campaigns, /api/crowdfund/contribute
+router.use('/', referralRouter); // 推薦系統 API: /api/referral/*
+router.use('/', contributionRouter); // 用戶貢獻 API: /api/contribution/*, /api/collection/blacklist
+router.use('/', accountRouter); // 帳號系統 API: /api/account/*, /api/auth/migrate-guest, /api/specialist/apply
 
 export default router;
 
@@ -69,4 +79,9 @@ export {
   adminRouter,
   inventoryRouter,
   monitoringRouter,
+  economyRouter,
+  crowdfundRouter,
+  referralRouter,
+  contributionRouter,
+  accountRouter,
 };

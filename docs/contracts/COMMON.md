@@ -1,7 +1,10 @@
 # MIBU API 通用契約 (COMMON)
 
-## 版本: 1.0.0
+## 版本: 1.1.0
 ## 最後更新: 2026-01-16
+
+### 變更日誌
+- **1.1.0**: 新增經濟系統、募資、推薦、貢獻相關型別與錯誤碼
 
 ---
 
@@ -218,6 +221,45 @@ interface UserResponse {
 | E9003 | SERVICE_UNAVAILABLE | 服務暫時無法使用 |
 | E9004 | RATE_LIMITED | 請求過於頻繁 |
 
+### 經濟系統相關 (E10xxx)
+| 錯誤碼 | 常數名稱 | 說明 |
+|--------|----------|------|
+| E10001 | LEVEL_NOT_FOUND | 等級資料不存在 |
+| E10002 | ACHIEVEMENT_NOT_FOUND | 成就不存在 |
+| E10003 | ACHIEVEMENT_NOT_UNLOCKED | 成就尚未解鎖 |
+| E10004 | REWARD_ALREADY_CLAIMED | 獎勵已領取 |
+| E10005 | DAILY_LIMIT_REACHED | 已達每日上限 |
+
+### 募資相關 (E11xxx)
+| 錯誤碼 | 常數名稱 | 說明 |
+|--------|----------|------|
+| E11001 | CAMPAIGN_NOT_FOUND | 募資活動不存在 |
+| E11002 | CAMPAIGN_NOT_ACTIVE | 募資活動未開放 |
+| E11003 | CAMPAIGN_COMPLETED | 募資活動已結束 |
+| E11004 | INVALID_CONTRIBUTION | 無效的貢獻金額 |
+| E11005 | IAP_VERIFICATION_FAILED | IAP 驗證失敗 |
+
+### 推薦相關 (E12xxx)
+| 錯誤碼 | 常數名稱 | 說明 |
+|--------|----------|------|
+| E12001 | REFERRAL_CODE_NOT_FOUND | 推薦碼不存在 |
+| E12002 | REFERRAL_CODE_INVALID | 無效的推薦碼 |
+| E12003 | REFERRAL_SELF_NOT_ALLOWED | 不能推薦自己 |
+| E12004 | REFERRAL_ALREADY_USED | 已使用過推薦碼 |
+| E12005 | INSUFFICIENT_BALANCE | 餘額不足 |
+| E12006 | WITHDRAW_MIN_AMOUNT | 未達最低提現金額 |
+| E12007 | WITHDRAW_PENDING | 有待處理的提現申請 |
+| E12008 | BANK_INFO_REQUIRED | 需要銀行帳號資訊 |
+
+### 貢獻相關 (E13xxx)
+| 錯誤碼 | 常數名稱 | 說明 |
+|--------|----------|------|
+| E13001 | REPORT_DUPLICATE | 重複回報 |
+| E13002 | SUGGESTION_DUPLICATE | 重複建議 |
+| E13003 | VOTE_ALREADY_CAST | 已投過票 |
+| E13004 | VOTE_NOT_ELIGIBLE | 無投票資格 |
+| E13005 | CONTRIBUTION_LIMIT_REACHED | 已達每日貢獻上限 |
+
 ---
 
 ## 共用型別
@@ -293,6 +335,146 @@ interface Pagination {
   totalPages: number;
   hasNext: boolean;
   hasPrev: boolean;
+}
+
+// 用戶等級
+interface UserLevel {
+  userId: string;
+  currentLevel: number;
+  currentExp: number;
+  nextLevelExp: number;        // 下一等所需經驗
+  expToNextLevel: number;      // 距離下一等還需經驗
+  title: string;               // 當前稱號
+  dailyPullLimit: number;      // 每日抽卡上限
+  inventorySlots: number;      // 背包格數
+  specialistInvited: boolean;  // 是否已收到策劃師邀請
+}
+
+// 成就
+interface Achievement {
+  id: number;
+  code: string;
+  category: 'collector' | 'investor' | 'promoter' | 'business' | 'specialist';
+  nameZh: string;
+  description: string;
+  rarity: 1 | 2 | 3 | 4;       // 1-4 星
+  expReward: number;
+  otherRewards?: {
+    title?: string;
+    frame?: string;
+    badge?: string;
+  };
+  isUnlocked?: boolean;        // 用戶是否已解鎖
+  unlockedAt?: string;
+  rewardClaimed?: boolean;
+}
+
+// 募資活動
+interface CrowdfundCampaign {
+  id: number;
+  countryCode: string;
+  countryNameZh: string;
+  countryNameEn: string;
+  goalAmount: number;
+  currentAmount: number;
+  contributorCount: number;
+  progressPercent: number;
+  estimatedPlaces: number;
+  status: 'upcoming' | 'active' | 'completed' | 'collecting' | 'launched' | 'failed';
+  startDate: string;
+  endDate?: string;
+  launchedAt?: string;
+}
+
+// 募資貢獻
+interface CrowdfundContribution {
+  id: number;
+  campaignId: number;
+  campaign?: CrowdfundCampaign;
+  amount: number;
+  paymentMethod: 'iap_apple' | 'iap_google' | 'stripe';
+  priorityAccessUsed: boolean;
+  createdAt: string;
+}
+
+// 推薦碼
+interface ReferralCode {
+  code: string;
+  fullCode: string;            // 'MIBU' + code
+  shareUrl: string;
+  createdAt: string;
+}
+
+// 推薦關係
+interface UserReferral {
+  id: number;
+  refereeId: string;
+  refereeName?: string;
+  status: 'registered' | 'activated';
+  registeredAt: string;
+  activatedAt?: string;
+  rewardPaid: boolean;
+}
+
+// 用戶餘額
+interface UserBalance {
+  availableBalance: number;
+  pendingBalance: number;
+  lifetimeEarned: number;
+  lifetimeWithdrawn: number;
+}
+
+// 餘額交易
+interface BalanceTransaction {
+  id: number;
+  amount: number;
+  type: 'referral_user' | 'referral_merchant' | 'withdraw' | 'adjustment';
+  description: string;
+  createdAt: string;
+}
+
+// 提現申請
+interface WithdrawalRequest {
+  id: number;
+  amount: number;
+  fee: number;
+  netAmount: number;
+  bankCode: string;
+  bankAccount: string;
+  accountName: string;
+  status: 'pending' | 'processing' | 'completed' | 'rejected';
+  rejectionReason?: string;
+  createdAt: string;
+  processedAt?: string;
+}
+
+// 歇業回報
+interface PlaceReport {
+  id: number;
+  placeId: number;
+  placeName?: string;
+  reason: 'permanently_closed' | 'temporarily_closed' | 'relocated' | 'info_error';
+  description?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  rewardPaid: boolean;
+  createdAt: string;
+}
+
+// 景點建議
+interface PlaceSuggestion {
+  id: number;
+  placeName: string;
+  address: string;
+  city: string;
+  country: string;
+  category: string;
+  description?: string;
+  status: 'pending_ai' | 'pending_vote' | 'pending_review' | 'approved' | 'rejected';
+  voteApprove: number;
+  voteReject: number;
+  voteDeadline?: string;
+  rewardPaid: boolean;
+  createdAt: string;
 }
 ```
 
