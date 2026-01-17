@@ -1271,4 +1271,176 @@ router.patch("/places/:id/toggle-status", isAuthenticated, async (req: any, res)
   }
 });
 
+/**
+ * DELETE /api/admin/places/:id
+ * 刪除單一景點（軟刪除 - 設為停用）
+ */
+router.delete("/places/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
+
+    const placeId = parseInt(req.params.id);
+    if (isNaN(placeId)) {
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '無效的景點 ID'));
+    }
+    const hardDelete = req.query.hard === 'true';
+    const cascade = req.query.cascade === 'true'; // 是否級聯刪除相關資料
+
+    if (hardDelete) {
+      // 硬刪除 - 從資料庫移除
+      let cleanedRecords = { collections: 0, merchantLinks: 0, coupons: 0, subscriptions: 0, drafts: 0 };
+
+      if (cascade) {
+        // 級聯刪除：先清除所有關聯資料
+        const [col, links, coup, subs, drafts] = await Promise.all([
+          db.execute(sql`DELETE FROM collections WHERE official_place_id = ${placeId} RETURNING id`),
+          db.execute(sql`DELETE FROM merchant_place_links WHERE official_place_id = ${placeId} RETURNING id`),
+          db.execute(sql`DELETE FROM coupons WHERE place_id = ${placeId} RETURNING id`),
+          db.execute(sql`DELETE FROM merchant_subscriptions WHERE place_id = ${placeId} RETURNING id`),
+          db.execute(sql`UPDATE place_drafts SET approved_place_id = NULL WHERE approved_place_id = ${placeId} RETURNING id`),
+        ]);
+        cleanedRecords = {
+          collections: col.rows.length,
+          merchantLinks: links.rows.length,
+          coupons: coup.rows.length,
+          subscriptions: subs.rows.length,
+          drafts: drafts.rows.length,
+        };
+      }
+
+      const result = await db.execute(sql`
+        DELETE FROM places WHERE id = ${placeId}
+        RETURNING id, place_name
+      `);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json(createErrorResponse(ErrorCode.PLACE_NOT_FOUND));
+      }
+
+      const place = result.rows[0] as any;
+      res.json({
+        success: true,
+        message: `景點「${place.place_name}」已永久刪除`,
+        ...(cascade && { cleanedRecords })
+      });
+    } else {
+      // 軟刪除 - 設為停用
+      const result = await db.execute(sql`
+        UPDATE places SET is_active = false
+        WHERE id = ${placeId}
+        RETURNING id, place_name
+      `);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json(createErrorResponse(ErrorCode.PLACE_NOT_FOUND));
+      }
+
+      const place = result.rows[0] as any;
+      res.json({
+        success: true,
+        message: `景點「${place.place_name}」已停用`
+      });
+    }
+  } catch (error: any) {
+    console.error("Admin delete place error:", error);
+    // 檢查是否為外鍵約束錯誤
+    if (error.code === '23503') {
+      return res.status(409).json(createErrorResponse(
+        ErrorCode.INVALID_PARAMS,
+        '無法刪除：此景點已被用戶收藏或商家認領，請先移除相關資料'
+      ));
+    }
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '刪除景點失敗'));
+  }
+});
+
+/**
+ * POST /api/admin/places/batch-delete
+ * 批次刪除景點
+ */
+router.post("/places/batch-delete", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub;
+    if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
+
+    const user = await storage.getUser(userId);
+    if (user?.role !== 'admin') return res.status(403).json(createErrorResponse(ErrorCode.ADMIN_REQUIRED));
+
+    const { ids, hardDelete = false, cascade = false } = req.body as { ids: number[]; hardDelete?: boolean; cascade?: boolean };
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '請提供要刪除的景點 ID'));
+    }
+
+    if (ids.length > 100) {
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '單次最多刪除 100 筆'));
+    }
+
+    // 驗證所有 ID 都是有效數字
+    const validIds = ids.filter(id => typeof id === 'number' && !isNaN(id) && Number.isInteger(id));
+    if (validIds.length !== ids.length) {
+      return res.status(400).json(createErrorResponse(ErrorCode.INVALID_PARAMS, '包含無效的景點 ID'));
+    }
+
+    let deletedCount = 0;
+    let cleanedRecords = { collections: 0, merchantLinks: 0, coupons: 0, subscriptions: 0, drafts: 0 };
+
+    if (hardDelete) {
+      if (cascade) {
+        // 級聯刪除：先清除所有關聯資料
+        const [col, links, coup, subs, drafts] = await Promise.all([
+          db.execute(sql`DELETE FROM collections WHERE official_place_id = ANY(${ids}) RETURNING id`),
+          db.execute(sql`DELETE FROM merchant_place_links WHERE official_place_id = ANY(${ids}) RETURNING id`),
+          db.execute(sql`DELETE FROM coupons WHERE place_id = ANY(${ids}) RETURNING id`),
+          db.execute(sql`DELETE FROM merchant_subscriptions WHERE place_id = ANY(${ids}) RETURNING id`),
+          db.execute(sql`UPDATE place_drafts SET approved_place_id = NULL WHERE approved_place_id = ANY(${ids}) RETURNING id`),
+        ]);
+        cleanedRecords = {
+          collections: col.rows.length,
+          merchantLinks: links.rows.length,
+          coupons: coup.rows.length,
+          subscriptions: subs.rows.length,
+          drafts: drafts.rows.length,
+        };
+      }
+
+      // 硬刪除
+      const result = await db.execute(sql`
+        DELETE FROM places WHERE id = ANY(${ids})
+        RETURNING id
+      `);
+      deletedCount = result.rows.length;
+    } else {
+      // 軟刪除
+      const result = await db.execute(sql`
+        UPDATE places SET is_active = false
+        WHERE id = ANY(${ids})
+        RETURNING id
+      `);
+      deletedCount = result.rows.length;
+    }
+
+    res.json({
+      success: true,
+      deletedCount,
+      message: `已${hardDelete ? '永久刪除' : '停用'} ${deletedCount} 筆景點`,
+      ...(cascade && { cleanedRecords })
+    });
+  } catch (error: any) {
+    console.error("Admin batch delete places error:", error);
+    // 檢查是否為外鍵約束錯誤
+    if (error.code === '23503') {
+      return res.status(409).json(createErrorResponse(
+        ErrorCode.INVALID_PARAMS,
+        '無法刪除：部分景點已被用戶收藏或商家認領，請先移除相關資料'
+      ));
+    }
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, '批次刪除失敗'));
+  }
+});
+
 export default router;

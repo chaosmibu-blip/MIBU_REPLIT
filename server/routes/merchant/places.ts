@@ -262,12 +262,25 @@ router.put("/:linkId", isAuthenticated, async (req: any, res) => {
     }
 
     const linkId = parseInt(req.params.linkId);
-    const { promoTitle, promoDescription, promoImageUrl, isPromoActive } = req.body;
-
-    const updated = await storage.updateMerchantPlaceLink(linkId, {
+    const {
+      // 基本資訊
+      description,
+      googleMapUrl,
+      openingHours,
+      // 優惠推廣
       promoTitle,
       promoDescription,
-      promoImageUrl,
+      isPromoActive
+    } = req.body;
+
+    const updated = await storage.updateMerchantPlaceLink(linkId, {
+      // 基本資訊
+      description,
+      googleMapUrl,
+      openingHours,
+      // 優惠推廣
+      promoTitle,
+      promoDescription,
       isPromoActive
     });
 

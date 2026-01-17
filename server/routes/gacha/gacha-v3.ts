@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import * as crypto from "crypto";
 import { storage } from "../../storage";
-import { isAuthenticated } from "../../replitAuth";
+import { isAuthenticated, optionalAuth } from "../../replitAuth";
 import { GACHA_DEDUP_LIMIT, guestSessionDedup, cleanupGuestSessions } from "../../lib/utils/gacha";
 import { inferTimeSlot, sortPlacesByTimeSlot, type TimeSlot } from "../../lib/timeSlotInferrer";
 import { getLocalizedDescription } from "./shared";
@@ -237,7 +237,7 @@ router.post("/gacha/pull/v3", isAuthenticated, async (req: any, res) => {
   }
 });
 
-router.post("/gacha/itinerary/v3", isAuthenticated, async (req: any, res) => {
+router.post("/gacha/itinerary/v3", optionalAuth, async (req: any, res) => {
   const userId = req.user?.claims?.sub || req.jwtUser?.userId || 'guest';
   const sessionId = crypto.randomUUID();
   const startTime = Date.now();
