@@ -1794,94 +1794,12 @@ export const insertSosAlertSchema = createInsertSchema(sosAlerts).omit({
 export type SosAlert = typeof sosAlerts.$inferSelect;
 export type InsertSosAlert = z.infer<typeof insertSosAlertSchema>;
 
-// ============ Extended User Profile ============
-
-export const userProfiles = pgTable("user_profiles", {
-  id: serial("id").primaryKey(),
-  userId: varchar("user_id").references(() => users.id).notNull().unique(),
-  gender: varchar("gender", { length: 20 }),
-  birthDate: timestamp("birth_date"),
-  phone: varchar("phone", { length: 50 }),
-  dietaryRestrictions: text("dietary_restrictions").array(), // 飲食禁忌 (array of tags)
-  medicalHistory: text("medical_history").array(), // 疾病史 (array of tags)
-  emergencyContactName: text("emergency_contact_name"),
-  emergencyContactPhone: text("emergency_contact_phone"),
-  emergencyContactRelation: text("emergency_contact_relation"),
-  preferredLanguage: varchar("preferred_language", { length: 10 }).default('zh'),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => [
-  index("IDX_user_profiles_user").on(table.userId),
-]);
-
-export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
-  user: one(users, {
-    fields: [userProfiles.userId],
-    references: [users.id],
-  }),
-}));
-
-export const insertUserProfileSchema = createInsertSchema(userProfiles).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export type UserProfile = typeof userProfiles.$inferSelect;
-export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
-
-// ============ Extended Merchant Profile ============
+// ============ Deprecated Tables (2026-01-17) ============
+// NOTE: userProfiles 表已刪除，所有字段已合併到 users 表
+// NOTE: merchantProfiles 表已刪除，所有字段已合併到 merchants 表
 
 export type MerchantTier = 'free' | 'pro' | 'premium';
 export type TripCardTier = 'free' | 'pro' | 'premium';
-
-export const merchantProfiles = pgTable("merchant_profiles", {
-  id: serial("id").primaryKey(),
-  merchantId: integer("merchant_id").references(() => merchants.id).notNull().unique(),
-  ownerName: text("owner_name").notNull(), // 管理者姓名
-  businessName: text("business_name").notNull(), // 商家名稱
-  taxId: text("tax_id"), // 統編（選填）
-  businessCategory: text("business_category").notNull(), // 營業類別
-  address: text("address").notNull(), // 地址
-  phone: text("phone"), // 電話
-  mobile: text("mobile"), // 手機
-  email: text("email").notNull(),
-  merchantTier: varchar("merchant_tier", { length: 20 }).default('free').notNull(), // free, pro, premium
-  tripCardTier: varchar("trip_card_tier", { length: 20 }).default('free').notNull(), // free, pro, premium
-  maxTripCards: integer("max_trip_cards").default(1).notNull(), // Based on merchant tier
-  maxCouponSchemes: integer("max_coupon_schemes").default(1).notNull(), // Based on trip card tier
-  isApproved: boolean("is_approved").default(false).notNull(), // 審核狀態
-  approvedBy: varchar("approved_by").references(() => users.id),
-  approvedAt: timestamp("approved_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => [
-  index("IDX_merchant_profiles_merchant").on(table.merchantId),
-  index("IDX_merchant_profiles_approved").on(table.isApproved),
-]);
-
-export const merchantProfilesRelations = relations(merchantProfiles, ({ one }) => ({
-  merchant: one(merchants, {
-    fields: [merchantProfiles.merchantId],
-    references: [merchants.id],
-  }),
-  approver: one(users, {
-    fields: [merchantProfiles.approvedBy],
-    references: [users.id],
-  }),
-}));
-
-export const insertMerchantProfileSchema = createInsertSchema(merchantProfiles).omit({
-  id: true,
-  isApproved: true,
-  approvedBy: true,
-  approvedAt: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export type MerchantProfile = typeof merchantProfiles.$inferSelect;
-export type InsertMerchantProfile = z.infer<typeof insertMerchantProfileSchema>;
 
 // ============ Collection Enhancements ============
 

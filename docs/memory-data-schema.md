@@ -9,7 +9,7 @@
 - **Schema 定義**: `shared/schema.ts`
 - **遷移指令**: `npm run db:push`
 
-## 表格分類 (82 張表/列舉)
+## 表格分類 (80 張表/列舉)
 
 ### 1. 地區階層 (Location Hierarchy)
 ```
@@ -26,18 +26,18 @@ categories (七大類別: 美食、住宿、景點、購物、娛樂設施、生
 
 ### 3. 用戶系統 (User System)
 ```
-users ─┬── user_profiles
-       ├── sessions
+users ─┬── sessions
        ├── user_locations (即時位置)
        ├── user_notifications
        ├── user_inventory (背包)
        └── user_daily_gacha_stats (每日抽卡計數)
+
+# 注意：user_profiles 已刪除（2026-01-17），個人資料存儲在 users 表
 ```
 
 ### 4. 商家系統 (Merchant System)
 ```
-merchants ─┬── merchant_profiles
-           ├── merchant_place_links ── merchant_coupons
+merchants ─┬── merchant_place_links ── merchant_coupons
            ├── merchant_analytics
            ├── merchant_subscriptions ── refund_requests 🆕 2026-01-09
            └── transactions
@@ -47,6 +47,8 @@ coupons (用戶持有的優惠券)
 
 coupon_rarity_configs
 coupon_probability_settings
+
+# 注意：merchant_profiles 已刪除（2026-01-17），商家資料存儲在 merchants 表
 ```
 
 #### refund_requests 表欄位說明（2026-01-09 新增）
@@ -307,17 +309,14 @@ DO UPDATE SET pullCount = pullCount + :count
 | `place_cache` | `IDX_place_cache_ai_reviewed` | AI 審核狀態篩選 |
 | `service_relations` | `IDX_service_relations_status` | 服務狀態篩選 |
 
-**冗餘表改進建議**（待評估）：
+**冗餘表處理**（已完成）：
 
-| 冗餘表對 | 狀態 | 建議 |
-|----------|------|------|
-| `users` vs `userProfiles` | 🟡 待處理 | 合併到 `users`，需遷移資料 |
-| `merchants` vs `merchantProfiles` | 🟡 待處理 | 合併到 `merchants`，需遷移資料 |
+| 刪除的表 | 原因 | 替代方案 |
+|----------|------|----------|
+| `userProfiles` | 所有字段在 `users` 表已存在 | 直接使用 `users` 表 |
+| `merchantProfiles` | 所有字段在 `merchants` 表已存在，且完全未被使用 | 直接使用 `merchants` 表 |
 
-> ⚠️ 冗餘表合併是 breaking change，需要：
-> 1. 資料遷移腳本
-> 2. 修改相關 Storage 層
-> 3. 三端同步
+> ✅ 已更新 `userStorage.ts` 移除 `userProfiles` 引用
 
 ---
 
