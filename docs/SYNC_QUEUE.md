@@ -7,7 +7,47 @@
 
 ## 待處理 (Pending)
 
-（目前沒有待處理的同步任務）
+### [2026-01-17] 後端 CLAUDE.md v2.0 更新通知
+
+**影響範圍**: WEB + APP（低優先級）
+
+**後端變更摘要**:
+- 後端 CLAUDE.md 更新至 v2.0
+- 資料表數量：57 → 82 張表/列舉
+- 記憶庫數量：15 → 22 個
+- 新增 Phase 1-6 開發階段記錄
+- 更新路由、Storage 模組清單
+
+**官網同步指令**:
+```
+確認官網 CLAUDE.md 中引用的後端記憶庫路徑是否正確：
+- memory-data-schema.md（現為 82 張表）
+- memory-api-dictionary.md
+- memory-auth.md
+- memory-payment-commerce.md
+
+如有引用後端表數量或記憶庫數量，請更新為最新數據。
+```
+
+**APP 同步指令**:
+```
+確認 APP CLAUDE.md 中引用的後端記憶庫路徑是否正確：
+- memory-data-schema.md（現為 82 張表）
+- memory-api-dictionary.md
+- memory-auth.md
+- contracts/APP.md
+
+如有引用後端表數量或記憶庫數量，請更新為最新數據。
+```
+
+**狀態**: ⏳ pending
+
+**需更新的記憶庫**:
+- 後端：CLAUDE.md ✅ 已完成
+- 官網：CLAUDE.md（確認引用）
+- APP：CLAUDE.md（確認引用）
+
+---
 
 ---
 
