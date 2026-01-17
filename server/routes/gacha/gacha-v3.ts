@@ -567,13 +567,6 @@ router.post("/gacha/itinerary/v3", optionalAuth, async (req: any, res) => {
         const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
         const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
         
-        const formatOpeningHours = (hours: any): string => {
-          if (!hours) return '未提供';
-          if (Array.isArray(hours)) return hours.slice(0, 2).join('; ');
-          if (hours.weekday_text) return hours.weekday_text.slice(0, 2).join('; ');
-          return '未提供';
-        };
-        
         const allPlacesInfo = selectedPlaces.map((p, idx) => ({
           idx: idx + 1,
           name: p.placeName,
@@ -582,13 +575,12 @@ router.post("/gacha/itinerary/v3", optionalAuth, async (req: any, res) => {
           lat: p.locationLat || 0,
           lng: p.locationLng || 0,
           description: (p.description || '').slice(0, 80),
-          hours: formatOpeningHours(p.openingHours)
         }));
         
         const reorderPrompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
 
 地點列表：
-${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜座標:(${p.lat},${p.lng})｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
+${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜座標:(${p.lat},${p.lng})｜${p.description || '無描述'}`).join('\n')}
 
 排序規則（依優先順序）：
 1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
@@ -734,13 +726,6 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
           const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
           const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
           
-          const formatHours = (hours: any): string => {
-            if (!hours) return '未提供';
-            if (Array.isArray(hours)) return hours.slice(0, 2).join('; ');
-            if (hours.weekday_text) return hours.weekday_text.slice(0, 2).join('; ');
-            return '未提供';
-          };
-          
           const round2PlacesInfo = finalPlaces.map((p, idx) => ({
             idx: idx + 1,
             name: p.placeName,
@@ -749,13 +734,12 @@ ${allPlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}�
             lat: p.locationLat || 0,
             lng: p.locationLng || 0,
             description: (p.description || '').slice(0, 80),
-            hours: formatHours(p.openingHours)
           }));
-          
+
           const round2Prompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
 
 地點列表：
-${round2PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜座標:(${p.lat},${p.lng})｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
+${round2PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜座標:(${p.lat},${p.lng})｜${p.description || '無描述'}`).join('\n')}
 
 排序規則（依優先順序）：
 1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
@@ -875,13 +859,12 @@ ${round2PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
                       lat: p.locationLat || 0,
                       lng: p.locationLng || 0,
                       description: (p.description || '').slice(0, 80),
-                      hours: formatHours(p.openingHours)
                     }));
-                    
+
                     const round3Prompt = `你是一日遊行程排序專家。請根據地點資訊安排最佳順序。
 
 地點列表：
-${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜座標:(${p.lat},${p.lng})｜${p.description || '無描述'}｜營業:${p.hours}`).join('\n')}
+${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory}｜座標:(${p.lat},${p.lng})｜${p.description || '無描述'}`).join('\n')}
 
 排序規則（依優先順序）：
 1. 時段邏輯：早餐/咖啡廳→上午景點→午餐→下午活動→晚餐/夜市→宵夜/酒吧→住宿（住宿必須最後）
