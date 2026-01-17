@@ -1,9 +1,10 @@
 # MIBU API 通用契約 (COMMON)
 
-## 版本: 1.1.0
-## 最後更新: 2026-01-16
+## 版本: 1.2.0
+## 最後更新: 2026-01-17
 
 ### 變更日誌
+- **1.2.0**: 新增活動系統 API（公告/節慶活動/限時活動）
 - **1.1.0**: 新增經濟系統、募資、推薦、貢獻相關型別與錯誤碼
 
 ---
@@ -126,6 +127,61 @@ interface UserResponse {
 
 ### POST /api/auth/logout
 登出
+
+---
+
+## 活動系統 API（公開）
+
+### GET /api/events
+取得已審核通過的活動列表
+
+**Query Parameters:**
+```typescript
+interface EventsQuery {
+  type?: 'announcement' | 'festival' | 'limited';  // 活動類型篩選
+  city?: string;          // 城市篩選
+  limit?: number;         // 數量限制（預設 20，最大 100）
+  offset?: number;        // 分頁偏移（預設 0）
+}
+```
+
+**Response:**
+```typescript
+interface EventsResponse {
+  events: Event[];
+  total: number;
+  hasMore: boolean;
+}
+
+interface Event {
+  id: number;
+  title: string;
+  description?: string;
+  eventType: 'announcement' | 'festival' | 'limited';
+  location?: string;
+  locationCity?: string;
+  startDate?: string;     // ISO 8601 格式 (YYYY-MM-DD)
+  endDate?: string;       // ISO 8601 格式 (YYYY-MM-DD)
+  sourceUrl?: string;     // 活動來源連結
+  imageUrl?: string;
+  createdAt: string;
+}
+```
+
+**範例請求:**
+```
+GET /api/events?type=festival&city=台北市&limit=10
+```
+
+### GET /api/events/:id
+取得單一活動詳情
+
+**Response:**
+```typescript
+{
+  event: Event;
+}
+```
 
 ---
 
@@ -474,6 +530,22 @@ interface PlaceSuggestion {
   voteReject: number;
   voteDeadline?: string;
   rewardPaid: boolean;
+  createdAt: string;
+}
+
+// 活動
+interface Event {
+  id: number;
+  title: string;
+  description?: string;
+  eventType: 'announcement' | 'festival' | 'limited';
+  location?: string;
+  locationCity?: string;
+  startDate?: string;     // ISO 8601 格式 (YYYY-MM-DD)
+  endDate?: string;       // ISO 8601 格式 (YYYY-MM-DD)
+  sourceUrl?: string;     // 活動來源連結
+  imageUrl?: string;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
   createdAt: string;
 }
 ```

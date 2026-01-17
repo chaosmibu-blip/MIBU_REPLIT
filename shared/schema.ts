@@ -2589,3 +2589,73 @@ export const guestMigrations = pgTable("guest_migrations", {
 ]);
 
 export type GuestMigration = typeof guestMigrations.$inferSelect;
+
+// ============ 活動系統 (Event System) ============
+
+// 爬蟲來源表
+export const eventSources = pgTable("event_sources", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(), // 來源名稱 "交通部觀光署"
+  url: text("url").notNull(), // 爬蟲網址
+  sourceType: varchar("source_type", { length: 30 }).notNull(), // 'festival', 'limited', 'both'
+  description: text("description"), // 來源說明
+  crawlSelector: text("crawl_selector"), // CSS 選擇器（可選）
+  isActive: boolean("is_active").default(true).notNull(),
+  lastCrawledAt: timestamp("last_crawled_at"),
+  lastCrawlStatus: varchar("last_crawl_status", { length: 20 }), // 'success', 'failed', 'pending'
+  lastCrawlError: text("last_crawl_error"),
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_event_sources_active").on(table.isActive),
+  index("IDX_event_sources_type").on(table.sourceType),
+]);
+
+export type EventSource = typeof eventSources.$inferSelect;
+
+// 活動表
+export const events = pgTable("events", {
+  id: serial("id").primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(), // 活動名稱
+  description: text("description"), // 活動描述
+  eventType: varchar("event_type", { length: 30 }).notNull(), // 'announcement', 'festival', 'limited'
+  location: varchar("location", { length: 255 }), // 活動地點
+  locationCity: varchar("location_city", { length: 50 }), // 城市
+  locationDistrict: varchar("location_district", { length: 50 }), // 區域
+  locationLat: doublePrecision("location_lat"), // 緯度
+  locationLng: doublePrecision("location_lng"), // 經度
+  startDate: timestamp("start_date"), // 開始日期
+  endDate: timestamp("end_date"), // 結束日期
+  imageUrl: text("image_url"), // 活動圖片
+  sourceUrl: text("source_url"), // 原始連結
+  sourceId: integer("source_id").references(() => eventSources.id), // 爬蟲來源
+  externalId: varchar("external_id", { length: 100 }), // 外部 ID（用於去重）
+  status: varchar("status", { length: 20 }).default("pending").notNull(), // 'pending', 'approved', 'rejected', 'expired'
+  priority: integer("priority").default(0).notNull(), // 排序優先級
+  isSticky: boolean("is_sticky").default(false).notNull(), // 是否置頂
+  viewCount: integer("view_count").default(0).notNull(), // 瀏覽次數
+  createdBy: text("created_by").references(() => users.id), // 建立者（管理員手動新增時）
+  createdByType: varchar("created_by_type", { length: 20 }).default("crawler").notNull(), // 'admin', 'crawler'
+  reviewedBy: text("reviewed_by").references(() => users.id), // 審核者
+  reviewedAt: timestamp("reviewed_at"), // 審核時間
+  rejectionReason: text("rejection_reason"), // 拒絕原因
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("IDX_events_type").on(table.eventType),
+  index("IDX_events_status").on(table.status),
+  index("IDX_events_dates").on(table.startDate, table.endDate),
+  index("IDX_events_city").on(table.locationCity),
+  index("IDX_events_source").on(table.sourceId),
+]);
+
+export const insertEventSchema = createInsertSchema(events).omit({
+  id: true,
+  viewCount: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type Event = typeof events.$inferSelect;
+export type InsertEvent = z.infer<typeof insertEventSchema>;

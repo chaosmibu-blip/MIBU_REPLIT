@@ -408,6 +408,46 @@ async function startServer() {
       }).catch(err => {
         console.error('[DataCleanup] Initial cleanup error:', err);
       });
+
+      // ============================================================
+      // 10. 每日凌晨 3 點自動爬取活動資訊
+      // ============================================================
+      const { crawlAllSources } = await import('./services/eventCrawler');
+
+      // 計算距離下次凌晨 3 點的毫秒數
+      function getMillisecondsUntil3AM(): number {
+        const now = new Date();
+        const next3AM = new Date(now);
+        next3AM.setHours(3, 0, 0, 0);
+
+        if (now >= next3AM) {
+          next3AM.setDate(next3AM.getDate() + 1);
+        }
+
+        return next3AM.getTime() - now.getTime();
+      }
+
+      // 設定每日 3AM 執行爬蟲
+      function scheduleEventCrawl() {
+        const msUntil3AM = getMillisecondsUntil3AM();
+        console.log(`[EventCrawler] Next crawl scheduled in ${Math.round(msUntil3AM / 1000 / 60)} minutes`);
+
+        setTimeout(async () => {
+          console.log('[EventCrawler] Starting scheduled daily crawl...');
+          try {
+            const result = await crawlAllSources();
+            console.log(`[EventCrawler] Daily crawl completed. Sources: ${result.sourcesProcessed}, Events created: ${result.totalEventsCreated}`);
+          } catch (error) {
+            console.error('[EventCrawler] Daily crawl error:', error);
+          }
+
+          // 設定下一天的爬蟲
+          scheduleEventCrawl();
+        }, msUntil3AM);
+      }
+
+      scheduleEventCrawl();
+      console.log('[EventCrawler] Daily crawl scheduler initialized (runs at 3:00 AM)');
     },
   );
 }

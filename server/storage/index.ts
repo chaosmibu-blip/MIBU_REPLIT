@@ -13,6 +13,7 @@ import * as crowdfundStorage from './crowdfundStorage';
 import * as referralStorage from './referralStorage';
 import * as contributionStorage from './contributionStorage';
 import * as accountStorage from './accountStorage';
+import { eventStorage } from './eventStorage';
 
 export const storage = {
   ...userStorage,
@@ -43,4 +44,5 @@ export {
   referralStorage,
   contributionStorage,
   accountStorage,
+  eventStorage,
 };

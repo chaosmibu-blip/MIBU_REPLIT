@@ -7,6 +7,28 @@
 
 ## 待處理 (Pending)
 
+### [2026-01-17] #007：活動系統 UI 實作 ⏳
+
+**影響範圍**: APP + WEB
+
+**背景說明**:
+後端已完成活動系統 API，支援三種活動類型：公告（announcement）、節慶活動（festival）、限時活動（limited）。節慶活動和限時活動支援自動爬蟲功能。
+
+**API 端點**:
+
+| API | 功能 | 影響端 |
+|-----|------|--------|
+| `GET /api/events` | 取得已審核活動列表 | APP + WEB |
+| `GET /api/events/:id` | 取得活動詳情 | APP + WEB |
+
+**同步指令**:
+- APP: 見 `docs/sync-app.md` #006
+- WEB: 見 `docs/sync-web.md` #006
+
+**狀態**: ⏳ pending
+
+---
+
 ### [2026-01-17] #005：APP UI 畫面實作 ⏳
 
 **影響範圍**: APP
