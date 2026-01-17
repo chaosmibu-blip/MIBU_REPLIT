@@ -4,7 +4,7 @@ hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["psmisc", "jq", "poppler_utils"]
+packages = ["psmisc", "jq", "poppler_utils", "lsof"]
 
 [deployment]
 deploymentTarget = "autoscale"
