@@ -75,7 +75,7 @@ router.get("/crowdfund/campaigns/:id", async (req: Request, res: Response) => {
     const topContributors = await crowdfundStorage.getTopContributors(campaignId, 10);
 
     // 檢查當前用戶的貢獻（如果已登入）
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     let myContribution = null;
     if (userId) {
       myContribution = await crowdfundStorage.getUserCampaignContribution(userId, campaignId);
@@ -125,7 +125,7 @@ router.get("/crowdfund/campaigns/:id", async (req: Request, res: Response) => {
  */
 router.post("/crowdfund/contribute", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -255,7 +255,7 @@ router.post("/crowdfund/contribute", isAuthenticated, async (req: Request, res: 
  */
 router.get("/crowdfund/my-contributions", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -294,7 +294,7 @@ router.get("/crowdfund/my-contributions", isAuthenticated, async (req: Request, 
  */
 router.post("/crowdfund/checkout", async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     const { campaignId, amount, email, name, successUrl, cancelUrl } = req.body;
 
     // 驗證必填欄位

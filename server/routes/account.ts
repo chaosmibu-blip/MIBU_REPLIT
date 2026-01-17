@@ -19,7 +19,7 @@ const router = Router();
  */
 router.get("/specialist/eligibility", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -45,7 +45,7 @@ router.get("/specialist/eligibility", isAuthenticated, async (req: Request, res:
  */
 router.post("/specialist/apply", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -108,7 +108,7 @@ router.post("/specialist/apply", isAuthenticated, async (req: Request, res: Resp
  */
 router.get("/specialist/application-status", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -145,7 +145,7 @@ router.get("/specialist/application-status", isAuthenticated, async (req: Reques
  */
 router.post("/specialist/mark-invited", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -166,7 +166,7 @@ router.post("/specialist/mark-invited", isAuthenticated, async (req: Request, re
  */
 router.post("/auth/migrate-guest", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const newUserId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const newUserId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!newUserId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -225,7 +225,7 @@ router.post("/auth/migrate-guest", isAuthenticated, async (req: Request, res: Re
  */
 router.get("/auth/linked-accounts", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -252,7 +252,7 @@ router.get("/auth/linked-accounts", isAuthenticated, async (req: Request, res: R
  */
 router.post("/auth/link", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -305,7 +305,7 @@ router.post("/auth/link", isAuthenticated, async (req: Request, res: Response) =
  */
 router.delete("/auth/unlink/:provider", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -332,7 +332,7 @@ router.delete("/auth/unlink/:provider", isAuthenticated, async (req: Request, re
  */
 router.get("/account/profile", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }

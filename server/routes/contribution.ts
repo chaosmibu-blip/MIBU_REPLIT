@@ -18,7 +18,7 @@ const router = Router();
  */
 router.post("/contribution/report-closed", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -72,7 +72,7 @@ router.post("/contribution/report-closed", isAuthenticated, async (req: Request,
  */
 router.get("/contribution/my-reports", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -105,7 +105,7 @@ router.get("/contribution/my-reports", isAuthenticated, async (req: Request, res
  */
 router.post("/contribution/suggest-place", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -165,7 +165,7 @@ router.post("/contribution/suggest-place", isAuthenticated, async (req: Request,
  */
 router.get("/contribution/my-suggestions", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -202,7 +202,7 @@ router.get("/contribution/my-suggestions", isAuthenticated, async (req: Request,
  */
 router.post("/collection/:placeId/blacklist", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -233,7 +233,7 @@ router.post("/collection/:placeId/blacklist", isAuthenticated, async (req: Reque
  */
 router.delete("/collection/:placeId/blacklist", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -257,7 +257,7 @@ router.delete("/collection/:placeId/blacklist", isAuthenticated, async (req: Req
  */
 router.get("/collection/blacklist", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -285,7 +285,7 @@ router.get("/collection/blacklist", isAuthenticated, async (req: Request, res: R
  */
 router.get("/contribution/pending-votes", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -330,7 +330,7 @@ router.get("/contribution/pending-votes", isAuthenticated, async (req: Request, 
  */
 router.post("/contribution/vote/:placeId", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -399,7 +399,7 @@ router.post("/contribution/vote/:placeId", isAuthenticated, async (req: Request,
  */
 router.get("/contribution/pending-suggestions", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -449,7 +449,7 @@ router.get("/contribution/pending-suggestions", isAuthenticated, async (req: Req
  */
 router.post("/contribution/vote-suggestion/:id", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -520,7 +520,7 @@ router.post("/contribution/vote-suggestion/:id", isAuthenticated, async (req: Re
  */
 router.get("/contribution/stats", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).jwtUser?.userId || (req as any).user?.claims?.sub;
+    const userId = (req as any).jwtUser?.sub || (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
