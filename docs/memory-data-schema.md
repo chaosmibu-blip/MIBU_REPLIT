@@ -9,7 +9,7 @@
 - **Schema 定義**: `shared/schema.ts`
 - **遷移指令**: `npm run db:push`
 
-## 表格分類 (47 張)
+## 表格分類 (82 張表/列舉)
 
 ### 1. 地區階層 (Location Hierarchy)
 ```
@@ -287,6 +287,39 @@ DO UPDATE SET pullCount = pullCount + :count
 ---
 
 ## Changelog
+
+### 2026-01-17 - 資料庫索引優化
+
+**新增索引**（7 張表，共 12 個索引）：
+
+| 表名 | 新增索引 | 用途 |
+|------|----------|------|
+| `coupons` | `IDX_coupons_merchant` | 商家查詢優惠券 |
+| `coupons` | `IDX_coupons_active` | 篩選有效優惠券 |
+| `coupons` | `IDX_coupons_merchant_active` | 複合查詢 |
+| `coupons` | `IDX_coupons_created` | 時間排序 |
+| `merchants` | `IDX_merchants_created` | 時間排序 |
+| `merchants` | `IDX_merchants_stripe_customer` | Stripe 對帳 |
+| `merchants` | `IDX_merchants_recur_customer` | Recur 對帳 |
+| `cart_items` | `IDX_cart_items_product` | JOIN 產品查詢 |
+| `commerce_orders` | `IDX_commerce_orders_status` | 狀態篩選 |
+| `trip_service_purchases` | `IDX_trip_service_status` | 付款狀態篩選 |
+| `place_cache` | `IDX_place_cache_ai_reviewed` | AI 審核狀態篩選 |
+| `service_relations` | `IDX_service_relations_status` | 服務狀態篩選 |
+
+**冗餘表改進建議**（待評估）：
+
+| 冗餘表對 | 狀態 | 建議 |
+|----------|------|------|
+| `users` vs `userProfiles` | 🟡 待處理 | 合併到 `users`，需遷移資料 |
+| `merchants` vs `merchantProfiles` | 🟡 待處理 | 合併到 `merchants`，需遷移資料 |
+
+> ⚠️ 冗餘表合併是 breaking change，需要：
+> 1. 資料遷移腳本
+> 2. 修改相關 Storage 層
+> 3. 三端同步
+
+---
 
 ### 2024-12-23 - 資料完整性修復
 1. **places.isActive 欄位新增**

@@ -238,6 +238,9 @@ export const merchants = pgTable("merchants", {
 }, (table) => [
   index("IDX_merchants_user").on(table.userId),
   index("IDX_merchants_status").on(table.status),
+  index("IDX_merchants_created").on(table.createdAt),
+  index("IDX_merchants_stripe_customer").on(table.stripeCustomerId),
+  index("IDX_merchants_recur_customer").on(table.recurCustomerId),
 ]);
 
 // Specialists (專員)
@@ -357,6 +360,7 @@ export const serviceRelations = pgTable("service_relations", {
 }, (table) => [
   index("IDX_service_relations_specialist").on(table.specialistId),
   index("IDX_service_relations_traveler").on(table.travelerId),
+  index("IDX_service_relations_status").on(table.status),
 ]);
 
 // Place cache for AI-generated content
@@ -392,6 +396,7 @@ export const placeCache = pgTable("place_cache", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_place_cache_lookup").on(table.subCategory, table.district, table.city, table.country),
+  index("IDX_place_cache_ai_reviewed").on(table.aiReviewed),
 ]);
 
 // Place feedback for exclusion tracking (per-user)
@@ -515,7 +520,12 @@ export const coupons = pgTable("coupons", {
   isActive: boolean("is_active").default(true).notNull(),
   archived: boolean("archived").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("IDX_coupons_merchant").on(table.merchantId),
+  index("IDX_coupons_active").on(table.isActive),
+  index("IDX_coupons_merchant_active").on(table.merchantId, table.isActive),
+  index("IDX_coupons_created").on(table.createdAt),
+]);
 
 // Gacha AI Logs (每輪 AI 排序記錄)
 export const gachaAiLogs = pgTable("gacha_ai_logs", {
@@ -1260,6 +1270,7 @@ export const cartItems = pgTable("cart_items", {
   addedAt: timestamp("added_at").defaultNow().notNull(),
 }, (table) => [
   index("IDX_cart_items_user").on(table.userId),
+  index("IDX_cart_items_product").on(table.productId),
 ]);
 
 // Commerce Orders - 商務訂單
@@ -1277,6 +1288,7 @@ export const commerceOrders = pgTable("commerce_orders", {
 }, (table) => [
   index("IDX_commerce_orders_user").on(table.userId),
   index("IDX_commerce_orders_session").on(table.stripeSessionId),
+  index("IDX_commerce_orders_status").on(table.status),
 ]);
 
 // Insert schemas for commerce
@@ -1928,6 +1940,7 @@ export const tripServicePurchases = pgTable("trip_service_purchases", {
   index("IDX_trip_service_user").on(table.userId),
   index("IDX_trip_service_specialist").on(table.specialistId),
   index("IDX_trip_service_dates").on(table.arrivalDate, table.departureDate),
+  index("IDX_trip_service_status").on(table.paymentStatus),
 ]);
 
 export const tripServicePurchasesRelations = relations(tripServicePurchases, ({ one }) => ({
