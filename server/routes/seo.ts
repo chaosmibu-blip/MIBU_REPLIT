@@ -459,7 +459,7 @@ router.get("/places/by-id/:id", async (req: Request, res: Response) => {
         descriptionI18n: matchedPlace.descriptionI18n,
         rating: matchedPlace.rating,
         imageUrl: matchedPlace.photoReference || null,
-        openingHours: matchedPlace.openingHours,
+        openingHours: null, // 已移除此欄位
         location: matchedPlace.locationLat && matchedPlace.locationLng ? {
           lat: matchedPlace.locationLat,
           lng: matchedPlace.locationLng,
@@ -542,7 +542,7 @@ router.get("/places/:slug", async (req: Request, res: Response) => {
         descriptionI18n: matchedPlace.descriptionI18n,
         rating: matchedPlace.rating,
         imageUrl: matchedPlace.photoReference || null,
-        openingHours: matchedPlace.openingHours,
+        openingHours: null, // 已移除此欄位
         location: matchedPlace.locationLat && matchedPlace.locationLng ? {
           lat: matchedPlace.locationLat,
           lng: matchedPlace.locationLng,

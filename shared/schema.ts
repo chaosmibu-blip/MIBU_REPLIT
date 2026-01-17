@@ -438,7 +438,7 @@ export const places = pgTable("places", {
   subcategory: text("subcategory"),
   description: text("description"),
   descriptionI18n: jsonb("description_i18n").$type<{ en?: string; ja?: string; ko?: string }>(),
-  openingHours: jsonb("opening_hours").$type<{ weekdayText?: string[]; periods?: any[] }>(),
+  // openingHours 已移除 - 正式環境資料庫無此欄位，且費用優化已不再採集此資料
   merchantId: integer("merchant_id").references(() => merchants.id),
   isPromoActive: boolean("is_promo_active").default(false),
   promoTitle: text("promo_title"),
