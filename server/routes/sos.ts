@@ -11,7 +11,7 @@ const router = Router();
 
 router.get('/sos/eligibility', isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+    const userId = req.user?.claims?.sub || req.jwtUser?.sub;
     if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const hasPurchased = await storage.hasUserPurchasedTripService(userId);
@@ -27,7 +27,7 @@ router.get('/sos/eligibility', isAuthenticated, async (req: any, res) => {
 
 router.post('/sos/alert', isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+    const userId = req.user?.claims?.sub || req.jwtUser?.sub;
     if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const hasPurchased = await storage.hasUserPurchasedTripService(userId);
@@ -60,7 +60,7 @@ router.post('/sos/alert', isAuthenticated, async (req: any, res) => {
 
 router.get('/sos/alerts', isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+    const userId = req.user?.claims?.sub || req.jwtUser?.sub;
     if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const alerts = await storage.getUserSosAlerts(userId);
@@ -73,7 +73,7 @@ router.get('/sos/alerts', isAuthenticated, async (req: any, res) => {
 
 router.patch('/sos/alerts/:id/cancel', isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+    const userId = req.user?.claims?.sub || req.jwtUser?.sub;
     const alertId = parseInt(req.params.id);
     
     if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));

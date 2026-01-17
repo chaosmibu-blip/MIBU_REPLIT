@@ -238,10 +238,10 @@ router.post("/gacha/pull/v3", isAuthenticated, async (req: any, res) => {
 });
 
 router.post("/gacha/itinerary/v3", optionalAuth, async (req: any, res) => {
-  const userId = req.user?.claims?.sub || req.jwtUser?.userId || 'guest';
+  const userId = req.user?.claims?.sub || req.jwtUser?.sub || 'guest';
   const sessionId = crypto.randomUUID();
   const startTime = Date.now();
-  console.log('[Gacha V3] Request received:', { body: req.body, userId, sessionId });
+  console.log('[Gacha V3] Request received:', { body: req.body, userId, sessionId, hasUser: !!req.user, hasJwtUser: !!req.jwtUser });
   
   try {
     const itinerarySchema = z.object({
@@ -1208,15 +1208,27 @@ ${round3PlacesInfo.map(p => `${p.idx}. ${p.name}｜${p.category}/${p.subcategory
         remainingQuota: remainingQuotaFinal
       }
     });
-  } catch (error) {
-    console.error("[Gacha V3] Error:", error);
+  } catch (error: any) {
+    const errorDetails = {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack?.split('\n').slice(0, 5),
+      name: error?.name,
+    };
+    console.error("[Gacha V3] Error:", errorDetails);
 
     if (error instanceof z.ZodError) {
       const firstError = error.errors[0];
       return res.status(400).json(createErrorResponse(ErrorCode.VALIDATION_ERROR, firstError?.message || "請求參數格式錯誤", error.errors));
     }
 
-    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, "扭蛋系統暫時無法使用，請稍後再試"));
+    // 提供更具體的錯誤訊息給用戶端（開發階段）
+    const isDev = process.env.NODE_ENV !== 'production';
+    const errorMessage = isDev && error?.message
+      ? `扭蛋系統錯誤: ${error.message.slice(0, 100)}`
+      : "扭蛋系統暫時無法使用，請稍後再試";
+
+    res.status(500).json(createErrorResponse(ErrorCode.SERVER_ERROR, errorMessage));
   }
 });
 

@@ -431,7 +431,7 @@ router.post('/logout', async (req: any, res) => {
 
 profileRouter.get('/profile', isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+    const userId = req.user?.claims?.sub || req.jwtUser?.sub;
     if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
     
     const user = await storage.getUser(userId);
@@ -463,7 +463,7 @@ profileRouter.get('/profile', isAuthenticated, async (req: any, res) => {
 // 共用的 profile 更新邏輯
 async function handleProfileUpdate(req: any, res: any) {
   try {
-    const userId = req.user?.claims?.sub || req.jwtUser?.userId;
+    const userId = req.user?.claims?.sub || req.jwtUser?.sub;
     if (!userId) return res.status(401).json(createErrorResponse(ErrorCode.AUTH_REQUIRED));
 
     const validated = updateProfileSchema.parse(req.body);

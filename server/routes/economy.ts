@@ -17,7 +17,7 @@ const router = Router();
  */
 router.get("/user/level", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = req.jwtUser?.userId || req.user?.claims?.sub;
+    const userId = req.jwtUser?.sub || req.user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -72,7 +72,7 @@ router.get("/user/level", isAuthenticated, async (req: Request, res: Response) =
  */
 router.get("/user/experience/history", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = req.jwtUser?.userId || req.user?.claims?.sub;
+    const userId = req.jwtUser?.sub || req.user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -126,7 +126,7 @@ router.get("/user/experience/history", isAuthenticated, async (req: Request, res
  */
 router.get("/user/achievements", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = req.jwtUser?.userId || req.user?.claims?.sub;
+    const userId = req.jwtUser?.sub || req.user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
@@ -198,7 +198,7 @@ router.get("/user/achievements", isAuthenticated, async (req: Request, res: Resp
  */
 router.post("/user/achievements/:id/claim", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = req.jwtUser?.userId || req.user?.claims?.sub;
+    const userId = req.jwtUser?.sub || req.user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ errorCode: "E1001", message: "請先登入" });
     }
